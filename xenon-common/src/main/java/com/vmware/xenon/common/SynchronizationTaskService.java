@@ -36,6 +36,10 @@ public class SynchronizationTaskService
     public static final String PROPERTY_NAME_SYNCHRONIZATION_LOGGING = Utils.PROPERTY_NAME_PREFIX
             + "SynchronizationTaskService.isDetailedLoggingEnabled";
 
+    static final String STAT_NAME_CHILD_SERVICES_FOR_SYNCH_COUNT = "childServicesForSynchCount";
+    static final String STAT_NAME_CHILD_SERVICES_SYNCH_STARTED_COUNT = "childServicesSynchStartedCount";
+    static final String STAT_NAME_CHILD_SERVICES_SYNCH_REQUEST_FAILED_COUNT = "childServicesSynchRequestFailedCount";
+
     public static SynchronizationTaskService create(Supplier<Service> childServiceInstantiator) {
         if (childServiceInstantiator.get() == null) {
             throw new IllegalArgumentException("childServiceInstantiator created null child service");
@@ -106,6 +110,7 @@ public class SynchronizationTaskService
     public SynchronizationTaskService() {
         super(State.class);
         toggleOption(ServiceOption.IDEMPOTENT_POST, true);
+        toggleOption(ServiceOption.INSTRUMENTATION, true);
     }
 
     /**
@@ -119,6 +124,10 @@ public class SynchronizationTaskService
      */
     @Override
     public void handleStart(Operation post) {
+        setStat(STAT_NAME_CHILD_SERVICES_FOR_SYNCH_COUNT, 0);
+        setStat(STAT_NAME_CHILD_SERVICES_SYNCH_STARTED_COUNT, 0);
+        setStat(STAT_NAME_CHILD_SERVICES_SYNCH_REQUEST_FAILED_COUNT, 0);
+
         State initialState = validateStartPost(post);
         if (initialState == null) {
             return;
@@ -335,6 +344,7 @@ public class SynchronizationTaskService
      */
     @Override
     public void handlePatch(Operation patch) {
+
         State task = getState(patch);
         State body = getBody(patch);
 
@@ -369,6 +379,10 @@ public class SynchronizationTaskService
             setFactoryAvailability(task, true, null, patch);
         } else {
             patch.complete();
+        }
+
+        if (task.subStage == SubStage.SYNCHRONIZE) {
+            logStats(task.subStage, task.taskInfo.stage);
         }
 
         switch (task.taskInfo.stage) {
@@ -538,9 +552,14 @@ public class SynchronizationTaskService
         AtomicInteger pendingStarts = new AtomicInteger(rsp.documentLinks.size());
         Operation.CompletionHandler c = (o, e) -> {
             int r = pendingStarts.decrementAndGet();
+
             if (e != null && !getHost().isStopping()) {
+                adjustStat(STAT_NAME_CHILD_SERVICES_SYNCH_REQUEST_FAILED_COUNT, 1);
                 logWarning("Restart for children failed: %s", e.getMessage());
+            } else {
+                adjustStat(STAT_NAME_CHILD_SERVICES_SYNCH_STARTED_COUNT, 1);
             }
+
 
             if (getHost().isStopping()) {
                 sendSelfCancellationPatch(task, "host is stopping");
@@ -562,6 +581,8 @@ public class SynchronizationTaskService
             sendSelfPatch(task, TaskState.TaskStage.STARTED, subStageSetter(SubStage.SYNCHRONIZE));
         };
 
+        adjustStat(STAT_NAME_CHILD_SERVICES_FOR_SYNCH_COUNT, pendingStarts.get());
+
         for (String link : rsp.documentLinks) {
             if (getHost().isStopping()) {
                 sendSelfCancellationPatch(task, "host is stopping");
@@ -570,6 +591,18 @@ public class SynchronizationTaskService
 
             synchronizeService(task, link, c);
         }
+    }
+
+    private void logStats(SubStage substage, TaskState.TaskStage stage) {
+        ServiceStats.ServiceStat total = getStat(STAT_NAME_CHILD_SERVICES_FOR_SYNCH_COUNT);
+        ServiceStats.ServiceStat started = getStat(STAT_NAME_CHILD_SERVICES_SYNCH_STARTED_COUNT);
+        ServiceStats.ServiceStat failed = getStat(STAT_NAME_CHILD_SERVICES_SYNCH_REQUEST_FAILED_COUNT);
+        logInfo("Sub-Stage: %s, Stage: %s, Child services to synch: %d; Started: %d; Failed: %d",
+                substage,
+                stage,
+                (long) total.latestValue,
+                (long) started.latestValue,
+                (long) failed.latestValue);
     }
 
     private boolean verifySynchronizationOwnership(State task) {

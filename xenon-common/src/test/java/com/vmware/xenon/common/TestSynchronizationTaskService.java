@@ -122,6 +122,37 @@ public class TestSynchronizationTaskService extends BasicTestCase {
     }
 
     @Test
+    public void progressStats() throws Throwable {
+        this.host.createExampleServices(this.host, this.serviceCount, null);
+
+        SynchronizationTaskService.State task = createSynchronizationTaskState(Long.MAX_VALUE);
+        Operation op = Operation
+                        .createPost(UriUtils.buildUri(this.host, SynchronizationTaskService.FACTORY_LINK))
+                        .setBody(task);
+
+        TestRequestSender sender = new TestRequestSender(this.host);
+        SynchronizationTaskService.State result = sender
+                .sendAndWait(op, SynchronizationTaskService.State.class);
+
+        assertTrue (result.taskInfo.stage == TaskState.TaskStage.FINISHED);
+
+        URI statsURI = UriUtils.buildStatsUri(this.host, result.documentSelfLink);
+        ServiceStats stats = this.host.getServiceState(null, ServiceStats.class, statsURI);
+        ServiceStats.ServiceStat total = stats.entries.get(
+                SynchronizationTaskService.STAT_NAME_CHILD_SERVICES_FOR_SYNCH_COUNT);
+
+        ServiceStats.ServiceStat startedCount = stats.entries.get(
+                SynchronizationTaskService.STAT_NAME_CHILD_SERVICES_SYNCH_STARTED_COUNT);
+
+        ServiceStats.ServiceStat failedCount = stats.entries.get(
+                SynchronizationTaskService.STAT_NAME_CHILD_SERVICES_SYNCH_REQUEST_FAILED_COUNT);
+
+        assertTrue (total.latestValue == this.serviceCount);
+        assertTrue (startedCount.latestValue == this.serviceCount);
+        assertTrue (failedCount.latestValue == 0);
+    }
+
+    @Test
     public void taskRestartability() throws Throwable {
         // This test verifies that If the synchronization task
         // is already running and another request arrives, the
