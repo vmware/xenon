@@ -67,6 +67,12 @@ public final class ODataUtils {
             task.querySpec.options.add(QueryOption.EXPAND_CONTENT);
         }
 
+        boolean includeDeleted = UriUtils.hasODataIncludeDeletedParamValue(op.getUri());
+
+        if (includeDeleted) {
+            task.querySpec.options.add(QueryOption.INCLUDE_DELETED);
+        }
+
         String filter = UriUtils.getODataFilterParamValue(op.getUri());
         if (filter != null) {
             Query q = new ODataQueryVisitor(wildcardFilterUnfoldPropertyNames).toQuery(filter);

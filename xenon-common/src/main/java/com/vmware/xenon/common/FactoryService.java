@@ -559,7 +559,8 @@ public abstract class FactoryService extends StatelessService {
         String query = op.getUri().getQuery();
         boolean isODataQuery = UriUtils.hasODataQueryParams(op.getUri());
         boolean expand = UriUtils.hasODataExpandParamValue(op.getUri());
-        if (query == null || (!isODataQuery && expand)) {
+        boolean includeDeleted = UriUtils.hasODataIncludeDeletedParamValue(op.getUri());
+        if (query == null || (!isODataQuery && (expand || includeDeleted))) {
             completeGetWithQuery(op, this.childOptions);
         } else {
             handleGetOdataCompletion(op);
@@ -762,14 +763,20 @@ public abstract class FactoryService extends StatelessService {
 
     public void completeGetWithQuery(Operation op, EnumSet<ServiceOption> caps) {
         boolean doExpand = false;
+        boolean doIncludeDeleted = false;
+
         if (op.getUri().getQuery() != null) {
             doExpand = UriUtils.hasODataExpandParamValue(op.getUri());
+        }
+
+        if (op.getUri().getQuery() != null) {
+            doIncludeDeleted = UriUtils.hasODataIncludeDeletedParamValue(op.getUri());
         }
 
         URI u = UriUtils.buildDocumentQueryUri(getHost(),
                 UriUtils.buildUriPath(getSelfLink(), UriUtils.URI_WILDCARD_CHAR),
                 doExpand,
-                false,
+                doIncludeDeleted,
                 caps != null ? caps : EnumSet.of(ServiceOption.NONE));
 
         Operation query = Operation.createGet(u)

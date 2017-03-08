@@ -99,6 +99,20 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         this.host.testWait();
     }
 
+    private void deleteExample(String path) throws Throwable {
+        this.host.testStart(1);
+        this.host.send(Operation
+                .createDelete(UriUtils.buildUri(this.host, path))
+                .setCompletion(
+                        (o, e) -> {
+                            if (e != null) {
+                                this.host.failIteration(e);
+                            }
+                            this.host.completeIteration();
+                        }));
+        this.host.testWait();
+    }
+
     @Test
     public void count() throws Throwable {
         ExampleService.ExampleServiceState inState = new ExampleService.ExampleServiceState();
@@ -313,6 +327,7 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
     public void filterQueries() throws Throwable {
         this.selfLinks = postExample(this.min, this.max);
         testSimpleStringQuery();
+        testIncludeDeletedQuery();
         testGTQuery();
         testGEQuery();
         testLTQuery();
@@ -328,6 +343,28 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         postExample(inState);
 
         String queryString = "$filter=name eq 'TEST STRING'";
+
+        Map<String, Object> out = doQuery(queryString, false).documents;
+        assertNotNull(out);
+
+        ExampleService.ExampleServiceState outState = Utils.fromJson(
+                out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState.name.equals(inState.name));
+
+        out = doFactoryServiceQuery(queryString, false);
+        assertNotNull(out);
+        outState = Utils.fromJson(
+                out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState.name.equals(inState.name));
+    }
+
+    private void testIncludeDeletedQuery() throws Throwable {
+        ExampleService.ExampleServiceState inState = new ExampleService.ExampleServiceState();
+        inState.name = "TEST STRING";
+        postExample(inState);
+        deleteExample(inState.documentSelfLink);
+
+        String queryString = "$filter=name eq 'TEST STRING'&" + UriUtils.URI_PARAM_ODATA_INCLUDE_DELETED;
 
         Map<String, Object> out = doQuery(queryString, false).documents;
         assertNotNull(out);

@@ -48,6 +48,8 @@ public final class UriUtils {
 
     public static final String URI_PARAM_ODATA_EXPAND = "$expand";
     public static final String URI_PARAM_ODATA_EXPAND_NO_DOLLAR_SIGN = "expand";
+    public static final String URI_PARAM_ODATA_INCLUDE_DELETED = "$includeDeleted";
+    public static final String URI_PARAM_ODATA_INCLUDE_DELETED_NO_DOLLAR_SIGN = "includeDeleted";
     public static final String URI_PARAM_ODATA_FILTER = "$filter";
     public static final String URI_PARAM_ODATA_SKIP = "$skip";
     public static final String URI_PARAM_ODATA_ORDER_BY = "$orderby";
@@ -890,6 +892,16 @@ public final class UriUtils {
 
         return query.contains(UriUtils.URI_PARAM_ODATA_EXPAND)
                 || query.contains(UriUtils.URI_PARAM_ODATA_EXPAND_NO_DOLLAR_SIGN);
+    }
+
+    public static boolean hasODataIncludeDeletedParamValue(URI uri) {
+        String query = uri.getQuery();
+        if (query == null || query.isEmpty()) {
+            return false;
+        }
+
+        return query.contains(UriUtils.URI_PARAM_ODATA_INCLUDE_DELETED)
+                || query.contains(UriUtils.URI_PARAM_ODATA_INCLUDE_DELETED_NO_DOLLAR_SIGN);
     }
 
     /**
