@@ -1,5 +1,5 @@
-# 1.0 Brief Introduction to Xenon
 
+# 1.0 Brief Introduction to Xenon
 ## 1.1 Xenon Highlights
 Xenon is a framework for writing small REST-based services. (Some people call them microservices.)
 The runtime is implemented in Java and acts as the host for the lightweight, asynchronous
