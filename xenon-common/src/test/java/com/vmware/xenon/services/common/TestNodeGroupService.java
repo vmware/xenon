@@ -2617,6 +2617,81 @@ public class TestNodeGroupService {
     }
 
     @Test
+    public void synchronizationDeletedDocuments() throws Throwable {
+        setUp(this.nodeCount);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+        this.host.setNodeGroupQuorum((this.nodeCount / 2) + 1);
+
+        VerificationHost peerNode = this.host.getPeerHost();
+        URI exampleUri = UriUtils.buildUri(peerNode, ExampleService.FACTORY_LINK);
+        this.host.waitForReplicatedFactoryServiceAvailable(exampleUri, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+
+        // Create some example services.
+        List<URI> exampleUris = new ArrayList<>();
+        this.host.createExampleServices(peerNode, this.serviceCount, exampleUris, null);
+
+        // Stop one of the nodes
+        this.host.log(Level.INFO, "STOPPING THE HOST %s", peerNode.getPort());
+        this.host.stopHostAndPreserveState(peerNode);
+
+        // Wait for convergence to finish.
+        this.host.waitForNodeGroupConvergence(2, 2);
+        VerificationHost existingHost = this.host.getInProcessHostMap().values().iterator().next();
+        waitForReplicatedFactoryServiceAvailable(
+                UriUtils.buildUri(existingHost, ExampleService.FACTORY_LINK),
+                ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+
+        // Delete all the examples
+        TestContext ctx = this.host.testCreate(this.serviceCount);
+        for (URI u : exampleUris) {
+            Operation deleteOp = Operation
+                    .createDelete(UriUtils.buildUri(existingHost, u.getPath()))
+                    .setReferer(this.host.getUri())
+                    .setCompletion(ctx.getCompletion());
+            this.host.sendRequest(deleteOp);
+        }
+        ctx.await();
+
+
+        // Restart the stateful host.
+        this.host.log(Level.INFO, "STARTING THE HOST %s", peerNode.getPort());
+        if (!VerificationHost.restartStatefulHost(peerNode)) {
+            this.host.log("Failed restart of host, aborting");
+            return;
+        }
+
+        this.host.addPeerNode(peerNode);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+        waitForReplicatedFactoryServiceAvailable(
+                UriUtils.buildUri(peerNode, ExampleService.FACTORY_LINK),
+                ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+
+        TestContext ctx2 = this.host.testCreate(this.host.getInProcessHostMap().size());
+        for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
+            Operation getOp = Operation.createGet(peer, ExampleService.FACTORY_LINK)
+                    .setReferer(this.host.getUri())
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            ctx2.failIteration(e);
+                            return;
+                        }
+                        ServiceDocumentQueryResult result = o.getBody(ServiceDocumentQueryResult.class);
+                        if (result.documentLinks.size() != 0) {
+                            this.host.log(Level.INFO, "PRINTING LINKS:");
+                            for (String link : result.documentLinks) {
+                                this.host.log(Level.INFO, "NON_DELETED: %s", link);
+                            }
+                            ctx2.failIteration(new IllegalStateException("more results than expected " + peer.getUri()));
+                            return;
+                        }
+                        ctx2.completeIteration();
+                    });
+            this.host.sendRequest(getOp);
+        }
+        ctx2.await();
+    }
+
+    @Test
     public void replicationWithAuthzCacheClear() throws Throwable {
         this.isAuthorizationEnabled = true;
         setUp(this.nodeCount);

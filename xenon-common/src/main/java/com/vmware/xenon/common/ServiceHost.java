@@ -3302,7 +3302,18 @@ public class ServiceHost implements ServiceRequestSender {
 
         if (s == null && op.isFromReplication()) {
             if (op.getAction() == Action.DELETE) {
-                op.complete();
+                this.log(Level.INFO, "COMPLETING %s", op.getUri().getPath());
+                if (op.isSynchronizePeer()) {
+                    FactoryService svc = (FactoryService)findService(
+                            UriUtils.getParentPath(op.getUri().getPath()));
+                    try {
+                        Service childService = svc.createServiceInstance();
+                        saveServiceState(childService, op, op.getBody(svc.getStateType()));
+                    } catch (Throwable ex) {
+                    }
+                } else {
+                    op.complete();
+                }
             } else {
                 failRequestServiceNotFound(op);
             }
