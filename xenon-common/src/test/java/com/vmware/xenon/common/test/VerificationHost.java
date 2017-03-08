@@ -2826,10 +2826,11 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public void deleteAllChildServices(URI factoryURI) {
-        deleteOrStopAllChildServices(factoryURI, false);
+        deleteOrStopAllChildServices(factoryURI, false, true);
     }
 
-    public void deleteOrStopAllChildServices(URI factoryURI, boolean stopOnly) {
+    public void deleteOrStopAllChildServices(
+            URI factoryURI, boolean stopOnly, boolean useFullQuorum) {
         ServiceDocumentQueryResult res = getFactoryState(factoryURI);
         if (res.documentLinks.isEmpty()) {
             return;
@@ -2840,8 +2841,10 @@ public class VerificationHost extends ExampleServiceHost {
             if (stopOnly) {
                 op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE);
             } else {
-                op.addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
-                        Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL);
+                if (useFullQuorum) {
+                    op.addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
+                            Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL);
+                }
             }
             ops.add(op);
         }
