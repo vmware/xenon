@@ -16,6 +16,7 @@ package com.vmware.xenon.services.common;
 import static com.vmware.xenon.common.Operation.HEADER_FIELD_VALUE_SEPARATOR;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.CompletionHandler;
@@ -30,6 +31,7 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.StatefulService;
+import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 
 /**
@@ -42,8 +44,8 @@ public class LocalFileService extends StatefulService {
     public static final String SERVICE_PREFIX = "/local-files";
 
     public static class LocalFileServiceState extends ServiceDocument {
-        // local file path to read or write
-        public String localFilePath;
+        // file scheme uri for local file to read or write (ex: "file:/var/backup/backup.zip")
+        public URI localFileUri;
 
         // (Only for write) mode options to open the file for write
         public Set<StandardOpenOption> fileOptions = new HashSet<>();
@@ -66,8 +68,8 @@ public class LocalFileService extends StatefulService {
         }
 
         LocalFileServiceState state = start.getBody(LocalFileServiceState.class);
-        if (state.localFilePath == null) {
-            start.fail(new IllegalStateException("local file path is required"));
+        if (state.localFileUri == null) {
+            start.fail(new IllegalStateException("file scheme uri is required"));
             return;
         }
 
@@ -92,8 +94,21 @@ public class LocalFileService extends StatefulService {
             return;
         }
 
+        if (!UriUtils.FILE_SCHEME.equals(state.localFileUri.getScheme())) {
+            put.fail(new IllegalStateException("file scheme uri is required"));
+            return;
+        }
+
+        Path localFilePath;
+        try {
+            localFilePath = Paths.get(state.localFileUri);
+        } catch (Exception e) {
+            put.fail(e);
+            return;
+        }
+        Path path = localFilePath;
+
         String rangeString = put.getRequestHeader(Operation.CONTENT_RANGE_HEADER);
-        Path path = Paths.get(state.localFilePath);
 
         // open async channel
         AsynchronousFileChannel channel;
@@ -164,7 +179,21 @@ public class LocalFileService extends StatefulService {
         }
 
         LocalFileServiceState state = getState(get);
-        Path path = Paths.get(state.localFilePath);
+
+        if (!UriUtils.FILE_SCHEME.equals(state.localFileUri.getScheme())) {
+            get.fail(new IllegalStateException("file scheme uri is required"));
+            return;
+        }
+
+        Path localFilePath;
+        try {
+            localFilePath = Paths.get(state.localFileUri);
+        } catch (Exception e) {
+            get.fail(e);
+            return;
+        }
+        Path path = localFilePath;
+
         AsynchronousFileChannel channel;
         try {
             channel = AsynchronousFileChannel.open(path, StandardOpenOption.READ);

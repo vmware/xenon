@@ -302,12 +302,7 @@ public class ServiceHostManagementService extends StatefulService {
 
         // when local file is specified to the destination, create a LocalFileService and make it to the destination
         boolean createLocalFileService = isLocalFileUri(req.destination);
-        URI backupServiceUri;
-        if (createLocalFileService) {
-            backupServiceUri = createLocalFileServiceUri();
-        } else {
-            backupServiceUri = req.destination;
-        }
+        URI backupServiceUri = createLocalFileService ? createLocalFileServiceUri() : req.destination;
 
         LuceneDocumentIndexService.BackupRequest luceneBackup = new LuceneDocumentIndexService.BackupRequest();
         luceneBackup.documentKind = LuceneDocumentIndexService.BackupRequest.KIND;
@@ -371,7 +366,7 @@ public class ServiceHostManagementService extends StatefulService {
         if (createLocalFileService) {
             LocalFileServiceState body = new LocalFileServiceState();
             body.fileOptions = EnumSet.of(StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-            body.localFilePath = req.destination.getPath();
+            body.localFileUri = req.destination;
             body.documentSelfLink = UriUtils.buildUriPath(LocalFileService.SERVICE_PREFIX, getHost().nextUUID());
 
             initialPost.setBody(body);
@@ -385,13 +380,7 @@ public class ServiceHostManagementService extends StatefulService {
     }
 
     private boolean isLocalFileUri(URI uri) {
-        try {
-            new File(uri);
-        } catch (IllegalArgumentException e) {
-            // if uri is not file scheme("file:"), it throws exception
-            return false;
-        }
-        return true;
+        return UriUtils.FILE_SCHEME.equals(uri.getScheme());
     }
 
     private URI createLocalFileServiceUri() {

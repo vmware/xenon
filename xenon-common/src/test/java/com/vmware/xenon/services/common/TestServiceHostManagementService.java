@@ -29,7 +29,6 @@ import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.concurrent.TimeoutException;
 
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -140,7 +139,7 @@ public class TestServiceHostManagementService extends BasicTestCase {
 
         String backupServiceLink = LocalFileService.SERVICE_PREFIX + "/backup";
 
-        createBackupFileService(tmpFile.getPath(), backupServiceLink);
+        createBackupFileService(tmpFile.toURI(), backupServiceLink);
         URI backupFileServiceUri = UriUtils.buildUri(this.host, backupServiceLink);
 
         // Post some documents to populate the index.
@@ -164,7 +163,7 @@ public class TestServiceHostManagementService extends BasicTestCase {
         this.host.start();
 
         String restoreServiceLink = LocalFileService.SERVICE_PREFIX + "/restore";
-        createRestoreFileService(tmpFile.getPath(), restoreServiceLink);
+        createRestoreFileService(tmpFile.toURI(), restoreServiceLink);
 
         URI restoreFileServiceUri = UriUtils.buildUri(this.host, restoreServiceLink);
 
@@ -198,7 +197,6 @@ public class TestServiceHostManagementService extends BasicTestCase {
         }
     }
 
-    @Ignore("https://www.pivotaltracker.com/story/show/140807509")
     @Test
     public void testBackupAndRestoreWithLocalFile() throws Throwable {
 
@@ -312,7 +310,7 @@ public class TestServiceHostManagementService extends BasicTestCase {
 
         // create local file service
         String backupServiceLink = LocalFileService.SERVICE_PREFIX + "/backup";
-        createBackupFileService(backupFile.getPath(), backupServiceLink);
+        createBackupFileService(backupFile.toURI(), backupServiceLink);
         URI backupFileServiceUri = UriUtils.buildUri(this.host, backupServiceLink);
 
         // create and update a document
@@ -347,7 +345,7 @@ public class TestServiceHostManagementService extends BasicTestCase {
 
         String restoreServiceLink = LocalFileService.SERVICE_PREFIX + "/restore";
 
-        createRestoreFileService(backupFile.getPath(), restoreServiceLink);
+        createRestoreFileService(backupFile.toURI(), restoreServiceLink);
 
         // perform restore with time snapshot boundary
         ServiceHostManagementService.RestoreRequest restoreRequest = new ServiceHostManagementService.RestoreRequest();
@@ -362,19 +360,19 @@ public class TestServiceHostManagementService extends BasicTestCase {
         assertEquals("Point-in-time version", snapshotServiceVersion, result.documentVersion);
     }
 
-    private void createBackupFileService(String localFilePath, String serviceLink) {
+    private void createBackupFileService(URI localFileUri, String serviceLink) {
         LocalFileServiceState initialState = new LocalFileServiceState();
         initialState.fileOptions = EnumSet.of(StandardOpenOption.WRITE);
-        initialState.localFilePath = localFilePath;
+        initialState.localFileUri = localFileUri;
 
         Operation post = Operation.createPost(this.host, serviceLink).setBody(initialState);
         this.host.startService(post, new LocalFileService());
         this.host.waitForServiceAvailable(serviceLink);
     }
 
-    private void createRestoreFileService(String localFilePath, String serviceLink) {
+    private void createRestoreFileService(URI localFileUri, String serviceLink) {
         LocalFileServiceState initialState = new LocalFileServiceState();
-        initialState.localFilePath = localFilePath;
+        initialState.localFileUri = localFileUri;
 
         Operation post = Operation.createPost(this.host, serviceLink).setBody(initialState);
         this.host.startService(post, new LocalFileService());
