@@ -62,6 +62,7 @@ public final class UriUtils {
     public static final String URI_PARAM_ODATA_TENANTLINKS = "$tenantLinks";
     public static final String HTTP_SCHEME = "http";
     public static final String HTTPS_SCHEME = "https";
+    public static final String FILE_SCHEME = "file";
     public static final int HTTP_DEFAULT_PORT = 80;
     public static final int HTTPS_DEFAULT_PORT = 443;
     public static final String URI_PATH_CHAR = "/";

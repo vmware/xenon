@@ -301,7 +301,7 @@ public class ServiceHostManagementService extends StatefulService {
                 .buildUri(this.getHost(), ServiceUriPaths.CORE_DOCUMENT_INDEX);
 
         // when local file is specified to the destination, create a LocalFileService and make it to the destination
-        boolean createLocalFileService = isLocalFileUri(req.destination);
+        boolean createLocalFileService = UriUtils.FILE_SCHEME.equals(req.destination.getScheme());
         URI backupServiceUri;
         if (createLocalFileService) {
             backupServiceUri = createLocalFileServiceUri();
@@ -371,7 +371,7 @@ public class ServiceHostManagementService extends StatefulService {
         if (createLocalFileService) {
             LocalFileServiceState body = new LocalFileServiceState();
             body.fileOptions = EnumSet.of(StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-            body.localFilePath = req.destination.getPath();
+            body.localFileUri = req.destination;
             body.documentSelfLink = UriUtils.buildUriPath(LocalFileService.SERVICE_PREFIX, getHost().nextUUID());
 
             initialPost.setBody(body);
@@ -382,16 +382,6 @@ public class ServiceHostManagementService extends StatefulService {
             initialPost.complete();
         }
 
-    }
-
-    private boolean isLocalFileUri(URI uri) {
-        try {
-            new File(uri);
-        } catch (IllegalArgumentException e) {
-            // if uri is not file scheme("file:"), it throws exception
-            return false;
-        }
-        return true;
     }
 
     private URI createLocalFileServiceUri() {
@@ -416,7 +406,7 @@ public class ServiceHostManagementService extends StatefulService {
         URI indexServiceUri = UriUtils
                 .buildUri(this.getHost(), ServiceUriPaths.CORE_DOCUMENT_INDEX);
 
-        boolean isLocalRestoreFile = isLocalFileUri(req.destination);
+        boolean isLocalRestoreFile = UriUtils.FILE_SCHEME.equals(req.destination.getScheme());;
 
         try {
 
