@@ -1,53 +1,53 @@
 <div class="empty-message-container"
-    *ngIf="isNullOrUndefined(getSelectedServiceInstance()) === true">
-    <h4 class="title">{{ 'ERROR_NO_INSTANCE_SELECTED' | translate }}</h4>
-    <p class="message">{{ 'ERROR_NO_INSTANCE_SELECTED_HELPER' | translate }}</p>
+    *ngIf="isNullOrUndefined(getSelectedChildService()) === true">
+    <h4 class="title">{{ 'ERROR_NO_CHILD_SERVICE_SELECTED' | translate }}</h4>
+    <p class="message">{{ 'ERROR_NO_CHILD_SERVICE_SELECTED_HELPER' | translate }}</p>
 </div>
-<div id="serviceInstanceDetail" class="content-area area info-panel"
-    *ngIf="isNullOrUndefined(getSelectedServiceInstance()) === false">
+<div id="childServiceDetail" class="content-area area info-panel"
+    *ngIf="isNullOrUndefined(getSelectedChildService()) === false">
     <form>
         <div class="form-title">
             <h4>
-                {{getSelectedServiceInstance().documentSelfLink}}
+                {{getSelectedChildService().documentSelfLink}}
             </h4>
             <aside>
                 <button class="btn btn-sm btn-link" data-toggle="modal"
-                    data-target="#editServiceInstanceModal">
+                    data-target="#editChildServiceModal">
                     <i class="fa fa-pencil-square-o"></i>
                     {{ 'ACTION_EDIT' | translate}}
                 </button>
                 <button class="btn btn-sm btn-link" data-toggle="modal"
-                    data-target="#deleteServiceInstanceModal">
+                    data-target="#deleteChildServiceModal">
                     <i class="fa fa-trash-o"></i>
                     {{ 'ACTION_DELETE' | translate }}
                 </button>
             </aside>
         </div>
         <small class="form-subtitle">
-            {{'LAST_UPDTED' | translate}}: <strong>{{getTimeStamp(getSelectedServiceInstance().documentUpdateTimeMicros)}}</strong>
+            {{'LAST_UPDTED' | translate}}: <strong>{{getTimeStamp(getSelectedChildService().documentUpdateTimeMicros)}}</strong>
             <span class="separator">|</span>
-            {{'EXPIRES' | translate}}: <strong>{{getTimeStamp(getSelectedServiceInstance().documentExpirationTimeMicros)}}</strong>
+            {{'EXPIRES' | translate}}: <strong>{{getTimeStamp(getSelectedChildService().documentExpirationTimeMicros)}}</strong>
         </small>
         <section class="charts">
             <figure class="chart">
-                <figcaption class="title">{{ 'SERVICE_INSTANCE_DETAIL_OPERATION_COUNT_TITLE' | translate }}</figcaption>
+                <figcaption class="title">{{ 'CHILD_SERVICE_DETAIL_OPERATION_COUNT_TITLE' | translate }}</figcaption>
                 <canvas id="operationCountChart" class="canvas"></canvas>
             </figure>
             <figure class="chart">
-                <figcaption class="title">{{ 'SERVICE_INSTANCE_DETAIL_OPERATION_DURATION_TITLE' | translate }}</figcaption>
+                <figcaption class="title">{{ 'CHILD_SERVICE_DETAIL_OPERATION_DURATION_TITLE' | translate }}</figcaption>
                 <canvas id="operationDurationChart" class="canvas"></canvas>
             </figure>
         </section>
         <section>
             <h5 class="section-title">{{ 'PROPERTIES' | translate }}</h5>
-            <xe-property-table [properties]="getSelectedServiceInstance()"></xe-property-table>
+            <xe-property-table [properties]="getSelectedChildService()"></xe-property-table>
         </section>
     </form>
 </div>
-<div id="serviceInstanceHistory" class="right-side-area area"
-    *ngIf="isNullOrUndefined(getSelectedServiceInstance()) === false">
+<div id="childServiceHistory" class="right-side-area area"
+    *ngIf="isNullOrUndefined(getSelectedChildService()) === false">
     <h4>
-        {{ 'SERVICE_INSTANCE_DETAIL_ACTIVITIES_TITLE' | translate }}
+        {{ 'CHILD_SERVICE_DETAIL_ACTIVITIES_TITLE' | translate }}
     </h4>
     <div class="timeline">
         <div class="timeline-connector"></div>
@@ -64,9 +64,9 @@
     </div>
 </div>
 
-<div id="editServiceInstanceModal" class="modal fade"
+<div id="editChildServiceModal" class="modal fade"
     tabindex="-1" role="dialog"
-    aria-labelledby="editServiceInstanceLabel"
+    aria-labelledby="editChildServiceLabel"
     aria-hidden="true">
     <div class="modal-dialog modal-lg" role="document">
         <div class="modal-content">
@@ -74,15 +74,15 @@
                 <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                   <span aria-hidden="true">&times;</span>
                 </button>
-                <h4 id="editServiceInstanceLabel" class="modal-title">
-                    {{ 'ACTION_EDIT' | translate }} {{'INSTANCE' | translate: {plural: ''} }}
+                <h4 id="editChildServiceLabel" class="modal-title">
+                    {{ 'ACTION_EDIT' | translate }} {{'CHILD_SERVICE' | translate: {plural: ''} }}
                 </h4>
             </div>
             <div class="modal-body">
                 <form>
                     <div class="form-group row">
-                        <label for="address" class="col-sm-3 col-form-label">
-                            {{ 'SERVICE' | translate }} {{'INSTANCE' | translate: {plural: ''} }}
+                        <label class="col-sm-3 col-form-label">
+                            {{ 'CHILD' | translate: {plural: ''} }} {{'SERVICE' | translate: {plural: ''} }}
                         </label>
                         <div class="col-sm-9">
                             <p class="form-control-static">
@@ -91,7 +91,7 @@
                         </div>
                     </div>
                     <div class="form-group row">
-                        <label for="address" class="col-sm-3 col-form-label">
+                        <label class="col-sm-3 col-form-label">
                             {{ 'METHOD' | translate }}
                         </label>
                         <div class="col-sm-9">
@@ -134,9 +134,9 @@
     </div>
 </div>
 
-<div id="deleteServiceInstanceModal" class="modal fade"
+<div id="deleteChildServiceModal" class="modal fade"
     tabindex="-1" role="dialog"
-    aria-labelledby="deleteServiceInstanceLabel"
+    aria-labelledby="deleteChildServiceLabel"
     aria-hidden="true">
     <div class="modal-dialog" role="document">
         <div class="modal-content">
@@ -144,13 +144,13 @@
                 <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                   <span aria-hidden="true">&times;</span>
                 </button>
-                <h4 id="deleteServiceInstanceLabel" class="modal-title">
-                    {{ 'ACTION_DELETE' | translate }} {{'INSTANCE' | translate: {plural: ''} }}
+                <h4 id="deleteChildServiceLabel" class="modal-title">
+                    {{ 'ACTION_DELETE' | translate }} {{'CHILD_SERVICE' | translate: {plural: ''} }}
                 </h4>
             </div>
             <div class="modal-body">
                 <p>
-                    {{ 'SERVICE_INSTANCE_DELETE_MODAL_HELPER' | translate }}<br/>
+                    {{ 'CHILD_SERVICE_DELETE_MODAL_HELPER' | translate }}<br/>
                     <strong>{{editInstanceModalContext.data.documentSelfLink}}</strong>
                 </p>
             </div>

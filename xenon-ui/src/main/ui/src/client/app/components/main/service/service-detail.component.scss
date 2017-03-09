@@ -57,7 +57,7 @@
         .content-area {
             padding: 0;
 
-            > .service-instance-detail-container {
+            > .child-service-detail-container {
                 @include flexbox();
                 @include flex(1 1 auto);
             }

@@ -101,7 +101,7 @@ export class ServiceCardComponent implements OnChanges, OnDestroy {
         return `${baseClasses} ${statusClass}`;
     }
 
-    getServiceInstanceCount(): number {
+    getChildServiceCount(): number {
         if (_.isEmpty(this.service)) {
             return 0;
         }

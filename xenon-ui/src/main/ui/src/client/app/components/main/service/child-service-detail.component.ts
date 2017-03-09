@@ -18,14 +18,14 @@ import { BaseService, NotificationService } from '../../../frameworks/app/servic
 const OPERATIONS: string[] = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'];
 
 @BaseComponent({
-    selector: 'xe-service-instance-detail',
+    selector: 'xe-child-service-detail',
     moduleId: module.id,
-    templateUrl: './service-instance-detail.component.html',
-    styleUrls: ['./service-instance-detail.component.css'],
+    templateUrl: './child-service-detail.component.html',
+    styleUrls: ['./child-service-detail.component.css'],
     changeDetection: ChangeDetectionStrategy.Default
 })
 
-export class ServiceInstanceDetailComponent implements AfterViewChecked, OnChanges, OnDestroy {
+export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges, OnDestroy {
     /**
      * Id for the selected service. E.g. /core/examples
      */
@@ -33,10 +33,10 @@ export class ServiceInstanceDetailComponent implements AfterViewChecked, OnChang
     selectedServiceId: string;
 
     /**
-     * Id for the selected service instance.
+     * Id for the selected child service.
      */
     @Input()
-    selectedServiceInstanceId: string;
+    selectedChildServiceId: string;
 
     /**
      * Context object for rendering edit instance modal.
@@ -61,14 +61,14 @@ export class ServiceInstanceDetailComponent implements AfterViewChecked, OnChang
     };
 
     /**
-     * Selected service instance document
+     * Selected child service document
      */
-    private _selectedServiceInstance: ServiceDocumentQueryResult;
+    private _selectedChildService: ServiceDocumentQueryResult;
 
     /**
-     * Selected service instance stats document
+     * Selected child service stats document
      */
-    private _selectedServiceInstanceStats: ServiceStats;
+    private _selectedChildServiceStats: ServiceStats;
 
     /**
      * Canvas for rendering operation count chart
@@ -98,23 +98,23 @@ export class ServiceInstanceDetailComponent implements AfterViewChecked, OnChang
     /**
      * Subscriptions to services.
      */
-    private _baseServiceGetServiceInstanceSubscription: Subscription;
-    private _baseServiceGetServiceInstanceStatsSubscription: Subscription;
+    private _baseServiceGetChildServiceSubscription: Subscription;
+    private _baseServiceGetChildServiceStatsSubscription: Subscription;
 
     constructor(
         private _baseService: BaseService,
         private _notificationService: NotificationService) {}
 
     ngOnChanges(changes: {[propertyName: string]: SimpleChange}): void {
-        var selectedServiceInstanceIdChanges = changes['selectedServiceInstanceId'];
+        var selectedChildServiceIdChanges = changes['selectedChildServiceId'];
 
-        if (!selectedServiceInstanceIdChanges
-            || _.isEqual(selectedServiceInstanceIdChanges.currentValue, selectedServiceInstanceIdChanges.previousValue)
-            || _.isEmpty(selectedServiceInstanceIdChanges.currentValue)) {
+        if (!selectedChildServiceIdChanges
+            || _.isEqual(selectedChildServiceIdChanges.currentValue, selectedChildServiceIdChanges.previousValue)
+            || _.isEmpty(selectedChildServiceIdChanges.currentValue)) {
             return;
         }
 
-        this.selectedServiceInstanceId = selectedServiceInstanceIdChanges.currentValue;
+        this.selectedChildServiceId = selectedChildServiceIdChanges.currentValue;
 
         this._getData();
     }
@@ -144,25 +144,25 @@ export class ServiceInstanceDetailComponent implements AfterViewChecked, OnChang
             this._operationDurationChart.destroy();
         }
 
-        if (!_.isUndefined(this._baseServiceGetServiceInstanceSubscription)) {
-            this._baseServiceGetServiceInstanceSubscription.unsubscribe();
+        if (!_.isUndefined(this._baseServiceGetChildServiceSubscription)) {
+            this._baseServiceGetChildServiceSubscription.unsubscribe();
         }
 
-        if (!_.isUndefined(this._baseServiceGetServiceInstanceStatsSubscription)) {
-            this._baseServiceGetServiceInstanceStatsSubscription.unsubscribe();
+        if (!_.isUndefined(this._baseServiceGetChildServiceStatsSubscription)) {
+            this._baseServiceGetChildServiceStatsSubscription.unsubscribe();
         }
     }
 
-    getSelectedServiceInstance(): ServiceDocumentQueryResult {
-        return this._selectedServiceInstance;
+    getSelectedChildService(): ServiceDocumentQueryResult {
+        return this._selectedChildService;
     }
 
     getTimeline(): any[] {
-        if (_.isUndefined(this._selectedServiceInstanceStats)) {
+        if (_.isUndefined(this._selectedChildServiceStats)) {
             return [];
         }
 
-        var operationEntries: {[key: string]: ServiceStatsEntry} = this._selectedServiceInstanceStats.entries;
+        var operationEntries: {[key: string]: ServiceStatsEntry} = this._selectedChildServiceStats.entries;
         var timeline: any[] = [];
 
         _.each(OPERATIONS, (operation: string) => {
@@ -191,7 +191,7 @@ export class ServiceInstanceDetailComponent implements AfterViewChecked, OnChang
     onEditInstanceMethodChanged(event: MouseEvent, method: string) {
         this.editInstanceModalContext.data['method'] = method;
 
-        if (method === 'PATCH' && !_.isUndefined(this._selectedServiceInstance)) {
+        if (method === 'PATCH' && !_.isUndefined(this._selectedChildService)) {
             this.editInstanceModalContext.data['body'] = this._getPatchMethodDefaultBody();
         } else {
             this.editInstanceModalContext.data['body'] = '';
@@ -281,12 +281,12 @@ export class ServiceInstanceDetailComponent implements AfterViewChecked, OnChang
     }
 
     private _getData(): void {
-        let link: string = this.selectedServiceId + '/' + this.selectedServiceInstanceId;
+        let link: string = this.selectedServiceId + '/' + this.selectedChildServiceId;
 
-        this._baseServiceGetServiceInstanceSubscription =
+        this._baseServiceGetChildServiceSubscription =
             this._baseService.getDocument(link).subscribe(
-                (serviceInstance: ServiceDocumentQueryResult) => {
-                    this._selectedServiceInstance = serviceInstance;
+                (childService: ServiceDocumentQueryResult) => {
+                    this._selectedChildService = childService;
 
                     // Set modal context
                     this.editInstanceModalContext.name = link;
@@ -301,14 +301,14 @@ export class ServiceInstanceDetailComponent implements AfterViewChecked, OnChang
                     // TODO: Better error handling
                     this._notificationService.set([{
                         type: 'ERROR',
-                        messages: [`Failed to retrieve factory service instance details: [${error.statusCode}] ${error.message}`]
+                        messages: [`Failed to retrieve factory child service details: [${error.statusCode}] ${error.message}`]
                     }]);
                 });
 
-        this._baseServiceGetServiceInstanceStatsSubscription =
+        this._baseServiceGetChildServiceStatsSubscription =
             this._baseService.getDocumentStats(link).subscribe(
-                (serviceInstanceStats: ServiceStats) => {
-                    this._selectedServiceInstanceStats = serviceInstanceStats;
+                (childServiceStats: ServiceStats) => {
+                    this._selectedChildServiceStats = childServiceStats;
 
                     this._renderChart();
                 },
@@ -316,13 +316,13 @@ export class ServiceInstanceDetailComponent implements AfterViewChecked, OnChang
                     // TODO: Better error handling
                     this._notificationService.set([{
                         type: 'ERROR',
-                        messages: [`Failed to retrieve factory service instance details: [${error.statusCode}] ${error.message}`]
+                        messages: [`Failed to retrieve factory child service details: [${error.statusCode}] ${error.message}`]
                     }]);
                 });
     }
 
     private _renderChart(): void {
-        if (_.isUndefined(this._selectedServiceInstanceStats)
+        if (_.isUndefined(this._selectedChildServiceStats)
             || _.isNull(this._operationCountChartCanvas)
             || _.isNull(this._operationDurationChartCanvas)) {
             return;
@@ -336,7 +336,7 @@ export class ServiceInstanceDetailComponent implements AfterViewChecked, OnChang
             this._operationDurationChart.destroy();
         }
 
-        var operationEntries: {[key: string]: ServiceStatsEntry} = this._selectedServiceInstanceStats.entries;
+        var operationEntries: {[key: string]: ServiceStatsEntry} = this._selectedChildServiceStats.entries;
 
         var operationsCounts: number[] = _.map(OPERATIONS, (operation: string) => {
             var property: string = `${operation}requestCount`;
@@ -425,11 +425,11 @@ export class ServiceInstanceDetailComponent implements AfterViewChecked, OnChang
     }
 
     private _getPatchMethodDefaultBody(): string {
-        if (_.isUndefined(this._selectedServiceInstance)) {
+        if (_.isUndefined(this._selectedChildService)) {
             return '';
         }
 
-        return JSON.stringify(_.omitBy(this._selectedServiceInstance, (value: any, key: string) => {
+        return JSON.stringify(_.omitBy(this._selectedChildService, (value: any, key: string) => {
             return key.search(/^document[^s]?[A-Z][\w]*/) !== -1;
         }), null, 4);
     }

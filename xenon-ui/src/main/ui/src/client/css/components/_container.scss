@@ -47,8 +47,8 @@
 }
 
 .component-container {
-    height: 100%;
     @include flexbox();
+    @include flex(1 1 auto);
 
     .nav-area {
         padding: 0 baselinerem(1.5);
@@ -153,6 +153,7 @@
 
     &.vertical {
         flex-flow: column nowrap;
+        width: 100%;
 
         .content-area {
             padding: baselinerem(1) baselinerem(1.5);

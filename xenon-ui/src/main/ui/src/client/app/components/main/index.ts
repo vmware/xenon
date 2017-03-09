@@ -19,4 +19,4 @@ export * from './query/query.component';
 export * from './service/service-card.component';
 export * from './service/service-detail.component';
 export * from './service/service-grid.component';
-export * from './service/service-instance-detail.component';
+export * from './service/child-service-detail.component';
