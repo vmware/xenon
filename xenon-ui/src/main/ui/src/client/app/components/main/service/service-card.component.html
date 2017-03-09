@@ -29,16 +29,16 @@
     <div class="card-block card-header-block">
         <div class="card-header-with-badge">
             <a class="card-link" data-toggle="modal"
-                data-target="#createServiceInstanceModal"
+                data-target="#createChildServiceModal"
                 (click)="onCreateInstanceClicked($event)">
                 <i class="fa fa-plus"></i>
-                {{'ACTION_CREATE' | translate}} {{'INSTANCE' | translate: {plural: ''} }}
+                {{'ACTION_CREATE' | translate}} {{ 'CHILD_SERVICE' | translate: {plural: ''} }}
             </a>
         </div>
 
         <div class="stats stats-horizontal card-badge">
-            <span class="stats-number">{{getServiceInstanceCount()}}</span>
-            <span class="stats-label">{{'SERVICE' | translate}}<br>{{'INSTANCE' | translate:{plural: 's'} }}</span>
+            <span class="stats-number">{{getChildServiceCount()}}</span>
+            <span class="stats-label">{{ 'CHILD' | translate: {plural: ''} }}<br>{{'SERVICE' | translate: {plural: 's'} }}</span>
         </div>
     </div>
 </div>

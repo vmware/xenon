@@ -79,8 +79,8 @@ export class QueryResultDetailComponent implements OnChanges, OnDestroy {
 
         this._baseServiceGetResultSubscription =
             this._baseService.getDocument(URL.DocumentIndex + link).subscribe(
-                (serviceInstance: ServiceDocumentQueryResult) => {
-                    this._selectedResultDocument = serviceInstance;
+                (childService: ServiceDocumentQueryResult) => {
+                    this._selectedResultDocument = childService;
                 },
                 (error) => {
                     // TODO: Better error handling

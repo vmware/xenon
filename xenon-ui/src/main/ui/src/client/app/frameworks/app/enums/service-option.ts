@@ -1,16 +1,16 @@
 export enum ServiceOption {
     /**
-     * Service runtime tracks statistics on operation completion and allows service instance and
+     * Service runtime tracks statistics on operation completion and allows child service and
      * external clients to track custom statistics, per instance. Statistics are available
      * through the /stats URI suffix, and served by an utility services associated with each
-     * service instance. Statistics are not replicated but can be gathered across all instances
+     * child service. Statistics are not replicated but can be gathered across all instances
      * using broadcast GET requests.
      */
     INSTRUMENTATION,
 
     /**
      * Service runtime periodically invokes the handleMaintenance() handler making sure only one
-     * maintenance operation is pending per service instance. If a maintenance operation is not
+     * maintenance operation is pending per child service. If a maintenance operation is not
      * complete by the next maintenance interval a warning is logged.
      */
     PERIODIC_MAINTENANCE,
@@ -34,22 +34,22 @@ export enum ServiceOption {
 
     /**
      * Service runtime performs a node selection process, per service, and forwards all updates
-     * to the service instance on the selected node.
+     * to the child service on the selected node.
      *
      * This option enables the mechanism for strong consensus
      * and leader election.
      *
      * Ownership is tracked in the indexed state versions and remains fixed given a stable node
-     * group. To enable scale out, only the service instance on the owner node performs work.
+     * group. To enable scale out, only the child service on the owner node performs work.
      *
      * The runtime will route requests to the owner, regardless to which node receives a client
      * request.
      *
      * These service handlers are invoked only
-     * on the service instance on the owner node:
+     * on the child service on the owner node:
      * handleStart, handleMaintenance, handleGet, handleDelete, handlePut, handlePatch
      *
-     * Service instances (replicas) on the other nodes will see replicated updates, as part of the
+     * child services (replicas) on the other nodes will see replicated updates, as part of the
      * consensus protocol but there will be no service handler up-call.
      * Updates are committed on the owner, and the client sees success on the operation only
      * if quorum number of peers accept the updated state. If the node group has been partitioned

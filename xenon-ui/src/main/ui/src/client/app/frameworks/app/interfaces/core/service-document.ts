@@ -1,6 +1,6 @@
 export interface ServiceDocument {
     /**
-     * Monotonically increasing number indicating the number of updates the local service instance
+     * Monotonically increasing number indicating the number of updates the local child service
      * has processed in the current host session or since creation, if the service is durable
      *
      * Infrastructure use only
@@ -16,7 +16,7 @@ export interface ServiceDocument {
 
     /**
      * Expiration time in microseconds since UNIX epoch. If a document is found to be expired a
-     * running service instance will be deleted and the document will be marked deleted in the index
+     * running child service will be deleted and the document will be marked deleted in the index
      */
     documentExpirationTimeMicros?: number;
 

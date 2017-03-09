@@ -26,7 +26,7 @@ import { AppComponent,
     QueryClauseNestedComponent, QueryClauseComponent, QueryNestedComponent,
     QueryResultDetailComponent, QuerySpecReferenceComponent, QueryComponent,
     ServiceCardComponent, ServiceDetailComponent, ServiceGridComponent,
-    ServiceInstanceDetailComponent, MainComponent } from './app/components/index/';
+    ChildServiceDetailComponent, MainComponent } from './app/components/index/';
 
 // feature modules
 import { CoreModule, configFactory } from './app/frameworks/core/core.module';
@@ -99,7 +99,7 @@ export function cons() {
         ServiceCardComponent,
         ServiceDetailComponent,
         ServiceGridComponent,
-        ServiceInstanceDetailComponent,
+        ChildServiceDetailComponent,
         MainComponent],
     providers: [
         {

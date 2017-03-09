@@ -35,9 +35,9 @@
     </main>
 </div>
 
-<div id="createServiceInstanceModal" class="modal fade"
+<div id="createChildServiceModal" class="modal fade"
     tabindex="-1" role="dialog"
-    aria-labelledby="createServiceInstanceLabel"
+    aria-labelledby="createChildServiceLabel"
     aria-hidden="true">
     <div class="modal-dialog modal-lg" role="document">
         <div class="modal-content">
@@ -45,15 +45,15 @@
                 <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                   <span aria-hidden="true">&times;</span>
                 </button>
-                <h4 id="createServiceInstanceLabel" class="modal-title">
-                    {{ 'ACTION_CREATE' | translate }} {{'INSTANCE' | translate: {plural: ''} }}
+                <h4 id="createChildServiceLabel" class="modal-title">
+                    {{ 'ACTION_CREATE' | translate }} {{'CHILD_SERVICE' | translate: {plural: ''} }}
                 </h4>
             </div>
             <div class="modal-body">
                 <form>
                     <div class="form-group row">
-                        <label for="address" class="col-sm-3 col-form-label">
-                            {{ 'SERVICE' | translate }}
+                        <label class="col-sm-3 col-form-label">
+                            {{ 'SERVICE' | translate: {plural: ''} }}
                         </label>
                         <div class="col-sm-9">
                             <p class="form-control-static">

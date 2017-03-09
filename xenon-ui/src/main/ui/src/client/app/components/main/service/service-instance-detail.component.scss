@@ -1,7 +1,7 @@
 @import "colors";
 @import "variables";
 
-#serviceInstanceDetail.content-area.info-panel {
+#childServiceDetail.content-area.info-panel {
     padding: baselinerem(1) baselinerem(1.5);
 
     .form-title {
@@ -45,7 +45,7 @@
     }
 }
 
-#serviceInstanceHistory.right-side-area {
+#childServiceHistory.right-side-area {
     width: baselinerem(14);
     padding: baselinerem(1) baselinerem(1.5);
     border-left: none;

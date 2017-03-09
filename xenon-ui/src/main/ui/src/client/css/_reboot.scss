@@ -17,6 +17,7 @@ html, body, div {
 
     .content-container {
         > * {
+            @include flexbox();
             @include flex(1 0 auto);
             width: 100%;
         }

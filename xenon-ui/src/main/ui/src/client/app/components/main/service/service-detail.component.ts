@@ -41,7 +41,7 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
     /**
      * links to all the available instances within the specified service.
      */
-    private _serviceInstancesLinks: string[] = [];
+    private _childServicesLinks: string[] = [];
 
     /**
      * Id for the selected service. E.g. /core/examples
@@ -49,9 +49,9 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
     private _selectedServiceId: string = '';
 
     /**
-     * Id for the selected service instance.
+     * Id for the selected child service.
      */
-    private _selectedServiceInstanceId: string = '';
+    private _selectedChildServiceId: string = '';
 
     /**
      * Subscriptions to services.
@@ -59,7 +59,7 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
     private _activatedRouteParamsSubscription: Subscription;
     private _nodeSelectorServiceGetSelectedSubscription: Subscription;
     private _baseServiceGetLinksSubscription: Subscription;
-    private _baseServiceGetServiceInstanceListSubscription: Subscription;
+    private _baseServiceGetChildServiceListSubscription: Subscription;
 
     constructor(
         private _baseService: BaseService,
@@ -88,7 +88,7 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
                     this._selectedServiceId =
                         StringUtil.decodeFromId(params['id'] as string);
 
-                    this._selectedServiceInstanceId = params['instanceId'];
+                    this._selectedChildServiceId = params['instanceId'];
 
                     // Set modal context
                     this.createInstanceModalContext.name = this._selectedServiceId;
@@ -104,8 +104,8 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
             this._baseServiceGetLinksSubscription.unsubscribe();
         }
 
-        if (!_.isUndefined(this._baseServiceGetServiceInstanceListSubscription)) {
-            this._baseServiceGetServiceInstanceListSubscription.unsubscribe();
+        if (!_.isUndefined(this._baseServiceGetChildServiceListSubscription)) {
+            this._baseServiceGetChildServiceListSubscription.unsubscribe();
         }
 
         if (!_.isUndefined(this._nodeSelectorServiceGetSelectedSubscription)) {
@@ -121,9 +121,9 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
         return this._serviceLinks;
     }
 
-    getServiceInstanceLinks(): string[] {
-        return _.map(this._serviceInstancesLinks, (serviceInstanceLink: string) => {
-            return StringUtil.parseDocumentLink(serviceInstanceLink).id;
+    getChildServiceLinks(): string[] {
+        return _.map(this._childServicesLinks, (childServiceLink: string) => {
+            return StringUtil.parseDocumentLink(childServiceLink).id;
         });
     }
 
@@ -135,8 +135,8 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
         return StringUtil.encodeToId(id);
     }
 
-    getSelectedServiceInstanceId(): string {
-        return this._selectedServiceInstanceId;
+    getSelectedChildServiceId(): string {
+        return this._selectedChildServiceId;
     }
 
     onCreateInstance(event: MouseEvent): void {
@@ -171,8 +171,8 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
     private _getData(): void {
         // Only get _serviceLinks once
         if (_.isEmpty(this._serviceLinks)) {
-            // Reset _serviceInstancesLinks when the service itself changes
-            this._serviceInstancesLinks = [];
+            // Reset _childServicesLinks when the service itself changes
+            this._childServicesLinks = [];
 
             this._baseServiceGetLinksSubscription =
                 this._baseService.post(URL.Root, URL.RootPostBody).subscribe(
@@ -188,15 +188,15 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
                     });
         }
 
-        // - When _serviceInstancesLinks is not available, get it
-        // - When switching between instances (thus _selectedServiceInstanceId is
-        //      available), skip querying service instances since it will
+        // - When _childServicesLinks is not available, get it
+        // - When switching between instances (thus _selectedChildServiceId is
+        //      available), skip querying child services since it will
         //      not change anyway
-        if (_.isEmpty(this._serviceInstancesLinks) || _.isNull(this._selectedServiceInstanceId)) {
-            this._baseServiceGetServiceInstanceListSubscription =
+        if (_.isEmpty(this._childServicesLinks) || _.isNull(this._selectedChildServiceId)) {
+            this._baseServiceGetChildServiceListSubscription =
                 this._baseService.getDocumentLinks(this._selectedServiceId).subscribe(
-                    (serviceInstanceLinks: string[]) => {
-                        this._serviceInstancesLinks = serviceInstanceLinks;
+                    (childServiceLinks: string[]) => {
+                        this._childServicesLinks = childServiceLinks;
                     },
                     (error) => {
                         // TODO: Better error handling
