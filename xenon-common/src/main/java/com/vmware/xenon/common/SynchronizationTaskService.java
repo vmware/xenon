@@ -96,6 +96,13 @@ public class SynchronizationTaskService
          */
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public URI queryPageReference;
+
+        /**
+         * Number of child services for which synchronization is completed.
+         */
+        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
+        public int synchCompletionCount;
+
     }
 
     private Supplier<Service> childServiceInstantiator;
@@ -371,6 +378,13 @@ public class SynchronizationTaskService
             patch.complete();
         }
 
+        if (task.subStage == SubStage.SYNCHRONIZE) {
+            logInfo("Sub-Stage: %s, Stage: %s, Synch completed child services: %d",
+                    task.subStage,
+                    task.taskInfo.stage,
+                    task.synchCompletionCount);
+        }
+
         switch (task.taskInfo.stage) {
         case STARTED:
             handleSubStage(task);
@@ -555,6 +569,8 @@ public class SynchronizationTaskService
                     ? UriUtils.buildUri(task.queryPageReference, rsp.nextPageLink)
                     : null;
 
+            task.synchCompletionCount = task.synchCompletionCount + rsp.documentLinks.size();
+
             if (task.queryPageReference == null) {
                 sendSelfFinishedPatch(task);
                 return;
@@ -665,5 +681,12 @@ public class SynchronizationTaskService
 
     private Consumer<State> subStageSetter(SubStage subStage) {
         return taskState -> taskState.subStage = subStage;
+    }
+
+    private void logSynchCount(SubStage substage, TaskState.TaskStage stage, int synchCount) {
+        logInfo("Sub-Stage: %s, Stage: %s, Synch completed child services: %d",
+                substage,
+                stage,
+                synchCount);
     }
 }
