@@ -3302,7 +3302,26 @@ public class ServiceHost implements ServiceRequestSender {
 
         if (s == null && op.isFromReplication()) {
             if (op.getAction() == Action.DELETE) {
-                op.complete();
+
+                // If this is a synchronization request, we should accept the ServiceDocument
+                // in the request. The local node has an out-dated copy of the document
+                // which is why we are receiving this request in the first place.
+                if (op.isSynchronizePeer()) {
+                    Service factory = findService(
+                            UriUtils.getParentPath(op.getUri().getPath()));
+                    if (factory != null) {
+                        Service childService;
+                        try {
+                            childService = ((FactoryService) factory).createServiceInstance();
+                        } catch (Throwable t) {
+                            op.fail(t);
+                            return true;
+                        }
+                        saveServiceState(childService, op, op.getBody(childService.getStateType()));
+                    }
+                } else {
+                    op.complete();
+                }
             } else {
                 failRequestServiceNotFound(op);
             }

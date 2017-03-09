@@ -428,20 +428,25 @@ public class TestNodeGroupService {
         VerificationHost[] hosts = this.host.getInProcessHostMap().values()
                 .toArray(new VerificationHost[this.host.getPeerCount()]);
 
-        // On one of the hosts, patch all services to get a higher documentVersion
+        // On one of the hosts, patch services to get a higher documentVersion
         VerificationHost peerHost = hosts[0];
         ExampleServiceState patchState = new ExampleServiceState();
         for (int i = 0; i < this.updateCount; i++) {
             TestContext patchCtx = this.host.testCreate(links.size());
             patchState.counter = (long)(i + 10);
-
+            int counter = 0;
+            boolean deleteServices = i == this.updateCount - 1;
             for (String documentSelfLink : links) {
-                Operation patchOp = Operation
+                Operation updateOp = Operation
                         .createPatch(peerHost, documentSelfLink)
                         .setBody(patchState)
                         .setReferer(this.host.getUri())
                         .setCompletion(patchCtx.getCompletion());
-                this.host.sendRequest(patchOp);
+                if (deleteServices && counter % 2 == 0) {
+                    updateOp.setAction(Action.DELETE);
+                    updateOp.setBody(null);
+                }
+                this.host.sendRequest(updateOp);
             }
             patchCtx.await();
         }
@@ -488,6 +493,7 @@ public class TestNodeGroupService {
 
         // Verify all factories return exactly the same documentVersion and
         // documentEpoch for each service.
+        List<String> nonComparedLinks = new ArrayList<>(this.serviceCount);
         HashMap<String, ServiceDocument> services = new HashMap<>(this.serviceCount);
         for (VerificationHost h : hosts) {
             ServiceDocumentQueryResult r = this.host.getFactoryState(
@@ -497,12 +503,18 @@ public class TestNodeGroupService {
                 ServiceDocument prevDoc = services.get(e.getKey());
                 if (prevDoc == null) {
                     services.put(e.getKey(), newDoc);
+                    nonComparedLinks.add(e.getKey());
                     continue;
                 }
                 assertTrue(newDoc.documentVersion == prevDoc.documentVersion &&
                         newDoc.documentEpoch == prevDoc.documentEpoch);
+                nonComparedLinks.remove(e.getKey());
             }
         }
+
+        // This is to make sure that the deleted services reflect on all the hosts, including
+        // the restarted host.
+        assertTrue(nonComparedLinks.isEmpty());
     }
 
     @Test
