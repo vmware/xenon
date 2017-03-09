@@ -1817,7 +1817,7 @@ public class TestLuceneDocumentIndexService {
                     ic, factoryUri, this.serviceCount);
 
             doThroughputPostWithNoQueryResults(interleaveQueries, factoryUri);
-            this.host.deleteOrStopAllChildServices(factoryUri, true);
+            this.host.deleteOrStopAllChildServices(factoryUri, true, true);
             logQuerySingleStat();
         }
     }
