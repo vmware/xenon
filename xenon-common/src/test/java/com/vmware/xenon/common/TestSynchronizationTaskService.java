@@ -122,6 +122,37 @@ public class TestSynchronizationTaskService extends BasicTestCase {
     }
 
     @Test
+    public void synchCounts() throws Throwable {
+        this.host.createExampleServices(this.host, this.serviceCount, null);
+        SynchronizationTaskService.State task = createSynchronizationTaskState(Long.MAX_VALUE);
+
+        // Add pagination in query results.
+        task.queryResultLimit = this.serviceCount / 2;
+
+        Operation op = Operation
+                .createPost(UriUtils.buildUri(this.host, SynchronizationTaskService.FACTORY_LINK))
+                .setBody(task);
+
+        TestRequestSender sender = new TestRequestSender(this.host);
+        SynchronizationTaskService.State result = sender
+                .sendAndWait(op, SynchronizationTaskService.State.class);
+
+        assertTrue (result.taskInfo.stage == TaskState.TaskStage.FINISHED);
+        assertTrue (result.synchCompletionCount == this.serviceCount);
+
+        // Restart the task to verify counter was reset.
+        task = createSynchronizationTaskState(Long.MAX_VALUE);
+        task.queryResultLimit = this.serviceCount / 2;
+        op = Operation
+                .createPost(UriUtils.buildUri(this.host, SynchronizationTaskService.FACTORY_LINK))
+                .setBody(task);
+        result = sender.sendAndWait(op, SynchronizationTaskService.State.class);
+
+        assertTrue (result.taskInfo.stage == TaskState.TaskStage.FINISHED);
+        assertTrue (result.synchCompletionCount == this.serviceCount);
+    }
+
+    @Test
     public void taskRestartability() throws Throwable {
         // This test verifies that If the synchronization task
         // is already running and another request arrives, the

@@ -96,6 +96,13 @@ public class SynchronizationTaskService
          */
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public URI queryPageReference;
+
+        /**
+         * Number of child services for which synchronization is completed.
+         */
+        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
+        public int synchCompletionCount;
+
     }
 
     private Supplier<Service> childServiceInstantiator;
@@ -216,7 +223,6 @@ public class SynchronizationTaskService
 
         TaskState.TaskStage currentStage = task.taskInfo.stage;
         SubStage currentSubStage = task.subStage;
-
         State body = validatePutRequest(task, put);
         if (body == null) {
             return;
@@ -274,6 +280,7 @@ public class SynchronizationTaskService
             // redundant since the FactoryService may already have
             // changed the status to un-available, but just for
             // correctness we do it here again.
+            task.synchCompletionCount = 0;
             setFactoryAvailability(task, false, (o) -> handleSubStage(task), put);
         } else {
             put.complete();
@@ -357,8 +364,8 @@ public class SynchronizationTaskService
         }
 
         if (this.isDetailedLoggingEnabled) {
-            logInfo("Transitioning task from %s-%s to %s-%s",
-                    currentStage, currentSubStage, task.taskInfo.stage, task.subStage);
+            logInfo("Transitioning task from %s-%s to %s-%s, Synch completed services: %d",
+                    currentStage, currentSubStage, task.taskInfo.stage, task.subStage, task.synchCompletionCount);
         }
 
         boolean isTaskFinished = !TaskState.isInProgress(task.taskInfo);
@@ -554,6 +561,8 @@ public class SynchronizationTaskService
             task.queryPageReference = rsp.nextPageLink != null
                     ? UriUtils.buildUri(task.queryPageReference, rsp.nextPageLink)
                     : null;
+
+            task.synchCompletionCount = task.synchCompletionCount + rsp.documentLinks.size();
 
             if (task.queryPageReference == null) {
                 sendSelfFinishedPatch(task);
