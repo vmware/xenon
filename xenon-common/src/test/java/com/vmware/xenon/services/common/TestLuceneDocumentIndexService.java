@@ -49,6 +49,7 @@ import java.util.function.Consumer;
 import java.util.logging.Level;
 import javax.xml.bind.DatatypeConverter;
 
+import org.apache.lucene.search.IndexSearcher;
 import org.junit.After;
 import org.junit.Rule;
 import org.junit.Test;
@@ -82,6 +83,7 @@ import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.TestRequestSender;
+import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryTask.Query;
@@ -89,6 +91,20 @@ import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 
 class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexService {
+
+    public void forceClosePaginatedSearchers() {
+        logInfo("Closing all paginated searchers (%d)", this.searchersForPaginatedQueries.size());
+        for (List<IndexSearcher> searchers : this.searchersForPaginatedQueries.values()) {
+            for (IndexSearcher s : searchers) {
+                try {
+                    s.getIndexReader().close();
+                    this.searcherUpdateTimesMicros.remove(s.hashCode());
+                } catch (Throwable e) {
+                }
+            }
+        }
+    }
+
     /*
      * Called by test code to abruptly close the index writer simulating spurious
      * self close of the index writer, in production environments, due to out of memory
@@ -438,6 +454,62 @@ public class TestLuceneDocumentIndexService {
             Thread.sleep(TimeUnit.MICROSECONDS.toMillis(this.host.getMaintenanceIntervalMicros()));
         }
 
+    }
+
+    @Test
+    public void forceExpirePaginatedSearchersWithoutRecovery() throws Throwable {
+        setUpHost(false);
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+        Map<URI, ExampleServiceState> exampleServices = this.host.doFactoryChildServiceStart(null,
+                this.serviceCount, ExampleServiceState.class,
+                (o) -> {
+                    ExampleServiceState b = new ExampleServiceState();
+                    b.name = Utils.getNowMicrosUtc() + " before stop";
+                    o.setBody(b);
+                }, UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+
+        // create a paginated query that is bound to fail after we close the searchers
+        // underneath it
+        Query query = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+        QueryTask queryTask = QueryTask.Builder.create()
+                .addOption(QueryOption.EXPAND_CONTENT)
+                .setResultLimit(2)
+                .setQuery(query).build();
+        boolean isDirect = true;
+        this.host.createQueryTaskService(queryTask, false, isDirect, queryTask, null);
+
+        // fetch the first page, since the QueryPageService will only retry refresh, transparently,
+        // if the first page has never been fetched and we want to avoid that: we want to see
+        // the query page fail
+        QueryTask firstPageResults = sender.sendGetAndWait(
+                UriUtils.buildUri(this.host, queryTask.results.nextPageLink), QueryTask.class);
+        assertTrue(!firstPageResults.results.documentLinks.isEmpty());
+        assertTrue(firstPageResults.results.nextPageLink != null);
+
+        // close the index searchers supporting paginated queries, then attempt to grab
+        // a query page.
+        this.indexService.forceClosePaginatedSearchers();
+
+        Operation getSecondPage = Operation.createGet(this.host,
+                firstPageResults.results.nextPageLink);
+        FailureResponse rsp = sender.sendAndWaitFailure(getSecondPage);
+        ServiceErrorResponse errorBody = rsp.op.getErrorResponseBody();
+        assertTrue(errorBody.message.contains("IndexReader"));
+
+        ServiceStat readerClosedStat = this.getLuceneStat(
+                LuceneDocumentIndexService.STAT_NAME_READER_ALREADY_CLOSED_EXCEPTION_COUNT);
+        assertEquals(1, readerClosedStat.version);
+
+        // issue some updates, they should all succeed, the index should be healthy
+        updateServices(exampleServices, false);
+
+        // make sure index recovery did not run
+        ServiceStat writerClosedStat = this.getLuceneStat(
+                LuceneDocumentIndexService.STAT_NAME_WRITER_ALREADY_CLOSED_EXCEPTION_COUNT);
+        assertEquals(0, writerClosedStat.version);
     }
 
     private void updateServices(Map<URI, ExampleServiceState> exampleServices, boolean expectFailure)

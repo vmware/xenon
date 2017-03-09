@@ -241,7 +241,9 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final String STAT_NAME_SEARCHER_UPDATE_COUNT = "indexSearcherUpdateCount";
 
-    private static final String STAT_NAME_WRITER_ALREADY_CLOSED_EXCEPTION_COUNT = "indexWriterAlreadyClosedFailureCount";
+    public static final String STAT_NAME_WRITER_ALREADY_CLOSED_EXCEPTION_COUNT = "indexWriterAlreadyClosedFailureCount";
+
+    public static final String STAT_NAME_READER_ALREADY_CLOSED_EXCEPTION_COUNT = "indexReaderAlreadyClosedFailureCount";
 
     public static final String STAT_NAME_SERVICE_DELETE_COUNT = "serviceDeleteCount";
 
@@ -312,7 +314,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     /**
      * Searcher refresh time, per searcher (using hash code)
      */
-    private Map<Integer, Long> searcherUpdateTimesMicros = new ConcurrentHashMap<>();
+    protected Map<Integer, Long> searcherUpdateTimesMicros = new ConcurrentHashMap<>();
 
     /**
      * Map of searchers used for paginated query tasks, indexed by creation time
@@ -2253,10 +2255,21 @@ public class LuceneDocumentIndexService extends StatelessService {
      * assumes the caller has acquired the writer semaphore
      */
     private void checkFailureAndRecover(Throwable e) {
+        if (getHost().isStopping()) {
+            logInfo("Exception after host stop, on index service thread: %s", e.toString());
+            return;
+        }
         if (!(e instanceof AlreadyClosedException)) {
-            if (this.writer != null && !getHost().isStopping()) {
-                logSevere("Exception on index service thread: %s", Utils.toString(e));
-            }
+            logSevere("Exception on index service thread: %s", Utils.toString(e));
+            return;
+        }
+
+        IndexWriter w = this.writer;
+        if (w != null && w.isOpen() || e.getMessage().contains("IndexReader")) {
+            // The already closed exception can happen due to an expired searcher, simply
+            // log in that case
+            adjustStat(STAT_NAME_READER_ALREADY_CLOSED_EXCEPTION_COUNT, 1);
+            logWarning("Exception on index service thread: %s", Utils.toString(e));
             return;
         }
 
@@ -2595,7 +2608,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 return;
             }
 
-            logInfo("(%s) closing all readers, document count: %d, file count: %d",
+            logInfo("(%s) closing all searchers, document count: %d, file count: %d",
                     this.writerSync, w.maxDoc(), count);
 
             for (IndexSearcher s : this.searchers.values()) {
@@ -2608,6 +2621,20 @@ public class LuceneDocumentIndexService extends StatelessService {
             if (!force) {
                 return;
             }
+
+            logInfo("Closing all paginated searchers (%d)",
+                    this.searchersForPaginatedQueries.size());
+            for (List<IndexSearcher> searchers : this.searchersForPaginatedQueries.values()) {
+                for (IndexSearcher s : searchers) {
+                    try {
+                        s.getIndexReader().close();
+                        this.searcherUpdateTimesMicros.remove(s.hashCode());
+                    } catch (Throwable e) {
+                    }
+                }
+            }
+
+            this.searchersForPaginatedQueries.clear();
 
             try {
                 w.close();
