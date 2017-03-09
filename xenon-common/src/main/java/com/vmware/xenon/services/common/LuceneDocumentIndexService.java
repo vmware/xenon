@@ -2851,7 +2851,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             patchBody.querySpec = null;
             patchBody.results = new ServiceDocumentQueryResult();
             patchBody.results.documentLinks.add(latestState.documentSelfLink);
-            if (activeTask.querySpec.options.contains(QueryOption.EXPAND_CONTENT)) {
+            if (activeTask.querySpec.options.contains(QueryOption.EXPAND_CONTENT) ||
+                    activeTask.querySpec.options.contains(QueryOption.COUNT)) {
                 patchBody.results.documents = new HashMap<>();
                 patchBody.results.documents.put(latestState.documentSelfLink, latestState);
             }
