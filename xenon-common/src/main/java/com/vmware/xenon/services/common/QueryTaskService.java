@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.services.common;
 
+import static com.vmware.xenon.common.ServiceDocumentQueryResult.ContinuousResult;
+
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -113,6 +115,15 @@ public class QueryTaskService extends StatefulService {
 
         if (initState.querySpec.options.contains(QueryOption.EXPAND_CONTENT)) {
             final String errFmt = QueryOption.EXPAND_CONTENT + " is not compatible with %s";
+            if (initState.querySpec.options.contains(QueryOption.COUNT)) {
+                startPost.fail(new IllegalArgumentException(
+                        String.format(errFmt, QueryOption.COUNT)));
+                return false;
+            }
+        }
+
+        if (initState.querySpec.options.contains(QueryOption.EXPAND_BINARY_CONTENT)) {
+            final String errFmt = QueryOption.EXPAND_BINARY_CONTENT + " is not compatible with %s";
             if (initState.querySpec.options.contains(QueryOption.COUNT)) {
                 startPost.fail(new IllegalArgumentException(
                         String.format(errFmt, QueryOption.COUNT)));
@@ -364,6 +375,19 @@ public class QueryTaskService extends StatefulService {
             return;
         }
 
+        Long documentCount = 0L;
+        ContinuousResult continuousResult = null;
+        if (currentState.querySpec.options.contains(QueryOption.COUNT)
+                && currentState.results != null && currentState.results.continuousResults != null) {
+            System.out.println("Get on Query task from currentState " + currentState.results
+                    .continuousResults.documentCountUpdated + "  " + r.continuousResults.documentCountUpdated);
+            documentCount = currentState.results.documentCount;
+            continuousResult = new ContinuousResult();
+            continuousResult.documentCountAdded = currentState.results.continuousResults.documentCountAdded;
+            continuousResult.documentCountUpdated = currentState.results.continuousResults.documentCountUpdated;
+            continuousResult.documentCountDeleted = currentState.results.continuousResults.documentCountDeleted;
+        }
+
         // Infrastructure special case, do not cut and paste in services:
         // the results might contain non clonable JSON serialization artifacts so we go through
         // all these steps to use cached results, avoid cloning, etc This is NOT what services
@@ -391,6 +415,12 @@ public class QueryTaskService extends StatefulService {
         }
         if (r.nextPageLinksPerGroup != null) {
             currentState.results.nextPageLinksPerGroup = new TreeMap<>(r.nextPageLinksPerGroup);
+        }
+        if (r.continuousResults != null) {
+            currentState.results.documentCount = documentCount;
+            currentState.results.continuousResults = continuousResult;
+            System.out.println("Copied from local " + currentState.results
+                        .continuousResults.documentCountUpdated);
         }
 
         get.setBodyNoCloning(currentState).complete();
@@ -457,7 +487,6 @@ public class QueryTaskService extends StatefulService {
             }
             logWarning("query failed: %s", newTaskState.failure.message);
         }
-
         patch.complete();
 
         if (newTaskState.stage == TaskStage.STARTED) {
@@ -487,8 +516,47 @@ public class QueryTaskService extends StatefulService {
             // if the new state is STARTED, and we are in STARTED, this is just a update notification
             // from the index that either the initial query completed, or a new update passed the
             // query filter. Subscribers can subscribe to this task and see what changed.
+            if (state.results == null) {
+                // This would be the first time when the query task has STARTED. Store the
+                // count of the documents.
+                state.results = patchBody.results;
+                if (state.results.documentCount == null) {
+                    state.results.documentCount = 0L;
+                }
+            } else {
+                if (state.results.continuousResults == null) {
+                    state.results.continuousResults = new ContinuousResult();
+                }
+                // After it has STARTED, now adjust the count based on
+                // documentUpdateAction.
+                if (this.results.documents != null) {
+                    this.results.documents.values().stream().forEach((doc) -> {
+                        ServiceDocument serviceDocument = (ServiceDocument) doc;
+                        if (serviceDocument.documentUpdateAction == Action.DELETE.name()) {
+                            --state.results.documentCount;
+                            ++state.results.continuousResults.documentCountDeleted;
+                        } else if (serviceDocument.documentUpdateAction == Action.POST.name()) {
+                            ++state.results.documentCount;
+                            ++state.results.continuousResults.documentCountAdded;
+                        } else if (serviceDocument.documentUpdateAction == Action.PATCH.name()
+                                || serviceDocument.documentUpdateAction == Action.PUT.name()) {
+                            ++state.results.continuousResults.documentCountUpdated;
+                        }
+                    });
+                    // Clear from the results documents / documentLinks as only count is requested. Use the
+                    // documents array to update the count locally.
+                    if (state.querySpec.options.contains(QueryOption.COUNT)) {
+                        state.results.documents = null;
+                        state.results.documentLinks = null;
+                        this.results.documents.clear();
+                        this.results.documentLinks.clear();
+                        this.results.documentCount = state.results.documentCount;
+                        this.results.continuousResults = state.results.continuousResults;
+                    }
+                    patchBody.results.continuousResults = state.results.continuousResults;
+                }
+            }
             break;
-
         case CANCELLED:
         case FAILED:
         case FINISHED:
@@ -498,7 +566,11 @@ public class QueryTaskService extends StatefulService {
             break;
         }
 
-        patch.complete();
+        if (state.querySpec.options.contains(QueryOption.COUNT)) {
+            patch.setBodyNoCloning(state).complete();
+        } else {
+            patch.complete();
+        }
         return true;
     }
 

@@ -18,6 +18,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
+
+import com.vmware.xenon.common.serialization.ReleaseConstants;
+
 public class ServiceDocumentQueryResult extends ServiceDocument {
 
     public static final String FIELD_NAME_DOCUMENT_LINKS = "documentLinks";
@@ -99,6 +103,32 @@ public class ServiceDocumentQueryResult extends ServiceDocument {
      */
     public Long queryTimeMicros;
 
+    /**
+     * Contains count of documents that are updated / deleted / added for continuous query task.
+     */
+    @VersionFieldSerializer.Since(ReleaseConstants.RELEASE_VERSION_1_4_2)
+    public ContinuousResult continuousResults;
+
+    /**
+     * Populated only for continuous query task.
+     */
+    public static class ContinuousResult {
+        /**
+         * Contains count of documents that are updated.
+         */
+        public Long documentCountUpdated = 0L;
+
+        /**
+         * Contains count of documents that are deleted.
+         */
+        public Long documentCountDeleted = 0L;
+
+        /**
+         * Contains count of documents that are added.
+         */
+        public Long documentCountAdded = 0L;
+    }
+
     @Override
     public void copyTo(ServiceDocument target) {
         super.copyTo(target);
@@ -113,6 +143,7 @@ public class ServiceDocumentQueryResult extends ServiceDocument {
             sdqr.nextPageLink = this.nextPageLink;
             sdqr.nextPageLinksPerGroup = this.nextPageLinksPerGroup;
             sdqr.queryTimeMicros = this.queryTimeMicros;
+            sdqr.continuousResults = this.continuousResults;
         }
     }
 
