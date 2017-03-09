@@ -22,7 +22,6 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.EnumSet;
 
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -40,7 +39,6 @@ public class TestLocalFileService extends BasicReusableHostTestCase {
     @Rule
     public TemporaryFolder tmpDir = new TemporaryFolder();
 
-    @Ignore("https://www.pivotaltracker.com/story/show/140758667")
     @Test
     public void writeFile() throws Throwable {
         File localFile = this.tmpDir.newFile();
@@ -73,7 +71,6 @@ public class TestLocalFileService extends BasicReusableHostTestCase {
         assertEquals("File should be uploaded", contentToUpload, contentUploaded);
     }
 
-    @Ignore("https://www.pivotaltracker.com/story/show/140758667")
     @Test
     public void readFile() throws Throwable {
         File fileToRead = new File(getClass().getResource("example_bodies.json").getFile());
