@@ -953,8 +953,10 @@ public abstract class FactoryService extends StatelessService {
         selectOwnerOp.setCompletion((o, e) -> {
             OperationContext.restoreOperationContext(opContext);
             if (e != null) {
-                logWarning("owner selection failed: %s", e.toString());
-                scheduleSynchronizationRetry(maintOp);
+                if (!getHost().isStopping()) {
+                    logWarning("owner selection failed: %s", e.toString());
+                    scheduleSynchronizationRetry(maintOp);
+                }
                 maintOp.fail(e);
                 return;
             }
@@ -1003,7 +1005,9 @@ public abstract class FactoryService extends StatelessService {
 
                     if (o.getStatusCode() >= Operation.STATUS_CODE_FAILURE_THRESHOLD) {
                         ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
-                        logWarning("HTTP error on POST to synch task: %s", Utils.toJsonHtml(rsp));
+                        if (!getHost().isStopping()) {
+                            logWarning("HTTP error on POST to synch task: %s", Utils.toJsonHtml(rsp));
+                        }
 
                         // Ignore if the request failed because the current synch-request
                         // was considered out-dated by the synchronization-task.
@@ -1017,22 +1021,27 @@ public abstract class FactoryService extends StatelessService {
                     }
 
                     if (e != null) {
-                        logWarning("Failure on POST to synch task: %s", e.getMessage());
+                        if (!getHost().isStopping()) {
+                            logWarning("Failure on POST to synch task: %s", e.getMessage());
+                        }
                         parentOp.fail(e);
                         retrySynch = true;
                     } else {
                         SynchronizationTaskService.State rsp = null;
                         rsp = o.getBody(SynchronizationTaskService.State.class);
                         if (rsp.taskInfo.stage.equals(TaskState.TaskStage.FAILED)) {
-                            logWarning("Synch task failed %s", Utils.toJsonHtml(rsp));
+                            if (!getHost().isStopping()) {
+                                logWarning("Synch task failed %s", Utils.toJsonHtml(rsp));
+                            }
                             retrySynch = true;
                         }
                         parentOp.complete();
                     }
 
                     if (retrySynch) {
-                        // Schedule a task to retry synchronization again.
-                        scheduleSynchronizationRetry(parentOp);
+                        if (!getHost().isStopping()) {
+                            scheduleSynchronizationRetry(parentOp);
+                        }
                         return;
                     }
 
