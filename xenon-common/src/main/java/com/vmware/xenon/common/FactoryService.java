@@ -896,6 +896,13 @@ public abstract class FactoryService extends StatelessService {
         return r;
     }
 
+    @Override
+    public void logWarning(String fmt, Object... args) {
+        if (!getHost().isStopping()) {
+            super.logWarning(fmt, args);
+        }
+    }
+
     private ServiceDocument getChildTemplate(String childLink) {
         if (this.childTemplate == null) {
             try {
@@ -1031,7 +1038,6 @@ public abstract class FactoryService extends StatelessService {
                     }
 
                     if (retrySynch) {
-                        // Schedule a task to retry synchronization again.
                         scheduleSynchronizationRetry(parentOp);
                         return;
                     }
@@ -1042,32 +1048,34 @@ public abstract class FactoryService extends StatelessService {
     }
 
     private void scheduleSynchronizationRetry(Operation parentOp) {
-        adjustStat(STAT_NAME_SYNCH_TASK_RETRY_COUNT, 1);
+        if (!getHost().isStopping()) {
+            adjustStat(STAT_NAME_SYNCH_TASK_RETRY_COUNT, 1);
 
-        ServiceStats.ServiceStat stat = getStat(STAT_NAME_SYNCH_TASK_RETRY_COUNT);
-        if (stat != null && stat.latestValue  > 0) {
-            if (stat.latestValue > MAX_SYNCH_RETRY_COUNT) {
-                logSevere("Synchronization task failed after %d tries", (long)stat.latestValue - 1);
-                adjustStat(STAT_NAME_CHILD_SYNCH_FAILURE_COUNT, 1);
-                return;
+            ServiceStats.ServiceStat stat = getStat(STAT_NAME_SYNCH_TASK_RETRY_COUNT);
+            if (stat != null && stat.latestValue  > 0) {
+                if (stat.latestValue > MAX_SYNCH_RETRY_COUNT) {
+                    logSevere("Synchronization task failed after %d tries", (long)stat.latestValue - 1);
+                    adjustStat(STAT_NAME_CHILD_SYNCH_FAILURE_COUNT, 1);
+                    return;
+                }
             }
+
+            // Clone the parent operation for reuse outside the schedule call for
+            // the original operation to be freed in current thread.
+            Operation op = parentOp.clone();
+
+            // Use exponential backoff algorithm in retry logic. The idea is to exponentially
+            // increase the delay for each retry based on the number of previous retries.
+            // This is done to reduce the load of retries on the system by all the synch tasks
+            // of all factories at the same time, and giving system more time to stabilize
+            // in next retry then the previous retry.
+            long delay = getExponentialDelay();
+
+            logWarning("Scheduling retry of child service synchronization task in %d seconds",
+                    TimeUnit.MICROSECONDS.toSeconds(delay));
+            getHost().schedule(() -> synchronizeChildServicesIfOwner(op),
+                    delay, TimeUnit.MICROSECONDS);
         }
-
-        // Clone the parent operation for reuse outside the schedule call for
-        // the original operation to be freed in current thread.
-        Operation op = parentOp.clone();
-
-        // Use exponential backoff algorithm in retry logic. The idea is to exponentially
-        // increase the delay for each retry based on the number of previous retries.
-        // This is done to reduce the load of retries on the system by all the synch tasks
-        // of all factories at the same time, and giving system more time to stabilize
-        // in next retry then the previous retry.
-        long delay = getExponentialDelay();
-
-        logWarning("Scheduling retry of child service synchronization task in %d seconds",
-                TimeUnit.MICROSECONDS.toSeconds(delay));
-        getHost().schedule(() -> synchronizeChildServicesIfOwner(op),
-                delay, TimeUnit.MICROSECONDS);
     }
 
     /**
