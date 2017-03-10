@@ -896,6 +896,12 @@ public abstract class FactoryService extends StatelessService {
         return r;
     }
 
+    private void logTaskFailureWarning(String fmt, Object... args) {
+        if (!getHost().isStopping()) {
+            logWarning(fmt, args);
+        }
+    }
+
     private ServiceDocument getChildTemplate(String childLink) {
         if (this.childTemplate == null) {
             try {
@@ -1003,7 +1009,7 @@ public abstract class FactoryService extends StatelessService {
 
                     if (o.getStatusCode() >= Operation.STATUS_CODE_FAILURE_THRESHOLD) {
                         ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
-                        logWarning("HTTP error on POST to synch task: %s", Utils.toJsonHtml(rsp));
+                        logTaskFailureWarning("HTTP error on POST to synch task: %s", Utils.toJsonHtml(rsp));
 
                         // Ignore if the request failed because the current synch-request
                         // was considered out-dated by the synchronization-task.
@@ -1017,21 +1023,20 @@ public abstract class FactoryService extends StatelessService {
                     }
 
                     if (e != null) {
-                        logWarning("Failure on POST to synch task: %s", e.getMessage());
+                        logTaskFailureWarning("Failure on POST to synch task: %s", e.getMessage());
                         parentOp.fail(e);
                         retrySynch = true;
                     } else {
                         SynchronizationTaskService.State rsp = null;
                         rsp = o.getBody(SynchronizationTaskService.State.class);
                         if (rsp.taskInfo.stage.equals(TaskState.TaskStage.FAILED)) {
-                            logWarning("Synch task failed %s", Utils.toJsonHtml(rsp));
+                            logTaskFailureWarning("Synch task failed %s", Utils.toJsonHtml(rsp));
                             retrySynch = true;
                         }
                         parentOp.complete();
                     }
 
                     if (retrySynch) {
-                        // Schedule a task to retry synchronization again.
                         scheduleSynchronizationRetry(parentOp);
                         return;
                     }
@@ -1042,6 +1047,10 @@ public abstract class FactoryService extends StatelessService {
     }
 
     private void scheduleSynchronizationRetry(Operation parentOp) {
+        if (getHost().isStopping()) {
+            return;
+        }
+
         adjustStat(STAT_NAME_SYNCH_TASK_RETRY_COUNT, 1);
 
         ServiceStats.ServiceStat stat = getStat(STAT_NAME_SYNCH_TASK_RETRY_COUNT);
