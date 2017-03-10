@@ -25,6 +25,12 @@ import java.util.List;
  */
 public class ServiceErrorResponse {
 
+    public static final String PROPERTY_NAME_DISABLE_STACK_TRACE_COLLECTION =
+            Utils.PROPERTY_NAME_PREFIX + "ServiceErrorResponse.disableStackTraceCollection";
+
+    public static final boolean DISABLE_STACK_TRACE_COLLECTION = Boolean.getBoolean(
+            PROPERTY_NAME_DISABLE_STACK_TRACE_COLLECTION);
+
     public static final int ERROR_CODE_INTERNAL_MASK = 0x80000000;
     public static final int ERROR_CODE_OUTDATED_SYNCH_REQUEST = 0x80000001;
     public static final int ERROR_CODE_STATE_MARKED_DELETED = 0x80000002;
@@ -53,9 +59,12 @@ public class ServiceErrorResponse {
             EnumSet<ErrorDetail> details) {
         ServiceErrorResponse rsp = new ServiceErrorResponse();
         rsp.message = e.getLocalizedMessage();
-        rsp.stackTrace = new ArrayList<>();
-        for (StackTraceElement se : e.getStackTrace()) {
-            rsp.stackTrace.add(se.toString());
+
+        if (!DISABLE_STACK_TRACE_COLLECTION) {
+            rsp.stackTrace = new ArrayList<>();
+            for (StackTraceElement se : e.getStackTrace()) {
+                rsp.stackTrace.add(se.toString());
+            }
         }
 
         rsp.details = details;
