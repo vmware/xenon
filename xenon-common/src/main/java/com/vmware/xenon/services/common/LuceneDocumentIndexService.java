@@ -298,6 +298,9 @@ public class LuceneDocumentIndexService extends StatelessService {
     protected final Semaphore writerSync = new Semaphore(
             UPDATE_THREAD_COUNT + QUERY_THREAD_COUNT);
 
+    private ThreadLocal<FactoryIndexSearcher> factoryIndexSearcherThreadLocal =
+            ThreadLocal.withInitial(FactoryIndexSearcher::new);
+
     /**
      * Map of searchers per thread id. We do not use a ThreadLocal since we need visibility to this map
      * from the maintenance logic
@@ -852,15 +855,21 @@ public class LuceneDocumentIndexService extends StatelessService {
         IndexSearcher s = (IndexSearcher) qs.context.nativeSearcher;
         ServiceDocumentQueryResult rsp = new ServiceDocumentQueryResult();
 
+        String selfLinkPrefix = FactoryIndexSearcher.detectAndFetchFactoryLink(qs);
+
         if (s == null && qs.resultLimit != null && qs.resultLimit > 0
                 && qs.resultLimit != Integer.MAX_VALUE
                 && !qs.options.contains(QueryOption.TOP_RESULTS)) {
             // this is a paginated query. If this is the start of the query, create a dedicated searcher
             // for this query and all its pages. It will be expired when the query task itself expires
-            s = createPaginatedQuerySearcher(task.documentExpirationTimeMicros, this.writer);
+            if (selfLinkPrefix != null) {
+                s = this.factoryIndexSearcherThreadLocal.get().createPaginatedQuerySearcher(task.documentExpirationTimeMicros, this.writer);
+            } else {
+                s = createPaginatedQuerySearcher(task.documentExpirationTimeMicros, this.writer);
+            }
         }
 
-        if (!queryIndex(s, op, null, qs.options, luceneQuery, lucenePage,
+        if (!queryIndex(s, op, selfLinkPrefix, qs.options, luceneQuery, lucenePage,
                 qs.resultLimit,
                 task.documentExpirationTimeMicros, task.indexLink, rsp, qs)) {
             op.setBodyNoCloning(rsp).complete();
@@ -1073,8 +1082,15 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         if (s == null) {
-            s = createOrRefreshSearcher(selfLinkPrefix, count, w,
-                    options.contains(QueryOption.DO_NOT_REFRESH));
+            if (selfLinkPrefix != null) {
+                s = this.factoryIndexSearcherThreadLocal.get().createOrRefreshSearcher(selfLinkPrefix, count, w,
+                        options.contains(QueryOption.DO_NOT_REFRESH),
+                        this.updatesPerLink.get(selfLinkPrefix),
+                        this.writerUpdateTimeMicros);
+            } else {
+                s = createOrRefreshSearcher(null, count, w,
+                        options.contains(QueryOption.DO_NOT_REFRESH));
+            }
         }
 
         long queryStartTimeMicros = Utils.getNowMicrosUtc();
