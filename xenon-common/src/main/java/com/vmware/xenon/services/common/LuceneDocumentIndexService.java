@@ -298,6 +298,9 @@ public class LuceneDocumentIndexService extends StatelessService {
     protected final Semaphore writerSync = new Semaphore(
             UPDATE_THREAD_COUNT + QUERY_THREAD_COUNT);
 
+    private ThreadLocal<FactoryIndexSearcher> factoryIndexSearcherThreadLocal =
+            ThreadLocal.withInitial(FactoryIndexSearcher::new);
+
     /**
      * Map of searchers per thread id. We do not use a ThreadLocal since we need visibility to this map
      * from the maintenance logic
@@ -326,6 +329,11 @@ public class LuceneDocumentIndexService extends StatelessService {
     protected Map<String, QueryTask> activeQueries = new ConcurrentHashMap<>();
 
     private long writerUpdateTimeMicros;
+
+    /**
+     * Latest document update time per factory link
+     */
+    protected Map<String, Long> writerUpdateTimesMicros = new ConcurrentHashMap<>();
 
     private long writerCreationTimeMicros;
 
@@ -433,6 +441,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         this.updatesPerLink.clear();
         this.searcherUpdateTimesMicros.clear();
         this.searchersForPaginatedQueries.clear();
+        this.writerUpdateTimesMicros.clear();
         this.versionSort = new Sort(new SortedNumericSortField(ServiceDocument.FIELD_NAME_VERSION,
                 SortField.Type.LONG, true));
 
@@ -852,15 +861,22 @@ public class LuceneDocumentIndexService extends StatelessService {
         IndexSearcher s = (IndexSearcher) qs.context.nativeSearcher;
         ServiceDocumentQueryResult rsp = new ServiceDocumentQueryResult();
 
+        String selfLinkPrefix = FactoryIndexSearcher.detectAndFetchFactoryLink(qs);
+
         if (s == null && qs.resultLimit != null && qs.resultLimit > 0
                 && qs.resultLimit != Integer.MAX_VALUE
                 && !qs.options.contains(QueryOption.TOP_RESULTS)) {
             // this is a paginated query. If this is the start of the query, create a dedicated searcher
             // for this query and all its pages. It will be expired when the query task itself expires
-            s = createPaginatedQuerySearcher(task.documentExpirationTimeMicros, this.writer);
+            if (selfLinkPrefix != null) {
+                FactoryIndexSearcher factoryIndexSearcher = this.factoryIndexSearcherThreadLocal.get();
+                s = factoryIndexSearcher.createPaginatedQuerySearcher(task.documentExpirationTimeMicros, this.writer);
+            } else {
+                s = createPaginatedQuerySearcher(task.documentExpirationTimeMicros, this.writer);
+            }
         }
 
-        if (!queryIndex(s, op, null, qs.options, luceneQuery, lucenePage,
+        if (!queryIndex(s, op, selfLinkPrefix, qs.options, luceneQuery, lucenePage,
                 qs.resultLimit,
                 task.documentExpirationTimeMicros, task.indexLink, rsp, qs)) {
             op.setBodyNoCloning(rsp).complete();
@@ -1073,8 +1089,18 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         if (s == null) {
-            s = createOrRefreshSearcher(selfLinkPrefix, count, w,
-                    options.contains(QueryOption.DO_NOT_REFRESH));
+            if (selfLinkPrefix != null) {
+                FactoryIndexSearcher factoryIndexSearcher = this.factoryIndexSearcherThreadLocal.get();
+                long writerUpdateTime = this.writerUpdateTimesMicros.containsKey(selfLinkPrefix) ?
+                        this.writerUpdateTimesMicros.get(selfLinkPrefix) : this.writerUpdateTimeMicros;
+                s = factoryIndexSearcher.createOrRefreshSearcher(selfLinkPrefix, count, w,
+                        options.contains(QueryOption.DO_NOT_REFRESH),
+                        this.updatesPerLink.get(selfLinkPrefix),
+                        writerUpdateTime);
+            } else {
+                s = createOrRefreshSearcher(null, count, w,
+                        options.contains(QueryOption.DO_NOT_REFRESH));
+            }
         }
 
         long queryStartTimeMicros = Utils.getNowMicrosUtc();
@@ -2375,8 +2401,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                 && desc.serviceCapabilities != null
                 && desc.serviceCapabilities.contains(ServiceOption.IMMUTABLE);
         synchronized (this.searchSync) {
+            String parent = UriUtils.getParentPath(link);
             if (isImmutable) {
-                String parent = UriUtils.getParentPath(link);
                 this.immutableParentLinks.compute(parent, (k, time) -> {
                     if (time == null) {
                         time = lastAccessTime;
@@ -2402,6 +2428,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             if (this.writerUpdateTimeMicros < lastAccessTime) {
                 this.writerUpdateTimeMicros = lastAccessTime;
             }
+
+            this.writerUpdateTimesMicros.put(parent, this.writerUpdateTimeMicros);
         }
     }
 
