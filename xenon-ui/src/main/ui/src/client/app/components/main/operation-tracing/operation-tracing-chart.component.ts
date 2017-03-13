@@ -30,7 +30,7 @@ export class OperationTracingChartComponent implements OnChanges, AfterViewInit,
     traceResult: QueryTask;
 
     /**
-     * Context object for rendering create instance modal.
+     * Context object for rendering operation detail modal.
      */
     operationDetailModalContext: ModalContext = {
         name: '',

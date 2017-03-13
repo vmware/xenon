@@ -23,9 +23,9 @@ import { BaseService, NodeSelectorService, NotificationService } from '../../../
 
 export class ServiceGridComponent implements OnInit, OnDestroy {
     /**
-     * Context object for rendering create instance modal.
+     * Context object for rendering create child service modal.
      */
-    createInstanceModalContext: ModalContext = {
+    createChildServiceModalContext: ModalContext = {
         name: '',
         data: {
             documentSelfLink: '',
@@ -99,15 +99,15 @@ export class ServiceGridComponent implements OnInit, OnDestroy {
         return documentSelfLink ? StringUtil.encodeToId(documentSelfLink) : '';
     }
 
-    onCreateInstanceClicked(context: EventContext): void {
-        this.createInstanceModalContext.name = context.data['documentSelfLink'];
-        this.createInstanceModalContext.data['documentSelfLink'] = context.data['documentSelfLink'];
-        this.createInstanceModalContext.data['body'] = '';
+    onCreateChildServiceClicked(context: EventContext): void {
+        this.createChildServiceModalContext.name = context.data['documentSelfLink'];
+        this.createChildServiceModalContext.data['documentSelfLink'] = context.data['documentSelfLink'];
+        this.createChildServiceModalContext.data['body'] = '';
     }
 
-    onCreateInstance(event: MouseEvent): void {
-        var selectedServiceId: string = this.createInstanceModalContext.data['documentSelfLink'];
-        var body: string = this.createInstanceModalContext.data['body'];
+    onCreateChildService(event: MouseEvent): void {
+        var selectedServiceId: string = this.createChildServiceModalContext.data['documentSelfLink'];
+        var body: string = this.createChildServiceModalContext.data['body'];
 
         if (!selectedServiceId || !body) {
             return;
@@ -119,7 +119,7 @@ export class ServiceGridComponent implements OnInit, OnDestroy {
                     StringUtil.parseDocumentLink(document.documentSelfLink).id : '';
                 this._notificationService.set([{
                     type: 'SUCCESS',
-                    messages: [`Instance ${documentId} Created`]
+                    messages: [`Child Service ${documentId} Created`]
                 }]);
             },
             (error) => {

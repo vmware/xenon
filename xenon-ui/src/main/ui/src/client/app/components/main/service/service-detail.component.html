@@ -89,7 +89,7 @@
                         </label>
                         <div class="col-sm-9">
                             <p class="form-control-static">
-                                <strong>{{createInstanceModalContext.data.documentSelfLink}}</strong>
+                                <strong>{{createChildServiceModalContext.data.documentSelfLink}}</strong>
                             </p>
                         </div>
                     </div>
@@ -97,7 +97,7 @@
                         <label class="col-sm-3 col-form-label">{{ 'BODY' | translate }}</label>
                         <div  class="col-sm-9">
                             <xe-code-editor name="body"
-                                [(ngModel)]="createInstanceModalContext.data.body">
+                                [(ngModel)]="createChildServiceModalContext.data.body">
                             </xe-code-editor>
                         </div>
                     </div>
@@ -108,7 +108,7 @@
                     {{ 'ACTION_CANCEL' | translate }}
                 </button>
                 <button type="button" class="btn btn-primary" data-dismiss="modal"
-                    (click)="onCreateInstance($event)">
+                    (click)="onCreateChildService($event)">
                     {{ 'ACTION_CREATE' | translate }}
                 </button>
             </div>

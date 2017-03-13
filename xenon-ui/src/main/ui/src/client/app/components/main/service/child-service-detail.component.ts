@@ -39,9 +39,9 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
     selectedChildServiceId: string;
 
     /**
-     * Context object for rendering edit instance modal.
+     * Context object for rendering edit child service modal.
      */
-    editInstanceModalContext: ModalContext = {
+    editChildServiceModalContext: ModalContext = {
         name: '',
         data: {
             documentSelfLink: '',
@@ -51,9 +51,9 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
     };
 
     /**
-     * Context object for rendering delete instance modal.
+     * Context object for rendering delete child service modal.
      */
-    deleteInstanceModalContext: ModalContext = {
+    deleteChildServiceModalContext: ModalContext = {
         name: '',
         data: {
             documentSelfLink: ''
@@ -188,20 +188,20 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
         return _.isNull(value) || _.isUndefined(value);
     }
 
-    onEditInstanceMethodChanged(event: MouseEvent, method: string) {
-        this.editInstanceModalContext.data['method'] = method;
+    onEditChildServiceMethodChanged(event: MouseEvent, method: string) {
+        this.editChildServiceModalContext.data['method'] = method;
 
         if (method === 'PATCH' && !_.isUndefined(this._selectedChildService)) {
-            this.editInstanceModalContext.data['body'] = this._getPatchMethodDefaultBody();
+            this.editChildServiceModalContext.data['body'] = this._getPatchMethodDefaultBody();
         } else {
-            this.editInstanceModalContext.data['body'] = '';
+            this.editChildServiceModalContext.data['body'] = '';
         }
     }
 
-    onEditInstance(event: MouseEvent): void {
-        var selectedServiceId: string = this.editInstanceModalContext.data['documentSelfLink'];
-        var method: string = this.editInstanceModalContext.data['method'];
-        var body: string = this.editInstanceModalContext.data['body'];
+    onEditChildService(event: MouseEvent): void {
+        var selectedServiceId: string = this.editChildServiceModalContext.data['documentSelfLink'];
+        var method: string = this.editChildServiceModalContext.data['method'];
+        var body: string = this.editChildServiceModalContext.data['body'];
 
         if (!selectedServiceId || !method || !body) {
             return;
@@ -214,11 +214,11 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
                         StringUtil.parseDocumentLink(document.documentSelfLink).id : '';
                     this._notificationService.set([{
                         type: 'SUCCESS',
-                        messages: [`Instance ${documentId} Patched`]
+                        messages: [`Child Service ${documentId} Patched`]
                     }]);
 
                     // Reset body
-                    this.editInstanceModalContext.data['body'] = null;
+                    this.editChildServiceModalContext.data['body'] = null;
                 },
                 (error) => {
                     // TODO: Better error handling
@@ -234,11 +234,11 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
                         StringUtil.parseDocumentLink(document.documentSelfLink).id : '';
                     this._notificationService.set([{
                         type: 'SUCCESS',
-                        messages: [`Instance ${documentId} Updated`]
+                        messages: [`Child Service ${documentId} Updated`]
                     }]);
 
                     // Reset body
-                    this.editInstanceModalContext.data['body'] = null;
+                    this.editChildServiceModalContext.data['body'] = null;
                 },
                 (error) => {
                     // TODO: Better error handling
@@ -250,13 +250,13 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
         } else {
             this._notificationService.set([{
                 type: 'ERROR',
-                messages: [`Unknown method ${method} used to modify the instance`]
+                messages: [`Unknown method ${method} used to modify the child service`]
             }]);
         }
     }
 
-    onDeleteInstance(event: MouseEvent): void {
-        var selectedServiceId: string = this.editInstanceModalContext.data['documentSelfLink'];
+    onDeleteChildService(event: MouseEvent): void {
+        var selectedServiceId: string = this.deleteChildServiceModalContext.data['documentSelfLink'];
 
         if (!selectedServiceId) {
             return;
@@ -268,7 +268,7 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
                     StringUtil.parseDocumentLink(document.documentSelfLink).id : '';
                 this._notificationService.set([{
                     type: 'SUCCESS',
-                    messages: [`Instance ${documentId} Deleted`]
+                    messages: [`Child Service ${documentId} Deleted`]
                 }]);
             },
             (error) => {
@@ -289,13 +289,13 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
                     this._selectedChildService = childService;
 
                     // Set modal context
-                    this.editInstanceModalContext.name = link;
-                    this.editInstanceModalContext.data['documentSelfLink'] = link;
-                    this.editInstanceModalContext.data['method'] = 'PATCH';
-                    this.editInstanceModalContext.data['body'] = this._getPatchMethodDefaultBody();
+                    this.editChildServiceModalContext.name = link;
+                    this.editChildServiceModalContext.data['documentSelfLink'] = link;
+                    this.editChildServiceModalContext.data['method'] = 'PATCH';
+                    this.editChildServiceModalContext.data['body'] = this._getPatchMethodDefaultBody();
 
-                    this.deleteInstanceModalContext.name = link;
-                    this.deleteInstanceModalContext.data['documentSelfLink'] = link;
+                    this.deleteChildServiceModalContext.name = link;
+                    this.deleteChildServiceModalContext.data['documentSelfLink'] = link;
                 },
                 (error) => {
                     // TODO: Better error handling

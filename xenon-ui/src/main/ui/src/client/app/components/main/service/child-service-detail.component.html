@@ -86,7 +86,7 @@
                         </label>
                         <div class="col-sm-9">
                             <p class="form-control-static">
-                                <strong>{{editInstanceModalContext.data.documentSelfLink}}</strong>
+                                <strong>{{editChildServiceModalContext.data.documentSelfLink}}</strong>
                             </p>
                         </div>
                     </div>
@@ -97,16 +97,16 @@
                         <div class="col-sm-9">
                             <div class="btn-group" data-toggle="buttons">
                                 <label class="btn btn-secondary"
-                                    [class.active]="editInstanceModalContext.data.method === 'PATCH'"
-                                    (click)="onEditInstanceMethodChanged($event, 'PATCH')">
+                                    [class.active]="editChildServiceModalContext.data.method === 'PATCH'"
+                                    (click)="onEditChildServiceMethodChanged($event, 'PATCH')">
                                     <input type="radio" name="options" autocomplete="off"
-                                        [checked]="editInstanceModalContext.data.method === 'PATCH'"> PATCH
+                                        [checked]="editChildServiceModalContext.data.method === 'PATCH'"> PATCH
                                 </label>
                                 <label class="btn btn-secondary"
-                                    [class.active]="editInstanceModalContext.data.method === 'PUT'"
-                                    (click)="onEditInstanceMethodChanged($event, 'PUT')">
+                                    [class.active]="editChildServiceModalContext.data.method === 'PUT'"
+                                    (click)="onEditChildServiceMethodChanged($event, 'PUT')">
                                     <input type="radio" name="options" autocomplete="off"
-                                        [checked]="editInstanceModalContext.data.method === 'PUT'"> PUT
+                                        [checked]="editChildServiceModalContext.data.method === 'PUT'"> PUT
                                 </label>
                             </div>
                         </div>
@@ -115,7 +115,7 @@
                         <label class="col-sm-3 col-form-label">{{ 'BODY' | translate }}</label>
                         <div  class="col-sm-9">
                             <xe-code-editor name="body"
-                                [(ngModel)]="editInstanceModalContext.data.body">
+                                [(ngModel)]="editChildServiceModalContext.data.body">
                             </xe-code-editor>
                         </div>
                     </div>
@@ -126,7 +126,7 @@
                     {{ 'ACTION_CANCEL' | translate }}
                 </button>
                 <button type="button" class="btn btn-primary" data-dismiss="modal"
-                    (click)="onEditInstance($event)">
+                    (click)="onEditChildService($event)">
                     {{ 'ACTION_EDIT' | translate }}
                 </button>
             </div>
@@ -151,7 +151,7 @@
             <div class="modal-body">
                 <p>
                     {{ 'CHILD_SERVICE_DELETE_MODAL_HELPER' | translate }}<br/>
-                    <strong>{{editInstanceModalContext.data.documentSelfLink}}</strong>
+                    <strong>{{deleteChildServiceModalContext.data.documentSelfLink}}</strong>
                 </p>
             </div>
             <div class="modal-footer">
@@ -159,7 +159,7 @@
                     {{ 'ACTION_NO' | translate }}
                 </button>
                 <button type="button" class="btn btn-primary" data-dismiss="modal"
-                    (click)="onDeleteInstance($event)">
+                    (click)="onDeleteChildService($event)">
                     {{ 'ACTION_YES' | translate }}
                 </button>
             </div>
