@@ -28,7 +28,7 @@ export class AuthenticationService {
     isLoggedIn(): Observable<boolean> {
         // Only check about this once
         if (_.isUndefined(this._isAuthorizationEnabled)) {
-            // Make a test call to nodeGroupService and see if the instance has
+            // Make a test call to nodeGroupService and see if it has
             // authorization enabled.
             return this._http.get(URL.API_PREFIX + URL.CoreManagement)
                 .map((res: Response) => {

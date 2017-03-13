@@ -23,9 +23,9 @@ import { BaseService, NodeSelectorService, NotificationService } from '../../../
 
 export class ServiceDetailComponent implements OnInit, OnDestroy {
     /**
-     * Context object for rendering create instance modal.
+     * Context object for rendering create child service modal.
      */
-    createInstanceModalContext: ModalContext = {
+    createChildServiceModalContext: ModalContext = {
         name: '',
         data: {
             documentSelfLink: '',
@@ -39,7 +39,7 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
     private _serviceLinks: string[] = [];
 
     /**
-     * links to all the available instances within the specified service.
+     * links to all the available child services within the specified service.
      */
     private _childServicesLinks: string[] = [];
 
@@ -88,12 +88,12 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
                     this._selectedServiceId =
                         StringUtil.decodeFromId(params['id'] as string);
 
-                    this._selectedChildServiceId = params['instanceId'];
+                    this._selectedChildServiceId = params['childId'];
 
                     // Set modal context
-                    this.createInstanceModalContext.name = this._selectedServiceId;
-                    this.createInstanceModalContext.data['documentSelfLink'] = this._selectedServiceId;
-                    this.createInstanceModalContext.data['body'] = '';
+                    this.createChildServiceModalContext.name = this._selectedServiceId;
+                    this.createChildServiceModalContext.data['documentSelfLink'] = this._selectedServiceId;
+                    this.createChildServiceModalContext.data['body'] = '';
 
                     this._getData();
                 });
@@ -139,9 +139,9 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
         return this._selectedChildServiceId;
     }
 
-    onCreateInstance(event: MouseEvent): void {
-        var selectedServiceId: string = this.createInstanceModalContext.data['documentSelfLink'];
-        var body: string = this.createInstanceModalContext.data['body'];
+    onCreateChildService(event: MouseEvent): void {
+        var selectedServiceId: string = this.createChildServiceModalContext.data['documentSelfLink'];
+        var body: string = this.createChildServiceModalContext.data['body'];
 
         if (!selectedServiceId || !body) {
             return;
@@ -153,11 +153,11 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
                     StringUtil.parseDocumentLink(document.documentSelfLink).id : '';
                 this._notificationService.set([{
                     type: 'SUCCESS',
-                    messages: [`Instance ${documentId} Created`]
+                    messages: [`Child Service ${documentId} Created`]
                 }]);
 
                 // Reset body
-                this.createInstanceModalContext.data['body'] = '';
+                this.createChildServiceModalContext.data['body'] = '';
             },
             (error) => {
                 // TODO: Better error handling
@@ -189,7 +189,7 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
         }
 
         // - When _childServicesLinks is not available, get it
-        // - When switching between instances (thus _selectedChildServiceId is
+        // - When switching between child services (thus _selectedChildServiceId is
         //      available), skip querying child services since it will
         //      not change anyway
         if (_.isEmpty(this._childServicesLinks) || _.isNull(this._selectedChildServiceId)) {

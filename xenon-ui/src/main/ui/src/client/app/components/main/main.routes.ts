@@ -29,7 +29,7 @@ export const MainRoutes: Route[] = [
                         component: ServiceDetailComponent
                     },
                     {
-                        path: 'service/:id/:instanceId',
+                        path: 'service/:id/:childId',
                         component: ServiceDetailComponent
                     },
                     {

@@ -151,15 +151,15 @@ export class StringUtil {
 
     /**
      * Return a formatted timestamp string for the given time string.
-     * Note that since the timeString is already based on local time, no need
-     * to call local() like getTimeStamp function does.
+     * Note that since the timeString is based on UTC time, so need
+     * to call local() for format it in local time.
      *
      * @param {string} timeString - a string that represents time.
      * @param {boolean} timeOnly - display only the time not the date.
      */
     static formatTimeStamp(timeString: string, timeOnly: boolean = false): string {
         var format: string = timeOnly ? 'hh:mm A' : 'M/D/YY hh:mm A';
-        return moment.utc(timeString).format(format);
+        return moment.utc(timeString).local().format(format);
     }
 
     /**

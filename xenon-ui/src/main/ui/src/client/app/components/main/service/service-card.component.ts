@@ -29,10 +29,10 @@ export class ServiceCardComponent implements OnChanges, OnDestroy {
     service: ServiceDocumentQueryResult;
 
     /**
-     * Emits the context when the create instance button is clicked.
+     * Emits the context when the create child service button is clicked.
      */
     @Output()
-    createInstanceClicked = new EventEmitter<EventContext>();
+    createChildServiceClicked = new EventEmitter<EventContext>();
 
     /**
      * Flag indicating whether the service is currently available.
@@ -125,14 +125,14 @@ export class ServiceCardComponent implements OnChanges, OnDestroy {
         return StringUtil.getTimeStamp(timeMicros);
     }
 
-    onCreateInstanceClicked(event: MouseEvent): void {
+    onCreateChildServiceClicked(event: MouseEvent): void {
         var context: EventContext = {
             type: event.type,
             data: {
                 documentSelfLink: this.service ? this.service.documentSelfLink : ''
             }
         };
-        this.createInstanceClicked.emit(context);
+        this.createChildServiceClicked.emit(context);
     }
 
     private _getData(): void {
