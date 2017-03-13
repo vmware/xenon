@@ -215,6 +215,10 @@ class ServiceResourceTracker {
         SystemHostInfo shi = hostState.systemInfo;
 
         Service mgmtService = getManagementService();
+        if (mgmtService == null) {
+            return;
+        }
+
         checkAndInitializeStats();
         mgmtService.setStat(ServiceHostManagementService.STAT_NAME_SERVICE_COUNT,
                 hostState.serviceCount);

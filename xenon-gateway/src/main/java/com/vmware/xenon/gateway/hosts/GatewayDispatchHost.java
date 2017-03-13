@@ -48,6 +48,15 @@ public class GatewayDispatchHost extends ServiceHost {
         return host;
     }
 
+    @Override
+    public ServiceHost initialize(Arguments arguments) throws Throwable {
+        ServiceHost serviceHost = super.initialize(arguments);
+        serviceHost.setDocumentIndexingService(null);
+        serviceHost.setManagementService(null);
+        serviceHost.setAuthenticationService(null);
+        return serviceHost;
+    }
+
     /**
      * The dispatch host ONLY starts the GatewayService.
      */
