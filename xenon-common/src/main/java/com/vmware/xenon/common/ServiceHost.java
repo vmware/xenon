@@ -562,6 +562,7 @@ public class ServiceHost implements ServiceRequestSender {
     private Service authorizationService;
     private Service transactionService;
     private Service managementService;
+    private Service statsService;
     private Service authenticationService;
     private Service basicAuthenticationService;
     private SystemHostInfo info = new SystemHostInfo();
@@ -575,6 +576,7 @@ public class ServiceHost implements ServiceRequestSender {
     private URI authorizationServiceUri;
     private URI transactionServiceUri;
     private URI managementServiceUri;
+    private URI statsServiceUri;
     private URI authenticationServiceUri;
     private URI basicAuthenticationServiceUri;
     private ScheduledFuture<?> maintenanceTask;
@@ -1169,6 +1171,16 @@ public class ServiceHost implements ServiceRequestSender {
         return this.managementServiceUri;
     }
 
+    public URI getStatsServiceUri() {
+        if (this.statsService == null) {
+            return null;
+        }
+        if (this.statsServiceUri == null) {
+            this.statsServiceUri = this.statsService.getUri();
+        }
+        return this.statsServiceUri;
+    }
+
     public ServiceHost setDocumentIndexingService(Service service) {
         if (this.state.isStarted) {
             throw new IllegalStateException("Host is started");
@@ -1200,6 +1212,14 @@ public class ServiceHost implements ServiceRequestSender {
 
     Service getManagementService() {
         return this.managementService;
+    }
+
+    public ServiceHost setStatsService(Service service) {
+        if (this.state.isStarted) {
+            throw new IllegalStateException("Host is started");
+        }
+        this.statsService = service;
+        return this;
     }
 
     public ServiceHost setAuthenticationService(Service service) {

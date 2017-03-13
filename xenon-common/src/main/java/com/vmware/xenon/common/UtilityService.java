@@ -708,6 +708,8 @@ public class UtilityService implements Service {
     public void setStat(ServiceStat stat, double newValue) {
         allocateStats();
         findStat(stat.name, true, stat);
+        URI statsServiceUri = getStatsServiceUri();
+        ServiceStat.SerializedStat ss = null;
         synchronized (stat) {
             stat.version++;
             stat.accumulatedValue += newValue;
@@ -729,12 +731,21 @@ public class UtilityService implements Service {
                     stat.timeSeriesStats.add(stat.lastUpdateMicrosUtc, newValue, newValue);
                 }
             }
+            if (statsServiceUri != null) {
+                ss = ServiceStat.SerializedStat.create(stat);
+            }
+        }
+
+        if (statsServiceUri != null) {
+            Operation.createPost(statsServiceUri).setBody(ss).sendWith(this);
         }
     }
 
     @Override
     public void adjustStat(ServiceStat stat, double delta) {
         allocateStats();
+        URI statsServiceUri = getStatsServiceUri();
+        ServiceStat.SerializedStat ss = null;
         synchronized (stat) {
             stat.latestValue += delta;
             stat.version++;
@@ -755,6 +766,13 @@ public class UtilityService implements Service {
                     stat.timeSeriesStats.add(stat.lastUpdateMicrosUtc, stat.latestValue, delta);
                 }
             }
+            if (statsServiceUri != null) {
+                ss = ServiceStat.SerializedStat.create(stat);
+            }
+        }
+
+        if (statsServiceUri != null) {
+            Operation.createPost(statsServiceUri).setBody(ss).sendWith(this);
         }
     }
 
@@ -840,6 +858,19 @@ public class UtilityService implements Service {
         }
         this.stats = new ServiceStats();
         return true;
+    }
+
+    private URI getStatsServiceUri() {
+        ServiceHost host = getHost();
+        if (host == null) {
+            // Because of a race in the way that default core services are started (the initial
+            // maintenance pass is scheduled during ServiceHost.startImpl, but core services such
+            // as the management service and the index service are not started until the call to
+            // ServiceHost.startDefaultCoreServicesSynchronously), it's possible that the service
+            // is not started and so the host pointer is null.
+            return null;
+        }
+        return host.getStatsServiceUri();
     }
 
     @Override

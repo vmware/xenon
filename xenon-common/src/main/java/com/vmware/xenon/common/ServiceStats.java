@@ -212,6 +212,32 @@ public class ServiceStats extends ServiceDocument {
          * on user choice) are maintained
          */
         public TimeSeriesStats timeSeriesStats;
+
+        public static class SerializedStat extends ServiceDocument {
+            public String name;
+            public double latestValue;
+            public double accumulatedValue;
+            public long version;
+            public long lastUpdateMicrosUtc;
+            public String kind;
+            public String unit;
+            public Long sourceTimeMicrosUtc;
+            public URI serviceReference;
+
+            public static SerializedStat create(ServiceStat stat) {
+                SerializedStat ctx = new SerializedStat();
+                ctx.name = stat.name;
+                ctx.latestValue = stat.latestValue;
+                ctx.accumulatedValue = stat.accumulatedValue;
+                ctx.version = stat.version;
+                ctx.lastUpdateMicrosUtc = stat.lastUpdateMicrosUtc;
+                ctx.kind = stat.kind;
+                ctx.unit = stat.unit;
+                ctx.sourceTimeMicrosUtc = stat.sourceTimeMicrosUtc;
+                ctx.serviceReference = stat.serviceReference;
+                return ctx;
+            }
+        }
     }
 
     public String kind = KIND;
