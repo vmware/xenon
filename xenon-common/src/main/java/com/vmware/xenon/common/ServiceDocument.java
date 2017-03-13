@@ -14,6 +14,7 @@
 package com.vmware.xenon.common;
 
 import java.lang.annotation.ElementType;
+import java.lang.annotation.Inherited;
 import java.lang.annotation.Repeatable;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -93,6 +94,7 @@ public class ServiceDocument {
      * needed then {@link Service#getDocumentTemplate()} can still be used to
      * override the values.
      */
+    @Inherited
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.TYPE)
     public @interface IndexingParameters {
