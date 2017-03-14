@@ -115,11 +115,9 @@ export class ServiceGridComponent implements OnInit, OnDestroy {
 
         this._baseService.post(selectedServiceId, body).subscribe(
             (document: ServiceDocument) => {
-                var documentId: string = document.documentSelfLink ?
-                    StringUtil.parseDocumentLink(document.documentSelfLink).id : '';
                 this._notificationService.set([{
                     type: 'SUCCESS',
-                    messages: [`Child Service ${documentId} Created`]
+                    messages: [`Child Service ${document.documentSelfLink} Created`]
                 }]);
             },
             (error) => {
