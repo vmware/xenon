@@ -17,6 +17,9 @@
             <td class="value" *ngIf="property.valueType === 'string' || property.valueType === 'number'">
                 {{property.value}}
             </td>
+            <td class="value" *ngIf="property.valueType === 'link'">
+                <a [href]="property.value" target="_blank">{{property.value}}</a>
+            </td>
         </tr>
     </tbody>
 </table>
