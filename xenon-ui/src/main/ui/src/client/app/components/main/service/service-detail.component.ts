@@ -123,7 +123,7 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
 
     getChildServiceLinks(): string[] {
         return _.map(this._childServicesLinks, (childServiceLink: string) => {
-            return StringUtil.parseDocumentLink(childServiceLink).id;
+            return StringUtil.parseDocumentLink(childServiceLink, this._selectedServiceId).id;
         });
     }
 
@@ -149,11 +149,9 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
 
         this._baseService.post(selectedServiceId, body).subscribe(
             (document: ServiceDocument) => {
-                var documentId: string = document.documentSelfLink ?
-                    StringUtil.parseDocumentLink(document.documentSelfLink).id : '';
                 this._notificationService.set([{
                     type: 'SUCCESS',
-                    messages: [`Child Service ${documentId} Created`]
+                    messages: [`Child Service ${document.documentSelfLink} Created`]
                 }]);
 
                 // Reset body

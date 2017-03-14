@@ -210,11 +210,9 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
         if (method === 'PATCH') {
             this._baseService.patch(selectedServiceId, body).subscribe(
                 (document: ServiceDocument) => {
-                    var documentId: string = document.documentSelfLink ?
-                        StringUtil.parseDocumentLink(document.documentSelfLink).id : '';
                     this._notificationService.set([{
                         type: 'SUCCESS',
-                        messages: [`Child Service ${documentId} Patched`]
+                        messages: [`Child Service ${document.documentSelfLink} Updated`]
                     }]);
 
                     // Reset body
@@ -230,11 +228,9 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
         } else if (method === 'PUT') {
             this._baseService.put(selectedServiceId, body).subscribe(
                 (document: ServiceDocument) => {
-                    var documentId: string = document.documentSelfLink ?
-                        StringUtil.parseDocumentLink(document.documentSelfLink).id : '';
                     this._notificationService.set([{
                         type: 'SUCCESS',
-                        messages: [`Child Service ${documentId} Updated`]
+                        messages: [`Child Service ${document.documentSelfLink} Updated`]
                     }]);
 
                     // Reset body
@@ -264,11 +260,9 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
 
         this._baseService.delete(selectedServiceId).subscribe(
             (document: ServiceDocument) => {
-                var documentId: string = document.documentSelfLink ?
-                    StringUtil.parseDocumentLink(document.documentSelfLink).id : '';
                 this._notificationService.set([{
                     type: 'SUCCESS',
-                    messages: [`Child Service ${documentId} Deleted`]
+                    messages: [`Child Service ${document.documentSelfLink} Deleted`]
                 }]);
             },
             (error) => {

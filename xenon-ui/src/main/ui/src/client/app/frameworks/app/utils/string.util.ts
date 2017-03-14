@@ -1,5 +1,6 @@
 import * as moment from 'moment';
 import * as numeral from 'numeral';
+import * as _ from 'lodash';
 
 import { DocumentLink, UrlFragment } from '../interfaces/index';
 
@@ -21,7 +22,6 @@ export class StringUtil {
      * @param {string} spacer - the character that joins encoded items
      * @param {object} replace - object of post-encoded strings to str.replace e.g. {'-47-' = '_'} replaces all encoded '/' chars with a '_'
      */
-
     static encodeToId(s: string, prefix?: string, exclude?: string, spacer?: string, replace?: any): string {
         if (typeof (s) !== 'string') {
             return null;
@@ -94,13 +94,13 @@ export class StringUtil {
      * Given a document link string, return the document link object.
      *
      * @param {string} documentLink - documentLink to get id and type from
+     * @param {string} factoryLink - parse the documentLink based on the given factoryLink
      */
-    static parseDocumentLink(documentLink: string): DocumentLink {
+    static parseDocumentLink(documentLink: string, factoryLink: string = ''): DocumentLink {
         // TODO: need to do a regex check to make sure it's a valid format.
         var linkFragments: string[] = documentLink.split('/');
-        var linkFragmentsLength: number = linkFragments.length;
 
-        if (linkFragmentsLength < 3) {
+        if (linkFragments.length < 3) {
             return {
                 prefix: '',
                 type: '',
@@ -108,10 +108,39 @@ export class StringUtil {
             };
         }
 
+        if (!factoryLink) {
+            // By default treat the first fragment as prefix, and last fragment as id, everything in between as type
+            return {
+                prefix: linkFragments[0],
+                type: _.join(_.slice(linkFragments, 1, linkFragments.length - 2), '/'),
+                id: linkFragments[linkFragments.length - 1]
+            };
+        }
+
+        var factoryLinkFragments: string[] = factoryLink.split('/');
+        var linkIntersection: string[] = _.intersection(linkFragments, factoryLinkFragments);
+
+        if (linkIntersection.length === 0) {
+            // Fall back to the default parsing as if factoryLink is not provided
+            return {
+                prefix: linkFragments[0],
+                type: _.join(_.slice(linkFragments, 1, linkFragments.length - 2), '/'),
+                id: linkFragments[linkFragments.length - 1]
+            };
+        } else if (linkIntersection.length === 1) {
+            return {
+                prefix: linkIntersection[0],
+                type: '',
+                id: linkFragments[linkFragments.length - 1]
+            };
+        }
+
+        // When intersection exists, treat the first fragment of the intersection as prefix, and rest of the intersection as type,
+        // and the difference between the factory link and the original link as id
         return {
-            prefix: linkFragments[linkFragmentsLength - 3],
-            type: linkFragments[linkFragmentsLength - 2],
-            id: linkFragments[linkFragmentsLength - 1]
+            prefix: linkIntersection[0],
+            type: _.join(_.tail(linkIntersection), '/'),
+            id: _.join(_.difference(linkFragments, factoryLinkFragments), '/')
         };
     }
 
