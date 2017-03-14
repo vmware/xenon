@@ -49,9 +49,12 @@ export class PropertyTableComponent {
     }
 
     private _getValueType(key: string, value: any): string {
+        if (_.endsWith(key.toLowerCase(), 'link')) {
+            return 'link';
+        }
+
         if (_.isNumber(value)) {
-            if (key && value > 1000000000000000
-                    && key.toLowerCase().indexOf('timemicros') !== -1) {
+            if (key && _.endsWith(key.toLowerCase(), 'timemicros')) {
                 return 'date';
             } else {
                 return 'number';
