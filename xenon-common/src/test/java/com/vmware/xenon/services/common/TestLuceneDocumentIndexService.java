@@ -93,14 +93,16 @@ import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption
 class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexService {
 
     public void forceClosePaginatedSearchers() {
-        logInfo("Closing all paginated searchers (%d)", this.searchersForPaginatedQueries.size());
-        for (List<IndexSearcher> searchers : this.searchersForPaginatedQueries.values()) {
-            for (IndexSearcher s : searchers) {
-                try {
-                    s.getIndexReader().close();
-                    this.searcherUpdateTimesMicros.remove(s.hashCode());
-                } catch (Throwable e) {
-                }
+
+        logInfo("Closing all paginated searchers (%d)",
+                this.paginatedSearchersByExpirationTime.size());
+
+        for (PaginatedSearcherInfo info : this.paginatedSearchersByExpirationTime) {
+            try {
+                IndexSearcher s = info.searcher;
+                s.getIndexReader().close();
+                this.searcherUpdateTimesMicros.remove(s.hashCode());
+            } catch (Throwable ignored) {
             }
         }
     }

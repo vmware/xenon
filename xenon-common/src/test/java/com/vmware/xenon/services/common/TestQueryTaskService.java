@@ -3186,6 +3186,11 @@ public class TestQueryTaskService {
 
     private URI doPaginatedQueryTest(QueryTask task, int sc, int resultLimit,
             List<URI> queryPageURIs, List<URI> targetServiceURIs) throws Throwable {
+        return doPaginatedQueryTest(task, sc, sc, resultLimit, queryPageURIs, targetServiceURIs);
+    }
+
+    private URI doPaginatedQueryTest(QueryTask task, int sc, int expectedResults, int resultLimit,
+            List<URI> queryPageURIs, List<URI> targetServiceURIs) throws Throwable {
         List<URI> services = createQueryTargetServices(sc);
         if (targetServiceURIs == null) {
             targetServiceURIs = new ArrayList<>();
@@ -3246,9 +3251,9 @@ public class TestQueryTaskService {
         getNextPageLinks(task, nextPageLink, resultLimit, numberOfDocumentLinks, queryPageURIs);
         this.host.testWait();
 
-        assertEquals(sc, numberOfDocumentLinks[0]);
+        assertEquals(expectedResults, numberOfDocumentLinks[0]);
 
-        if (sc != resultLimit) {
+        if (expectedResults != resultLimit) {
             return taskURI;
         }
 
@@ -3301,6 +3306,15 @@ public class TestQueryTaskService {
         doPaginatedQueryTest(task, sc, resultLimit, pageServiceURIs, targetServiceURIs);
         String nextPageLink = task.results.nextPageLink;
         assertNotNull(nextPageLink);
+
+        deleteServices(targetServiceURIs);
+
+        // direct query, without searcher refresh
+        task = QueryTask.create(new QuerySpecification()).setDirect(true);
+        task.querySpec.options.add(QueryOption.DO_NOT_REFRESH);
+        pageServiceURIs = new ArrayList<>();
+        targetServiceURIs = new ArrayList<>();
+        doPaginatedQueryTest(task, 0, sc, resultLimit, pageServiceURIs, targetServiceURIs);
 
         deleteServices(targetServiceURIs);
 
