@@ -37,5 +37,6 @@ public class ServiceConfigUpdateRequest {
     public Long versionRetentionFloor;
     public Long epoch;
     public Long maintenanceIntervalMicros;
+    public String peerNodeSelectorPath;
     public String kind;
 }

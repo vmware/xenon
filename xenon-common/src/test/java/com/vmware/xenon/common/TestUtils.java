@@ -1049,6 +1049,7 @@ public class TestUtils {
         assertEquals(exampleService.getMaintenanceIntervalMicros(), config.maintenanceIntervalMicros);
         assertEquals(ExampleServiceState.VERSION_RETENTION_LIMIT, config.versionRetentionLimit);
         assertEquals(ExampleServiceState.VERSION_RETENTION_FLOOR, config.versionRetentionFloor);
+        assertEquals(exampleService.getPeerNodeSelectorPath(), config.peerNodeSelectorPath);
     }
 
 }

@@ -642,6 +642,7 @@ public class UtilityService implements Service {
         }
 
         if (updateBody.maintenanceIntervalMicros == null
+                && updateBody.peerNodeSelectorPath == null
                 && updateBody.operationQueueLimit == null
                 && updateBody.epoch == null
                 && (updateBody.addOptions == null || updateBody.addOptions.isEmpty())
@@ -689,6 +690,11 @@ public class UtilityService implements Service {
         if (updateBody.maintenanceIntervalMicros != null) {
             this.parent.setMaintenanceIntervalMicros(updateBody.maintenanceIntervalMicros);
         }
+
+        if (updateBody.peerNodeSelectorPath != null) {
+            this.parent.setPeerNodeSelectorPath(updateBody.peerNodeSelectorPath);
+        }
+
         op.complete();
     }
 

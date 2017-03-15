@@ -37,16 +37,9 @@ import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.MinimalTestService;
+import com.vmware.xenon.services.common.ServiceUriPaths;
 
 public class TestUtilityService extends BasicReusableHostTestCase {
-
-    private List<Service> createServices(int count) throws Throwable {
-        List<Service> services = this.host.doThroughputServiceStart(
-                count, MinimalTestService.class,
-                this.host.buildMinimalTestState(),
-                null, null);
-        return services;
-    }
 
     @Before
     public void setUp() {
@@ -93,19 +86,14 @@ public class TestUtilityService extends BasicReusableHostTestCase {
 
         this.testWait(ctx2);
 
-        List<Service> services = createServices(count);
-        // verify no stats exist before we enable that capability
-        for (Service s : services) {
-            Map<String, ServiceStat> stats = this.host.getServiceStats(s.getUri());
-            assertTrue(stats != null);
-            assertTrue(stats.isEmpty());
-        }
+        List<URI> services = this.host.createExampleServices(this.host, count, null);
 
         updateBody = ServiceConfigUpdateRequest.create();
-        updateBody.addOptions = EnumSet.of(ServiceOption.INSTRUMENTATION);
+        updateBody.addOptions = EnumSet.of(ServiceOption.PERIODIC_MAINTENANCE);
+        updateBody.peerNodeSelectorPath = ServiceUriPaths.DEFAULT_1X_NODE_SELECTOR;
         ctx = this.testCreate(services.size());
-        for (Service s : services) {
-            configUri = UriUtils.buildConfigUri(s.getUri());
+        for (URI u : services) {
+            configUri = UriUtils.buildConfigUri(u);
             this.host.send(Operation.createPatch(configUri).setBody(updateBody)
                     .setCompletion(ctx.getCompletion()));
         }
@@ -113,39 +101,43 @@ public class TestUtilityService extends BasicReusableHostTestCase {
 
         // get configuration and verify options
         TestContext ctx3 = testCreate(services.size());
-        for (Service s : services) {
-            URI u = UriUtils.buildConfigUri(s.getUri());
+        for (URI serviceUri : services) {
+            URI u = UriUtils.buildConfigUri(serviceUri);
             host.send(Operation.createGet(u).setCompletion((o, e) -> {
                 if (e != null) {
                     ctx3.failIteration(e);
                     return;
                 }
-
                 ServiceConfiguration cfg = o.getBody(ServiceConfiguration.class);
-                if (cfg.options.contains(ServiceOption.INSTRUMENTATION)) {
-                    ctx3.completeIteration();
-                } else {
+                if (!cfg.options.contains(ServiceOption.PERIODIC_MAINTENANCE)) {
                     ctx3.failIteration(new IllegalStateException(Utils.toJsonHtml(cfg)));
+                    return;
                 }
 
+                if (!ServiceUriPaths.DEFAULT_1X_NODE_SELECTOR.equals(cfg.peerNodeSelectorPath)) {
+                    ctx3.failIteration(new IllegalStateException(Utils.toJsonHtml(cfg)));
+                    return;
+                }
+                ctx3.completeIteration();
             }));
         }
         testWait(ctx3);
 
-        ctx = testCreate(services.size());
-        // issue some updates so stats get updated
-        for (Service s : services) {
-            this.host.send(Operation.createPatch(s.getUri())
-                    .setBody(this.host.buildMinimalTestState())
-                    .setCompletion(ctx.getCompletion()));
-        }
-        testWait(ctx);
+        // since we enabled periodic maintenance, verify the new maintenance related stat is present
+        this.host.waitFor("maintenance stat not present", () -> {
+            for (URI u : services) {
+                Map<String, ServiceStat> stats = this.host.getServiceStats(u);
+                ServiceStat maintStat = stats.get(Service.STAT_NAME_MAINTENANCE_COUNT);
+                if (maintStat == null) {
+                    return false;
+                }
+                if (maintStat.latestValue == 0) {
+                    return false;
+                }
+            }
+            return true;
+        });
 
-        for (Service s : services) {
-            Map<String, ServiceStat> stats = this.host.getServiceStats(s.getUri());
-            assertTrue(stats != null);
-            assertTrue(!stats.isEmpty());
-        }
     }
 
     @Test

@@ -2,9 +2,13 @@
 
 ## 1.4.1-SNAPSHOT
 
+* Extend per service config REST API to include the node selector path.
+  Add ServiceConfiguration.peerNodeSelectorPath field, reflecting the value set
+  on replicated services instances, through the existing Service.setPeerNodeSelectorPath()
+
 ## 1.4.0
 
-* Move ServiceHost.failRequestXXXX methods to Operation.failXXXX equivalents 
+* Move ServiceHost.failRequestXXXX methods to Operation.failXXXX equivalents
 
 * Remove per-host connection limit APIs in ServiceClient. Consumers who
   wish to set connection rate limits should use the per-tag APIs instead.
