@@ -14,7 +14,9 @@
 package com.vmware.xenon.common;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -35,6 +37,18 @@ public class SynchronizationTaskService
     public static final String FACTORY_LINK = ServiceUriPaths.SYNCHRONIZATION_TASKS;
     public static final String PROPERTY_NAME_SYNCHRONIZATION_LOGGING = Utils.PROPERTY_NAME_PREFIX
             + "SynchronizationTaskService.isDetailedLoggingEnabled";
+
+    public static final String STAT_NAME_CHILD_SYNCH_RETRY_COUNT = "childSynchRetryCount";
+    public static final String STAT_NAME_SYNCH_RETRY_COUNT = "synchRetryCount";
+
+    public static final String PROPERTY_NAME_MAX_CHILD_SYNCH_RETRY_COUNT =
+            Utils.PROPERTY_NAME_PREFIX + "SynchronizationTaskService.MAX_CHILD_SYNCH_RETRY_COUNT";
+
+    // Maximum synch-task retry limit.
+    // We are using exponential backoff for synchronization retry.
+    public static final int MAX_CHILD_SYNCH_RETRY_COUNT = Integer.getInteger(
+            PROPERTY_NAME_MAX_CHILD_SYNCH_RETRY_COUNT, 3);
+
 
     public static SynchronizationTaskService create(Supplier<Service> childServiceInstantiator) {
         if (childServiceInstantiator.get() == null) {
@@ -113,6 +127,7 @@ public class SynchronizationTaskService
     public SynchronizationTaskService() {
         super(State.class);
         toggleOption(ServiceOption.IDEMPOTENT_POST, true);
+        toggleOption(ServiceOption.INSTRUMENTATION, true);
     }
 
     /**
@@ -220,7 +235,6 @@ public class SynchronizationTaskService
         }
 
         State task = getState(put);
-
         TaskState.TaskStage currentStage = task.taskInfo.stage;
         SubStage currentSubStage = task.subStage;
         State body = validatePutRequest(task, put);
@@ -281,6 +295,8 @@ public class SynchronizationTaskService
             // changed the status to un-available, but just for
             // correctness we do it here again.
             task.synchCompletionCount = 0;
+            setStat(STAT_NAME_CHILD_SYNCH_RETRY_COUNT, 0);
+            setStat(STAT_NAME_CHILD_SYNCH_FAILURE_COUNT, 0);
             setFactoryAvailability(task, false, (o) -> handleSubStage(task), put);
         } else {
             put.complete();
@@ -526,7 +542,8 @@ public class SynchronizationTaskService
                 sendSelfFinishedPatch(task);
                 return;
             }
-            synchronizeChildrenInQueryPage(task, rsp);
+            List<String> list = new ArrayList<>(rsp.documentLinks);
+            synchronizeChildrenInQueryPage(task, rsp, list, 0, list.size());
         };
 
         sendRequest(Operation.createGet(task.queryPageReference)
@@ -537,19 +554,33 @@ public class SynchronizationTaskService
                 .setCompletion(c));
     }
 
-    private void synchronizeChildrenInQueryPage(State task, ServiceDocumentQueryResult rsp) {
+    private void synchronizeChildrenInQueryPage(State task, ServiceDocumentQueryResult rsp, List<String> documentLinks, int retryCount, int totalServiceCount) {
         if (getHost().isStopping()) {
             sendSelfCancellationPatch(task, "host is stopping");
             return;
         }
 
-        // track child service request in parallel, passing a single parent operation
-        AtomicInteger pendingStarts = new AtomicInteger(rsp.documentLinks.size());
+        // Keep track of failed services.
+        List<String> failedServices = new ArrayList<>();
+
+        // Track child service request in parallel, passing a single parent operation
+        AtomicInteger pendingStarts = new AtomicInteger(documentLinks.size());
+
         Operation.CompletionHandler c = (o, e) -> {
-            int r = pendingStarts.decrementAndGet();
             if (e != null && !getHost().isStopping()) {
-                logWarning("Restart for children failed: %s", e.getMessage());
+                logWarning("Synchronization failed for service %s with status code %d, message %s",
+                        o.getUri().getPath(), o.getStatusCode(), e.getMessage());
+                if (o.getStatusCode() >= Operation.STATUS_CODE_SERVER_FAILURE_THRESHOLD ||
+                        o.getStatusCode() == Operation.STATUS_CODE_TIMEOUT) {
+                    synchronized (this) {
+                        failedServices.add(o.getUri().getPath());
+                    }
+                }
             }
+
+            // Wait for failedServices to be updated for all failed services before proceeding further.
+            // Keeping this decrement statement here makes sure that we do not have race condition with failedServices.
+            int r = pendingStarts.decrementAndGet();
 
             if (getHost().isStopping()) {
                 sendSelfCancellationPatch(task, "host is stopping");
@@ -560,11 +591,50 @@ public class SynchronizationTaskService
                 return;
             }
 
+            // Retry synchronization for services failed to synch last time.
+            // Only retry if failed services are less than the half of the total services and
+            // maximum retry count is not reached.
+
+            if (!failedServices.isEmpty()) {
+                if (failedServices.size() <= task.queryResultLimit / 2) {
+                    if (retryCount < MAX_CHILD_SYNCH_RETRY_COUNT) {
+                        synchronized (this) {
+                            if (!getHost().isStopping()) {
+                                logWarning("Retrying synchronization for %d failed services", failedServices.size());
+
+                                scheduleRetry(
+                                        () -> synchronizeChildrenInQueryPage(
+                                                task,
+                                                rsp,
+                                                failedServices,
+                                                retryCount + 1,
+                                                totalServiceCount),
+                                        STAT_NAME_CHILD_SYNCH_RETRY_COUNT);
+                                adjustStat(STAT_NAME_SYNCH_RETRY_COUNT, 1);
+                            }
+
+                            return;
+                        }
+                    } else {
+                        if (!getHost().isStopping()) {
+                            logSevere("Synchronization failed for %d services", failedServices.size());
+                        }
+                        adjustStat(STAT_NAME_CHILD_SYNCH_FAILURE_COUNT, failedServices.size());
+                    }
+                } else {
+                    // Just fail the synch-task since we go so many failures
+                    adjustStat(STAT_NAME_CHILD_SYNCH_FAILURE_COUNT, failedServices.size());
+                    sendSelfFailurePatch(task, "Too many failures in synchronizing child services");
+                    return;
+                }
+            }
+
+            setStat(STAT_NAME_CHILD_SYNCH_RETRY_COUNT, 0);
             task.queryPageReference = rsp.nextPageLink != null
                     ? UriUtils.buildUri(task.queryPageReference, rsp.nextPageLink)
                     : null;
 
-            task.synchCompletionCount = task.synchCompletionCount + rsp.documentLinks.size();
+            task.synchCompletionCount = task.synchCompletionCount + totalServiceCount;
 
             if (task.queryPageReference == null) {
                 sendSelfFinishedPatch(task);
@@ -573,7 +643,7 @@ public class SynchronizationTaskService
             sendSelfPatch(task, TaskState.TaskStage.STARTED, subStageSetter(SubStage.SYNCHRONIZE));
         };
 
-        for (String link : rsp.documentLinks) {
+        for (String link : documentLinks) {
             if (getHost().isStopping()) {
                 sendSelfCancellationPatch(task, "host is stopping");
                 return;
@@ -581,6 +651,47 @@ public class SynchronizationTaskService
 
             synchronizeService(task, link, c);
         }
+    }
+
+    private void scheduleRetry(Runnable task, String statNameRetryCount) {
+        adjustStat(statNameRetryCount, 1);
+        ServiceStats.ServiceStat stat = getStat(statNameRetryCount);
+
+        long retryCounter = 0;
+        if (stat != null) {
+            retryCounter = (long) stat.latestValue;
+        }
+
+        // Use exponential backoff algorithm in retry logic. The idea is to exponentially
+        // increase the delay for each retry based on the number of previous retries.
+        // This is done to reduce the load of retries on the system by all the tasks
+        // at same time, and giving system more time to stabilize
+        // in next retry then the previous retry.
+        long delay = getExponentialDelay(statNameRetryCount);
+
+        logWarning("%s: Scheduling retry #%d of task (counter:%s) in %d microseconds",
+                getSelfLink(),
+                retryCounter,
+                statNameRetryCount,
+                delay);
+
+        getHost().schedule(task, delay, TimeUnit.MICROSECONDS);
+    }
+
+    /**
+     * Exponential backoff rely on retry count stat. If this stat is not available
+     * then we will fall back to constant delay for each retry.
+     * To get exponential delay, multiply retry count's power of 2 with constant delay.
+     * @param statNameRetryCount
+     */
+    private long getExponentialDelay(String statNameRetryCount) {
+        long delay = getHost().getMaintenanceIntervalMicros();
+        ServiceStats.ServiceStat stat = getStat(statNameRetryCount);
+        if (stat != null && stat.latestValue > 0) {
+            return (1 << ((long)stat.latestValue)) * delay;
+        }
+
+        return delay;
     }
 
     private boolean verifySynchronizationOwnership(State task) {
