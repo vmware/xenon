@@ -1531,6 +1531,7 @@ public final class Utils {
         config.maintenanceIntervalMicros = service.getMaintenanceIntervalMicros();
         config.versionRetentionLimit = desc.versionRetentionLimit;
         config.versionRetentionFloor = desc.versionRetentionFloor;
+        config.peerNodeSelectorPath = service.getPeerNodeSelectorPath();
 
         return config;
     }
