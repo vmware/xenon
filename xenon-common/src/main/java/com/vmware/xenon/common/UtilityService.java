@@ -889,6 +889,11 @@ public class UtilityService implements Service {
     }
 
     @Override
+    public void adjustStat(String name, double delta, boolean force) {
+        return;
+    }
+
+    @Override
     public void adjustStat(String name, double delta) {
         return;
     }

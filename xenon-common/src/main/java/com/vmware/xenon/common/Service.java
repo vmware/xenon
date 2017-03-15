@@ -497,6 +497,8 @@ public interface Service extends ServiceRequestSender {
 
     void adjustStat(String name, double delta);
 
+    void adjustStat(String name, double delta, boolean force);
+
     void adjustStat(ServiceStat stat, double delta);
 
     void setStat(String name, double newValue);

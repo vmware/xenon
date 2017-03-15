@@ -383,6 +383,16 @@ public class StatelessService implements Service {
     }
 
     @Override
+    public void adjustStat(String name, double delta, boolean force) {
+        if (!force) {
+            return;
+        }
+
+        this.toggleOption(Service.ServiceOption.INSTRUMENTATION, true);
+        adjustStat(name, delta);
+    }
+
+    @Override
     public void adjustStat(String name, double delta) {
         if (!hasOption(Service.ServiceOption.INSTRUMENTATION)) {
             return;
