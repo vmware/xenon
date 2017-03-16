@@ -108,6 +108,8 @@ public class MigrationTaskService extends StatefulService {
     public static final String STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT = "estimatedTotalServiceCount";
     public static final String STAT_NAME_FETCHED_DOCUMENT_COUNT = "fetchedDocumentCount";
     public static final String STAT_NAME_OWNER_MISMATCH_COUNT = "ownerMismatchDocumentCount";
+    public static final String STAT_NAME_BEFORE_TRANSFORM_COUNT = "beforeTransformDocumentCount";
+    public static final String STAT_NAME_AFTER_TRANSFORM_COUNT = "afterTransformDocumentCount";
     public static final String STAT_NAME_COUNT_QUERY_TIME_DURATION_MICRO = "countQueryTimeDurationMicros";
     public static final String STAT_NAME_RETRIEVAL_OPERATIONS_DURATION_MICRO = "retrievalOperationsDurationMicros";
     public static final String STAT_NAME_RETRIEVAL_QUERY_TIME_DURATION_MICRO_FORMAT = "retrievalQueryTimeDurationMicros-%s";
@@ -827,6 +829,9 @@ public class MigrationTaskService extends StatefulService {
                             .setBody(Collections.singletonMap(doc, state.destinationFactoryLink));
                 })
                 .collect(Collectors.toList());
+
+        adjustStat(STAT_NAME_BEFORE_TRANSFORM_COUNT, transformations.size());
+
         OperationJoin.create(transformations)
                 .setCompletion((os, ts) -> {
                     if (ts != null && !ts.isEmpty()) {
@@ -843,6 +848,7 @@ public class MigrationTaskService extends StatefulService {
                             );
                         }
                     }
+                    adjustStat(STAT_NAME_AFTER_TRANSFORM_COUNT, transformedJson.size());
                     migrateEntities(transformedJson, state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
                 })
                 .sendWith(this);
@@ -862,6 +868,8 @@ public class MigrationTaskService extends StatefulService {
                 })
                 .collect(Collectors.toList());
 
+        adjustStat(STAT_NAME_BEFORE_TRANSFORM_COUNT, transformations.size());
+
         OperationJoin.create(transformations)
                 .setCompletion((os, ts) -> {
                     if (ts != null && !ts.isEmpty()) {
@@ -871,10 +879,10 @@ public class MigrationTaskService extends StatefulService {
                     Map<Object, String> transformedJson = new HashMap<>();
                     for (Operation o : os.values()) {
                         TransformResponse response = o.getBody(TransformResponse.class);
-                        response.destinationLinks.forEach((jsonResponse, factoryLink) -> {
-                            transformedJson.put(jsonResponse, factoryLink);
-                        });
+                        transformedJson.putAll(response.destinationLinks);
                     }
+
+                    adjustStat(STAT_NAME_AFTER_TRANSFORM_COUNT, transformedJson.size());
                     migrateEntities(transformedJson, state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
                 })
                 .sendWith(this);
@@ -906,8 +914,8 @@ public class MigrationTaskService extends StatefulService {
             List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
 
         if (json.isEmpty()) {
-            logInfo("No entities to migrate.");
-            patchToFinished(null);
+            // no doc to create in destination, move on to the next page
+            migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
             return;
         }
         if (state.migrationOptions.contains(MigrationOption.ALL_VERSIONS)) {

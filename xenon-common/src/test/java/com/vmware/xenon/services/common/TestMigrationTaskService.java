@@ -61,6 +61,7 @@ import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
+import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.MigrationTaskService.MigrationOption;
@@ -296,11 +297,11 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         }
     }
 
-    private State validMigrationState() throws Throwable {
+    private State validMigrationState() {
         return validMigrationState("");
     }
 
-    private State validMigrationState(String factory) throws Throwable {
+    private State validMigrationState(String factory) {
         State state = new State();
         state.destinationFactoryLink = factory;
         state.destinationNodeGroupReference
@@ -313,7 +314,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     }
 
 
-    private State validMigrationStateForCustomNodeGroup() throws Throwable {
+    private State validMigrationStateForCustomNodeGroup() {
         State state = new State();
         state.destinationFactoryLink = this.exampleWithCustomSelectorDestinationFactory.getPath();
         // intentionally use an observer node for the target. The migration service should retrieve
@@ -798,9 +799,8 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
             EnumSet<MigrationOption> migrationOptions, String expectedTransformedSuffix, boolean isVerifyMigration)
             throws Throwable {
         // start transformation service
-        URI u = UriUtils.buildUri(getDestinationHost(), transformPath);
-        Operation post = Operation.createPost(u);
         for (VerificationHost host : destinationHost.getInProcessHostMap().values()) {
+            Operation post = Operation.createPost(host, transformPath);
             host.startService(post, transformServiceClass.newInstance());
             host.waitForServiceAvailable(transformPath);
         }
@@ -809,48 +809,114 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         List<ExampleServiceState> states = createExampleDocuments(this.exampleSourceFactory, getSourceHost(),
                 this.serviceCount);
 
-
         // start migration
-        MigrationTaskService.State migrationState = validMigrationState(
-                ExampleService.FACTORY_LINK);
+        MigrationTaskService.State migrationState = validMigrationState(ExampleService.FACTORY_LINK);
         migrationState.transformationServiceLink = transformPath;
         migrationState.migrationOptions = migrationOptions;
 
-        TestContext ctx = testCreate(1);
-        String[] out = new String[1];
-        Operation op = Operation.createPost(this.destinationFactoryUri)
-                .setBody(migrationState)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.log("Post service error: %s", Utils.toString(e));
-                        ctx.failIteration(e);
-                        return;
-                    }
-                    out[0] = o.getBody(State.class).documentSelfLink;
-                    ctx.completeIteration();
-                });
-        getDestinationHost().send(op);
-        testWait(ctx);
+        Operation post = Operation.createPost(this.destinationFactoryUri).setBody(migrationState);
+        ServiceDocument taskState = this.sender.sendAndWait(post, ServiceDocument.class);
+        State finalState = waitForServiceCompletion(taskState.documentSelfLink, getDestinationHost());
+        assertEquals(TaskStage.FINISHED, finalState.taskInfo.stage);
 
-        State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
-        ServiceStats stats = getStats(out[0], getDestinationHost());
-        assertEquals(waitForServiceCompletion.taskInfo.stage, TaskStage.FINISHED);
 
         if (isVerifyMigration) {
-            Long processedDocuments = Long.valueOf((long) stats.entries
-                    .get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
-            assertEquals(Long.valueOf(this.serviceCount), processedDocuments);
+            ServiceStats stats = getStats(finalState.documentSelfLink, getDestinationHost());
+
+            long processedDocuments = (long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue;
+            assertEquals(this.serviceCount, processedDocuments);
 
             // check if object is in new host and transformed
-            List<URI> uris = getFullUri(getDestinationHost(), states);
+            List<Operation> ops = states.stream()
+                    .map(exampleState -> Operation.createGet(getDestinationHost(), exampleState.documentSelfLink))
+                    .collect(toList());
+            List<ExampleServiceState> createdDocs = this.sender.sendAndWait(ops, ExampleServiceState.class);
 
-            getDestinationHost().getServiceState(EnumSet.noneOf(TestProperty.class),
-                    ExampleServiceState.class, uris)
-                    .values()
-                    .stream()
-                    .forEach(state -> {
-                        assertTrue(state.name.endsWith(expectedTransformedSuffix));
-                    });
+            for (ExampleServiceState createdDoc : createdDocs) {
+                String message = String.format("expected doc name %s to be ended with %s", createdDoc.name, expectedTransformedSuffix);
+                assertTrue(message, createdDoc.name.endsWith(expectedTransformedSuffix));
+            }
+        }
+    }
+
+    @Test
+    public void transformationServiceWithEmptyTransformResultPages() {
+
+        // when transformation service returns empty destinationLinks, migration task needs to move on to process
+        // the next page.
+        // transform service drops many of docs and make sure there will be empty destinationLinks in transformation response.
+
+        // start transform service
+        String transformServicePath = "/transform";
+        for (VerificationHost host : destinationHost.getInProcessHostMap().values()) {
+            Operation post = Operation.createPost(host, transformServicePath);
+            host.startService(post, new DocumentDropTransformationService());
+            host.waitForServiceAvailable(transformServicePath);
+        }
+
+        Set<String> expectedMigratedDocLinks = new HashSet<>();
+        Set<String> expectedNonMigratedDocLinks = new HashSet<>();
+
+        // create services in source
+        // doc=3-97 will be dropped. So, expected 5 docs(0-2,98-99) to be migrated.
+        // since we limit pagesize=10, it will make sure there will be pages that
+        // have empty destinationLinks in transformation response.
+        List<Operation> posts = new ArrayList<>();
+        for (int i = 0; i < 100; i++) {
+            boolean expectedToBeMigrated = i < 3 || 97 < i;
+            ExampleServiceState state = new ExampleServiceState();
+            state.name = "example-" + i;
+            if (!expectedToBeMigrated) {
+                state.name += "-drop";
+            }
+            state.documentSelfLink = UriUtils.buildUriPath(ExampleService.FACTORY_LINK, state.name);
+
+            if (expectedToBeMigrated) {
+                expectedMigratedDocLinks.add(state.documentSelfLink);
+            } else {
+                expectedNonMigratedDocLinks.add(state.documentSelfLink);
+            }
+
+            Operation post = Operation.createPost(getSourceHost(), ExampleService.FACTORY_LINK).setBody(state);
+            posts.add(post);
+        }
+        this.sender.sendAndWait(posts);
+
+        // trigger migration with resultLimit=10 and transformServiceLink
+        MigrationTaskService.State migrationState = validMigrationState(ExampleService.FACTORY_LINK);
+        migrationState.querySpec = new QuerySpecification();
+        migrationState.querySpec.resultLimit = 10;
+        migrationState.migrationOptions = EnumSet.of(MigrationOption.USE_TRANSFORM_REQUEST);
+        migrationState.transformationServiceLink = transformServicePath;
+
+        Operation post = Operation.createPost(this.destinationFactoryUri).setBody(migrationState);
+        ServiceDocument taskState = this.sender.sendAndWait(post, ServiceDocument.class);
+        State finalState = waitForServiceCompletion(taskState.documentSelfLink, getDestinationHost());
+        assertEquals(TaskStage.FINISHED, finalState.taskInfo.stage);
+
+        // verify stats
+        ServiceStats stats = getStats(finalState.documentSelfLink, getDestinationHost());
+        long beforeTransformCount = (long) stats.entries.get(MigrationTaskService.STAT_NAME_BEFORE_TRANSFORM_COUNT).latestValue;
+        long afterTransformCount = (long) stats.entries.get(MigrationTaskService.STAT_NAME_AFTER_TRANSFORM_COUNT).latestValue;
+
+        assertEquals("before transform count", 100, beforeTransformCount);
+        assertEquals("after transform count", 5, afterTransformCount);
+
+        // verify all expected docs exists in destination host
+        List<Operation> expectedDocGets = expectedMigratedDocLinks.stream()
+                .map((servicePath) -> Operation.createGet(getDestinationHost(), servicePath))
+                .collect(toList());
+        this.sender.sendAndWait(expectedDocGets);
+
+        // verify all non migrated docs do NOT exist in destination service
+        List<Operation> nonExpectedDocGets = expectedNonMigratedDocLinks.stream()
+                .map((servicePath) -> Operation.createGet(getDestinationHost(), servicePath))
+                .collect(toList());
+        for (Operation get : nonExpectedDocGets) {
+            FailureResponse failureResponse = this.sender.sendAndWaitFailure(get);
+            int statusCode = failureResponse.op.getStatusCode();
+            String message = String.format("Expected %s not migrated on destination.", get.getUri());
+            assertEquals(message, Operation.STATUS_CODE_NOT_FOUND, statusCode);
         }
     }
 
@@ -975,15 +1041,34 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         }
     }
 
-    private State waitForServiceCompletion(String selfLink, VerificationHost host)
-            throws Throwable {
-        Set<TaskStage> finalStages = new HashSet<>(Arrays.asList(TaskStage.CANCELLED, TaskStage.FAILED,
-                TaskStage.FINISHED));
+    /**
+     * When given ExampleServiceState has name ending with "-drop", then mark the destinationLinks empty for that.
+     */
+    public static class DocumentDropTransformationService extends StatelessService {
+        @Override
+        public void handlePost(Operation postOperation) {
+
+            MigrationTaskService.TransformRequest request = postOperation.getBody(MigrationTaskService.TransformRequest.class);
+            ExampleServiceState state = Utils.fromJson(request.originalDocument, ExampleServiceState.class);
+
+            MigrationTaskService.TransformResponse response = new MigrationTaskService.TransformResponse();
+            response.destinationLinks = new HashMap<>();
+
+            // only add to response if name doesn't end with "-drop"
+            if (!state.name.endsWith("-drop")) {
+                response.destinationLinks.put(Utils.toJson(state), request.destinationLink);
+            }
+
+            postOperation.setBody(response).complete();
+        }
+    }
+
+    private State waitForServiceCompletion(String selfLink, VerificationHost host) {
+        Set<TaskStage> finalStages = EnumSet.of(TaskStage.CANCELLED, TaskStage.FAILED, TaskStage.FINISHED);
         return waitForServiceCompletion(selfLink, host, finalStages);
     }
 
-    private State waitForServiceCompletion(String selfLink, VerificationHost host, Set<TaskStage> finalStages)
-            throws Throwable {
+    private State waitForServiceCompletion(String selfLink, VerificationHost host, Set<TaskStage> finalStages) {
         URI uri = UriUtils.buildUri(host, selfLink);
         State[] currentState = new State[1];
         host.waitFor("waiting for MigrationService To Finish", () -> {
@@ -1240,7 +1325,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         }
     }
 
-    private ServiceStats getStats(String documentLink, VerificationHost host) throws Throwable {
+    private ServiceStats getStats(String documentLink, VerificationHost host) {
         Operation op = Operation.createGet(UriUtils.buildStatsUri(host, documentLink));
         return this.sender.sendAndWait(op, ServiceStats.class);
     }

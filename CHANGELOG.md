@@ -2,6 +2,9 @@
 
 ## 1.4.1-SNAPSHOT
 
+* Fix migration task bug that may cause data loss when combined with transformation service.
+  https://www.pivotaltracker.com/story/show/141885113
+
 * Extend per service config REST API to include the node selector path.
   Add ServiceConfiguration.peerNodeSelectorPath field, reflecting the value set
   on replicated services instances, through the existing Service.setPeerNodeSelectorPath()
