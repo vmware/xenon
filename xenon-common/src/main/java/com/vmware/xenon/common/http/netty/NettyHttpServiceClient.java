@@ -15,9 +15,7 @@ package com.vmware.xenon.common.http.netty;
 
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.ArrayList;
 import java.util.EnumSet;
-import java.util.List;
 import java.util.Map.Entry;
 import java.util.SortedMap;
 import java.util.concurrent.CancellationException;
@@ -409,7 +407,7 @@ public class NettyHttpServiceClient implements ServiceClient {
                         "Content-Length " + op.getContentLength() +
                         " is greater than max size allowed " + getRequestPayloadSizeLimit());
                 op.setBody(ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST));
-                op.fail(e);
+                fail(e, op, originalBody);
                 return;
             }
 
@@ -499,7 +497,9 @@ public class NettyHttpServiceClient implements ServiceClient {
             request.headers().set(HttpHeaderNames.CONTENT_LENGTH,
                     Long.toString(op.getContentLength()));
             request.headers().set(HttpHeaderNames.CONTENT_TYPE, op.getContentType());
-            request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
+            if (op.isKeepAlive()) {
+                request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
+            }
 
             if (!isXenonToXenon) {
                 if (op.getCookies() != null) {
@@ -567,14 +567,16 @@ public class NettyHttpServiceClient implements ServiceClient {
                 pool = this.sslChannelPool;
             }
 
+            ExecutorService exec = this.host != null ? this.host.getExecutor() : this.executor;
+
             if (nettyCtx.getProtocol() == NettyChannelContext.Protocol.HTTP2) {
                 // For HTTP/2, we multiple streams so we don't close the connection.
-                pool = this.http2ChannelPool;
-                pool.returnOrClose(nettyCtx, false);
+                exec.execute(() -> this.http2ChannelPool.returnOrClose(nettyCtx, false));
             } else {
                 // for HTTP/1.1, we close the stream to ensure we don't use a bad connection
                 op.setSocketContext(null);
-                pool.returnOrClose(nettyCtx, !op.isKeepAlive());
+                NettyChannelPool finalPool = pool;
+                exec.execute(() -> finalPool.returnOrClose(nettyCtx, !op.isKeepAlive()));
             }
         }
 
@@ -672,9 +674,10 @@ public class NettyHttpServiceClient implements ServiceClient {
         if (this.http2ChannelPool != null) {
             this.http2ChannelPool.handleMaintenance(Operation.createPost(op.getUri()));
         }
-        this.channelPool.handleMaintenance(op);
+        this.channelPool.handleMaintenance(Operation.createPost(op.getUri()));
 
         failExpiredRequests(now);
+        op.complete();
     }
 
     /**
@@ -689,7 +692,6 @@ public class NettyHttpServiceClient implements ServiceClient {
      * a complete() and non atomic roll back of the nested completions.
      */
     private void failExpiredRequests(long now) {
-        List<Operation> expired = null;
         if (this.pendingRequests.isEmpty()) {
             return;
         }
@@ -702,6 +704,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         // have different expirations. We limit the search so we don't take too much time when
         // millions of operations are pending
         final int searchLimit = 1000;
+        int expiredCount = 0;
         int i = 0;
         for (Operation o : this.pendingRequests.values()) {
             if (i++ >= searchLimit) {
@@ -711,27 +714,15 @@ public class NettyHttpServiceClient implements ServiceClient {
             if (exp > now) {
                 continue;
             }
-            if (o.getStatusCode() == Operation.STATUS_CODE_TIMEOUT) {
-                if (expired == null) {
-                    expired = new ArrayList<>();
-                }
-                expired.add(o);
-            } else {
-                // first pass, just mark as expired, but do not fail.
-                o.setStatusCode(Operation.STATUS_CODE_TIMEOUT);
-            }
+
+            o.fail(Operation.STATUS_CODE_TIMEOUT);
+            expiredCount++;
         }
 
-        if (expired == null) {
+        if (expiredCount == 0) {
             return;
         }
-
-        LOGGER.info("Failed expired operations, count: " + expired.size());
-
-        // second pass, fail operation already marked as expired
-        for (Operation o : expired) {
-            failWithTimeout(o, o.getBodyRaw());
-        }
+        LOGGER.info("Failed expired operations, count: " + expiredCount);
     }
 
     /**
@@ -840,6 +831,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         } else if (secureTagInfo != null) {
             tagInfo.inUseConnectionCount += secureTagInfo.inUseConnectionCount;
             tagInfo.pendingRequestCount += secureTagInfo.pendingRequestCount;
+            tagInfo.availableConnectionCount += secureTagInfo.availableConnectionCount;
         }
 
         return tagInfo;

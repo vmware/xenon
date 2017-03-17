@@ -1521,6 +1521,16 @@ public class TestNodeGroupService {
     @Test
     public void replicationWithQuorumAfterAbruptNodeStopMultiLocation()
             throws Throwable {
+        for (int i = 0; i < this.iterationCount; i++) {
+            this.tearDown();
+            this.setUp();
+            doReplicationWithQuorumAfterAbruptNodeStopMultiLocation();
+            this.host.log("Done with iteration %d", i);
+        }
+    }
+
+    private void doReplicationWithQuorumAfterAbruptNodeStopMultiLocation()
+            throws Throwable {
         // we need 6 nodes, 3 in each location
         this.nodeCount = 6;
 
