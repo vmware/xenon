@@ -65,6 +65,12 @@ public interface ServiceClient extends ServiceRequestSender {
     public static final String CONNECTION_TAG_REPLICATION = "xn-cnx-tag-replication";
 
     /**
+     * Well known connection tag used by node selector services for requests related to
+     * synchronization.
+     */
+    public static final String CONNECTION_TAG_SYNCHRONIZATION = "xn-cnx-tag-synch";
+
+    /**
      * Connection tag used by service host for peer to peer forwarding during load
      * balancing and node selection
      */
