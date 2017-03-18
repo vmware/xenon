@@ -30,6 +30,7 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Operation.OperationOption;
 import com.vmware.xenon.common.Service;
+import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocument.DocumentRelationship;
 import com.vmware.xenon.common.ServiceDocumentDescription;
@@ -141,6 +142,8 @@ public class NodeSelectorSynchronizationService extends StatelessService {
 
         Operation remoteGet = Operation.createGet(localQueryUri)
                 .setReferer(getUri())
+                .setConnectionSharing(true)
+                .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION)
                 .setExpiration(
                         Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
                 .setCompletion((o, e) -> {
@@ -400,6 +403,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
         Operation checkGet = Operation.createGet(UriUtils.buildUri(peerOp.getUri(), link))
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_FORWARDING)
                 .setConnectionSharing(true)
+                .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION)
                 .setExpiration(Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(2)))
                 .setCompletion((o, e) -> {
                     if (e == null) {
@@ -426,6 +430,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS));
 
         peerOp.toggleOption(OperationOption.CONNECTION_SHARING, true);
+        peerOp.setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION);
 
         // Mark it as replicated so the remote factories do not try to replicate it again
         peerOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED);

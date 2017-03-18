@@ -43,6 +43,10 @@ public interface NodeSelectorService extends Service {
             Utils.PROPERTY_NAME_PREFIX
                     + "NodeSelectorService.REPLICATION_TAG_CONNECTION_LIMIT", 32);
 
+    public static final int SYNCHRONIZATION_TAG_CONNECTION_LIMIT = Integer.getInteger(
+            Utils.PROPERTY_NAME_PREFIX
+                    + "NodeSelectorService.SYNCHRONIZATION_TAG_CONNECTION_LIMIT", 32);
+
     public static final int FORWARDING_TAG_CONNECTION_LIMIT = Integer.getInteger(
             Utils.PROPERTY_NAME_PREFIX
                     + "NodeSelectorService.FORWARDING_TAG_CONNECTION_LIMIT", 32);

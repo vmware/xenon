@@ -117,6 +117,10 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 NodeSelectorService.REPLICATION_TAG_CONNECTION_LIMIT);
 
         getHost().getClient().setConnectionLimitPerTag(
+                ServiceClient.CONNECTION_TAG_SYNCHRONIZATION,
+                NodeSelectorService.SYNCHRONIZATION_TAG_CONNECTION_LIMIT);
+
+        getHost().getClient().setConnectionLimitPerTag(
                 ServiceClient.CONNECTION_TAG_FORWARDING,
                 FORWARDING_TAG_CONNECTION_LIMIT);
 
