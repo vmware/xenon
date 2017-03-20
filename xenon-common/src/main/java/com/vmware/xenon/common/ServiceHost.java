@@ -1277,6 +1277,12 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private ServiceHost startImpl() throws Throwable {
+
+        // for restart, old managementService may exist.
+        if (this.managementService == null || this.managementService.getProcessingStage() == ProcessingStage.STOPPED) {
+            setManagementService(new ServiceHostManagementService());
+        }
+
         synchronized (this.state) {
             if (isStarted()) {
                 return this;
@@ -4336,6 +4342,13 @@ public class ServiceHost implements ServiceRequestSender {
         log(Level.INFO, "Waiting for DELETE from %d core services", coreServiceCount);
         this.coreServices.clear();
         waitForServiceStop(cLatch);
+
+        // stopping management service
+        Service managementService = getManagementService();
+        if (managementService != null && managementService.getSelfLink() != null) {
+            stopService(managementService);
+        }
+
         log(Level.INFO, "All core services stopped");
     }
 
