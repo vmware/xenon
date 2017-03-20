@@ -2769,6 +2769,23 @@ public class TestServiceHost {
         }
     }
 
+    @Test
+    public void restartAndVerifyManagementService() throws Throwable {
+        setUp(false);
+
+        // management service should be accessible
+        Operation get = Operation.createGet(this.host, ServiceUriPaths.CORE_MANAGEMENT);
+        this.host.getTestRequestSender().sendAndWait(get);
+
+        // restart
+        this.host.stop();
+        this.host.start();
+
+        // verify management service is accessible.
+        get = Operation.createGet(this.host, ServiceUriPaths.CORE_MANAGEMENT);
+        this.host.getTestRequestSender().sendAndWait(get);
+    }
+
     @After
     public void tearDown() throws IOException {
         LuceneDocumentIndexService.setIndexFileCountThresholdForWriterRefresh(
