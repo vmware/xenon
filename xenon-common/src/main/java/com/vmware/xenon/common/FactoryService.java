@@ -353,7 +353,7 @@ public abstract class FactoryService extends StatelessService {
             }
 
             String suffix = null;
-            if (o.isSynchronizeOwner()) {
+            if (o.isSynchronizeOwner() && initialState != null) {
                 // If it's a synchronization request, let's re-use the documentSelfLink.
                 suffix = initialState.documentSelfLink;
 
