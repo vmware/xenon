@@ -121,7 +121,6 @@ public class NettyChannelPool {
 
         // Available channels are for when we have an HTTP/1.1 connection
         public Queue<NettyChannelContext> availableChannels = new ConcurrentLinkedQueue<>();
-
         public List<NettyChannelContext> inUseChannels = new ArrayList<>();
         public Queue<Operation> pendingRequests = new ConcurrentLinkedQueue<>();
     }
@@ -136,6 +135,7 @@ public class NettyChannelPool {
     private ExecutorService nettyExecutorService;
     private ExecutorService executor;
     private EventLoopGroup eventGroup;
+    private String name = NettyChannelPool.class.getSimpleName();
     private String threadTag = NettyChannelPool.class.getSimpleName();
     private int threadCount;
     private boolean isHttp2Only = false;
@@ -151,6 +151,11 @@ public class NettyChannelPool {
     private int requestPayloadSizeLimit;
 
     public NettyChannelPool() {
+    }
+
+    public NettyChannelPool setName(String name) {
+        this.name = name;
+        return this;
     }
 
     public NettyChannelPool setThreadTag(String tag) {
@@ -487,7 +492,7 @@ public class NettyChannelPool {
             return;
         }
         Logger.getAnonymousLogger().info(
-                "replacing channel in bad state: " + badContext.toString());
+                "replacing channel in bad state: " + badContext.getKey());
         returnOrClose(badContext, true);
     }
 
@@ -559,7 +564,14 @@ public class NettyChannelPool {
             return false;
         }
         NettyChannelGroup group = this.channelGroups.get(context.getKey());
-        return group != null && group.inUseChannels.contains(context);
+        if (group == null) {
+            LOGGER.warning("Could not find group for " + context.getKey()
+                    + " in pool " + this.name);
+            return false;
+        }
+        synchronized (group) {
+            return group.inUseChannels.contains(context);
+        }
     }
 
     /**
@@ -585,7 +597,8 @@ public class NettyChannelPool {
 
         NettyChannelGroup group = this.channelGroups.get(context.getKey());
         if (group == null) {
-            LOGGER.warning("Cound not find group for " + context.getKey());
+            LOGGER.warning("Cound not find group for " + context.getKey()
+                    + " in pool " + this.name);
             context.close();
             return;
         }
@@ -656,6 +669,26 @@ public class NettyChannelPool {
         } else {
             handleHttp1Maintenance(now);
         }
+
+        try {
+            for (NettyChannelGroup channelGroup : this.channelGroups.values()) {
+                long pendingRequestCount;
+                long inUseChannelCount;
+                long availableChannelCount;
+
+                synchronized (channelGroup) {
+                    pendingRequestCount = channelGroup.pendingRequests.size();
+                    inUseChannelCount = channelGroup.inUseChannels.size();
+                    availableChannelCount = channelGroup.availableChannels.size();
+                }
+
+                LOGGER.info(String.format("Channel group %s: pending %d, in use %d, available %d",
+                        channelGroup.getKey(), pendingRequestCount, inUseChannelCount,
+                        availableChannelCount));
+            }
+        } catch (Throwable ignored) {
+        }
+
         op.complete();
     }
 
