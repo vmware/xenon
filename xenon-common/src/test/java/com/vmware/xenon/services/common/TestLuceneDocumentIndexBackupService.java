@@ -30,9 +30,9 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
@@ -41,8 +41,9 @@ import com.vmware.xenon.services.common.LuceneDocumentIndexService.BackupRespons
 import com.vmware.xenon.services.common.ServiceHostManagementService.BackupRequest;
 import com.vmware.xenon.services.common.ServiceHostManagementService.BackupType;
 import com.vmware.xenon.services.common.ServiceHostManagementService.RestoreRequest;
+import com.vmware.xenon.services.common.TestLuceneDocumentIndexService.InMemoryExampleService;
 
-public class TestLuceneDocumentIndexBackupService extends BasicReusableHostTestCase {
+public class TestLuceneDocumentIndexBackupService {
 
     @Rule
     public TemporaryFolder temporaryFolder = new TemporaryFolder();
@@ -54,8 +55,7 @@ public class TestLuceneDocumentIndexBackupService extends BasicReusableHostTestC
     @Before
     public void setup() throws Throwable {
         CommandLineArgumentParser.parseFromProperties(this);
-        this.host = VerificationHost.create(0);
-        this.host.start();
+        this.host = createVerificationHost();
     }
 
     @After
@@ -66,11 +66,28 @@ public class TestLuceneDocumentIndexBackupService extends BasicReusableHostTestC
         }
     }
 
+    private VerificationHost createVerificationHost() throws Throwable {
+        VerificationHost host = VerificationHost.create(0);
+        host.start();
+
+        // in-memory index related services
+        host.addPrivilegedService(InMemoryLuceneDocumentIndexService.class);
+
+        InMemoryLuceneDocumentIndexService inMemoryIndexService = new InMemoryLuceneDocumentIndexService();
+        LuceneDocumentIndexBackupService inMemoryIndexBackupService = new LuceneDocumentIndexBackupService(inMemoryIndexService);
+        Service inMemoryExampleFactory = InMemoryExampleService.createFactory();
+        host.startServiceAndWait(inMemoryIndexService, ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX, null);
+        host.startServiceAndWait(inMemoryIndexBackupService, ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX_BACKUP, null);
+        host.startServiceAndWait(inMemoryExampleFactory, InMemoryExampleService.FACTORY_LINK, null);
+
+        return host;
+    }
+
     @Test
-    public void testBackupAndRestoreWithDirectory() throws Throwable {
+    public void testBackupAndRestoreFromDirectory() throws Throwable {
         URI backupDirUri = this.temporaryFolder.newFolder("test-backup-dir").toURI();
 
-        List<ExampleServiceState> createdData = populateData();
+        List<ExampleServiceState> createdData = populateData(ExampleService.FACTORY_LINK);
 
         BackupRequest b = new BackupRequest();
         b.kind = BackupRequest.KIND;
@@ -82,8 +99,7 @@ public class TestLuceneDocumentIndexBackupService extends BasicReusableHostTestC
 
         // destroy and spin up new host
         this.host.tearDown();
-        this.host = VerificationHost.create(0);
-        this.host.start();
+        this.host = createVerificationHost();
 
         // restore
         RestoreRequest r = new RestoreRequest();
@@ -105,10 +121,43 @@ public class TestLuceneDocumentIndexBackupService extends BasicReusableHostTestC
     }
 
     @Test
-    public void testBackupAndRestoreWithZipFile() throws Throwable {
+    public void testBackupAndRestoreFromDirectoryToInMemoryIndex() throws Throwable {
+        URI backupDirUri = this.temporaryFolder.newFolder("test-backup-dir").toURI();
+
+        List<ExampleServiceState> createdData = populateData(InMemoryExampleService.FACTORY_LINK);
+
+        BackupRequest b = new BackupRequest();
+        b.kind = BackupRequest.KIND;
+        b.destination = backupDirUri;
+        b.backupType = BackupType.DIRECTORY;
+        b.documentBackUpServicePath = ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX_BACKUP;
+
+        Operation backupOp = Operation.createPatch(this.host, ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX_BACKUP).setBody(b);
+        this.host.getTestRequestSender().sendAndWait(backupOp, BackupResponse.class);
+
+        // destroy and spin up new host
+        this.host.tearDown();
+        this.host = createVerificationHost();
+
+        // restore
+        RestoreRequest r = new RestoreRequest();
+        r.kind = RestoreRequest.KIND;
+        r.destination = backupDirUri;
+
+        Operation restoreOp = Operation.createPatch(this.host, ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX_BACKUP).setBody(r);
+        this.host.getTestRequestSender().sendAndWait(restoreOp);
+        this.host.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(this.host, InMemoryExampleService.FACTORY_LINK));
+
+        // verify restored data exists
+        List<Operation> ops = createdData.stream().map(state -> Operation.createGet(this.host, state.documentSelfLink)).collect(toList());
+        this.host.getTestRequestSender().sendAndWait(ops);
+    }
+
+    @Test
+    public void testBackupAndRestoreFromZipFile() throws Throwable {
         URI backupUri = this.temporaryFolder.newFile("test-backup.zip").toURI();
 
-        List<ExampleServiceState> createdData = populateData();
+        List<ExampleServiceState> createdData = populateData(ExampleService.FACTORY_LINK);
 
         // default backup type is zip
         BackupRequest b = new BackupRequest();
@@ -121,8 +170,7 @@ public class TestLuceneDocumentIndexBackupService extends BasicReusableHostTestC
 
         // destroy and spin up new host
         this.host.tearDown();
-        this.host = VerificationHost.create(0);
-        this.host.start();
+        this.host = createVerificationHost();
 
         RestoreRequest r = new RestoreRequest();
         r.kind = RestoreRequest.KIND;
@@ -142,13 +190,47 @@ public class TestLuceneDocumentIndexBackupService extends BasicReusableHostTestC
         this.host.getTestRequestSender().sendAndWait(ops);
     }
 
-    private List<ExampleServiceState> populateData() {
+    @Test
+    public void testBackupAndRestoreFromZipFileToInMemoryIndex() throws Throwable {
+        URI backupUri = this.temporaryFolder.newFile("test-backup.zip").toURI();
+
+        List<ExampleServiceState> createdData = populateData(InMemoryExampleService.FACTORY_LINK);
+
+        // default backup type is zip
+        BackupRequest b = new BackupRequest();
+        b.kind = BackupRequest.KIND;
+        b.destination = backupUri;
+        b.documentBackUpServicePath = ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX_BACKUP;
+
+        // backup with zip
+        Operation backupOp = Operation.createPatch(this.host, ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX_BACKUP).setBody(b);
+        this.host.getTestRequestSender().sendAndWait(backupOp);
+
+        // destroy and spin up new host
+        this.host.tearDown();
+        this.host = createVerificationHost();
+
+        RestoreRequest r = new RestoreRequest();
+        r.kind = RestoreRequest.KIND;
+        r.destination = backupUri;
+
+        // restore
+        Operation restoreOp = Operation.createPatch(this.host, ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX_BACKUP).setBody(r);
+        this.host.getTestRequestSender().sendAndWait(restoreOp);
+        this.host.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(this.host, InMemoryExampleService.FACTORY_LINK));
+
+        // verify restored data exists
+        List<Operation> ops = createdData.stream().map(state -> Operation.createGet(this.host, state.documentSelfLink)).collect(toList());
+        this.host.getTestRequestSender().sendAndWait(ops);
+    }
+
+    private List<ExampleServiceState> populateData(String factoryLink) {
         List<Operation> ops = new ArrayList<>();
         for (int i = 0; i < this.count; i++) {
             ExampleServiceState state = new ExampleServiceState();
             state.name = "foo-" + i;
             state.documentSelfLink = state.name;
-            Operation post = Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(state);
+            Operation post = Operation.createPost(this.host, factoryLink).setBody(state);
             ops.add(post);
         }
         return this.host.getTestRequestSender().sendAndWait(ops, ExampleServiceState.class);
