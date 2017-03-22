@@ -443,6 +443,7 @@ class ServiceResourceTracker {
     public void performMaintenance(long now, long deadlineMicros) {
         updateStats(now);
         ServiceHostState hostState = this.host.getStateNoCloning();
+        int stoppedServiceCount = 0;
         int pauseServiceCount = 0;
         long memoryLimitHighMB = this.host.getServiceMemoryLimitMB(ServiceHost.ROOT_PATH,
                 MemoryLimitType.HIGH_WATERMARK);
@@ -468,6 +469,7 @@ class ServiceResourceTracker {
                     // we do not clear cache or stop in memory services but we do check expiration
                     if (s.documentExpirationTimeMicros > 0
                             && s.documentExpirationTimeMicros < now) {
+                        stoppedServiceCount++;
                         stopService(service, true, null);
                     }
                     continue;
@@ -544,6 +546,7 @@ class ServiceResourceTracker {
                 // instead of pausing it, simply stop them when the service is idle.
                 // if the on-demand-load service does have subscribers/stats, then continue with
                 // pausing so that we don't lose any "soft" state
+                stoppedServiceCount++;
                 stopService(service, false, null);
                 continue;
             }
@@ -560,6 +563,7 @@ class ServiceResourceTracker {
                 clearCachedServiceState(service, null, null);
                 // and check again if ON_DEMAND_LOAD with no subscriptions, then we need to stop
                 if (!hasSoftState) {
+                    stoppedServiceCount++;
                     stopService(service, false, null);
                     continue;
                 }
@@ -585,6 +589,11 @@ class ServiceResourceTracker {
             synchronized (hostState) {
                 hostState.serviceCount = this.attachedServices.size();
             }
+        }
+
+        if (stoppedServiceCount != 0) {
+            this.host.log(Level.INFO, "Sent stop to %d services (deadline %d)",
+                    stoppedServiceCount, deadlineMicros);
         }
 
         if (pauseServiceCount == 0) {
