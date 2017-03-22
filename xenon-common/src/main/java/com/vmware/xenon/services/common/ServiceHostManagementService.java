@@ -163,6 +163,11 @@ public class ServiceHostManagementService extends StatefulService {
 
         /** Request kind **/
         public String kind;
+
+        /**
+         * Link to the document index backup/restore service
+         */
+        public String backupServiceLink = ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP;
     }
 
     /**
@@ -190,6 +195,11 @@ public class ServiceHostManagementService extends StatefulService {
 
         /** Recover the data to the specified point in time */
         public Long timeSnapshotBoundaryMicros;
+
+        /**
+         * Link to the document index backup/restore service
+         */
+        public String backupServiceLink = ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP;
     }
 
     @Override
@@ -334,7 +344,7 @@ public class ServiceHostManagementService extends StatefulService {
         }
 
         // delegate backup to backup service
-        Operation patch = Operation.createPatch(this, ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP)
+        Operation patch = Operation.createPatch(this, req.backupServiceLink)
                 .transferRequestHeadersFrom(op)
                 .transferRefererFrom(op)
                 .setExpiration(op.getExpirationMicrosUtc())
@@ -356,7 +366,7 @@ public class ServiceHostManagementService extends StatefulService {
     private void handleRestoreRequest(RestoreRequest req, Operation op) {
 
         // delegate restore to backup service
-        Operation patch = Operation.createPatch(this, ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP)
+        Operation patch = Operation.createPatch(this, req.backupServiceLink)
                 .transferRequestHeadersFrom(op)
                 .transferRefererFrom(op)
                 .setExpiration(op.getExpirationMicrosUtc())

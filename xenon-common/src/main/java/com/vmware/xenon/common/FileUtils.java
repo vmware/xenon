@@ -41,7 +41,6 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.LinkedList;
@@ -896,11 +895,4 @@ public final class FileUtils {
         return properties;
     }
 
-    public static List<URI> filesToUris(String parentDir, Collection<String> files) {
-        ArrayList<URI> fileUris = new ArrayList<>();
-        for (String f : files) {
-            fileUris.add(new File(parentDir, f).toURI());
-        }
-        return fileUris;
-    }
 }
