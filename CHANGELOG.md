@@ -2,7 +2,14 @@
 
 ## 1.4.2-SNAPSHOT
 
+
 * Xenon UI: Introduce pagination on factory services and query results, which allows the UI to handle large amount of documents.
+
+* Incremental backup of document index.
+  "/core/management" endpoint now accepts backup request(PATCH) with local directory specifying "backupType=DIRECTORY".
+  When destination directory contains previous snapshot, it will perform incremental backup.
+  See the detail on wiki page: https://github.com/vmware/xenon/wiki/Backup-Restore
+
 
 ## 1.4.1
 
