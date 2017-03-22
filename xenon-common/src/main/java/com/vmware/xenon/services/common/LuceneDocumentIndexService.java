@@ -561,6 +561,12 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     public IndexWriter createWriter(File directory, boolean doUpgrade) throws Exception {
+        Directory luceneDirectory = directory != null ? MMapDirectory.open(directory.toPath())
+                : new RAMDirectory();
+        return createWriterWithLuceneDirectory(luceneDirectory, doUpgrade);
+    }
+
+    IndexWriter createWriterWithLuceneDirectory(Directory dir, boolean doUpgrade) throws Exception {
         Analyzer analyzer = new SimpleAnalyzer();
         IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
         Long totalMBs = getHost().getServiceMemoryLimitMB(getSelfLink(), MemoryLimitType.EXACT);
@@ -572,8 +578,6 @@ public class LuceneDocumentIndexService extends StatelessService {
             this.updateMapMemoryLimitMB = Math.max(1, totalMBs / 100);
         }
 
-        Directory dir = directory != null ? MMapDirectory.open(directory.toPath())
-                : new RAMDirectory();
 
         // Upgrade the index in place if necessary.
         if (doUpgrade && DirectoryReader.indexExists(dir)) {
