@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.services.common;
 
+import static java.util.stream.Collectors.toList;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -22,8 +24,10 @@ import static com.vmware.xenon.services.common.ServiceHostManagementService.STAT
 import java.io.File;
 import java.net.URI;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
@@ -42,12 +46,13 @@ import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
-import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.TestRequestSender;
+import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.LocalFileService.LocalFileServiceState;
+import com.vmware.xenon.services.common.ServiceHostManagementService.BackupType;
 
 public class TestServiceHostManagementService extends BasicTestCase {
 
@@ -200,7 +205,7 @@ public class TestServiceHostManagementService extends BasicTestCase {
     @Test
     public void testBackupAndRestoreWithLocalFile() throws Throwable {
 
-        File tmpFile = this.tempDir.newFile();
+        File tmpFile = this.tempDir.newFile("backup.zip");
         URI localFileUri = tmpFile.toURI();
 
         // Post some documents to populate the index.
@@ -215,25 +220,6 @@ public class TestServiceHostManagementService extends BasicTestCase {
         URI backupOpUri = UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK);
         Operation backupOp = Operation.createPatch(backupOpUri).setBody(backupRequest);
         this.host.getTestRequestSender().sendAndWait(backupOp);
-
-        // verify no LocalFileService has left after backup request has finished
-        TestContext testContext = this.host.testCreate(1);
-        Operation dummyOp = Operation.createGet(this.host, "")
-                .setCompletion((op, ex) -> {
-                    if (ex != null) {
-                        String msg = "Failed to check service existence. %s" + Utils.toString(ex);
-                        testContext.fail(new RuntimeException(msg, ex));
-                    }
-                    ServiceDocumentQueryResult result = op.getBody(ServiceDocumentQueryResult.class);
-                    if (!result.documentLinks.isEmpty()) {
-                        String msg = "LocalFileService still exist after backup. path=" + result.documentLinks;
-                        testContext.fail(new RuntimeException(msg));
-                    }
-                    testContext.complete();
-                });
-        String servicePath = UriUtils.buildUriPath(LocalFileService.SERVICE_PREFIX, UriUtils.URI_WILDCARD_CHAR);
-        this.host.queryServiceUris(servicePath, dummyOp);
-        testContext.await();
 
         this.host.tearDown();
 
@@ -273,6 +259,138 @@ public class TestServiceHostManagementService extends BasicTestCase {
             assertEquals(in.counter, testState.counter);
         }
     }
+
+    @Test
+    public void testBackupAndRestoreWithLocalDirectoryIncremental() throws Throwable {
+
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+        File tmpDir = this.tempDir.newFolder("backup");
+        URI localDirUri = tmpDir.toURI();
+
+        // Post some documents to populate the index.
+        List<Operation> ops = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            ExampleServiceState state = new ExampleServiceState();
+            state.name = "foo-" + i;
+            state.documentSelfLink = state.name;
+            Operation post = Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(state);
+            ops.add(post);
+        }
+        List<ExampleServiceState> initialStates = sender.sendAndWait(ops, ExampleServiceState.class);
+
+
+        // specify local dir to the destination
+        ServiceHostManagementService.BackupRequest backupRequest = new ServiceHostManagementService.BackupRequest();
+        backupRequest.destination = localDirUri;
+        backupRequest.kind = ServiceHostManagementService.BackupRequest.KIND;
+        backupRequest.backupType = BackupType.DIRECTORY;
+
+        // trigger backup
+        Operation backupOp = Operation.createPatch(this.host, ServiceHostManagementService.SELF_LINK).setBody(backupRequest);
+        sender.sendAndWait(backupOp);
+
+        // verify backup directory has populated
+        String[] backupFiles = tmpDir.list();
+        assertNotNull("backup directory must be populated.", backupFiles);
+        assertTrue("backup directory must be populated.", backupFiles.length != 0);
+
+        this.host.log("backup directory: %s (%d)", tmpDir.toString(), backupFiles.length);
+
+        // destroy current host and spin up new host
+        this.host.tearDown();
+        this.host = VerificationHost.create(0);
+        sender = this.host.getTestRequestSender();
+        this.host.start();
+
+        // restore request with directory
+        ServiceHostManagementService.RestoreRequest restoreRequest = new ServiceHostManagementService.RestoreRequest();
+        restoreRequest.destination = localDirUri;
+        restoreRequest.kind = ServiceHostManagementService.RestoreRequest.KIND;
+
+        // perform restore
+        Operation restoreOp = Operation.createPatch(this.host, ServiceHostManagementService.SELF_LINK).setBody(restoreRequest);
+        sender.sendAndWait(restoreOp);
+
+        // restart
+        restartHostAndWaitAvailable();
+        sender = this.host.getTestRequestSender();
+
+
+        // verify existence of initial data
+        ops = initialStates.stream().map(state -> Operation.createGet(this.host, state.documentSelfLink)).collect(toList());
+        sender.sendAndWait(ops);
+
+
+        // delete first half of initial data
+        ops = initialStates.subList(0, 10).stream().map(state -> Operation.createDelete(this.host, state.documentSelfLink)).collect(toList());
+        sender.sendAndWait(ops);
+
+        // update doc 10-15
+        ops = initialStates.subList(10, 15).stream().map(state -> {
+            ExampleServiceState newState = new ExampleServiceState();
+            newState.name = state.name + "-patched";
+            return Operation.createPatch(this.host, state.documentSelfLink).setBody(newState);
+        }).collect(toList());
+        sender.sendAndWait(ops);
+
+        // create new set of data
+        ops = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            ExampleServiceState state = new ExampleServiceState();
+            state.name = "foo-new-" + i;
+            state.documentSelfLink = state.name;
+            Operation post = Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(state);
+            ops.add(post);
+        }
+        List<ExampleServiceState> newData = sender.sendAndWait(ops, ExampleServiceState.class);
+
+
+        // trigger backup (incremental)
+        backupOp = Operation.createPatch(this.host, ServiceHostManagementService.SELF_LINK).setBody(backupRequest);
+        sender.sendAndWait(backupOp);
+
+        // destroy current node and spin up new one
+        this.host.tearDown();
+        this.host = VerificationHost.create(0);
+        sender = this.host.getTestRequestSender();
+        this.host.start();
+
+        // perform restore
+        restoreOp = Operation.createPatch(this.host, ServiceHostManagementService.SELF_LINK).setBody(restoreRequest);
+        sender.sendAndWait(restoreOp);
+
+        restartHostAndWaitAvailable();
+        sender = this.host.getTestRequestSender();
+
+        // verify initial data: doc 0-9 deleted, 10-14 updated, 15-20 exists
+        ops = initialStates.subList(0, 10).stream().map(state -> Operation.createGet(this.host, state.documentSelfLink)).collect(toList());
+        for (Operation op : ops) {
+            FailureResponse failureResponse = sender.sendAndWaitFailure(op);
+            assertEquals(Operation.STATUS_CODE_NOT_FOUND, failureResponse.op.getStatusCode());
+        }
+
+        ops = initialStates.subList(10, 20).stream().map(state -> Operation.createGet(this.host, state.documentSelfLink)).collect(toList());
+        List<ExampleServiceState> states = sender.sendAndWait(ops, ExampleServiceState.class);
+        for (int i = 0; i < 5; i++) {
+            ExampleServiceState state = states.get(i);
+            assertTrue("doc should be updated: " + state.documentSelfLink, state.name.endsWith("-patched"));
+        }
+
+
+        // verify new data exists
+        ops = newData.stream().map(state -> Operation.createGet(this.host, state.documentSelfLink)).collect(toList());
+        sender.sendAndWait(ops);
+
+    }
+
+    private void restartHostAndWaitAvailable() throws Throwable {
+        this.host.stop();
+        this.host.setPort(0);
+        this.host.start();
+        this.host.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+    }
+
 
     private Map<URI, ExampleServiceState> populateExampleServices(int serviceCount) {
         // Post some documents to populate the index.

@@ -31,6 +31,15 @@
 * Xenon UI: Introduce pagination on factory services and query results,
   which allows the UI to handle large amount of documents.
 
+* Incremental backup of document index.
+  "/core/management" endpoint now accepts backup request(PATCH) with local directory specifying "backupType=DIRECTORY".
+  When destination directory contains previous snapshot, it will perform incremental backup.
+  See the detail on wiki page: https://github.com/vmware/xenon/wiki/Backup-Restore
+
+  Using backup/restore API on LuceneDocumentIndexService directly is deprecated.
+  API on ServiceHostManagementService must be used.
+
+
 ## 1.4.1
 
 * Fix migration task bug that may cause data loss when combined with transformation service.
