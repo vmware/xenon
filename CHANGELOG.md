@@ -39,6 +39,14 @@
   If application needs "System.exit" to be called at shutdown, it is now required to explicitly call
   "setProcessOwner(true)" in application code.
 
+* Incremental backup of document index.
+  "/core/management" endpoint now accepts backup request(PATCH) with local directory specifying "backupType=DIRECTORY".
+  When destination directory contains previous snapshot, it will perform incremental backup.
+  See the detail on wiki page: https://github.com/vmware/xenon/wiki/Backup-Restore
+
+  Using backup/restore API on LuceneDocumentIndexService directly is deprecated.
+  API on ServiceHostManagementService must be used.
+
 
 ## 1.4.1
 

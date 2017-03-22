@@ -13,14 +13,9 @@
 
 package com.vmware.xenon.services.common;
 
-import java.io.File;
-import java.io.IOException;
 import java.net.URI;
-import java.nio.file.StandardOpenOption;
-import java.util.EnumSet;
 import java.util.logging.Level;
 
-import com.vmware.xenon.common.FileUtils;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
@@ -28,7 +23,6 @@ import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
-import com.vmware.xenon.services.common.LocalFileService.LocalFileServiceState;
 
 /**
  * Provides host information and allows for host configuration. It can also be used to determine
@@ -122,6 +116,26 @@ public class ServiceHostManagementService extends StatefulService {
         public String kind;
     }
 
+    public enum BackupType {
+
+        /**
+         * Create a zipped index snapshot file to specified local file.
+         * If destination file already exists, it will be overridden.
+         */
+        ZIP,
+
+        /**
+         * Create index snapshot(consists of multiple files) to the specified local directory.
+         * If previous snapshot exists in destination directory, incremental backup will be performed.
+         */
+        DIRECTORY,
+
+        /**
+         * Upload zipped index snapshot to specified http/https destination
+         */
+        STREAM
+    }
+
     /**
      * Request to snapshot the index, create an archive of it, and upload it to the given URL with the given
      * credentials.
@@ -135,12 +149,17 @@ public class ServiceHostManagementService extends StatefulService {
         /**
          * Where the file should go
          *
-         * Supported UIR scheme: http, https, file with local file
+         * Supported URI scheme: http, https, file with local file or directory
          * When http/https is specified, destination is expected to accept put request with range header.
          *
          * @see LocalFileService
          **/
         public URI destination;
+
+        /**
+         * Default is set to zip
+         */
+        public BackupType backupType = BackupType.ZIP;
 
         /** Request kind **/
         public String kind;
@@ -159,7 +178,7 @@ public class ServiceHostManagementService extends StatefulService {
         /**
          * Where the file to download exists
          *
-         * Supported UIR scheme: http, https, file with local file
+         * Supported URI scheme: http, https, file with local file or directory
          * When http/https scheme is specified, destination is expected to accept get with range header.
          *
          * @see LocalFileService
@@ -305,174 +324,55 @@ public class ServiceHostManagementService extends StatefulService {
     }
 
     private void handleBackupRequest(BackupRequest req, Operation op) {
-        URI indexServiceUri = UriUtils
-                .buildUri(this.getHost(), ServiceUriPaths.CORE_DOCUMENT_INDEX);
 
-        // when local file is specified to the destination, create a LocalFileService and make it to the destination
-        boolean createLocalFileService = isLocalFileUri(req.destination);
-        URI backupServiceUri = createLocalFileService ? createLocalFileServiceUri() : req.destination;
-
-        LuceneDocumentIndexService.BackupRequest luceneBackup = new LuceneDocumentIndexService.BackupRequest();
-        luceneBackup.documentKind = LuceneDocumentIndexService.BackupRequest.KIND;
-
-        // Lucene gave us a zip file.  Now upload it.
-        CompletionHandler c = (o, e) -> {
-            if (e != null) {
-                op.fail(e);
-                return;
+        // when http/https is specified as destination, appropriately update backupType since old code may not set it.
+        if (req.destination != null) {
+            String scheme = req.destination.getScheme();
+            if (UriUtils.HTTP_SCHEME.equals(scheme) || UriUtils.HTTPS_SCHEME.equals(scheme)) {
+                req.backupType = BackupType.STREAM;
             }
+        }
 
-            // upload the result.
-            LuceneDocumentIndexService.BackupResponse r = o
-                    .getBody(LuceneDocumentIndexService.BackupResponse.class);
-
-            if (createLocalFileService) {
-                // delete local file service when finished
-                op.nestCompletion((ox, ex) -> {
-                    Operation.createDelete(backupServiceUri)
-                            .setCompletion((deleteOp, deleteOx) -> {
-                                if (deleteOx != null) {
-                                    logInfo("Failed to delete local file service %s for backup. %s",
-                                            backupServiceUri, Utils.toString(deleteOx));
-                                    // we will not fail entire backup operation if deletion of local file failed
-                                }
-                                op.complete();
-                            })
-                            .sendWith(this);
-                });
-            }
-
-            op.nestCompletion((ox, ex) -> {
-                if (ex != null) {
-                    op.fail(ex);
-                    return;
-                }
-                File f = new File(r.backupFile);
-                if (!f.delete()) {
-                    ox.fail(new IllegalStateException("failed to delete backup file"
-                            + r.backupFile.toString()));
-                }
-                ox.complete();
-            });
-
-            try {
-                uploadFile(op, r.backupFile, backupServiceUri);
-            } catch (Exception ex) {
-                op.fail(ex);
-            }
-        };
-
-        Operation initialPost = Operation.createPost(getHost(), backupServiceUri.getPath())
+        // delegate backup to backup service
+        Operation patch = Operation.createPatch(this, ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP)
+                .transferRequestHeadersFrom(op)
+                .transferRefererFrom(op)
+                .setExpiration(op.getExpirationMicrosUtc())
+                .setBody(req)
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         op.fail(e);
                         return;
                     }
-                    sendRequest(Operation.createPatch(indexServiceUri).setBody(luceneBackup).setCompletion(c));
+                    op.transferResponseHeadersFrom(o);
+                    op.setBodyNoCloning(o.getBodyRaw());
+                    op.complete();
                 });
 
-        if (createLocalFileService) {
-            LocalFileServiceState body = new LocalFileServiceState();
-            body.fileOptions = EnumSet.of(StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-            body.localFileUri = req.destination;
-            body.documentSelfLink = UriUtils.buildUriPath(LocalFileService.SERVICE_PREFIX, getHost().nextUUID());
-
-            initialPost.setBody(body);
-
-            getHost().startService(initialPost, new LocalFileService());
-        } else {
-            // skip LocalFileService creation
-            initialPost.complete();
-        }
+        sendRequest(patch);
 
     }
 
-    private boolean isLocalFileUri(URI uri) {
-        return UriUtils.FILE_SCHEME.equals(uri.getScheme());
-    }
+    private void handleRestoreRequest(RestoreRequest req, Operation op) {
 
-    private URI createLocalFileServiceUri() {
-        return UriUtils.buildUri(getHost().getUri(), LocalFileService.SERVICE_PREFIX, getHost().nextUUID());
-    }
-
-    private void uploadFile(Operation op, URI file, URI destination) throws Exception {
-        File f = new File(file);
-
-        Operation post = Operation.createPost(destination)
-                .transferRefererFrom(op).setCompletion((o, e) -> {
+        // delegate restore to backup service
+        Operation patch = Operation.createPatch(this, ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP)
+                .transferRequestHeadersFrom(op)
+                .transferRefererFrom(op)
+                .setExpiration(op.getExpirationMicrosUtc())
+                .setBody(req)
+                .setCompletion((o, e) -> {
                     if (e != null) {
                         op.fail(e);
                         return;
                     }
+                    op.transferResponseHeadersFrom(o);
+                    op.setBodyNoCloning(o.getBodyRaw());
                     op.complete();
                 });
-        FileUtils.putFile(this.getHost().getClient(), post, f);
-    }
 
-    private void handleRestoreRequest(RestoreRequest req, Operation op) {
-        URI indexServiceUri = UriUtils
-                .buildUri(this.getHost(), ServiceUriPaths.CORE_DOCUMENT_INDEX);
+        sendRequest(patch);
 
-        boolean isLocalRestoreFile = isLocalFileUri(req.destination);
-
-        try {
-
-            File fileToDownload;
-            if (isLocalRestoreFile) {
-                fileToDownload = new File(req.destination);
-            } else {
-                fileToDownload = File.createTempFile("restore-" + Utils.getNowMicrosUtc(), ".zip");
-            }
-
-            // download complete.  now restore the zip
-            CompletionHandler c = (o, e) -> {
-                if (e != null) {
-                    op.fail(e);
-                    return;
-                }
-
-                LuceneDocumentIndexService.RestoreRequest luceneRestore = new LuceneDocumentIndexService.RestoreRequest();
-                luceneRestore.documentKind = LuceneDocumentIndexService.RestoreRequest.KIND;
-                luceneRestore.backupFile = fileToDownload.toURI();
-                luceneRestore.timeSnapshotBoundaryMicros = req.timeSnapshotBoundaryMicros;
-
-                op.nestCompletion((ox, ex) -> {
-                    if (ex != null) {
-                        op.fail(ex);
-                        return;
-                    }
-                    File f = new File(luceneRestore.backupFile);
-                    if (!f.delete()) {
-                        ox.fail(new IllegalStateException("failed to delete backup file"
-                                + luceneRestore.backupFile.toString()));
-                    }
-
-                    ox.complete();
-                });
-
-                // restore the downloaded zip.
-                sendRequest(Operation.createPatch(indexServiceUri).setBody(luceneRestore)
-                        .setCompletion((ox, ex) -> {
-                            if (ex != null) {
-                                op.fail(ex);
-                                return;
-                            }
-                            op.complete();
-                        }));
-            };
-
-            Operation downloadFileOp = Operation.createGet(req.destination).transferRefererFrom(op).setCompletion(c);
-
-            if (isLocalRestoreFile) {
-                // skip download
-                downloadFileOp.complete();
-            } else {
-                FileUtils.getFile(this.getHost().getClient(), downloadFileOp, fileToDownload);
-            }
-
-        } catch (IOException e) {
-            op.fail(e);
-        }
     }
 
 }

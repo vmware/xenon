@@ -100,6 +100,7 @@ import com.vmware.xenon.services.common.FileContentService;
 import com.vmware.xenon.services.common.GraphQueryTaskService;
 import com.vmware.xenon.services.common.GuestUserService;
 import com.vmware.xenon.services.common.LocalQueryTaskFactoryService;
+import com.vmware.xenon.services.common.LuceneDocumentIndexBackupService;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService;
 import com.vmware.xenon.services.common.NodeGroupFactoryService;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
@@ -1467,13 +1468,15 @@ public class ServiceHost implements ServiceRequestSender {
         if (this.documentIndexService != null) {
             addPrivilegedService(this.documentIndexService.getClass());
             if (this.documentIndexService instanceof LuceneDocumentIndexService) {
-                Service[] queryServiceArray = new Service[] {
-                        this.documentIndexService,
+                LuceneDocumentIndexService luceneDocumentIndexService = (LuceneDocumentIndexService)this.documentIndexService;
+                Service[] queryServiceArray = new Service[]{
+                        luceneDocumentIndexService,
                         new ServiceContextIndexService(),
+                        new LuceneDocumentIndexBackupService(luceneDocumentIndexService),
                         new QueryTaskFactoryService(),
                         new LocalQueryTaskFactoryService(),
                         TaskFactoryService.create(GraphQueryTaskService.class),
-                        TaskFactoryService.create(SynchronizationTaskService.class) };
+                        TaskFactoryService.create(SynchronizationTaskService.class)};
                 startCoreServicesSynchronously(queryServiceArray);
             }
         }

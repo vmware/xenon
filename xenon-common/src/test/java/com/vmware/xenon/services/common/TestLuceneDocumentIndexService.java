@@ -87,6 +87,7 @@ import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
+import com.vmware.xenon.services.common.LuceneDocumentIndexService.BackupResponse;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService.PaginatedSearcherInfo;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
@@ -2961,12 +2962,12 @@ public class TestLuceneDocumentIndexService {
     @Test
     public void testBackupAndRestoreFromZipFile() throws Throwable {
         setUpHost(false);
+
         LuceneDocumentIndexService.BackupRequest b = new LuceneDocumentIndexService.BackupRequest();
         b.documentKind = LuceneDocumentIndexService.BackupRequest.KIND;
 
         int count = 1000;
-        URI factoryUri = UriUtils.buildUri(this.host,
-                ExampleService.FACTORY_LINK);
+        URI factoryUri = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK);
 
         Map<URI, ExampleServiceState> exampleStates = this.host.doFactoryChildServiceStart(null,
                 count,
@@ -2977,48 +2978,19 @@ public class TestLuceneDocumentIndexService {
                     o.setBody(s);
                 }, factoryUri);
 
-        final URI[] backupFile = { null };
-        this.host.testStart(1);
-        this.host
-                .send(Operation
-                        .createPatch(
-                                UriUtils.buildUri(this.host, ServiceUriPaths.CORE_DOCUMENT_INDEX))
-                        .setBody(b)
-                        .setCompletion(
-                                (o, e) -> {
-                                    if (e != null) {
-                                        this.host.failIteration(e);
-                                        return;
-                                    }
+        Operation backupOp = Operation.createPatch(UriUtils.buildUri(this.host, ServiceUriPaths.CORE_DOCUMENT_INDEX))
+                .setBody(b);
 
-                                    LuceneDocumentIndexService.BackupResponse rsp = o
-                                            .getBody(LuceneDocumentIndexService.BackupResponse
-                                                    .class);
-                                    backupFile[0] = rsp.backupFile;
-                                    if (rsp.backupFile == null) {
-                                        this.host.failIteration(new IllegalStateException(
-                                                "no backup file"));
-                                    }
-                                    File f = new File(rsp.backupFile);
-
-                                    if (!f.isFile()) {
-                                        this.host.failIteration(new IllegalArgumentException(
-                                                "not file"));
-                                    }
-                                    this.host.completeIteration();
-                                }));
-        this.host.testWait();
+        TestRequestSender sender = new TestRequestSender(this.host);
+        BackupResponse backupResponse = sender.sendAndWait(backupOp, BackupResponse.class);
 
         LuceneDocumentIndexService.RestoreRequest r = new LuceneDocumentIndexService.RestoreRequest();
         r.documentKind = LuceneDocumentIndexService.RestoreRequest.KIND;
-        r.backupFile = backupFile[0];
+        r.backupFile = backupResponse.backupFile;
 
-        this.host.testStart(1);
-        this.host.send(Operation
-                .createPatch(UriUtils.buildUri(this.host, ServiceUriPaths.CORE_DOCUMENT_INDEX))
-                .setBody(r)
-                .setCompletion(this.host.getCompletion()));
-        this.host.testWait();
+        Operation restoreOp = Operation.createPatch(UriUtils.buildUri(this.host, ServiceUriPaths.CORE_DOCUMENT_INDEX))
+                .setBody(r);
+        sender.sendAndWait(restoreOp);
 
         // Check our documents are still there
         ServiceDocumentQueryResult queryResult = this.host
