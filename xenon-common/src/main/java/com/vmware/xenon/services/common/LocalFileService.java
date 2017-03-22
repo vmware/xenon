@@ -129,8 +129,8 @@ public class LocalFileService extends StatefulService {
                 public void completed(Integer bytesWritten, Operation op) {
                     try {
                         channel.close();
-                        logInfo("%s complete (bytes:%d md5:%s)",
-                                path, bytesWritten, FileUtils.md5sum(path.toFile()));
+                        logInfo("%s complete (bytes:%d range:%s-%s md5:%s)",
+                                path, bytesWritten, r.start, r.end, FileUtils.md5sum(path.toFile()));
                     } catch (Exception e) {
                         put.fail(e);
                         return;
