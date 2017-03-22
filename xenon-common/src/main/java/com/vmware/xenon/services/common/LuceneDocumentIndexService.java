@@ -46,13 +46,11 @@ import java.util.stream.Stream;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.IndexCommit;
 import org.apache.lucene.index.IndexUpgrader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -141,7 +139,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private static final String DOCUMENTS_WITHOUT_RESULTS = "DocumentsWithoutResults";
 
-    private String indexDirectory;
+    protected String indexDirectory;
 
     private static int expiredDocumentSearchThreshold = 1000;
 
@@ -366,8 +364,25 @@ public class LuceneDocumentIndexService extends StatelessService {
         public IndexSearcher searcher;
     }
 
+    public enum BackupType {
+
+        /**
+         * Generate lucene index snapshot as a zip file to a local file specified in destination.
+         */
+        ZIP,
+
+        /**
+         * Generate lucene index snapshot to a local directory specified in destination.
+         * If destination directory already contains previous snapshot, it will perform incremental backup.
+         */
+        INCREMENTAL
+    }
+
     public static class BackupRequest extends ServiceDocument {
         static final String KIND = Utils.buildKind(BackupRequest.class);
+        public URI destination;
+        // default is zip
+        public BackupType type = BackupType.ZIP;
     }
 
     public static class BackupResponse extends ServiceDocument {
@@ -596,7 +611,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    private void archiveCorruptIndexFiles(File directory) {
+    void archiveCorruptIndexFiles(File directory) {
         File newDirectory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory
                 + "." + Utils.getNowMicrosUtc());
         try {
@@ -625,87 +640,47 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void handleBackup(Operation op) throws Throwable {
-        SnapshotDeletionPolicy snapshotter = null;
-        IndexCommit commit = null;
+
         handleMaintenanceImpl(Operation.createPost(null));
-        IndexWriter w = this.writer;
-        if (w == null) {
-            op.fail(new CancellationException());
-            return;
-        }
-        try {
-            // Create a snapshot so the index files won't be deleted.
-            snapshotter = (SnapshotDeletionPolicy) w.getConfig().getIndexDeletionPolicy();
-            commit = snapshotter.snapshot();
 
-            String indexDirectory = UriUtils.buildUriPath(getHost().getStorageSandbox().getPath(),
-                    this.indexDirectory);
+        // delegate backup to backup service
+        Operation patch = Operation.createPatch(this, ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP)
+                .transferRequestHeadersFrom(op)
+                .transferRefererFrom(op)
+                .setBody(op.getBodyRaw())
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        op.fail(e);
+                        return;
+                    }
+                    op.transferResponseHeadersFrom(o);
+                    op.setBodyNoCloning(o.getBodyRaw());
+                    op.complete();
+                });
 
-            // Add the files in the commit to a zip file.
-            List<URI> fileList = FileUtils.filesToUris(indexDirectory, commit.getFileNames());
-            BackupResponse response = new BackupResponse();
-            response.backupFile = FileUtils.zipFiles(fileList,
-                    this.indexDirectory + "-" + Utils.getNowMicrosUtc());
-
-            op.setBody(response).complete();
-        } catch (Exception e) {
-            this.logSevere(e);
-            throw e;
-        } finally {
-            if (snapshotter != null) {
-                snapshotter.release(commit);
-            }
-            w.deleteUnusedFiles();
-        }
+        sendRequest(patch);
     }
 
-    private void handleRestore(Operation op, RestoreRequest req) {
-        IndexWriter w = this.writer;
-        if (w == null) {
-            op.fail(new CancellationException());
-            return;
-        }
+    private void handleRestore(Operation op) {
 
-        // We already have a slot in the semaphore.  Acquire the rest.
-        final int semaphoreCount = QUERY_THREAD_COUNT + UPDATE_THREAD_COUNT - 1;
-        try {
+        // delegate restore to backup service
+        Operation patch = Operation.createPatch(this, ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP)
+                .transferRequestHeadersFrom(op)
+                .transferRefererFrom(op)
+                .setBody(op.getBodyRaw())
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        op.fail(e);
+                        return;
+                    }
+                    this.writerUpdateTimeMicros = Utils.getNowMicrosUtc();
 
-            this.writerSync.acquire(semaphoreCount);
-            close(w);
+                    op.transferResponseHeadersFrom(o);
+                    op.setBodyNoCloning(o.getBodyRaw());
+                    op.complete();
+                });
 
-            File directory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory);
-            // Copy whatever was there out just in case.
-            if (directory.exists()) {
-                // We know the file list won't be null because directory.exists() returned true,
-                // but Findbugs doesn't know that, so we make it happy.
-                File[] files = directory.listFiles();
-                if (files != null && files.length > 0) {
-                    this.logInfo("archiving existing index %s", directory);
-                    archiveCorruptIndexFiles(directory);
-                }
-            }
-
-            this.logInfo("restoring index %s from %s md5sum(%s)", directory, req.backupFile,
-                    FileUtils.md5sum(new File(req.backupFile)));
-            FileUtils.extractZipArchive(new File(req.backupFile), directory.toPath());
-            this.writerUpdateTimeMicros = Utils.getNowMicrosUtc();
-            IndexWriter writer = createWriter(directory, true);
-
-            // perform time snapshot recovery which means deleting all docs updated after given time
-            if (req.timeSnapshotBoundaryMicros != null) {
-                Query luceneQuery = LongPoint.newRangeQuery(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS,
-                        req.timeSnapshotBoundaryMicros + 1, Long.MAX_VALUE);
-                writer.deleteDocuments(luceneQuery);
-            }
-
-            op.complete();
-            this.logInfo("restore complete");
-        } catch (Throwable e) {
-            logSevere(e);
-            op.fail(e);
-        } finally {
-            this.writerSync.release(semaphoreCount);
-        }
+        sendRequest(patch);
     }
 
     @Override
@@ -765,8 +740,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                             break;
                         }
                         if (sd.documentKind.equals(RestoreRequest.KIND)) {
-                            RestoreRequest backupRequest = (RestoreRequest) op.getBodyRaw();
-                            handleRestore(op, backupRequest);
+                            handleRestore(op);
                             break;
                         }
                     }
@@ -2210,7 +2184,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         delete.complete();
     }
 
-    private void close(IndexWriter wr) {
+    void close(IndexWriter wr) {
         try {
             if (wr == null) {
                 return;
