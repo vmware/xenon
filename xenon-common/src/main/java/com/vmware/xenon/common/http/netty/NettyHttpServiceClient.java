@@ -140,14 +140,15 @@ public class NettyHttpServiceClient implements ServiceClient {
             this.isStarted = true;
         }
 
+        this.channelPool.setName("channelPool");
         this.channelPool.setThreadTag(buildThreadTag());
         this.channelPool.setThreadCount(Utils.DEFAULT_IO_THREAD_COUNT);
         this.channelPool.setExecutor(this.executor);
-
         this.channelPool.start();
 
         // We make a separate pool for HTTP/2. We want to have only one connection per host
         // when using HTTP/2 since HTTP/2 multiplexes streams on a single connection.
+        this.http2ChannelPool.setName("http2ChannelPool");
         this.http2ChannelPool.setThreadTag(buildThreadTag());
         this.http2ChannelPool.setThreadCount(Utils.DEFAULT_IO_THREAD_COUNT);
         this.http2ChannelPool.setExecutor(this.executor);
@@ -155,6 +156,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         this.http2ChannelPool.start();
 
         if (this.sslContext != null) {
+            this.sslChannelPool.setName("sslChannelPool");
             this.sslChannelPool.setThreadTag(buildThreadTag());
             this.sslChannelPool.setThreadCount(Utils.DEFAULT_IO_THREAD_COUNT);
             this.sslChannelPool.setExecutor(this.executor);
@@ -495,20 +497,17 @@ public class NettyHttpServiceClient implements ServiceClient {
         SocketContext ctx = op.getSocketContext();
         if (ctx != null && ctx instanceof NettyChannelContext) {
             NettyChannelContext nettyCtx = (NettyChannelContext) op.getSocketContext();
-            NettyChannelPool pool = this.channelPool;
-
-            if (this.sslChannelPool != null && this.sslChannelPool.isContextInUse(nettyCtx)) {
-                pool = this.sslChannelPool;
-            }
-
-            Runnable r = null;
+            Runnable r;
             if (nettyCtx.getProtocol() == NettyChannelContext.Protocol.HTTP2) {
-                // For HTTP/2, we multiple streams so we don't close the connection.
+                // For HTTP/2, we have multiple streams so we don't close the connection.
                 r = () -> this.http2ChannelPool.returnOrClose(nettyCtx, false);
             } else {
                 op.setSocketContext(null);
-                NettyChannelPool finalPool = pool;
-                r = () -> finalPool.returnOrClose(nettyCtx, !op.isKeepAlive());
+                if (this.sslChannelPool != null && this.sslChannelPool.isContextInUse(nettyCtx)) {
+                    r = () -> this.sslChannelPool.returnOrClose(nettyCtx, !op.isKeepAlive());
+                } else {
+                    r = () -> this.channelPool.returnOrClose(nettyCtx, !op.isKeepAlive());
+                }
             }
 
             ExecutorService exec = this.host != null ? this.host.getExecutor() : this.executor;
