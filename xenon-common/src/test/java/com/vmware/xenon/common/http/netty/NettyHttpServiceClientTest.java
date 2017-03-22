@@ -115,27 +115,7 @@ public class NettyHttpServiceClientTest {
         HOST.setMaintenanceIntervalMicros(
                 TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
 
-        ServiceClient client = NettyHttpServiceClient.create(
-                NettyHttpServiceClientTest.class.getSimpleName(),
-                Executors.newFixedThreadPool(4),
-                Executors.newScheduledThreadPool(1), HOST);
-
-        if (NettyChannelContext.isALPNEnabled()) {
-            SslContext http2ClientContext = SslContextBuilder.forClient()
-                    .trustManager(InsecureTrustManagerFactory.INSTANCE)
-                    .ciphers(Http2SecurityUtil.CIPHERS, SupportedCipherSuiteFilter.INSTANCE)
-                    .applicationProtocolConfig(new ApplicationProtocolConfig(
-                            ApplicationProtocolConfig.Protocol.ALPN,
-                            ApplicationProtocolConfig.SelectorFailureBehavior.NO_ADVERTISE,
-                            ApplicationProtocolConfig.SelectedListenerFailureBehavior.ACCEPT,
-                            ApplicationProtocolNames.HTTP_2))
-                    .build();
-            ((NettyHttpServiceClient) client).setHttp2SslContext(http2ClientContext);
-        }
-
-        SSLContext clientContext = SSLContext.getInstance(ServiceClient.TLS_PROTOCOL_NAME);
-        clientContext.init(null, InsecureTrustManagerFactory.INSTANCE.getTrustManagers(), null);
-        client.setSSLContext(clientContext);
+        ServiceClient client = createNettyServiceClient();
         HOST.setClient(client);
 
         SelfSignedCertificate ssc = new SelfSignedCertificate();
@@ -169,7 +149,31 @@ public class NettyHttpServiceClientTest {
             HOST.testWait();
             HOST.resetAuthorizationContext();
         }
+    }
 
+    private static ServiceClient createNettyServiceClient() throws Throwable {
+        ServiceClient client = NettyHttpServiceClient.create(
+                NettyHttpServiceClientTest.class.getSimpleName(),
+                Executors.newFixedThreadPool(4),
+                Executors.newScheduledThreadPool(1), HOST);
+
+        if (NettyChannelContext.isALPNEnabled()) {
+            SslContext http2ClientContext = SslContextBuilder.forClient()
+                    .trustManager(InsecureTrustManagerFactory.INSTANCE)
+                    .ciphers(Http2SecurityUtil.CIPHERS, SupportedCipherSuiteFilter.INSTANCE)
+                    .applicationProtocolConfig(new ApplicationProtocolConfig(
+                            ApplicationProtocolConfig.Protocol.ALPN,
+                            ApplicationProtocolConfig.SelectorFailureBehavior.NO_ADVERTISE,
+                            ApplicationProtocolConfig.SelectedListenerFailureBehavior.ACCEPT,
+                            ApplicationProtocolNames.HTTP_2))
+                    .build();
+            ((NettyHttpServiceClient) client).setHttp2SslContext(http2ClientContext);
+        }
+
+        SSLContext clientContext = SSLContext.getInstance(ServiceClient.TLS_PROTOCOL_NAME);
+        clientContext.init(null, InsecureTrustManagerFactory.INSTANCE.getTrustManagers(), null);
+        client.setSSLContext(clientContext);
+        return client;
     }
 
     @AfterClass
@@ -284,12 +288,20 @@ public class NettyHttpServiceClientTest {
     }
 
     private static void validateTagInfo(VerificationHost host, String tag) {
+        validateTagInfo(host, host.getClient(), tag, null);
+    }
+
+    private static void validateTagInfo(VerificationHost host, ServiceClient client, String tag,
+            Integer limit) {
         host.waitFor("pending requests", () -> {
-            ConnectionPoolMetrics tagInfo = host.getClient().getConnectionPoolMetrics(tag);
+            ConnectionPoolMetrics tagInfo = client.getConnectionPoolMetrics(tag);
             if (tagInfo == null) {
                 return false;
             }
             host.log("%s", Utils.toJson(tagInfo));
+            if (limit != null && tagInfo.availableConnectionCount > limit) {
+                throw new IllegalStateException("Available: " + tagInfo.availableConnectionCount);
+            }
             if (tagInfo.pendingRequestCount != 0 || tagInfo.inUseConnectionCount > 0) {
                 host.log("Requests still pending: %s", Utils.toJson(tagInfo));
                 return false;
@@ -878,6 +890,45 @@ public class NettyHttpServiceClientTest {
 
         tag = this.host.connectionTag;
         validateTagInfo(this.host, tag);
+    }
+
+    @Test
+    public void testConnectionLimit() throws Throwable {
+
+        List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
+                MinimalTestService.class,
+                this.host.buildMinimalTestState(),
+                null, null);
+
+        String tag = "http1.1ConnectionLimitTag";
+        int limit = 8;
+        ServiceClient serviceClient = createNettyServiceClient();
+        serviceClient.setConnectionLimitPerTag(tag, limit);
+        serviceClient.start();
+
+        for (int i = 0; i < this.iterationCount; i++) {
+            doConnectionLimit(services, serviceClient, tag, limit);
+        }
+
+        serviceClient.stop();
+    }
+
+    private void doConnectionLimit(List<Service> services, ServiceClient serviceClient, String tag,
+            int limit) throws Throwable {
+        this.host.testStart(this.requestCount * services.size());
+        for (int i = 0; i < this.requestCount; i++) {
+            for (Service service : services) {
+                Operation getOp = Operation.createGet(service.getUri())
+                        .setReferer(this.host.getReferer())
+                        .setConnectionTag(tag)
+                        .forceRemote()
+                        .setCompletion(this.host.getCompletion());
+                this.host.run(() -> serviceClient.send(getOp));
+            }
+        }
+        this.host.testWait();
+
+        validateTagInfo(this.host, serviceClient, tag, limit);
     }
 
     @Test

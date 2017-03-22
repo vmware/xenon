@@ -508,10 +508,11 @@ public class NettyChannelPool {
      * to indicate that the request needs to be queued to be sent later.
      */
     private NettyChannelContext selectHttp11Context(Operation request, NettyChannelGroup group) {
-        NettyChannelContext context = group.availableChannels.poll();
+        NettyChannelContext context;
         NettyChannelContext badContext = null;
 
         synchronized (group) {
+            context = group.availableChannels.poll();
             if (context == null) {
                 int limit = getConnectionLimitPerTag(group.getKey().connectionTag);
                 if (group.inUseChannels.size() >= limit) {
