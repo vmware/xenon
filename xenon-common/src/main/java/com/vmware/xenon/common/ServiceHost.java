@@ -4677,6 +4677,7 @@ public class ServiceHost implements ServiceRequestSender {
                         deadline);
                 return;
             case SERVICE:
+                log(Level.INFO, "Processing service maintenance (deadline %d", deadline);
                 this.serviceMaintTracker.performMaintenance(post, deadline);
                 stage = null;
                 break;
