@@ -527,9 +527,9 @@ public final class FileUtils {
     /**
      * GET a file.
      *
-     * @param h  ServiceClient used to connect to the host
+     * @param h   ServiceClient used to connect to the host
      * @param get The Operation used to GET the given file URI
-     * @param f File to write to
+     * @param f   File to write to
      * @throws IOException
      */
     public static void getFile(ServiceClient h, final Operation get, File f) throws IOException {
@@ -580,7 +580,7 @@ public final class FileUtils {
             AsynchronousFileChannel ch,
             AtomicInteger bytesWritten) {
 
-        final ContentRange[] range = { nextRange };
+        final ContentRange[] range = {nextRange};
         for (int chunksInFlight = 0; (chunksInFlight < ContentRange.MAX_IN_FLIGHT_CHUNKS)
                 && !range[0].isDone(); chunksInFlight++) {
 
@@ -611,7 +611,6 @@ public final class FileUtils {
 
             h.send(nextGet);
         }
-
     }
 
     private static void writeBody(Operation parentOp, Operation o, AsynchronousFileChannel ch,
@@ -653,15 +652,14 @@ public final class FileUtils {
                         parentOp.fail(exc);
                     }
                 });
-
     }
 
     /**
      * Given a POST operation and a File, post the file to the URI.
      *
-     * @param h ServiceClient
+     * @param h   ServiceClient
      * @param put Operation used to PUT the file at the given URL
-     * @param f File to put
+     * @param f   File to put
      * @throws IOException
      */
     public static void putFile(ServiceClient h, final Operation put, File f) throws IOException {
@@ -671,7 +669,7 @@ public final class FileUtils {
         AtomicInteger completionCount = new AtomicInteger(0);
         String contentType = FileUtils.getContentType(f.toURI());
 
-        final boolean[] fileIsDone = { false };
+        final boolean[] fileIsDone = {false};
 
         putChunks(h, put, ch, contentType, f.length(), 0, completionCount, fileIsDone);
     }
@@ -769,11 +767,14 @@ public final class FileUtils {
      *
      * Infrastructure use only!!!  Do not use in production without spinning your own thread.
      */
-    public static URI zipFiles(List<URI> inFiles, String outFileName) throws Exception {
+    public static URI zipFiles(List<URI> inFiles, String outFileName) throws IOException {
+        File zipFile = File.createTempFile(outFileName, ".zip", null);
+        return zipFiles(inFiles, zipFile);
+    }
+
+    public static URI zipFiles(List<URI> inFiles, File zipFile) throws IOException {
         byte[] buffer = new byte[4096]; // Create a buffer for copying
         int bytes_read;
-
-        File zipFile = File.createTempFile(outFileName, ".zip", null);
 
         // Create a stream to compress data and write it to the zipfile
         ZipOutputStream out = new ZipOutputStream(new FileOutputStream(zipFile));
@@ -808,7 +809,7 @@ public final class FileUtils {
 
         Logger.getAnonymousLogger().info(
                 String.format("backup written to %s (bytes:%s md5sum:%s)", zipFile,
-                        zipFile.length(), md5sum(zipFile)));
+                        zipFile.length(), md5sumSafely(zipFile)));
 
         return zipFile.toURI();
     }
@@ -851,6 +852,14 @@ public final class FileUtils {
                     return FileVisitResult.CONTINUE;
                 }
             });
+        }
+    }
+
+    private static String md5sumSafely(File f) {
+        try {
+            return md5sum(f);
+        } catch (Exception e) {
+            return "";
         }
     }
 
