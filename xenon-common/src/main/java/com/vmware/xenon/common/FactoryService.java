@@ -354,9 +354,14 @@ public abstract class FactoryService extends StatelessService {
 
             String suffix = null;
             if (o.isSynchronizeOwner()) {
-                // If it's a synchronization request, let's re-use the documentSelfLink.
-                suffix = initialState.documentSelfLink;
-
+                if (initialState != null) {
+                    // If it's a synchronization request, let's re-use the documentSelfLink.
+                    suffix = initialState.documentSelfLink;
+                } else {
+                    logWarning("Missing state with synch operation: %s", o.toString());
+                    o.fail(new IllegalArgumentException("body is required"));
+                    return;
+                }
             } else if (this.useBodyForSelfLink) {
                 if (initialState == null) {
                     // If the body of the request was null , fail the request with
