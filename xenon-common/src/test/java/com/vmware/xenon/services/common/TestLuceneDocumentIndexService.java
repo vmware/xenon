@@ -95,9 +95,9 @@ class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexServic
     public void forceClosePaginatedSearchers() {
 
         logInfo("Closing all paginated searchers (%d)",
-                this.paginatedSearchersByExpirationTime.size());
+                this.paginatedSearchersByCreationTime.size());
 
-        for (PaginatedSearcherInfo info : this.paginatedSearchersByExpirationTime) {
+        for (PaginatedSearcherInfo info : this.paginatedSearchersByCreationTime.values()) {
             try {
                 IndexSearcher s = info.searcher;
                 s.getIndexReader().close();
