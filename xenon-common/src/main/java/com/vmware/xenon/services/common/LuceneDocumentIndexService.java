@@ -545,9 +545,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
         Long totalMBs = getHost().getServiceMemoryLimitMB(getSelfLink(), MemoryLimitType.EXACT);
         if (totalMBs != null) {
-            long cacheSizeMB = (totalMBs * 99) / 100;
-            cacheSizeMB = Math.max(1, cacheSizeMB);
-            iwc.setRAMBufferSizeMB(cacheSizeMB);
+            iwc.setRAMBufferSizeMB(512);
             // reserve 1% of service memory budget for version cache
             this.updateMapMemoryLimitMB = Math.max(1, totalMBs / 100);
         }
