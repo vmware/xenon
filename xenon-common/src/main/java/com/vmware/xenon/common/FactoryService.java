@@ -1075,7 +1075,7 @@ public abstract class FactoryService extends StatelessService {
 
         logWarning("Scheduling retry of child service synchronization task in %d seconds",
                 TimeUnit.MICROSECONDS.toSeconds(delay));
-        getHost().schedule(() -> synchronizeChildServicesIfOwner(op),
+        getHost().scheduleCore(() -> synchronizeChildServicesIfOwner(op),
                 delay, TimeUnit.MICROSECONDS);
     }
 

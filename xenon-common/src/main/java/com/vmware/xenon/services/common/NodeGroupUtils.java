@@ -382,7 +382,7 @@ public final class NodeGroupUtils {
                 }
 
                 // service is not yet available, reschedule
-                host.schedule(() -> {
+                host.scheduleCore(() -> {
                     registerForReplicatedServiceAvailability(host, op, servicePath, nodeSelectorPath);
                 }, host.getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
                 return;

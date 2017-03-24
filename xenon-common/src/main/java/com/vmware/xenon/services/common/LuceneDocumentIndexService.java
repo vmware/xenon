@@ -392,6 +392,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public LuceneDocumentIndexService(String indexDirectory) {
         super(ServiceDocument.class);
+        super.toggleOption(ServiceOption.CORE, true);
         super.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
         this.indexDirectory = indexDirectory;
     }

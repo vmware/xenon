@@ -332,7 +332,7 @@ public class NodeSelectorReplicationService extends StatelessService {
         update.setCompletion((innerOp, innerEx) ->
                 this.handleReplicationCompletion(context, innerOp, innerEx));
 
-        this.getHost().schedule(() -> {
+        this.getHost().scheduleCore(() -> {
             logWarning("Service %s not found on replica. Retrying replication request ...",
                     o.getUri().getPath());
             this.getHost().getClient().send(update);

@@ -192,6 +192,14 @@ public interface Service extends ServiceRequestSender {
         URI_NAMESPACE_OWNER,
 
         /**
+         * Advanced option, reserved.
+         *
+         * Service is a core runtime service that requires isolation and higher guarantees from
+         * other services
+         */
+        CORE,
+
+        /**
          * Set by runtime. Service is associated with another service providing functionality for
          * one of the utility REST APIs.
          */
@@ -433,6 +441,7 @@ public interface Service extends ServiceRequestSender {
     /**
      * Sends a request using the default service client associated with the host
      */
+    @Override
     void sendRequest(Operation op);
 
     /**

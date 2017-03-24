@@ -538,7 +538,7 @@ public class QueryTaskService extends StatefulService {
         Operation delete = Operation.createDelete(getUri()).setBody(new ServiceDocument());
         long delta = task.documentExpirationTimeMicros - Utils.getSystemNowMicrosUtc();
         delta = Math.max(1, delta);
-        getHost().schedule(() -> {
+        getHost().scheduleCore(() -> {
             if (task.querySpec.options.contains(QueryOption.CONTINUOUS)) {
                 cancelContinuousQueryOnIndex(task);
             }
@@ -591,7 +591,7 @@ public class QueryTaskService extends StatefulService {
             return true;
         }
 
-        getHost().schedule(() -> {
+        getHost().scheduleCore(() -> {
             forwardQueryToDocumentIndexService(task, directOp);
         }, getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
 

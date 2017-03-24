@@ -88,6 +88,7 @@ public class ServiceHostManagementService extends StatefulService {
 
     public ServiceHostManagementService() {
         super(ServiceHostState.class);
+        super.toggleOption(ServiceOption.CORE, true);
         super.toggleOption(ServiceOption.INSTRUMENTATION, true);
     }
 

@@ -617,10 +617,27 @@ public class TestServiceHost {
             assertEquals(hostId, h.getState().id);
 
             verifyAuthorizedServiceMethods(h);
+
+            verifyCoreServiceOption(h);
         } finally {
             h.stop();
         }
 
+    }
+
+    private void verifyCoreServiceOption(ExampleServiceHost h) {
+        List<URI> coreServices = new ArrayList<>();
+        URI defaultNodeGroup = UriUtils.buildUri(h, ServiceUriPaths.DEFAULT_NODE_GROUP);
+        URI defaultNodeSelector = UriUtils.buildUri(h, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+
+        coreServices.add(UriUtils.buildConfigUri(defaultNodeGroup));
+        coreServices.add(UriUtils.buildConfigUri(defaultNodeSelector));
+        coreServices.add(UriUtils.buildConfigUri(h.getDocumentIndexServiceUri()));
+        Map<URI, ServiceConfiguration> cfgs = this.host.getServiceState(null,
+                ServiceConfiguration.class, coreServices);
+        for (ServiceConfiguration c : cfgs.values()) {
+            assertTrue(c.options.contains(ServiceOption.CORE));
+        }
     }
 
     private void verifyAuthorizedServiceMethods(ServiceHost h) {

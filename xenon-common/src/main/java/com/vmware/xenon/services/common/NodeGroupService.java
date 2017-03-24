@@ -173,6 +173,7 @@ public class NodeGroupService extends StatefulService {
 
     public NodeGroupService() {
         super(NodeGroupState.class);
+        super.toggleOption(ServiceOption.CORE, true);
         super.toggleOption(ServiceOption.INSTRUMENTATION, true);
         super.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
         super.toggleOption(ServiceOption.CONCURRENT_GET_HANDLING, true);
@@ -534,7 +535,7 @@ public class NodeGroupService extends StatefulService {
             return;
         }
 
-        getHost().schedule(() -> {
+        getHost().scheduleCore(() -> {
             logWarning("Retrying GET to %s, due to %s",
                     joinBody.memberGroupReference,
                     e.toString());

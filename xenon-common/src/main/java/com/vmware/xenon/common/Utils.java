@@ -633,6 +633,8 @@ public final class Utils {
             break;
         case IDEMPOTENT_POST:
             break;
+        case CORE:
+            break;
         case FACTORY:
             break;
         case FACTORY_ITEM:

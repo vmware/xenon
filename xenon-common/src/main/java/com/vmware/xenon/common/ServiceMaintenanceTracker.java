@@ -160,7 +160,7 @@ class ServiceMaintenanceTracker {
                             }
                         });
 
-        this.host.schedule(() -> {
+        Runnable t = () -> {
             try {
                 OperationContext.setAuthorizationContext(this.host
                         .getSystemAuthorizationContext());
@@ -178,7 +178,13 @@ class ServiceMaintenanceTracker {
                         servicePath, Utils.toString(ex));
                 servicePost.fail(ex);
             }
-        }, SCHEDULING_EPSILON_MICROS, TimeUnit.MICROSECONDS);
+        };
+
+        if (s.hasOption(ServiceOption.CORE)) {
+            this.host.scheduleCore(t, SCHEDULING_EPSILON_MICROS, TimeUnit.MICROSECONDS);
+        } else {
+            this.host.schedule(t, SCHEDULING_EPSILON_MICROS, TimeUnit.MICROSECONDS);
+        }
     }
 
     public synchronized void close() {

@@ -2,7 +2,15 @@
 
 ## 1.4.2-SNAPSHOT
 
-* Xenon UI: Introduce pagination on factory services and query results, which allows the UI to handle large amount of documents.
+* Isolate scheduled task execution for core services from any other service. This
+  is a internal change with no visible API changes (backwards compatible).
+
+* Add new ServiceOption.CORE reserved for critical runtime services (like the index service,
+  node selector, node group management). The option is currently only used to schedule
+  tasks using the private core scheduled executor.
+
+* Xenon UI: Introduce pagination on factory services and query results,
+  which allows the UI to handle large amount of documents.
 
 ## 1.4.1
 

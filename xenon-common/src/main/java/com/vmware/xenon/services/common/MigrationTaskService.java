@@ -268,6 +268,7 @@ public class MigrationTaskService extends StatefulService {
 
     public MigrationTaskService() {
         super(MigrationTaskService.State.class);
+        super.toggleOption(ServiceOption.CORE, true);
         super.toggleOption(ServiceOption.REPLICATION, true);
         super.toggleOption(ServiceOption.OWNER_SELECTION, true);
         super.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
@@ -549,7 +550,7 @@ public class MigrationTaskService extends StatefulService {
             return;
         }
         logInfo("Nodegroups are not convereged scheduling retry.");
-        getHost().schedule(() -> {
+        getHost().scheduleCore(() -> {
             waitUntilNodeGroupsAreStable(currentState, allowedConvergenceChecks - 1, onSuccess);
         }, currentState.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
     }

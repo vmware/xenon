@@ -597,6 +597,7 @@ public class ServiceHost implements ServiceRequestSender {
 
     private AuthorizationContext systemAuthorizationContext;
     private AuthorizationContext guestAuthorizationContext;
+    private ScheduledExecutorService serviceScheduledExecutor;
 
     protected ServiceHost() {
         this.state = new ServiceHostState();
@@ -720,9 +721,15 @@ public class ServiceHost implements ServiceRequestSender {
         if (this.scheduledExecutor != null) {
             this.scheduledExecutor.shutdownNow();
         }
+        if (this.serviceScheduledExecutor != null) {
+            this.serviceScheduledExecutor.shutdownNow();
+        }
         this.executor = Executors.newWorkStealingPool(Utils.DEFAULT_THREAD_COUNT);
         this.scheduledExecutor = Executors.newScheduledThreadPool(Utils.DEFAULT_THREAD_COUNT,
                 r -> new Thread(r, getUri().toString() + "/scheduled/" + this.state.id));
+        this.serviceScheduledExecutor = Executors.newScheduledThreadPool(
+                Utils.DEFAULT_THREAD_COUNT / 2,
+                r -> new Thread(r, getUri().toString() + "/service-scheduled/" + this.state.id));
     }
 
     /**
@@ -1240,7 +1247,7 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     public ScheduledExecutorService getScheduledExecutor() {
-        return this.scheduledExecutor;
+        return this.serviceScheduledExecutor;
     }
 
     public ExecutorService getExecutor() {
@@ -1293,7 +1300,8 @@ public class ServiceHost implements ServiceRequestSender {
             this.state.isStopping = false;
         }
 
-        if (this.executor == null || this.scheduledExecutor == null) {
+        if (this.executor == null || this.scheduledExecutor == null
+                || this.serviceScheduledExecutor == null) {
             allocateExecutors();
         }
 
@@ -1524,7 +1532,7 @@ public class ServiceHost implements ServiceRequestSender {
         // Restore authorization context
         OperationContext.setAuthorizationContext(ctx);
 
-        schedule(() -> {
+        scheduleCore(() -> {
             joinPeers(peers, ServiceUriPaths.DEFAULT_NODE_GROUP);
         }, this.state.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
     }
@@ -2084,7 +2092,7 @@ public class ServiceHost implements ServiceRequestSender {
                 return null;
             }
 
-            schedule(() -> {
+            scheduleCore(() -> {
                 sendRequest(Operation.createDelete(
                         UriUtils.buildUri(this, notificationTarget.getSelfLink()))
                         .transferRefererFrom(subscribe));
@@ -2480,7 +2488,7 @@ public class ServiceHost implements ServiceRequestSender {
                 log(Level.INFO, "Retrying (%d) startService() POST to %s in stage %s",
                         post.getId(),
                         servicePath, existing.getProcessingStage());
-                schedule(() -> {
+                scheduleCore(() -> {
                     startService(post, service);
                 }, this.getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
                 return true;
@@ -2505,7 +2513,7 @@ public class ServiceHost implements ServiceRequestSender {
                     post.getId(),
                     servicePath, existing.getProcessingStage());
             // Service is in the process of starting or stopping. Retry at a later time.
-            schedule(() -> {
+            scheduleCore(() -> {
                 handleRequest(null, post);
             }, this.getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
             return true;
@@ -4257,6 +4265,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         this.executor.shutdownNow();
         this.scheduledExecutor.shutdownNow();
+        this.serviceScheduledExecutor.shutdownNow();
         this.executor = null;
         this.scheduledExecutor = null;
     }
@@ -4954,16 +4963,33 @@ public class ServiceHost implements ServiceRequestSender {
         });
     }
 
+    /**
+     * Schedules a task using the shared service executor
+     */
     public ScheduledFuture<?> schedule(Runnable task, long delay, TimeUnit unit) {
+        return schedule(this.serviceScheduledExecutor, task, delay, unit);
+    }
+
+    /**
+     * Infrastructure use only. Do not use for non core scheduled tasks. The method
+     * signature will likely change in the future so the caller is validated against the
+     * set of core services.
+     */
+    public ScheduledFuture<?> scheduleCore(Runnable task, long delay, TimeUnit unit) {
+        return schedule(this.scheduledExecutor, task, delay, unit);
+    }
+
+    private ScheduledFuture<?> schedule(ScheduledExecutorService e, Runnable task, long delay,
+            TimeUnit unit) {
         if (this.isStopping()) {
             throw new IllegalStateException("Stopped");
         }
-        if (this.scheduledExecutor.isShutdown()) {
+        if (e.isShutdown()) {
             throw new IllegalStateException("Stopped");
         }
 
         OperationContext origContext = OperationContext.getOperationContext();
-        return this.scheduledExecutor.schedule(() -> {
+        return e.schedule(() -> {
             OperationContext.setFrom(origContext);
             executeRunnableSafe(task);
         }, delay, unit);

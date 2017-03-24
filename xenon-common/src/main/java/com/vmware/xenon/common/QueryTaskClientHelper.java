@@ -295,7 +295,7 @@ public class QueryTaskClientHelper<T extends ServiceDocument> {
 
                     if (!TaskState.isFinished(rsp.taskInfo)) {
                         this.host.log(Level.FINE, "Resource query not complete yet, retrying...");
-                        this.host.schedule(() -> processQuery(rsp, handler),
+                        this.host.scheduleCore(() -> processQuery(rsp, handler),
                                 QUERY_RETRIEVAL_RETRY_INTERVAL_MILLIS, TimeUnit.MILLISECONDS);
                         return;
                     }

@@ -98,6 +98,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
     public ConsistentHashingNodeSelectorService() {
         super(NodeSelectorState.class);
+        super.toggleOption(ServiceOption.CORE, true);
         super.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
         super.toggleOption(ServiceOption.INSTRUMENTATION, true);
     }

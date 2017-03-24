@@ -864,7 +864,7 @@ class ServiceResourceTracker {
                     this.host.log(Level.WARNING, "Stop of idle service %s detected, retrying",
                             inboundOp
                             .getUri().getPath());
-                    this.host.schedule(() -> {
+                    this.host.scheduleCore(() -> {
                         checkAndOnDemandStartService(inboundOp, parentService);
                     }, 1, TimeUnit.SECONDS);
                     return;
@@ -1001,7 +1001,7 @@ class ServiceResourceTracker {
 
         long interval = Math.max(TimeUnit.SECONDS.toMicros(1),
                 this.host.getMaintenanceIntervalMicros());
-        this.host.schedule(() -> {
+        this.host.scheduleCore(() -> {
             this.host.handleRequest(null, op);
         }, interval, TimeUnit.MICROSECONDS);
     }
