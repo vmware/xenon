@@ -24,7 +24,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -35,7 +34,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.TreeSet;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -323,10 +321,8 @@ public class LuceneDocumentIndexService extends StatelessService {
     /**
      * Searchers used for paginated query tasks.
      */
-    protected TreeSet<PaginatedSearcherInfo> paginatedSearchersByCreationTime =
-            new TreeSet<>(Comparator.comparingLong(info -> info.creationTimeMicros));
-    protected TreeSet<PaginatedSearcherInfo> paginatedSearchersByExpirationTime =
-            new TreeSet<>(Comparator.comparingLong(info -> info.expirationTimeMicros));
+    protected TreeMap<Long, PaginatedSearcherInfo> paginatedSearchersByCreationTime = new TreeMap<>();
+    protected TreeMap<Long, List<PaginatedSearcherInfo>> paginatedSearchersByExpirationTime = new TreeMap<>();
 
     protected IndexWriter writer = null;
 
@@ -921,22 +917,48 @@ public class LuceneDocumentIndexService extends StatelessService {
             return createPaginatedQuerySearcher(expirationMicros, w);
         }
 
+        IndexSearcher searcher;
         synchronized (this.searchSync) {
-            PaginatedSearcherInfo info = this.paginatedSearchersByCreationTime.last();
-            if (info != null) {
-                long currentExpirationMicros = info.expirationTimeMicros;
-                if (expirationMicros < currentExpirationMicros) {
-                    return info.searcher;
-                }
+            searcher = getOrUpdateExistingSearcher(expirationMicros);
+        }
 
-                this.paginatedSearchersByExpirationTime.remove(info);
-                info.expirationTimeMicros = expirationMicros;
-                this.paginatedSearchersByExpirationTime.add(info);
-                return info.searcher;
-            }
+        if (searcher != null) {
+            return searcher;
         }
 
         return createPaginatedQuerySearcher(expirationMicros, w);
+    }
+
+    private IndexSearcher getOrUpdateExistingSearcher(long newExpirationMicros) {
+
+        if (this.paginatedSearchersByCreationTime.isEmpty()) {
+            return null;
+        }
+
+        PaginatedSearcherInfo info = this.paginatedSearchersByCreationTime.lastEntry().getValue();
+        long currentExpirationMicros = info.expirationTimeMicros;
+        if (newExpirationMicros <= currentExpirationMicros) {
+            return info.searcher;
+        }
+
+        List<PaginatedSearcherInfo> expirationList = this.paginatedSearchersByExpirationTime.get(
+                currentExpirationMicros);
+        if (expirationList == null || !expirationList.contains(info)) {
+            throw new IllegalStateException("Searcher not found in expiration list");
+        }
+
+        expirationList.remove(info);
+        if (expirationList.isEmpty()) {
+            this.paginatedSearchersByExpirationTime.remove(currentExpirationMicros);
+        }
+
+        info.expirationTimeMicros = newExpirationMicros;
+
+        expirationList = this.paginatedSearchersByExpirationTime.computeIfAbsent(
+                newExpirationMicros, (k) -> new ArrayList<>());
+        expirationList.add(info);
+
+        return info.searcher;
     }
 
     private IndexSearcher createPaginatedQuerySearcher(long expirationMicros, IndexWriter w)
@@ -957,8 +979,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         info.searcher = s;
 
         synchronized (this.searchSync) {
-            this.paginatedSearchersByCreationTime.add(info);
-            this.paginatedSearchersByExpirationTime.add(info);
+            this.paginatedSearchersByCreationTime.put(info.creationTimeMicros, info);
+            List<PaginatedSearcherInfo> expirationList = this.paginatedSearchersByExpirationTime
+                    .computeIfAbsent(info.expirationTimeMicros, (k) -> new ArrayList<>());
+            expirationList.add(info);
             this.searcherUpdateTimesMicros.put(s.hashCode(), now);
         }
 
@@ -2670,19 +2694,19 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
 
             logInfo("Closing all paginated searchers (%d)",
-                    this.paginatedSearchersByExpirationTime.size());
+                    this.paginatedSearchersByCreationTime.size());
 
-            for (PaginatedSearcherInfo info : this.paginatedSearchersByCreationTime) {
+            for (PaginatedSearcherInfo info : this.paginatedSearchersByCreationTime.values()) {
                 try {
                     IndexSearcher s = info.searcher;
                     s.getIndexReader().close();
-                    this.searcherUpdateTimesMicros.remove(s.hashCode());
                 } catch (Throwable ignored) {
                 }
             }
 
             this.paginatedSearchersByCreationTime.clear();
             this.paginatedSearchersByExpirationTime.clear();
+            this.searcherUpdateTimesMicros.clear();
 
             try {
                 w.close();
@@ -2755,34 +2779,41 @@ public class LuceneDocumentIndexService extends StatelessService {
         long now = Utils.getNowMicrosUtc();
         applyMemoryLimitToDocumentUpdateInfo();
 
-        Map<Long, IndexSearcher> entriesToClose = new HashMap<>();
+        Map<Long, List<PaginatedSearcherInfo>> entriesToClose = new HashMap<>();
         long activePaginatedQueries;
         synchronized (this.searchSync) {
-            Iterator<PaginatedSearcherInfo> itr =
-                    this.paginatedSearchersByExpirationTime.iterator();
+            Iterator<Entry<Long, List<PaginatedSearcherInfo>>> itr =
+                    this.paginatedSearchersByExpirationTime.entrySet().iterator();
             while (itr.hasNext()) {
-                PaginatedSearcherInfo info = itr.next();
-                if (info.expirationTimeMicros > now) {
+                Entry<Long, List<PaginatedSearcherInfo>> entry = itr.next();
+                long expirationMicros = entry.getKey();
+                if (expirationMicros > now) {
                     break;
                 }
-                entriesToClose.put(info.expirationTimeMicros, info.searcher);
-                this.paginatedSearchersByCreationTime.remove(info);
+
+                List<PaginatedSearcherInfo> expirationList = entry.getValue();
+                for (PaginatedSearcherInfo info : expirationList) {
+                    this.paginatedSearchersByCreationTime.remove(info.creationTimeMicros);
+                    this.searcherUpdateTimesMicros.remove(info.searcher.hashCode());
+                }
+
+                entriesToClose.put(expirationMicros, expirationList);
                 itr.remove();
             }
 
-            activePaginatedQueries = this.paginatedSearchersByExpirationTime.size();
+            activePaginatedQueries = this.paginatedSearchersByCreationTime.size();
         }
 
         setTimeSeriesStat(STAT_NAME_ACTIVE_PAGINATED_QUERIES, AGGREGATION_TYPE_AVG_MAX,
                 activePaginatedQueries);
 
-        for (Entry<Long, IndexSearcher> entry : entriesToClose.entrySet()) {
-            logFine("Closing paginated query searcher, expired at %d", entry.getKey());
-            try {
-                IndexSearcher s = entry.getValue();
-                s.getIndexReader().close();
-                this.searcherUpdateTimesMicros.remove(s.hashCode());
-            } catch (Throwable ignored) {
+        for (Entry<Long, List<PaginatedSearcherInfo>> entry : entriesToClose.entrySet()) {
+            for (PaginatedSearcherInfo info : entry.getValue()) {
+                logFine("Closing paginated query searcher, expired at %d", entry.getKey());
+                try {
+                    info.searcher.getIndexReader().close();
+                } catch (Throwable ignored) {
+                }
             }
         }
     }

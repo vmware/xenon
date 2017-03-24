@@ -86,6 +86,7 @@ import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
+import com.vmware.xenon.services.common.LuceneDocumentIndexService.PaginatedSearcherInfo;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
@@ -95,9 +96,9 @@ class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexServic
     public void forceClosePaginatedSearchers() {
 
         logInfo("Closing all paginated searchers (%d)",
-                this.paginatedSearchersByExpirationTime.size());
+                this.paginatedSearchersByCreationTime.size());
 
-        for (PaginatedSearcherInfo info : this.paginatedSearchersByExpirationTime) {
+        for (PaginatedSearcherInfo info : this.paginatedSearchersByCreationTime.values()) {
             try {
                 IndexSearcher s = info.searcher;
                 s.getIndexReader().close();
@@ -105,6 +106,34 @@ class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexServic
             } catch (Throwable ignored) {
             }
         }
+    }
+
+    public Map<Long, List<PaginatedSearcherInfo>> verifyPaginatedSearcherListsEqual() {
+
+        logInfo("Verifying paginated searcher lists are equal");
+
+        Collection<PaginatedSearcherInfo> searchersByCreationTime;
+        Map<Long, List<PaginatedSearcherInfo>> searchersByExpirationTime = new HashMap<>();
+        long searcherCount = 0;
+
+        synchronized (this.searchSync) {
+            searchersByCreationTime = this.paginatedSearchersByCreationTime.values();
+            for (Entry<Long, List<PaginatedSearcherInfo>> entry :
+                    this.paginatedSearchersByExpirationTime.entrySet()) {
+                searchersByExpirationTime.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+                searcherCount += entry.getValue().size();
+            }
+        }
+
+        assertEquals(searchersByCreationTime.size(), searcherCount);
+
+        for (List<PaginatedSearcherInfo> expirationList : searchersByExpirationTime.values()) {
+            for (PaginatedSearcherInfo info : expirationList) {
+                assertTrue(searchersByCreationTime.contains(info));
+            }
+        }
+
+        return searchersByExpirationTime;
     }
 
     /*
@@ -512,6 +541,121 @@ public class TestLuceneDocumentIndexService {
         ServiceStat writerClosedStat = this.getLuceneStat(
                 LuceneDocumentIndexService.STAT_NAME_WRITER_ALREADY_CLOSED_EXCEPTION_COUNT);
         assertEquals(0, writerClosedStat.version);
+    }
+
+    @Test
+    public void testPaginatedSearcherLists() throws Throwable {
+        for (int i = 0; i < this.iterationCount; i++) {
+            tearDown();
+            setUpHost(false);
+            doPaginatedSearcherLists();
+        }
+    }
+
+    private void doPaginatedSearcherLists() throws Throwable {
+
+        this.host.doFactoryChildServiceStart(null, this.serviceCount, ExampleServiceState.class,
+                (o) -> {
+                    ExampleServiceState b = new ExampleServiceState();
+                    b.name = Utils.getNowMicrosUtc() + " before stop";
+                    o.setBody(b);
+                }, UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+
+        // Assert that the paginated searcher lists in the index service have the same content
+        // at the start (an empty list).
+        Map<Long, List<PaginatedSearcherInfo>> paginatedSearchers =
+                this.indexService.verifyPaginatedSearcherListsEqual();
+        assertEquals(0, paginatedSearchers.size());
+
+        long queryExpirationTimeMicros = Utils.fromNowMicrosUtc(TimeUnit.MINUTES.toMicros(10));
+
+        // create a paginated query with an explicit expiration time
+        Query query = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+        QueryTask queryTask = QueryTask.Builder.create()
+                .setQuery(query)
+                .setResultLimit(2)
+                .build();
+        queryTask.documentExpirationTimeMicros = queryExpirationTimeMicros;
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+
+        // create another paginated query with the same expiration time
+        queryTask = QueryTask.Builder.create()
+                .setQuery(query)
+                .setResultLimit(2)
+                .build();
+        queryTask.documentExpirationTimeMicros = queryExpirationTimeMicros;
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+
+        // Assert that the paginated searcher lists in the index service have the same content.
+        paginatedSearchers = this.indexService.verifyPaginatedSearcherListsEqual();
+        assertEquals(1, paginatedSearchers.size());
+        for (Entry<Long, List<PaginatedSearcherInfo>> entry : paginatedSearchers.entrySet()) {
+            assertEquals(queryExpirationTimeMicros, (long) entry.getKey());
+            List<PaginatedSearcherInfo> expirationList = entry.getValue();
+            assertEquals(2, expirationList.size());
+            for (PaginatedSearcherInfo info : expirationList) {
+                assertEquals(queryExpirationTimeMicros, info.expirationTimeMicros);
+            }
+        }
+
+        // create a paginated query with DO_NOT_REFRESH and an extended expiration time.
+        long extendedQueryExpirationTimeMicros = queryExpirationTimeMicros
+                + TimeUnit.MINUTES.toMicros(5);
+        queryTask = QueryTask.Builder.create()
+                .setQuery(query)
+                .setResultLimit(2)
+                .addOption(QueryOption.DO_NOT_REFRESH)
+                .build();
+        queryTask.documentExpirationTimeMicros = extendedQueryExpirationTimeMicros;
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+
+        // Assert that the paginated searcher lists in the index service have the same content and
+        // that the expiration time of one searcher was updated.
+        paginatedSearchers = this.indexService.verifyPaginatedSearcherListsEqual();
+        assertEquals(2, paginatedSearchers.size());
+        for (Entry<Long, List<PaginatedSearcherInfo>> entry : paginatedSearchers.entrySet()) {
+            long expirationMicros = entry.getKey();
+            assertTrue(expirationMicros == queryExpirationTimeMicros
+                    || expirationMicros == extendedQueryExpirationTimeMicros);
+            List<PaginatedSearcherInfo> expirationList = entry.getValue();
+            assertEquals(1, expirationList.size());
+            for (PaginatedSearcherInfo info : expirationList) {
+                assertEquals(expirationMicros, info.expirationTimeMicros);
+            }
+        }
+
+        // Create a new paginated searcher with a short expiration and wait for it to expire.
+        queryTask = QueryTask.Builder.create()
+                .setQuery(query)
+                .setResultLimit(2)
+                .build();
+        queryTask.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                this.host.getMaintenanceIntervalMicros());
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+
+        this.host.waitFor("Paginated query searcher failed to expire", () -> {
+            Map<Long, List<PaginatedSearcherInfo>> searcherInfo =
+                    this.indexService.verifyPaginatedSearcherListsEqual();
+            if (searcherInfo.size() > 2) {
+                return false;
+            }
+
+            assertEquals(2, searcherInfo.size());
+            for (Entry<Long, List<PaginatedSearcherInfo>> entry : searcherInfo.entrySet()) {
+                long expirationMicros = entry.getKey();
+                assertTrue(expirationMicros == queryExpirationTimeMicros
+                        || expirationMicros == extendedQueryExpirationTimeMicros);
+                List<PaginatedSearcherInfo> expirationList = entry.getValue();
+                assertEquals(1, expirationList.size());
+                for (PaginatedSearcherInfo info : expirationList) {
+                    assertEquals(expirationMicros, info.expirationTimeMicros);
+                }
+            }
+
+            return true;
+        });
     }
 
     private void updateServices(Map<URI, ExampleServiceState> exampleServices, boolean expectFailure)
