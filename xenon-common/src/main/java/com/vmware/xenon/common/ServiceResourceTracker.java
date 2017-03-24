@@ -488,6 +488,12 @@ class ServiceResourceTracker {
             if (s != null) {
                 if (!ServiceHost.isServiceIndexed(service)) {
                     // we do not clear cache or stop in memory services but we do check expiration
+                    if (service.hasOption(ServiceOption.OWNER_SELECTION)
+                            && !service.hasOption(ServiceOption.DOCUMENT_OWNER)) {
+                        // Document expiration will be processed on owner node
+                        continue;
+                    }
+
                     if (s.documentExpirationTimeMicros > 0
                             && s.documentExpirationTimeMicros < now) {
                         stopService(service, true, null);
