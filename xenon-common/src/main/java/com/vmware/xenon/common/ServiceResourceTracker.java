@@ -398,7 +398,7 @@ class ServiceResourceTracker {
         Operation deleteExp = Operation.createDelete(this.host, s.getSelfLink())
                 .disableFailureLogging(true)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)
-                .setReplicationDisabled(true)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_FORWARDING)
                 .setReferer(this.host.getUri());
 
         this.host.sendRequest(deleteExp);

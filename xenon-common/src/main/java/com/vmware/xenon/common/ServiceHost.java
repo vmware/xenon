@@ -4386,7 +4386,7 @@ public class ServiceHost implements ServiceRequestSender {
             final Service s) {
         Operation delete = Operation.createDelete(s.getUri())
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)
-                .setReplicationDisabled(true)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_FORWARDING)
                 .setCompletion(removeServiceCompletion)
                 .setReferer(getUri());
         try {

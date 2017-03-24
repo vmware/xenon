@@ -114,6 +114,22 @@ import com.vmware.xenon.services.common.UserService.UserState;
 
 public class TestNodeGroupService {
 
+    public static class NonPersistedExampleFactoryService extends FactoryService {
+        public static final String SELF_LINK = "/test/examples-non-persisted";
+
+        public NonPersistedExampleFactoryService() {
+            super(ExampleServiceState.class);
+        }
+
+        @Override
+        public Service createServiceInstance() throws Throwable {
+            ExampleService s = new ExampleService();
+            s.toggleOption(ServiceOption.PERSISTENCE, false);
+            super.toggleOption(ServiceOption.PERSISTENCE, false);
+            return s;
+        }
+    }
+
     public static class PeriodicExampleFactoryService extends FactoryService {
         public static final String SELF_LINK = "test/examples-periodic";
 
@@ -1225,6 +1241,75 @@ public class TestNodeGroupService {
         this.host.waitForNodeGroupConvergence(
                 customNodeUris, this.nodeCount, this.nodeCount, expectedOptionsPerNode, false);
     }
+
+    @Test
+    public void testMultiNodeNonReplicatedExpiration() throws Throwable {
+        setUp(this.nodeCount);
+
+        this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+        this.host.setNodeGroupQuorum(this.nodeCount);
+        this.host.waitForNodeGroupConvergence(this.nodeCount);
+
+        // start the non-persisted factory service on each node
+        this.replicationTargetFactoryLink = NonPersistedExampleFactoryService.SELF_LINK;
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            h.startServiceAndWait(NonPersistedExampleFactoryService.class,
+                    NonPersistedExampleFactoryService.SELF_LINK);
+        }
+
+        for (URI hostUri : this.host.getNodeGroupMap().keySet()) {
+            waitForReplicatedFactoryServiceAvailable(
+                    UriUtils.buildUri(hostUri, this.replicationTargetFactoryLink),
+                    ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+        }
+
+        // create some service instances and verify that they are created on all nodes
+        VerificationHost targetHost = this.host.getPeerHost();
+        URI targetHostUri = targetHost.getUri();
+        Map<String, ExampleServiceState> initialStates = createExampleServices(targetHostUri);
+
+        this.host.log(Level.INFO, "Waiting for %d services to replicate", initialStates.size());
+        for (URI hostUri : this.host.getNodeGroupMap().keySet()) {
+            URI factoryUri = UriUtils.extendUri(hostUri, this.replicationTargetFactoryLink);
+            this.host.waitFor("Services failed to replicate", () -> {
+                ServiceDocumentQueryResult result = this.host.getServiceState(
+                        EnumSet.noneOf(TestProperty.class), ServiceDocumentQueryResult.class,
+                        factoryUri);
+                return result.documentLinks.size() == initialStates.size();
+            });
+        }
+
+        // patch the services with an expiration time in the near future
+        long expirationMicros = Utils.fromNowMicrosUtc(TimeUnit.MILLISECONDS.toMicros(
+                this.host.maintenanceIntervalMillis));
+
+        ExampleServiceState patchBody = new ExampleServiceState();
+        patchBody.documentExpirationTimeMicros = expirationMicros;
+
+        this.host.log(Level.INFO, "Patching expiration time on %d services", initialStates.size());
+        TestContext ctx = this.host.testCreate(initialStates.size());
+        for (String selfLink : initialStates.keySet()) {
+            Operation patchOp = Operation.createPatch(targetHost, selfLink)
+                    .setBody(patchBody)
+                    .setReferer(this.host.getReferer())
+                    .setCompletion(ctx.getCompletion());
+            this.host.send(patchOp);
+        }
+        ctx.await();
+
+        // wait for the services to expire on all nodes
+        for (URI hostUri : this.host.getNodeGroupMap().keySet()) {
+            URI factoryUri = UriUtils.extendUri(hostUri, this.replicationTargetFactoryLink);
+            this.host.waitFor("Services failed to expire", () -> {
+                ServiceDocumentQueryResult result = this.host.getServiceState(
+                        EnumSet.noneOf(TestProperty.class), ServiceDocumentQueryResult.class,
+                        factoryUri);
+                this.host.log(Level.INFO, "Query response: %s", Utils.toJsonHtml(result));
+                return result.documentLinks.size() == 0;
+            });
+        }
+    }
+
 
     @Test
     public void synchronizationOneByOneWithAbruptNodeStop() throws Throwable {
