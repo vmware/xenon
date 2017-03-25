@@ -571,7 +571,7 @@ public class TestLuceneDocumentIndexService {
 
         // create a paginated query with an explicit expiration time
         Query query = Query.Builder.create()
-                .addKindFieldClause(ExampleServiceState.class)
+                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, ExampleService.FACTORY_LINK, QueryTask.QueryTerm.MatchType.PREFIX)
                 .build();
         QueryTask queryTask = QueryTask.Builder.create()
                 .setQuery(query)

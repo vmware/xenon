@@ -241,6 +241,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final String STAT_NAME_SEARCHER_UPDATE_COUNT = "indexSearcherUpdateCount";
 
+    public static final String STAT_NAME_SEARCHER_REUSE_BY_DOCUMENT_KIND_COUNT = "indexSearcherReuseByDocumentKindCount";
+
     public static final String STAT_NAME_PAGINATED_SEARCHER_UPDATE_COUNT = "paginatedIndexSearcherUpdateCount";
 
     public static final String STAT_NAME_WRITER_ALREADY_CLOSED_EXCEPTION_COUNT = "indexWriterAlreadyClosedFailureCount";
@@ -335,6 +337,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     private final Map<String, DocumentUpdateInfo> updatesPerLink = new HashMap<>();
     private final Map<String, Long> liveVersionsPerLink = new HashMap<>();
     private final Map<String, Long> immutableParentLinks = new HashMap<>();
+    private final Map<String, Long> documentKindUpdateInfo = new HashMap<>();
     private long updateMapMemoryLimitMB;
 
     private Sort versionSort;
@@ -868,8 +871,9 @@ public class LuceneDocumentIndexService extends StatelessService {
                 && !qs.options.contains(QueryOption.TOP_RESULTS)) {
             // this is a paginated query. If this is the start of the query, create a dedicated searcher
             // for this query and all its pages. It will be expired when the query task itself expires
+            String documentKind = searchQueryForDocumentKindHint(qs.query);
             s = createOrUpdatePaginatedQuerySearcher(task.documentExpirationTimeMicros,
-                    this.writer, qs.options.contains(QueryOption.DO_NOT_REFRESH));
+                    this.writer, documentKind, qs.options.contains(QueryOption.DO_NOT_REFRESH));
         }
 
         if (!queryIndex(s, op, null, qs.options, luceneQuery, lucenePage,
@@ -913,14 +917,20 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private IndexSearcher createOrUpdatePaginatedQuerySearcher(long expirationMicros,
-            IndexWriter w, boolean doNotRefresh) throws IOException {
-        if (!doNotRefresh) {
+            IndexWriter w, String documentKind, boolean doNotRefresh) throws IOException {
+
+        if (!doNotRefresh && documentKind == null) {
             return createPaginatedQuerySearcher(expirationMicros, w);
         }
 
         IndexSearcher searcher;
         synchronized (this.searchSync) {
-            searcher = getOrUpdateExistingSearcher(expirationMicros);
+            // Pass documentKind only when doNotRefresh is false.
+            if (doNotRefresh) {
+                searcher = getOrUpdateExistingSearcher(expirationMicros, null);
+            } else {
+                searcher = getOrUpdateExistingSearcher(expirationMicros, documentKind);
+            }
         }
 
         if (searcher != null) {
@@ -930,13 +940,21 @@ public class LuceneDocumentIndexService extends StatelessService {
         return createPaginatedQuerySearcher(expirationMicros, w);
     }
 
-    private IndexSearcher getOrUpdateExistingSearcher(long newExpirationMicros) {
+    private IndexSearcher getOrUpdateExistingSearcher(long newExpirationMicros, String documentKind) {
 
         if (this.paginatedSearchersByCreationTime.isEmpty()) {
             return null;
         }
 
         PaginatedSearcherInfo info = this.paginatedSearchersByCreationTime.lastEntry().getValue();
+
+        if (documentKind != null) {
+            long searcherUpdateTime = this.searcherUpdateTimesMicros.get(info.searcher.hashCode());
+            if (documentNeedsNewSearcher(null, documentKind, -1, searcherUpdateTime)) {
+                return null;
+            }
+        }
+
         long currentExpirationMicros = info.expirationTimeMicros;
         if (newExpirationMicros <= currentExpirationMicros) {
             return info.searcher;
@@ -1143,8 +1161,14 @@ public class LuceneDocumentIndexService extends StatelessService {
             return true;
         }
 
+        String documentKind = null;
+
+        if (qs != null) {
+            documentKind = searchQueryForDocumentKindHint(qs.query);
+        }
+
         if (s == null) {
-            s = createOrRefreshSearcher(selfLinkPrefix, count, w,
+            s = createOrRefreshSearcher(selfLinkPrefix, documentKind, count, w,
                     options.contains(QueryOption.DO_NOT_REFRESH));
         }
 
@@ -1183,7 +1207,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        IndexSearcher s = createOrRefreshSearcher(selfLink, 1, w, false);
+        IndexSearcher s = createOrRefreshSearcher(selfLink, null, 1, w, false);
 
         long startNanos = System.nanoTime();
         TopDocs hits = queryIndexForVersion(selfLink, s, version, null);
@@ -1354,13 +1378,15 @@ public class LuceneDocumentIndexService extends StatelessService {
         int groupOffset = page != null ? page.groupOffset : 0;
         int groupLimit = qs.groupResultLimit != null ? qs.groupResultLimit : 10000;
 
+        String documentKind = searchQueryForDocumentKindHint(qs.query);
+
         if (s == null && qs.groupResultLimit != null) {
             s = createOrUpdatePaginatedQuerySearcher(task.documentExpirationTimeMicros,
-                    this.writer, qs.options.contains(QueryOption.DO_NOT_REFRESH));
+                    this.writer, documentKind, qs.options.contains(QueryOption.DO_NOT_REFRESH));
         }
 
         if (s == null) {
-            s = createOrRefreshSearcher(null, Integer.MAX_VALUE, this.writer,
+            s = createOrRefreshSearcher(null, documentKind, Integer.MAX_VALUE, this.writer,
                     qs.options.contains(QueryOption.DO_NOT_REFRESH));
         }
 
@@ -2136,7 +2162,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         long updateTime = updateTimeField.numericValue().longValue();
         // attempt to refresh or create new version cache entry, from the entry in the query results
         // The update method will reject the update if the version is stale
-        updateLinkInfoCache(null, link, latestVersion, updateTime);
+        updateLinkInfoCache(null, link, null, latestVersion, updateTime);
         return latestVersion;
     }
 
@@ -2361,7 +2387,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     private void deleteAllDocumentsForSelfLink(Operation postOrDelete, String link,
             ServiceDocument state)
             throws Throwable {
-        deleteDocumentsFromIndex(postOrDelete, link, 0, Long.MAX_VALUE);
+        deleteDocumentsFromIndex(postOrDelete, link, state != null ? state.documentKind : null, 0, Long.MAX_VALUE);
         adjustTimeSeriesStat(STAT_NAME_SERVICE_DELETE_COUNT, AGGREGATION_TYPE_SUM, 1);
         logFine("%s expired", link);
         if (state == null) {
@@ -2376,7 +2402,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE));
     }
 
-    private void deleteDocumentsFromIndex(Operation delete, String link, long oldestVersion,
+    private void deleteDocumentsFromIndex(Operation delete, String link, String kind, long oldestVersion,
             long newestVersion) throws Throwable {
 
         IndexWriter wr = this.writer;
@@ -2392,7 +2418,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         // be reflected in the new searcher. If the start time would be used,
         // it is possible to race with updating the searcher and NOT have this
         // change be reflected in the searcher.
-        updateLinkInfoCache(null, link, newestVersion, Utils.getNowMicrosUtc());
+        updateLinkInfoCache(null, link, kind, newestVersion, Utils.getNowMicrosUtc());
         delete.complete();
     }
 
@@ -2435,14 +2461,14 @@ public class LuceneDocumentIndexService extends StatelessService {
         // be reflected in the new searcher. If the start time would be used,
         // it is possible to race with updating the searcher and NOT have this
         // change be reflected in the searcher.
-        updateLinkInfoCache(desc, sd.documentSelfLink, sd.documentVersion, Utils.getNowMicrosUtc());
+        updateLinkInfoCache(desc, sd.documentSelfLink, sd.documentKind, sd.documentVersion, Utils.getNowMicrosUtc());
         op.setBody(null).complete();
         checkDocumentRetentionLimit(sd, desc);
         applyActiveQueries(op, sd, desc);
     }
 
     private void updateLinkInfoCache(ServiceDocumentDescription desc,
-            String link, long version, long lastAccessTime) {
+            String link, String kind, long version, long lastAccessTime) {
         boolean isImmutable = desc != null
                 && desc.serviceCapabilities != null
                 && desc.serviceCapabilities.contains(ServiceOption.IMMUTABLE);
@@ -2468,6 +2494,16 @@ public class LuceneDocumentIndexService extends StatelessService {
                     }
                     return entry;
                 });
+
+                if (kind != null) {
+                    this.documentKindUpdateInfo.compute(kind, (k, entry) -> {
+                        if (entry == null) {
+                            entry = 0L;
+                        }
+                        entry = Math.max(entry, lastAccessTime);
+                        return entry;
+                    });
+                }
             }
 
             // The index update time may only be increased.
@@ -2498,7 +2534,7 @@ public class LuceneDocumentIndexService extends StatelessService {
      * @return an {@link IndexSearcher} that is fresh enough to execute the specified query
      * @throws IOException
      */
-    private IndexSearcher createOrRefreshSearcher(String selfLink, int resultLimit, IndexWriter w,
+    private IndexSearcher createOrRefreshSearcher(String selfLink, String documentKind, int resultLimit, IndexWriter w,
             boolean doNotRefresh)
             throws IOException {
 
@@ -2511,18 +2547,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             long searcherUpdateTime = getSearcherUpdateTime(s, 0);
             if (s == null) {
                 needNewSearcher = true;
-            } else if (selfLink != null && resultLimit == 1) {
-                DocumentUpdateInfo du = this.updatesPerLink.get(selfLink);
-                if (du != null
-                        && du.updateTimeMicros >= searcherUpdateTime) {
-                    needNewSearcher = !doNotRefresh;
-                } else {
-                    String parent = UriUtils.getParentPath(selfLink);
-                    Long updateTime = this.immutableParentLinks.get(parent);
-                    if (updateTime != null && updateTime >= searcherUpdateTime) {
-                        needNewSearcher = !doNotRefresh;
-                    }
-                }
+            } else if (documentNeedsNewSearcher(selfLink, documentKind, resultLimit, searcherUpdateTime)) {
+                needNewSearcher = !doNotRefresh;
             } else if (searcherUpdateTime < this.writerUpdateTimeMicros) {
                 needNewSearcher = !doNotRefresh;
             }
@@ -2545,6 +2571,35 @@ public class LuceneDocumentIndexService extends StatelessService {
             this.searcherUpdateTimesMicros.put(s.hashCode(), now);
             return s;
         }
+    }
+
+    private boolean documentNeedsNewSearcher(String selfLink, String documentKind, int resultLimit, long searcherUpdateTime) {
+
+        if (selfLink != null && resultLimit == 1) {
+            DocumentUpdateInfo du = this.updatesPerLink.get(selfLink);
+            if (du != null
+                    && du.updateTimeMicros >= searcherUpdateTime) {
+                return true;
+            } else {
+                String parent = UriUtils.getParentPath(selfLink);
+                Long updateTime = this.immutableParentLinks.get(parent);
+                if (updateTime != null && updateTime >= searcherUpdateTime) {
+                    return true;
+                }
+            }
+        } else if (documentKind != null) {
+            Long documentKindUpdateTime = this.documentKindUpdateInfo.get(documentKind);
+            if (documentKindUpdateTime == null) {
+                documentKindUpdateTime = Long.MAX_VALUE;
+            }
+
+            if (searcherUpdateTime > documentKindUpdateTime) {
+                adjustTimeSeriesStat(STAT_NAME_SEARCHER_REUSE_BY_DOCUMENT_KIND_COUNT, AGGREGATION_TYPE_SUM, 1);
+                return false;
+            }
+        }
+
+        return true;
     }
 
     @Override
@@ -2581,7 +2636,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             long deadline = Utils.getSystemNowMicrosUtc() + getMaintenanceIntervalMicros();
 
             long startNanos = System.nanoTime();
-            IndexSearcher s = createOrRefreshSearcher(null, Integer.MAX_VALUE, w, false);
+            IndexSearcher s = createOrRefreshSearcher(null, null, Integer.MAX_VALUE, w, false);
             long endNanos = System.nanoTime();
             setTimeSeriesHistogramStat(STAT_NAME_MAINTENANCE_SEARCHER_REFRESH_DURATION_MICROS,
                     AGGREGATION_TYPE_AVG_MAX,
@@ -2764,7 +2819,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 if (wr == null) {
                     return;
                 }
-                deleteDocumentsFromIndex(dummyDelete, e.getKey(), 0, e.getValue());
+                deleteDocumentsFromIndex(dummyDelete, e.getKey(), null,  0, e.getValue());
             }
 
             links.clear();
@@ -2978,5 +3033,33 @@ public class LuceneDocumentIndexService extends StatelessService {
             sendRequest(patchOperation);
             OperationContext.restoreOperationContext(currentContext);
         }
+    }
+
+    private String searchQueryForDocumentKindHint(QueryTask.Query query) {
+        // TODO cache the result similar to nativeQuery
+        if (query == null) {
+            return null;
+        } else if (query.term != null && query.term.propertyName != null && query.term.matchType == MatchType.TERM) {
+            if (query.term.propertyName.equals(ServiceDocument.FIELD_NAME_KIND)) {
+                return query.term.matchValue;
+            }
+        } else if (query.booleanClauses != null) {
+            String documentKind = null;
+            int count = 0;
+            for (QueryTask.Query subClause : query.booleanClauses) {
+                if (subClause.term != null && subClause.term.propertyName != null && subClause.term.matchType == MatchType.TERM) {
+                    if (subClause.term.propertyName.equals(ServiceDocument.FIELD_NAME_KIND)) {
+                        documentKind = subClause.term.matchValue;
+                        count++;
+                    }
+                }
+            }
+
+            if (count == 1) {
+                return documentKind;
+            }
+        }
+
+        return null;
     }
 }
