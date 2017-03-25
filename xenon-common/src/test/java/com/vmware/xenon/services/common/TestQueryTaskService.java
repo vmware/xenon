@@ -4259,4 +4259,70 @@ public class TestQueryTaskService {
             assertTrue(e.getMessage().contains("EXPAND_BINARY_CONTENT is not allowed for remote clients."));
         }
     }
+
+
+    @Test
+    public void indexSearcherReuseBasedOnDocumentKind() throws Throwable {
+        setUpHost();
+        // Get the index searcher update count before making a query to the factory
+        ServiceStat searcherUpdateCountBefore =
+                getLuceneStat(LuceneDocumentIndexService.STAT_NAME_SEARCHER_UPDATE_COUNT + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR);
+
+        URI exampleFactoryURI = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK);
+        URI userFactoryURI = UriUtils.buildUri(this.host, UserService.FACTORY_LINK);
+
+        List<URI> exampleServices = new ArrayList<>();
+        List<URI> userServices = new ArrayList<>();
+        createExampleServices(exampleFactoryURI, exampleServices);
+
+        Query kindClause = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+
+        QuerySpecification qs = new QuerySpecification();
+        qs.query = kindClause;
+
+        this.host.createAndWaitSimpleDirectQuery(qs, this.serviceCount, this.serviceCount);
+
+        // Get the index searcher update count after the query to the factory
+        ServiceStat searcherUpdateCountAfter =
+                getLuceneStat(LuceneDocumentIndexService.STAT_NAME_SEARCHER_UPDATE_COUNT + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR);
+        // Index searcher is updated because documents of same 'kind' were modified.
+        assertTrue(searcherUpdateCountAfter.latestValue > searcherUpdateCountBefore.latestValue);
+
+        // Create a set of users ( documentKind other than ExampleServiceState )
+        ServiceStat searcherReuseCountBefore =
+                getLuceneStat(LuceneDocumentIndexService.STAT_NAME_SEARCHER_REUSE_BY_DOCUMENT_KIND_COUNT + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR);
+        createUserServices(userFactoryURI, userServices);
+
+        // Query for example services again for a few times ( no updates were done to user documents )
+        for (int i = 0; i < 4; i ++) {
+            this.host.createAndWaitSimpleDirectQuery(qs, this.serviceCount, this.serviceCount);
+            this.host.createAndWaitSimpleDirectQuery(qs, this.serviceCount, this.serviceCount);
+            this.host.createAndWaitSimpleDirectQuery(qs, this.serviceCount, this.serviceCount);
+            this.host.createAndWaitSimpleDirectQuery(qs, this.serviceCount, this.serviceCount);
+        }
+
+        ServiceStat searcherReuseCountAfter =
+                getLuceneStat(LuceneDocumentIndexService.STAT_NAME_SEARCHER_REUSE_BY_DOCUMENT_KIND_COUNT + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR);
+        // Verify that the index searcher has been reused at least once.
+        assertTrue(searcherReuseCountAfter.latestValue > searcherReuseCountBefore.latestValue);
+    }
+
+    private void createUserServices(URI userFactorURI, List<URI> userServices)
+            throws Throwable {
+
+        TestContext ctx = this.host.testCreate(this.serviceCount);
+        for (int i = 0; i < this.serviceCount; i++) {
+            UserService.UserState s = new UserService.UserState();
+            s.email = UUID.randomUUID().toString() + "@example.org";
+
+            userServices.add(UriUtils.buildUri(this.host.getUri(),
+                    ExampleService.FACTORY_LINK, s.documentSelfLink));
+            this.host.send(Operation.createPost(userFactorURI)
+                    .setBody(s)
+                    .setCompletion(ctx.getCompletion()));
+        }
+        this.host.testWait(ctx);
+    }
 }
