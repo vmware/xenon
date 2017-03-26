@@ -46,6 +46,7 @@ import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 
 public class QueryTaskService extends StatefulService {
     private static final long DEFAULT_EXPIRATION_SECONDS = 600;
+    private static final Integer DEFAULT_RESULT_LIMIT = Integer.MAX_VALUE;
     private ServiceDocumentQueryResult results;
 
     public QueryTaskService() {
@@ -566,7 +567,7 @@ public class QueryTaskService extends StatefulService {
     private void forwardQueryToDocumentIndexService(QueryTask task, Operation directOp) {
         try {
             if (task.querySpec.resultLimit == null) {
-                task.querySpec.resultLimit = Integer.MAX_VALUE;
+                task.querySpec.resultLimit = DEFAULT_RESULT_LIMIT;
             }
 
             Operation localPatch = Operation

@@ -46,7 +46,6 @@ import java.util.stream.Stream;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
@@ -57,7 +56,6 @@ import org.apache.lucene.index.IndexUpgrader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
-import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.KeepOnlyLastCommitDeletionPolicy;
 import org.apache.lucene.index.SegmentCommitInfo;
 import org.apache.lucene.index.SegmentInfos;
@@ -205,7 +203,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     static final String LUCENE_FIELD_NAME_BINARY_SERIALIZED_STATE = "binarySerializedState";
 
-    private static final String LUCENE_FIELD_NAME_JSON_SERIALIZED_STATE = "jsonSerializedState";
+    static final String LUCENE_FIELD_NAME_JSON_SERIALIZED_STATE = "jsonSerializedState";
 
     public static final String STAT_NAME_ACTIVE_QUERY_FILTERS = "activeQueryFilterCount";
 
@@ -385,6 +383,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         static final String KIND = Utils.buildKind(MaintenanceRequest.class);
     }
 
+
+
     public LuceneDocumentIndexService() {
         this(FILE_PATH_LUCENE);
     }
@@ -462,7 +462,6 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         this.fieldsToLoadWithExpand = new HashSet<>(this.fieldsToLoadNoExpand);
         this.fieldsToLoadWithExpand.add(ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS);
-        this.fieldsToLoadWithExpand.add(LUCENE_FIELD_NAME_JSON_SERIALIZED_STATE);
         this.fieldsToLoadWithExpand.add(LUCENE_FIELD_NAME_BINARY_SERIALIZED_STATE);
     }
 
@@ -1227,13 +1226,13 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        Document doc = s.doc(hits.scoreDocs[0].doc, this.fieldsToLoadWithExpand);
+        DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor();
+        loadDoc(s, visitor, hits.scoreDocs[0].doc, this.fieldsToLoadWithExpand);
 
         boolean hasExpired = false;
-        IndexableField expirationField = doc.getField(
-                ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS);
-        if (expirationField != null) {
-            long expiration = expirationField.numericValue().longValue();
+
+        Long expiration = visitor.documentExpirationTimeMicros;
+        if (expiration != null) {
             hasExpired = expiration <= Utils.getSystemNowMicrosUtc();
         }
 
@@ -1242,7 +1241,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        ServiceDocument sd = getStateFromLuceneDocument(doc, selfLink);
+        ServiceDocument sd = getStateFromLuceneDocument(visitor, selfLink);
         op.setBodyNoCloning(sd).complete();
     }
 
@@ -1878,14 +1877,15 @@ public class LuceneDocumentIndexService extends StatelessService {
         long searcherUpdateTime = getSearcherUpdateTime(s, queryStartTimeMicros);
         Map<String, Long> latestVersionPerLink = new HashMap<>();
 
+        DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor();
         for (ScoreDoc sd : hits) {
             if (!hasCountOption && uniques.size() >= resultLimit) {
                 break;
             }
 
             lastDocVisited = sd;
-            Document d = s.doc(sd.doc, fieldsToLoad);
-            String link = d.get(ServiceDocument.FIELD_NAME_SELF_LINK);
+            loadDoc(s, visitor, sd.doc, fieldsToLoad);
+            String link = visitor.documentSelfLink;
             String originalLink = link;
 
             // ignore results not in supplied white list
@@ -1895,8 +1895,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 continue;
             }
 
-            IndexableField versionField = d.getField(ServiceDocument.FIELD_NAME_VERSION);
-            Long documentVersion = versionField.numericValue().longValue();
+            long documentVersion = visitor.documentVersion;
 
             Long latestVersion = latestVersionPerLink.get(originalLink);
 
@@ -1925,8 +1924,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                     continue;
                 }
 
-                boolean isDeleted = Action.DELETE.toString().equals(d
-                        .get(ServiceDocument.FIELD_NAME_UPDATE_ACTION));
+                boolean isDeleted = Action.DELETE.toString()
+                        .equals(visitor.documentUpdateAction);
 
                 if (isDeleted && !options.contains(QueryOption.INCLUDE_DELETED)) {
                     // ignore a document if its marked deleted and it has the latest version
@@ -1954,10 +1953,11 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             if (options.contains(QueryOption.EXPAND_CONTENT)
                     || options.contains(QueryOption.OWNER_SELECTION)) {
-                state = getStateFromLuceneDocument(d, originalLink);
+                state = getStateFromLuceneDocument(visitor, originalLink);
                 if (state == null) {
                     // support reading JSON serialized state for backwards compatibility
-                    json = d.get(LUCENE_FIELD_NAME_JSON_SERIALIZED_STATE);
+                    loadDoc(s, visitor, sd.doc, Collections.singleton(LUCENE_FIELD_NAME_JSON_SERIALIZED_STATE));
+                    json = visitor.jsonSerializedState;
                     if (json == null) {
                         continue;
                     }
@@ -1973,10 +1973,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
 
             if (options.contains(QueryOption.EXPAND_BINARY_CONTENT) && !rsp.documents.containsKey(link)) {
-                BytesRef binaryData = getBinaryFromLuceneDocument(d);
+                byte[] binaryData = visitor.binarySerializedState;
                 if (binaryData != null) {
-                    ByteBuffer buffer = ByteBuffer.wrap(binaryData.bytes, binaryData.offset,
-                            binaryData.length);
+                    ByteBuffer buffer = ByteBuffer.wrap(binaryData, 0, binaryData.length);
                     rsp.documents.put(link, buffer);
                 } else {
                     logWarning("Binary State not found for %s", link);
@@ -1993,7 +1992,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
 
             if (options.contains(QueryOption.SELECT_LINKS)) {
-                processQueryResultsForSelectLinks(s, qs, rsp, d, sd.doc, link, state);
+                processQueryResultsForSelectLinks(s, qs, rsp, visitor, sd.doc, link, state);
             }
 
             uniques.add(link);
@@ -2005,8 +2004,13 @@ public class LuceneDocumentIndexService extends StatelessService {
         return lastDocVisited;
     }
 
+    private void loadDoc(IndexSearcher s, DocumentStoredFieldVisitor visitor, int docId, Set<String> fields) throws IOException {
+        visitor.reset(fields);
+        s.doc(docId, visitor);
+    }
+
     private boolean processQueryResultsForOwnerSelection(String json, ServiceDocument state) {
-        String documentOwner = null;
+        String documentOwner;
         if (state == null) {
             documentOwner = Utils.fromJson(json, ServiceDocument.class).documentOwner;
         } else {
@@ -2020,7 +2024,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private ServiceDocument processQueryResultsForSelectLinks(IndexSearcher s,
-            QuerySpecification qs, ServiceDocumentQueryResult rsp, Document d, int docId,
+            QuerySpecification qs, ServiceDocumentQueryResult rsp, DocumentStoredFieldVisitor d, int docId,
             String link,
             ServiceDocument state) throws Throwable {
         if (rsp.selectedLinksPerDocument == null) {
@@ -2033,8 +2037,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             rsp.selectedLinksPerDocument.put(link, linksPerDocument);
         }
 
+        DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor();
         for (QueryTask.QueryTerm qt : qs.linkTerms) {
-            String linkValue = d.get(qt.propertyName);
+            String linkValue = d.getLink(qt.propertyName);
             if (linkValue != null) {
                 linksPerDocument.put(qt.propertyName, linkValue);
                 rsp.selectedLinks.add(linkValue);
@@ -2045,8 +2050,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             // a field with a collection of links. We do not store those in lucene, they are
             // part of the binary serialized state.
             if (state == null) {
-                d = s.doc(docId, this.fieldsToLoadWithExpand);
-                state = getStateFromLuceneDocument(d, link);
+                loadDoc(s, visitor, docId, this.fieldsToLoadWithExpand);
+                state = getStateFromLuceneDocument(visitor, link);
                 if (state == null) {
                     logWarning("Skipping link term %s for %s, can not find serialized state",
                             qt.propertyName, link);
@@ -2083,19 +2088,14 @@ public class LuceneDocumentIndexService extends StatelessService {
         return state;
     }
 
-    private BytesRef getBinaryFromLuceneDocument(Document doc) {
-        return doc.getBinaryValue(LUCENE_FIELD_NAME_BINARY_SERIALIZED_STATE);
-    }
-
-    private ServiceDocument getStateFromLuceneDocument(Document doc, String link) {
-        BytesRef binaryStateField = getBinaryFromLuceneDocument(doc);
+    private ServiceDocument getStateFromLuceneDocument(DocumentStoredFieldVisitor doc, String link) {
+        byte[] binaryStateField = doc.binarySerializedState;
         if (binaryStateField == null) {
             logWarning("State not found for %s", link);
             return null;
         }
-        ServiceDocument state = (ServiceDocument) KryoSerializers.deserializeDocument(
-                binaryStateField.bytes,
-                binaryStateField.offset, binaryStateField.length);
+        ServiceDocument state = (ServiceDocument) KryoSerializers.deserializeDocument(binaryStateField,
+                0, binaryStateField.length);
         if (state.documentSelfLink == null) {
             state.documentSelfLink = link;
         }
@@ -2153,13 +2153,11 @@ public class LuceneDocumentIndexService extends StatelessService {
             return version;
         }
 
-        Document latestVersionDoc = s.doc(td.scoreDocs[0].doc,
-                this.fieldToLoadVersionLookup);
-        IndexableField versionField = latestVersionDoc.getField(ServiceDocument.FIELD_NAME_VERSION);
-        long latestVersion = versionField.numericValue().longValue();
-        IndexableField updateTimeField = latestVersionDoc
-                .getField(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS);
-        long updateTime = updateTimeField.numericValue().longValue();
+        DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor();
+        loadDoc(s, visitor, td.scoreDocs[0].doc, this.fieldToLoadVersionLookup);
+
+        long latestVersion = visitor.documentVersion;
+        long updateTime = visitor.documentUpdateTimeMicros;
         // attempt to refresh or create new version cache entry, from the entry in the query results
         // The update method will reject the update if the version is stale
         updateLinkInfoCache(null, link, null, latestVersion, updateTime);
@@ -2946,9 +2944,10 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             firstQuery = false;
 
+            DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor();
             for (ScoreDoc scoreDoc : results.scoreDocs) {
-                Document doc = s.doc(scoreDoc.doc, this.fieldsToLoadNoExpand);
-                String documentSelfLink = doc.get(ServiceDocument.FIELD_NAME_SELF_LINK);
+                loadDoc(s, visitor, scoreDoc.doc, this.fieldsToLoadNoExpand);
+                String documentSelfLink = visitor.documentSelfLink;
                 Long latestVersion = latestVersions.get(documentSelfLink);
                 if (latestVersion == null) {
                     long searcherUpdateTime = getSearcherUpdateTime(s, 0);
@@ -2957,8 +2956,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                     latestVersions.put(documentSelfLink, latestVersion);
                 }
 
-                IndexableField versionField = doc.getField(ServiceDocument.FIELD_NAME_VERSION);
-                long expiredVersion = versionField.numericValue().longValue();
+                long expiredVersion = visitor.documentVersion;
                 if (expiredVersion < latestVersion) {
                     continue;
                 }
@@ -2966,10 +2964,10 @@ public class LuceneDocumentIndexService extends StatelessService {
                 adjustTimeSeriesStat(STAT_NAME_DOCUMENT_EXPIRATION_COUNT, AGGREGATION_TYPE_SUM, 1);
 
                 // update document with one that has all fields, including binary state
-                doc = s.doc(scoreDoc.doc, this.fieldsToLoadWithExpand);
+                loadDoc(s, visitor, scoreDoc.doc, this.fieldsToLoadWithExpand);
                 ServiceDocument serviceDocument = null;
                 try {
-                    serviceDocument = getStateFromLuceneDocument(doc, documentSelfLink);
+                    serviceDocument = getStateFromLuceneDocument(visitor, documentSelfLink);
                 } catch (Throwable e) {
                     logWarning("Error deserializing state for %s: %s", documentSelfLink,
                             e.getMessage());
