@@ -80,7 +80,7 @@ class LuceneIndexDocumentHelper {
         public abstract void initialize();
     }
 
-    private LongFieldContext versionField = new LongFieldContext() {
+    private final LongFieldContext versionField = new LongFieldContext() {
         @Override
         public void initialize() {
             this.storedField = new StoredField(ServiceDocument.FIELD_NAME_VERSION, 0L);
@@ -90,7 +90,7 @@ class LuceneIndexDocumentHelper {
         }
     };
 
-    private LongFieldContext updateTimeField = new LongFieldContext() {
+    private final LongFieldContext updateTimeField = new LongFieldContext() {
         @Override
         public void initialize() {
             this.storedField = new StoredField(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS, 0L);
@@ -100,7 +100,7 @@ class LuceneIndexDocumentHelper {
         }
     };
 
-    private LongFieldContext expirationTimeField = new LongFieldContext() {
+    private final LongFieldContext expirationTimeField = new LongFieldContext() {
         @Override
         public void initialize() {
             this.storedField = new StoredField(ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS,
@@ -111,7 +111,7 @@ class LuceneIndexDocumentHelper {
         }
     };
 
-    private StringFieldContext selfLinkField = new StringFieldContext() {
+    private final StringFieldContext selfLinkField = new StringFieldContext() {
         @Override
         public void initialize() {
             this.stringField = new StringField(ServiceDocument.FIELD_NAME_SELF_LINK, "", Store.YES);
@@ -120,14 +120,14 @@ class LuceneIndexDocumentHelper {
         }
     };
 
-    private StringFieldContext kindField = new StringFieldContext() {
+    private final StringFieldContext kindField = new StringFieldContext() {
         @Override
         public void initialize() {
             this.stringField = new StringField(ServiceDocument.FIELD_NAME_KIND, "", Store.NO);
         }
     };
 
-    private StringFieldContext authPrincipalLinkField = new StringFieldContext() {
+    private final StringFieldContext authPrincipalLinkField = new StringFieldContext() {
         @Override
         public void initialize() {
             this.stringField = new StringField(ServiceDocument.FIELD_NAME_AUTH_PRINCIPAL_LINK, "",
@@ -135,7 +135,7 @@ class LuceneIndexDocumentHelper {
         }
     };
 
-    private StringFieldContext txIdField = new StringFieldContext() {
+    private final StringFieldContext txIdField = new StringFieldContext() {
         @Override
         public void initialize() {
             this.stringField = new StringField(ServiceDocument.FIELD_NAME_TRANSACTION_ID, "",
@@ -143,7 +143,7 @@ class LuceneIndexDocumentHelper {
         }
     };
 
-    private StringFieldContext updateActionField = new StringFieldContext() {
+    private final StringFieldContext updateActionField = new StringFieldContext() {
         @Override
         public void initialize() {
             this.stringField = new StringField(ServiceDocument.FIELD_NAME_UPDATE_ACTION, "",
@@ -151,17 +151,17 @@ class LuceneIndexDocumentHelper {
         }
     };
 
-    private Map<String, StoredField> storedFields = new HashMap<>();
+    private final Map<String, StoredField> storedFields = new HashMap<>();
 
-    private Map<String, StringField> stringFields = new HashMap<>();
+    private final Map<String, StringField> stringFields = new HashMap<>();
 
-    private Map<String, StringField> storedStringFields = new HashMap<>();
+    private final Map<String, StringField> storedStringFields = new HashMap<>();
 
-    private Map<String, SortedDocValuesField> sortedStringFields = new HashMap<>();
+    private final Map<String, SortedDocValuesField> sortedStringFields = new HashMap<>();
 
-    private Map<String, LongPoint> longPointFields = new HashMap<>();
+    private final Map<String, LongPoint> longPointFields = new HashMap<>();
 
-    private Map<String, DoublePoint> doublePointFields = new HashMap<>();
+    private final Map<String, DoublePoint> doublePointFields = new HashMap<>();
 
     private Map<String, NumericDocValuesField> numericFields = new HashMap<>();
 
