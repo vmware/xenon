@@ -19,6 +19,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -52,8 +53,12 @@ import com.google.gson.JsonParser;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
+import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.LongPoint;
+import org.apache.lucene.document.StoredField;
+import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.IndexCommit;
 import org.apache.lucene.index.IndexUpgrader;
 import org.apache.lucene.index.IndexWriter;
@@ -64,6 +69,7 @@ import org.apache.lucene.index.KeepOnlyLastCommitDeletionPolicy;
 import org.apache.lucene.index.SegmentCommitInfo;
 import org.apache.lucene.index.SegmentInfos;
 import org.apache.lucene.index.SnapshotDeletionPolicy;
+import org.apache.lucene.index.StoredFieldVisitor;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
@@ -384,6 +390,72 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static class MaintenanceRequest {
         static final String KIND = Utils.buildKind(MaintenanceRequest.class);
+    }
+
+    /**
+     * Copy of lucene class - the only change is that the doc field is resetable.
+     * @see  org.apache.lucene.document.DocumentStoredFieldVisitor
+     */
+    private static final class DocumentStoredFieldVisitor extends StoredFieldVisitor {
+        private Document doc;
+        private final Set<String> fieldsToAdd;
+
+        /**
+         * Load only fields named in the provided <code>Set&lt;String&gt;</code>.
+         * @param fieldsToAdd Set of fields to load, or <code>null</code> (all fields).
+         */
+        public DocumentStoredFieldVisitor(Set<String> fieldsToAdd) {
+            this.fieldsToAdd = fieldsToAdd;
+        }
+
+
+        @Override
+        public void binaryField(FieldInfo fieldInfo, byte[] value) throws IOException {
+            this.doc.add(new StoredField(fieldInfo.name, value));
+        }
+
+        @Override
+        public void stringField(FieldInfo fieldInfo, byte[] value) throws IOException {
+            final FieldType ft = new FieldType(TextField.TYPE_STORED);
+            ft.setStoreTermVectors(fieldInfo.hasVectors());
+            ft.setOmitNorms(fieldInfo.omitsNorms());
+            ft.setIndexOptions(fieldInfo.getIndexOptions());
+            this.doc.add(new StoredField(fieldInfo.name, new String(value, StandardCharsets.UTF_8), ft));
+        }
+
+        @Override
+        public void intField(FieldInfo fieldInfo, int value) {
+            this.doc.add(new StoredField(fieldInfo.name, value));
+        }
+
+        @Override
+        public void longField(FieldInfo fieldInfo, long value) {
+            this.doc.add(new StoredField(fieldInfo.name, value));
+        }
+
+        @Override
+        public void floatField(FieldInfo fieldInfo, float value) {
+            this.doc.add(new StoredField(fieldInfo.name, value));
+        }
+
+        @Override
+        public void doubleField(FieldInfo fieldInfo, double value) {
+            this.doc.add(new StoredField(fieldInfo.name, value));
+        }
+
+        @Override
+        public Status needsField(FieldInfo fieldInfo) throws IOException {
+            if (this.fieldsToAdd == null) {
+                return Status.YES;
+            }
+
+            // stop processing as soon as all the needed fields are loaded
+            if (this.doc.getFields().size() >= this.fieldsToAdd.size()) {
+                return Status.STOP;
+            }
+
+            return this.fieldsToAdd.contains(fieldInfo.name) ? Status.YES : Status.NO;
+        }
     }
 
     public LuceneDocumentIndexService() {
@@ -1827,13 +1899,14 @@ public class LuceneDocumentIndexService extends StatelessService {
         long searcherUpdateTime = getSearcherUpdateTime(s, queryStartTimeMicros);
         Map<String, Long> latestVersionPerLink = new HashMap<>();
 
+        Document d = new Document();
         for (ScoreDoc sd : hits) {
             if (!hasCountOption && uniques.size() >= resultLimit) {
                 break;
             }
 
             lastDocVisited = sd;
-            Document d = s.doc(sd.doc, fieldsToLoad);
+            loadDoc(s, d, sd.doc, fieldsToLoad);
             String link = d.get(ServiceDocument.FIELD_NAME_SELF_LINK);
             String originalLink = link;
 
@@ -1954,6 +2027,13 @@ public class LuceneDocumentIndexService extends StatelessService {
         return lastDocVisited;
     }
 
+    private void loadDoc(IndexSearcher s, Document dest, int docId, Set<String> fieldsToLoad) throws IOException {
+        dest.clear();
+        DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor(fieldsToLoad);
+        visitor.doc = dest;
+        s.doc(docId, visitor);
+    }
+
     private boolean processQueryResultsForOwnerSelection(String json, ServiceDocument state) {
         String documentOwner = null;
         if (state == null) {
@@ -1994,7 +2074,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             // a field with a collection of links. We do not store those in lucene, they are
             // part of the binary serialized state.
             if (state == null) {
-                d = s.doc(docId, this.fieldsToLoadWithExpand);
+                loadDoc(s, d, docId, this.fieldsToLoadNoExpand);
                 state = getStateFromLuceneDocument(d, link);
                 if (state == null) {
                     logWarning("Skipping link term %s for %s, can not find serialized state",
@@ -2853,8 +2933,9 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             firstQuery = false;
 
+            Document doc = new Document();
             for (ScoreDoc scoreDoc : results.scoreDocs) {
-                Document doc = s.doc(scoreDoc.doc, this.fieldsToLoadNoExpand);
+                loadDoc(s, doc, scoreDoc.doc, this.fieldsToLoadNoExpand);
                 String documentSelfLink = doc.get(ServiceDocument.FIELD_NAME_SELF_LINK);
                 Long latestVersion = latestVersions.get(documentSelfLink);
                 if (latestVersion == null) {
@@ -2873,7 +2954,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 adjustTimeSeriesStat(STAT_NAME_DOCUMENT_EXPIRATION_COUNT, AGGREGATION_TYPE_SUM, 1);
 
                 // update document with one that has all fields, including binary state
-                doc = s.doc(scoreDoc.doc, this.fieldsToLoadWithExpand);
+                loadDoc(s, doc, scoreDoc.doc, this.fieldsToLoadWithExpand);
                 ServiceDocument serviceDocument = null;
                 try {
                     serviceDocument = getStateFromLuceneDocument(doc, documentSelfLink);
