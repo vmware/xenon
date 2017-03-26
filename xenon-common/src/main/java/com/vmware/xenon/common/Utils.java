@@ -32,6 +32,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetDecoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collection;
@@ -76,10 +77,10 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
  * Runtime utility functions
  */
 public final class Utils {
-    private static final String CHARSET_UTF_8 = "UTF-8";
+
     public static final String PROPERTY_NAME_PREFIX = "xenon.";
-    public static final String CHARSET = CHARSET_UTF_8;
-    public static final Charset CHARSET_OBJECT = Charset.forName(CHARSET);
+    public static final Charset CHARSET_OBJECT = StandardCharsets.UTF_8;
+    public static final String CHARSET = "UTF-8";
     public static final String UI_DIRECTORY_NAME = "ui";
     public static final String PROPERTY_NAME_TIME_COMPARISON = "timeComparisonEpsilonMicros";
 
