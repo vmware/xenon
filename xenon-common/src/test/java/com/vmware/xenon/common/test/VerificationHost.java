@@ -841,6 +841,11 @@ public class VerificationHost extends ExampleServiceHost {
             QueryTask task = QueryTask.create(spec).setDirect(true);
             createQueryTaskService(UriUtils.buildUri(hostUri, ServiceUriPaths.CORE_QUERY_TASKS),
                     task, false, true, task, null);
+            if (spec.resultLimit != null) {
+                task = getServiceState(null,
+                        QueryTask.class,
+                        UriUtils.buildUri(hostUri, task.results.nextPageLink));
+            }
             if (task.results.documentLinks.size() == expectedResultCount) {
                 tasks[0] = task;
                 return true;
