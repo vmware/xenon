@@ -18,10 +18,16 @@ import static java.util.stream.Collectors.toMap;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
@@ -130,6 +136,70 @@ public final class ReflectionUtils {
             }
         }
         return hasChanged;
+    }
+
+    /**
+     * Sets the given collection to the given collection field.
+     *
+     * If the input collection is not directly assignable to the field collection type, the field is
+     * instantiated and collection items added to it.
+     * A default collection interface implementation is used if the field type is an interface
+     * (e.g. {@link ArrayList} for {@link List}, {@link HashSet} for {@link Set}, etc.).
+     *
+     * @return {@code true} if the assignment has made changes to the source object
+     */
+    @SuppressWarnings({ "rawtypes", "unchecked" })
+    public static boolean setOrInstantiateCollectionField(Object object, Field collectionField,
+            Collection<?> inputCollection) {
+        if (!Collection.class.isAssignableFrom(collectionField.getType())) {
+            throw new IllegalArgumentException(
+                    String.format("Field %s is not a collection", collectionField.getName()));
+        }
+
+        Class<? extends Collection> fieldType = (Class<? extends Collection>) collectionField
+                .getType();
+        Class<? extends Collection> inputType = inputCollection.getClass();
+
+        Collection collectionToSet;
+        boolean hasChanged = false;
+        if (fieldType.isAssignableFrom(inputType)) {
+            collectionToSet = inputCollection;
+            hasChanged = true;
+        } else {
+            if (fieldType.isInterface()) {
+                collectionToSet = instantiateDefaultCollection(fieldType);
+            } else {
+                collectionToSet = ReflectionUtils.instantiate(fieldType);
+            }
+            hasChanged = collectionToSet.addAll(inputCollection);
+        }
+
+        try {
+            collectionField.set(object, collectionToSet);
+        } catch (IllegalArgumentException | IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
+        return hasChanged;
+    }
+
+    /**
+     * Instantiates a default collection for the given collection interface
+     * (e.g. {@link ArrayList} for {@link List}, {@link HashSet} for {@link Set}, etc.).
+     */
+    @SuppressWarnings("rawtypes")
+    public static Collection instantiateDefaultCollection(
+            Class<? extends Collection> collectionInterfaceType) {
+        if (List.class.equals(collectionInterfaceType)) {
+            return new ArrayList<>();
+        }
+        if (Set.class.equals(collectionInterfaceType)) {
+            return new HashSet<>();
+        }
+        if (SortedSet.class.equals(collectionInterfaceType)) {
+            return new TreeSet<>();
+        }
+        throw new IllegalArgumentException(
+                "Unsupported collection interface: " + collectionInterfaceType.getCanonicalName());
     }
 
     /**

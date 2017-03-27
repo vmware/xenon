@@ -1441,8 +1441,8 @@ public final class Utils {
                 switch (operation) {
                 case ADD:
                     if (collObj == null) {
-                        field.set(currentState, inputCollection);
-                        hasChanged = true;
+                        hasChanged = ReflectionUtils.setOrInstantiateCollectionField(currentState,
+                                field, inputCollection);
                     } else {
                         hasChanged = collObj.addAll(inputCollection);
                     }

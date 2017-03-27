@@ -245,6 +245,28 @@ public class TestServiceDocument {
     }
 
     @Test
+    public void testSetFieldUpdate() throws Throwable {
+        // current state with null set
+        MergeTest state = new MergeTest();
+
+        // collection update with a list collection instead of a set collection
+        Map<String, Collection<Object>> collectionsToAdd = new HashMap<>();
+        collectionsToAdd.put("setOfStrings", Arrays.asList(SOME_STRING_VALUE));
+        ServiceStateCollectionUpdateRequest request =
+                ServiceStateCollectionUpdateRequest.create(collectionsToAdd, null);
+
+        Operation patchOperation = Operation.createPatch(new URI("http://test")).setBody(request);
+        ServiceDocumentDescription desc = ServiceDocumentDescription.Builder.create()
+                .buildDescription(MergeTest.class);
+        EnumSet<MergeResult> result = Utils.mergeWithStateAdvanced(desc, state, MergeTest.class,
+                patchOperation);
+        assertTrue(result.contains(MergeResult.SPECIAL_MERGE));
+        assertTrue(result.contains(MergeResult.STATE_CHANGED));
+        assertEquals(1, state.setOfStrings.size());
+        assertEquals(SOME_STRING_VALUE, state.setOfStrings.iterator().next());
+    }
+
+    @Test
     public void testMapsUpdateThroughMergeMethod() throws Throwable {
         MergeTest state = new MergeTest();
 
