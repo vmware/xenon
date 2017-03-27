@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.logging.Level;
 
@@ -607,7 +608,8 @@ public class UtilityService implements Service {
 
     private ServiceStats populateDocumentProperties(ServiceStats stats) {
         ServiceStats clone = new ServiceStats();
-        clone.entries = stats.entries;
+        // sort entries by key (natural ordering)
+        clone.entries = new TreeMap<>(stats.entries);
         clone.documentUpdateTimeMicros = stats.documentUpdateTimeMicros;
         clone.documentSelfLink = UriUtils.buildUriPath(this.parent.getSelfLink(),
                 ServiceHost.SERVICE_URI_SUFFIX_STATS);

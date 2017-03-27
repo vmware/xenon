@@ -17,6 +17,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -782,4 +783,44 @@ public class TestUtilityService extends BasicReusableHostTestCase {
             assertTrue(maxCount >= 1);
         }
     }
+
+    @Test
+    public void statsKeyOrder() {
+
+        ExampleServiceState state = new ExampleServiceState();
+        state.name = "foo";
+        Operation post = Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(state);
+        state = this.sender.sendAndWait(post, ExampleServiceState.class);
+
+        ServiceStats stats = new ServiceStats();
+        ServiceStat stat = new ServiceStat();
+        stat.name = "keyBBB";
+        stat.latestValue = 10;
+        stats.entries.put(stat.name, stat);
+        stat = new ServiceStat();
+        stat.name = "keyCCC";
+        stat.latestValue = 10;
+        stats.entries.put(stat.name, stat);
+        stat = new ServiceStat();
+        stat.name = "keyAAA";
+        stat.latestValue = 10;
+        stats.entries.put(stat.name, stat);
+
+        URI exampleStatsUri = UriUtils.buildStatsUri(this.host, state.documentSelfLink);
+        this.sender.sendAndWait(Operation.createPut(exampleStatsUri).setBody(stats));
+
+        // odata stats prefix query
+        String odataFilterValue = String.format("%s eq %s*", ServiceStat.FIELD_NAME_NAME, "key");
+        URI filteredStats = UriUtils.extendUriWithQuery(exampleStatsUri,
+                UriUtils.URI_PARAM_ODATA_FILTER, odataFilterValue);
+        ServiceStats result = getStats(filteredStats);
+
+        // verify stats key order
+        assertEquals(3, result.entries.size());
+        List<String> statList = new ArrayList<>(result.entries.keySet());
+        assertEquals("stat index 0", "keyAAA", statList.get(0));
+        assertEquals("stat index 1", "keyBBB", statList.get(1));
+        assertEquals("stat index 2", "keyCCC", statList.get(2));
+    }
+
 }
