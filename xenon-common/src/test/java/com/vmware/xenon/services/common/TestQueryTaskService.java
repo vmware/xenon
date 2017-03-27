@@ -4236,9 +4236,15 @@ public class TestQueryTaskService {
     @Test
     public void indexSearcherReuseBasedOnDocumentKind() throws Throwable {
         setUpHost();
+
+        String searcherUpdateStatName = LuceneDocumentIndexService.STAT_NAME_SEARCHER_UPDATE_COUNT +
+                ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
+
+        String searcherReuseStatName = LuceneDocumentIndexService.STAT_NAME_SEARCHER_REUSE_BY_DOCUMENT_KIND_COUNT +
+                ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
+
         // Get the index searcher update count before making a query to the factory
-        ServiceStat searcherUpdateCountBefore =
-                getLuceneStat(LuceneDocumentIndexService.STAT_NAME_SEARCHER_UPDATE_COUNT + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR);
+        ServiceStat searcherUpdateCountBefore = getLuceneStat(searcherUpdateStatName);
 
         URI exampleFactoryURI = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK);
         URI userFactoryURI = UriUtils.buildUri(this.host, UserService.FACTORY_LINK);
@@ -4247,38 +4253,37 @@ public class TestQueryTaskService {
         List<URI> userServices = new ArrayList<>();
         createExampleServices(exampleFactoryURI, exampleServices);
 
+        // Issue a multiple documentKind query
         Query kindClause = Query.Builder.create()
-                .addKindFieldClause(ExampleServiceState.class)
+                .addFieldClause(ServiceDocument.FIELD_NAME_KIND,
+                        Utils.buildKind(ExampleServiceState.class), MatchType.TERM, Occurance.SHOULD_OCCUR)
+                .addFieldClause(ServiceDocument.FIELD_NAME_KIND,
+                        Utils.buildKind(UserService.UserState.class), MatchType.TERM, Occurance.SHOULD_OCCUR)
                 .build();
 
         QuerySpecification qs = new QuerySpecification();
         qs.query = kindClause;
+        qs.resultLimit = 100;
 
         this.host.createAndWaitSimpleDirectQuery(qs, this.serviceCount, this.serviceCount);
 
         // Get the index searcher update count after the query to the factory
-        ServiceStat searcherUpdateCountAfter =
-                getLuceneStat(LuceneDocumentIndexService.STAT_NAME_SEARCHER_UPDATE_COUNT + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR);
+        ServiceStat searcherUpdateCountAfter = getLuceneStat(searcherUpdateStatName);
         // Index searcher is updated because documents of same 'kind' were modified.
         assertTrue(searcherUpdateCountAfter.latestValue > searcherUpdateCountBefore.latestValue);
 
-        // Create a set of users ( documentKind other than ExampleServiceState )
-        ServiceStat searcherReuseCountBefore =
-                getLuceneStat(LuceneDocumentIndexService.STAT_NAME_SEARCHER_REUSE_BY_DOCUMENT_KIND_COUNT + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR);
+        // Create a set of users
+        ServiceStat searcherReuseCountBefore = getLuceneStat(searcherReuseStatName);
         createUserServices(userFactoryURI, userServices);
 
         // Query for example services again for a few times ( no updates were done to user documents )
-        for (int i = 0; i < 4; i ++) {
-            this.host.createAndWaitSimpleDirectQuery(qs, this.serviceCount, this.serviceCount);
-            this.host.createAndWaitSimpleDirectQuery(qs, this.serviceCount, this.serviceCount);
-            this.host.createAndWaitSimpleDirectQuery(qs, this.serviceCount, this.serviceCount);
-            this.host.createAndWaitSimpleDirectQuery(qs, this.serviceCount, this.serviceCount);
-        }
+        this.host.waitFor("Lucene IndexSearchers were not reused for documentKind queries", () -> {
+            this.host.createAndWaitSimpleDirectQuery(qs, this.serviceCount, 2 * this.serviceCount);
+            ServiceStat searcherReuseCountAfter = getLuceneStat(searcherReuseStatName);
 
-        ServiceStat searcherReuseCountAfter =
-                getLuceneStat(LuceneDocumentIndexService.STAT_NAME_SEARCHER_REUSE_BY_DOCUMENT_KIND_COUNT + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR);
-        // Verify that the index searcher has been reused at least once.
-        assertTrue(searcherReuseCountAfter.latestValue > searcherReuseCountBefore.latestValue);
+            // Verify that the index searcher has been reused at least once.
+            return searcherReuseCountAfter.latestValue > searcherReuseCountBefore.latestValue;
+        });
     }
 
     private void createUserServices(URI userFactorURI, List<URI> userServices)

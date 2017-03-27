@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.services.common;
 
+import java.util.HashSet;
 import java.util.List;
 
 import org.apache.lucene.document.DoublePoint;
@@ -29,8 +30,10 @@ import org.apache.lucene.search.SortedNumericSortField;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.WildcardQuery;
 
+import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
+import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryRuntimeContext;
 
 /**
  * Convert {@link QueryTask.QuerySpecification} to native Lucene query.
@@ -40,7 +43,7 @@ final class LuceneQueryConverter {
 
     }
 
-    static Query convertToLuceneQuery(QueryTask.Query query) {
+    static Query convertToLuceneQuery(QueryTask.Query query, QueryRuntimeContext context) {
         if (query.occurance == null) {
             query.occurance = QueryTask.Query.Occurance.MUST_OCCUR;
         }
@@ -51,7 +54,7 @@ final class LuceneQueryConverter {
                         "term and booleanClauses are mutually exclusive");
             }
 
-            return convertToLuceneBooleanQuery(query);
+            return convertToLuceneBooleanQuery(query, context);
         }
 
         if (query.term == null) {
@@ -62,6 +65,14 @@ final class LuceneQueryConverter {
         validateTerm(term);
         if (term.matchType == null) {
             term.matchType = QueryTask.QueryTerm.MatchType.TERM;
+        }
+
+        if (context != null && ServiceDocument.FIELD_NAME_KIND.equals(term.propertyName) &&
+                query.occurance != QueryTask.Query.Occurance.MUST_NOT_OCCUR) {
+            if (context.kindScope == null) {
+                context.kindScope = new HashSet<>();
+            }
+            context.kindScope.add(term.matchValue);
         }
 
         if (query.term.range != null) {
@@ -119,18 +130,19 @@ final class LuceneQueryConverter {
         }
     }
 
-    static Query convertToLuceneBooleanQuery(QueryTask.Query query) {
+    static Query convertToLuceneBooleanQuery(QueryTask.Query query, QueryRuntimeContext context) {
         BooleanQuery.Builder parentQuery = new BooleanQuery.Builder();
 
         // Recursively build the boolean query. We allow arbitrary nesting and grouping.
         for (QueryTask.Query q : query.booleanClauses) {
-            buildBooleanQuery(parentQuery, q);
+            buildBooleanQuery(parentQuery, q, context);
         }
         return parentQuery.build();
     }
 
-    static void buildBooleanQuery(BooleanQuery.Builder parent, QueryTask.Query clause) {
-        Query lq = convertToLuceneQuery(clause);
+    static void buildBooleanQuery(BooleanQuery.Builder parent, QueryTask.Query clause,
+            QueryRuntimeContext context) {
+        Query lq = convertToLuceneQuery(clause, context);
         BooleanClause bc = new BooleanClause(lq, convertToLuceneOccur(clause.occurance));
         parent.add(bc);
     }
