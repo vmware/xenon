@@ -17,6 +17,7 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -68,6 +69,12 @@ public class QueryTask extends ServiceDocument {
              * The subject link of the user that created the query task.
              */
             public transient String subjectLink;
+
+            /**
+             * Kind scope for the query. If the query does not contain one or more kind clauses, the
+             * field will be null;
+             */
+            public Set<String> kindScope = new HashSet<>();
         }
 
         public enum QueryOption {
@@ -336,6 +343,7 @@ public class QueryTask extends ServiceDocument {
         public void copyTo(QuerySpecification clonedSpec) {
             clonedSpec.context.documentLinkWhiteList = this.context.documentLinkWhiteList;
             clonedSpec.context.filter = this.context.filter;
+            clonedSpec.context.kindScope = this.context.kindScope;
             clonedSpec.context.nativePage = this.context.nativePage;
             clonedSpec.context.nativeQuery = this.context.nativeQuery;
             clonedSpec.context.nativeSearcher = this.context.nativeSearcher;
