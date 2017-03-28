@@ -501,6 +501,10 @@ public class QueryTaskService extends StatefulService {
         case CREATED:
             return false;
         case STARTED:
+            // Init continuousResults to empty instance
+            if (state.results != null && state.results.continuousResults == null) {
+                state.results.continuousResults = new ContinuousResult();
+            }
             // if the new state is STARTED, and we are in STARTED, this is just a update notification
             // from the index that either the initial query completed, or a new update passed the
             // query filter. Subscribers can subscribe to this task and see what changed.
@@ -512,9 +516,6 @@ public class QueryTaskService extends StatefulService {
                     state.results.documentCount = 0L;
                 }
             } else {
-                if (state.results.continuousResults == null) {
-                    state.results.continuousResults = new ContinuousResult();
-                }
                 // After it has STARTED, now adjust the count based on
                 // documentUpdateAction.
                 if (this.results.documents != null) {
