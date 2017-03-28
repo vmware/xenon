@@ -112,25 +112,21 @@ class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexServic
 
         logInfo("Verifying paginated searcher lists are equal");
 
-        Collection<PaginatedSearcherInfo> searchersByCreationTime;
         Map<Long, List<PaginatedSearcherInfo>> searchersByExpirationTime = new HashMap<>();
         long searcherCount = 0;
 
         synchronized (this.searchSync) {
-            searchersByCreationTime = this.paginatedSearchersByCreationTime.values();
             for (Entry<Long, List<PaginatedSearcherInfo>> entry :
                     this.paginatedSearchersByExpirationTime.entrySet()) {
-                searchersByExpirationTime.put(entry.getKey(), new ArrayList<>(entry.getValue()));
-                searcherCount += entry.getValue().size();
+                List<PaginatedSearcherInfo> expirationList = entry.getValue();
+                for (PaginatedSearcherInfo info : expirationList) {
+                    assertTrue(this.paginatedSearchersByCreationTime.containsValue(info));
+                }
+                searchersByExpirationTime.put(entry.getKey(), new ArrayList<>(expirationList));
+                searcherCount += expirationList.size();
             }
-        }
 
-        assertEquals(searchersByCreationTime.size(), searcherCount);
-
-        for (List<PaginatedSearcherInfo> expirationList : searchersByExpirationTime.values()) {
-            for (PaginatedSearcherInfo info : expirationList) {
-                assertTrue(searchersByCreationTime.contains(info));
-            }
+            assertEquals(this.paginatedSearchersByCreationTime.size(), searcherCount);
         }
 
         return searchersByExpirationTime;
