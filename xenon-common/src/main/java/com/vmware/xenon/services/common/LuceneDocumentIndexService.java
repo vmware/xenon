@@ -2374,6 +2374,11 @@ public class LuceneDocumentIndexService extends StatelessService {
         logSevere("Exception on index service thread: %s", Utils.toString(e));
         this.adjustStat(STAT_NAME_WRITER_ALREADY_CLOSED_EXCEPTION_COUNT, 1);
         applyFileLimitRefreshWriter(true);
+
+        // When document create or update fails with an exception. Clear the threadLocalDoc.
+        Document threadLocalDoc = this.indexDocumentHelper.get().getDoc();
+        threadLocalDoc.clear();
+
     }
 
     private void deleteAllDocumentsForSelfLinkForcedPost(IndexWriter wr, ServiceDocument sd)
