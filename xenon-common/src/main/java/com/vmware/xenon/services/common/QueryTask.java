@@ -177,6 +177,13 @@ public class QueryTask extends ServiceDocument {
              * Query will return latest versions of documents before {@link QuerySpecification#timeSnapshotBoundaryMicros}
              */
             TIME_SNAPSHOT,
+
+            /**
+             * Infrastructure use only
+             *
+             * Query non-persistent service results from the service host, instead of searching in index.
+             */
+            NON_PERSISTENT_SERVICE
         }
 
         public enum SortOrder {

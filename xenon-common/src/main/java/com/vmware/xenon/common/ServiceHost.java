@@ -5362,16 +5362,36 @@ public class ServiceHost implements ServiceRequestSender {
         nss.selectAndForward(op, req);
     }
 
+
+    /**
+     * Get service using a simple exact match on the supplied self link
+     */
+    public void getLocalCachedService(String servicePath, Operation get) {
+        Service s = this.attachedServices.get(servicePath);
+        if (s != null) {
+            ServiceDocument state = this.serviceResourceTracker.getCachedServiceState(s, get);
+            get.setBodyNoCloning(state).complete();
+        }
+    }
+
     /**
      * Queries services in the AVAILABLE stage using a simple exact or prefix match on the supplied
      * self link
      */
     public void queryServiceUris(String servicePath, Operation get) {
+        ServiceDocumentQueryResult r = new ServiceDocumentQueryResult();
+        queryServiceUris(servicePath, r);
+        get.setBodyNoCloning(r).complete();
+    }
+
+    /**
+     * Queries services in the AVAILABLE stage using a simple exact or prefix match on the supplied
+     * self link
+     */
+    public int queryServiceUris(String servicePath, ServiceDocumentQueryResult r) {
         // TODO Use Radix trees for efficient prefix searches. This is not
         // urgent since we consider queries directly on the host instead of the
         // document index, to be rare
-
-        ServiceDocumentQueryResult r = new ServiceDocumentQueryResult();
 
         boolean doPrefixMatch = servicePath.endsWith(UriUtils.URI_WILDCARD_CHAR);
         servicePath = servicePath.replace(UriUtils.URI_WILDCARD_CHAR, "");
@@ -5397,7 +5417,7 @@ public class ServiceHost implements ServiceRequestSender {
             r.documentLinks.add(path);
         }
         r.documentOwner = getId();
-        get.setBodyNoCloning(r).complete();
+        return r.documentLinks.size();
     }
 
     public void queryServiceUris(EnumSet<ServiceOption> options, boolean matchAllOptions,

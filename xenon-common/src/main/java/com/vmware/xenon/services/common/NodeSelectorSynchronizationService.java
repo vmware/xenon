@@ -176,9 +176,10 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             ServiceDocument peerState = Utils.fromJson(e.getValue(),
                     request.state.getClass());
 
-            if (peerState.documentSelfLink == null
-                    || !peerState.documentSelfLink.equals(request.state.documentSelfLink)) {
-                logWarning("Invalid state from peer %s: %s", e.getKey(), e.getValue());
+            if (request.options.contains(ServiceOption.PERSISTENCE) &&
+                    (peerState.documentSelfLink == null
+                    || !peerState.documentSelfLink.equals(request.state.documentSelfLink))) {
+                logWarning("Invalid state from peer %s: %s : %s", e.getKey(), e.getValue(), Utils.toJsonHtml(request));
                 peerStates.put(e.getKey(), new ServiceDocument());
                 continue;
             }
@@ -268,10 +269,11 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             bestPeerRsp = request.state;
         }
 
-        if (bestPeerRsp.documentSelfLink == null
+        if (request.options.contains(ServiceOption.PERSISTENCE) &&
+                (bestPeerRsp.documentSelfLink == null
                 || bestPeerRsp.documentVersion < 0
                 || bestPeerRsp.documentEpoch == null
-                || bestPeerRsp.documentEpoch < 0) {
+                || bestPeerRsp.documentEpoch < 0)) {
             post.fail(new IllegalStateException(
                     "Chosen state has invalid epoch or version: " + Utils.toJson(bestPeerRsp)));
             return;

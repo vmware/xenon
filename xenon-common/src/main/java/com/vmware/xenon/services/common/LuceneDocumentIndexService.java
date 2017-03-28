@@ -1021,7 +1021,11 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         if (!selfLink.endsWith(UriUtils.URI_WILDCARD_CHAR)) {
             // Most basic query is retrieving latest document at latest version for a specific link
-            queryIndexSingle(selfLink, get, version);
+            boolean found = queryIndexSingle(selfLink, get, version);
+            if (!found) {
+                // Search the service host if there are no results in the index for specific link
+                getHost().getLocalCachedService(selfLink, get);
+            }
             return;
         }
 
@@ -1150,12 +1154,16 @@ public class LuceneDocumentIndexService extends StatelessService {
         return true;
     }
 
-    private void queryIndexSingle(String selfLink, Operation op, Long version)
+    /**
+     * Returns true if Operation was completed/failed, otherwise false. Caller would have to
+     * complete the operation if return value was false.
+     */
+    private boolean queryIndexSingle(String selfLink, Operation op, Long version)
             throws Throwable {
         IndexWriter w = this.writer;
         if (w == null) {
             op.fail(new CancellationException());
-            return;
+            return true;
         }
 
         IndexSearcher s = createOrRefreshSearcher(selfLink, 1, w, false);
@@ -1174,8 +1182,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
         }
         if (hits.totalHits == 0) {
-            op.complete();
-            return;
+            return false;
         }
 
         Document doc = s.doc(hits.scoreDocs[0].doc, this.fieldsToLoadWithExpand);
@@ -1190,11 +1197,12 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         if (hasExpired) {
             op.complete();
-            return;
+            return true;
         }
 
         ServiceDocument sd = getStateFromLuceneDocument(doc, selfLink);
         op.setBodyNoCloning(sd).complete();
+        return true;
     }
 
     /**
@@ -1494,6 +1502,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         boolean shouldProcessResults = true;
         boolean useDirectSearch = options.contains(QueryOption.TOP_RESULTS)
                 && options.contains(QueryOption.INCLUDE_ALL_VERSIONS);
+        boolean nonPersistentServiceQuery = false;
+
         int resultLimit = count;
         int hitCount;
 
@@ -1539,6 +1549,11 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
         }
 
+        // Non-persistent services would be queried from service host's cache.
+        if (qs != null) {
+            nonPersistentServiceQuery = qs.options.contains(QueryOption.NON_PERSISTENT_SERVICE);
+        }
+
         TopDocs results = null;
         int queryCount = 0;
         rsp.queryTimeMicros = 0L;
@@ -1576,13 +1591,34 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
 
             hits = results.scoreDocs;
+            int totalHits = hits.length;
 
             long queryTime = end - start;
 
             rsp.documentCount = 0L;
             rsp.queryTimeMicros += queryTime;
+
+            if (nonPersistentServiceQuery) {
+                for (QueryTask.Query booleanClause : qs.query.booleanClauses) {
+                    if (booleanClause.term != null && booleanClause.term.propertyName.equals(
+                            ServiceDocument.FIELD_NAME_SELF_LINK)) {
+                        String servicePath = booleanClause.term.matchValue;
+                        ServiceDocumentQueryResult response = new ServiceDocumentQueryResult();
+                        totalHits = getHost().queryServiceUris(servicePath, response);
+
+                        if (shouldProcessResults) {
+                            rsp.documentLinks = response.documentLinks;
+                            rsp.documentCount = (long) response.documentLinks.size();
+                            rsp.documentOwner = response.documentOwner;
+                        }
+
+                        break;
+                    }
+                }
+            }
+
             ScoreDoc bottom = null;
-            if (shouldProcessResults) {
+            if (shouldProcessResults && !nonPersistentServiceQuery) {
                 start = end;
                 bottom = processQueryResults(qs, options, count, s, rsp, hits,
                         queryStartTimeMicros);
@@ -1603,7 +1639,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                 break;
             }
 
-            if (hits.length == 0) {
+            // Nothing found in index for persistent services, or in host's cache for non-persistent services.
+            if (totalHits == 0) {
                 break;
             }
 
@@ -1613,13 +1650,21 @@ public class LuceneDocumentIndexService extends StatelessService {
                 }
 
                 if (!hasPage || rsp.documentLinks.size() >= count
-                        || hits.length < resultLimit) {
+                        || totalHits < resultLimit) {
                     // query had less results then per page limit or page is full of results
 
                     boolean createNextPageLink = true;
                     if (hasPage) {
                         createNextPageLink = checkNextPageHasEntry(bottom, options, s,
                                 tq, sort, hitCount, qs, queryStartTimeMicros);
+
+                    }
+
+                    // On non-persistent service query, we will only have one page with all documentSelfLinks,
+                    // which we return when shouldProcessResults is true in first page.
+                    // No need of another page after that.
+                    if (nonPersistentServiceQuery) {
+                        createNextPageLink = !shouldProcessResults;
                     }
 
                     if (createNextPageLink) {

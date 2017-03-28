@@ -483,6 +483,10 @@ public class SynchronizationTaskService
         queryTask.querySpec.options = EnumSet.of(
                 QueryTask.QuerySpecification.QueryOption.BROADCAST);
 
+        if (!task.childOptions.contains(ServiceOption.PERSISTENCE)) {
+            queryTask.querySpec.options.add(QueryTask.QuerySpecification.QueryOption.NON_PERSISTENT_SERVICE);
+        }
+
         // Set the node-selector link.
         queryTask.nodeSelectorLink = task.nodeSelectorLink;
 
