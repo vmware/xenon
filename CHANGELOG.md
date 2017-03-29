@@ -1,6 +1,8 @@
 # CHANGELOG
 
-## 1.1.0-CR6-SNAPSHOT
+## 1.1.0-CR6
+
+* Bug fix related to expiration of replicated QueryTask services
 
 * Remove OperationOption.SEND_WITH_CALLBACK. This was an experimental custom
   protocol that allows re-use of the same http connection across multiple
