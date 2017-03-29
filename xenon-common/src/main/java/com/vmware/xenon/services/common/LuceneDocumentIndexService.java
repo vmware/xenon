@@ -81,6 +81,7 @@ import org.apache.lucene.search.grouping.TopGroups;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.MMapDirectory;
+import org.apache.lucene.store.RAMDirectory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Version;
 
@@ -396,6 +397,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         this.indexDirectory = indexDirectory;
     }
 
+    private boolean isDurable() {
+        return this.indexDirectory != null;
+    }
+
     @Override
     public void handleStart(final Operation post) {
         super.setMaintenanceIntervalMicros(getHost().getMaintenanceIntervalMicros() * 5);
@@ -403,7 +408,6 @@ public class LuceneDocumentIndexService extends StatelessService {
         // so its worth caching (plus we only have a very small number of index services
         this.uri = super.getUri();
 
-        File directory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory);
         this.privateQueryExecutor = Executors.newFixedThreadPool(QUERY_THREAD_COUNT,
                 r -> new Thread(r, getUri() + "/queries/" + Utils.getSystemNowMicrosUtc()));
         this.privateIndexingExecutor = Executors.newFixedThreadPool(UPDATE_THREAD_COUNT,
@@ -411,25 +415,38 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         initializeInstance();
 
-        // create durable index writer
-        for (int retryCount = 0; retryCount < 2; retryCount++) {
+        if (isDurable()) {
+            // create durable index writer
+            File directory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory);
+            for (int retryCount = 0; retryCount < 2; retryCount++) {
+                try {
+                    createWriter(directory, true);
+                    // we do not actually know if the index is OK, until we try to query
+                    doSelfValidationQuery();
+                    if (retryCount == 1) {
+                        logInfo("Retry to create index writer was successful");
+                    }
+                    break;
+                } catch (Throwable e) {
+                    adjustStat(STAT_NAME_INDEX_LOAD_RETRY_COUNT, 1);
+                    if (retryCount < 1) {
+                        logWarning("Failure creating index writer: %s, will retry",
+                                Utils.toString(e));
+                        close(this.writer);
+                        archiveCorruptIndexFiles(directory);
+                        continue;
+                    }
+                    logWarning("Failure creating index writer: %s", Utils.toString(e));
+                    post.fail(e);
+                    return;
+                }
+            }
+        } else {
+            // create RAM based index writer
             try {
-                createWriter(directory, true);
-                // we do not actually know if the index is OK, until we try to query
-                doSelfValidationQuery();
-                if (retryCount == 1) {
-                    logInfo("Retry to create index writer was successful");
-                }
-                break;
+                createWriter(null, false);
             } catch (Throwable e) {
-                adjustStat(STAT_NAME_INDEX_LOAD_RETRY_COUNT, 1);
-                if (retryCount < 1) {
-                    logWarning("Failure creating index writer: %s, will retry", Utils.toString(e));
-                    close(this.writer);
-                    archiveCorruptIndexFiles(directory);
-                    continue;
-                }
-                logWarning("Failure creating index writer: %s", Utils.toString(e));
+                logSevere(e);
                 post.fail(e);
                 return;
             }
@@ -552,7 +569,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             this.updateMapMemoryLimitMB = Math.max(1, totalMBs / 100);
         }
 
-        Directory dir = MMapDirectory.open(directory.toPath());
+        Directory dir = directory != null ? MMapDirectory.open(directory.toPath())
+                : new RAMDirectory();
 
         // Upgrade the index in place if necessary.
         if (doUpgrade && DirectoryReader.indexExists(dir)) {
@@ -625,6 +643,11 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void handleBackup(Operation op) throws Throwable {
+        if (!isDurable()) {
+            op.fail(new IllegalStateException("Index service is not durable"));
+            return;
+        }
+
         SnapshotDeletionPolicy snapshotter = null;
         IndexCommit commit = null;
         handleMaintenanceImpl(Operation.createPost(null));
@@ -663,6 +686,11 @@ public class LuceneDocumentIndexService extends StatelessService {
         IndexWriter w = this.writer;
         if (w == null) {
             op.fail(new CancellationException());
+            return;
+        }
+
+        if (!isDurable()) {
+            op.fail(new IllegalStateException("Index service is not durable"));
             return;
         }
 
@@ -2702,6 +2730,10 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private void applyFileLimitRefreshWriter(boolean force) {
         if (getHost().isStopping()) {
+            return;
+        }
+
+        if (!isDurable()) {
             return;
         }
 

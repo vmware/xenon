@@ -1534,6 +1534,7 @@ public final class Utils {
         config.versionRetentionLimit = desc.versionRetentionLimit;
         config.versionRetentionFloor = desc.versionRetentionFloor;
         config.peerNodeSelectorPath = service.getPeerNodeSelectorPath();
+        config.documentIndexPath = service.getDocumentIndexPath();
 
         return config;
     }

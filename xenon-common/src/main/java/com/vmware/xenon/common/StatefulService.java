@@ -61,6 +61,7 @@ public class StatefulService implements Service {
 
         public UtilityService utilityService;
         public String nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
+        public String documentIndexLink = ServiceUriPaths.CORE_DOCUMENT_INDEX;
 
         public Set<String> txCoordinatorLinks;
         public long lastCommitTimeMicros;
@@ -1970,6 +1971,24 @@ public class StatefulService implements Service {
         }
 
         this.context.nodeSelectorLink = link;
+    }
+
+    @Override
+    public String getDocumentIndexPath() {
+        return this.context.documentIndexLink;
+    }
+
+    @Override
+    public void setDocumentIndexPath(String link) {
+        if (!hasOption(ServiceOption.PERSISTENCE)) {
+            throw new IllegalStateException("Service is not persisted / indexed");
+        }
+
+        if (link == null) {
+            throw new IllegalArgumentException("link is required");
+        }
+
+        this.context.documentIndexLink = link;
     }
 
     @Override

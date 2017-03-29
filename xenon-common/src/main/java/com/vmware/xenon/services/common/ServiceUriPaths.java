@@ -60,6 +60,8 @@ public final class ServiceUriPaths {
     public static final String CORE_CREDENTIALS = CORE_AUTH + "/credentials";
 
     public static final String CORE_DOCUMENT_INDEX = ServiceUriPaths.CORE + "/document-index";
+    public static final String CORE_IN_MEMORY_DOCUMENT_INDEX = ServiceUriPaths.CORE
+            + "/in-memory-document-index";
     public static final String CORE_OPERATION_INDEX = ServiceUriPaths.CORE + "/operation-index";
     public static final String CORE_SERVICE_CONTEXT_INDEX = ServiceUriPaths.CORE
             + "/service-context-index";
