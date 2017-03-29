@@ -69,7 +69,6 @@ import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SupportedCipherSuiteFilter;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
-import org.apache.lucene.store.LockObtainFailedException;
 import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.Claims;
@@ -3334,34 +3333,24 @@ public class VerificationHost extends ExampleServiceHost {
     * Returns true of host restarted, false if retry attempts expired or other exceptions where thrown
      */
     public static boolean restartStatefulHost(ServiceHost host) throws Throwable {
-        long exp = Utils.fromNowMicrosUtc(host.getOperationTimeoutMicros());
-
-        do {
-            Thread.sleep(2000);
-            try {
-                if (host.isAuthorizationEnabled()) {
-                    host.setAuthenticationService(new AuthorizationContextService());
-                }
-                host.start();
-                return true;
-            } catch (Throwable e) {
-                Logger.getAnonymousLogger().warning(String
-                        .format("exception on host restart: %s", e.getMessage()));
-                try {
-                    host.stop();
-                } catch (Throwable e1) {
-                    return false;
-                }
-                if (e instanceof LockObtainFailedException) {
-                    Logger.getAnonymousLogger()
-                            .warning("Lock held exception on host restart, retrying");
-                    continue;
-                }
-                return false;
+        Thread.sleep(2000);
+        try {
+            if (host.isAuthorizationEnabled()) {
+                host.setAuthenticationService(new AuthorizationContextService());
             }
-        } while (Utils.getSystemNowMicrosUtc() < exp);
-        return false;
+            host.start();
+            return true;
+        } catch (Throwable e) {
+            Logger.getAnonymousLogger().warning(String.format("exception on host restart: %s",
+                    e.getMessage()));
+            try {
+                host.stop();
+            } catch (Throwable ignored) {
+            }
+            return false;
+        }
     }
+
 
     public void waitForGC() {
         if (!isStressTest()) {
