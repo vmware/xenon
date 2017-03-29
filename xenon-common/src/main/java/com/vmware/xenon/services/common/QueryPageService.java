@@ -30,6 +30,8 @@ import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 public class QueryPageService extends StatelessService {
     public static final String KIND = Utils.buildKind(QueryTask.class);
 
+    private static final long DEFAULT_TTL_MICROS = TimeUnit.MINUTES.toMicros(1);
+
     private QuerySpecification spec;
     private String documentSelfLink;
     private String indexLink;
@@ -74,14 +76,14 @@ public class QueryPageService extends StatelessService {
         this.documentSelfLink = initState.documentSelfLink;
         this.documentExpirationTimeMicros = initState.documentExpirationTimeMicros;
 
-        long interval = this.documentExpirationTimeMicros - Utils.getSystemNowMicrosUtc();
-        if (interval < 0) {
+        long ttl = this.documentExpirationTimeMicros - Utils.getSystemNowMicrosUtc();
+        if (ttl < 0) {
             logWarning("Task expiration is in the past, extending it");
             // task has already expired. Add some more time instead of failing
-            interval = TimeUnit.SECONDS.toMicros(getHost().getMaintenanceIntervalMicros() * 2);
+            ttl = Math.max(getHost().getMaintenanceIntervalMicros() * 2, DEFAULT_TTL_MICROS);
         }
         super.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
-        super.setMaintenanceIntervalMicros(interval);
+        super.setMaintenanceIntervalMicros(ttl);
 
         post.complete();
     }
