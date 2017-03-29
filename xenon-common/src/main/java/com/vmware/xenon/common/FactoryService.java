@@ -112,6 +112,7 @@ public abstract class FactoryService extends StatelessService {
     private boolean useBodyForSelfLink = false;
     private EnumSet<ServiceOption> childOptions;
     private String nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
+    private String documentIndexLink = ServiceUriPaths.CORE_DOCUMENT_INDEX;
     private int selfQueryResultLimit = SELF_QUERY_RESULT_LIMIT;
     private ServiceDocument childTemplate;
     private URI uri;
@@ -582,6 +583,7 @@ public abstract class FactoryService extends StatelessService {
             return;
         }
         task.setDirect(true);
+        task.indexLink = this.documentIndexLink;
 
         // restrict results to same kind and self link prefix as factory children
         String kind = Utils.buildKind(getStateType());
@@ -820,6 +822,15 @@ public abstract class FactoryService extends StatelessService {
                 this.nodeSelectorLink = childService.getPeerNodeSelectorPath();
             } else if (!ServiceUriPaths.DEFAULT_NODE_SELECTOR.equals(this.nodeSelectorLink)) {
                 childService.setPeerNodeSelectorPath(this.nodeSelectorLink);
+            }
+        }
+
+        if (childService.hasOption(ServiceOption.PERSISTENCE)) {
+            if (!ServiceUriPaths.CORE_DOCUMENT_INDEX.equals(childService
+                    .getDocumentIndexPath())) {
+                this.documentIndexLink = childService.getDocumentIndexPath();
+            } else if (!ServiceUriPaths.CORE_DOCUMENT_INDEX.equals(this.documentIndexLink)) {
+                childService.setDocumentIndexPath(this.documentIndexLink);
             }
         }
 

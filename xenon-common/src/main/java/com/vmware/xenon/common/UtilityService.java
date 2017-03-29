@@ -961,6 +961,16 @@ public class UtilityService implements Service {
     }
 
     @Override
+    public void setDocumentIndexPath(String uriPath) {
+
+    }
+
+    @Override
+    public String getDocumentIndexPath() {
+        return null;
+    }
+
+    @Override
     public void setState(Operation op, ServiceDocument newState) {
         op.linkState(newState);
     }

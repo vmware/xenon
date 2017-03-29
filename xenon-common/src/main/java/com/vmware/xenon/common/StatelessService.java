@@ -580,6 +580,16 @@ public class StatelessService implements Service {
     }
 
     @Override
+    public void setDocumentIndexPath(String uriPath) {
+        throw new RuntimeException("Indexing is not supported");
+    }
+
+    @Override
+    public String getDocumentIndexPath() {
+        return null;
+    }
+
+    @Override
     public EnumSet<ServiceOption> getOptions() {
         return this.options.clone();
     }

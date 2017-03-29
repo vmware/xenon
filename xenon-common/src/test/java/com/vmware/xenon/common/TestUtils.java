@@ -1050,6 +1050,7 @@ public class TestUtils {
         assertEquals(ExampleServiceState.VERSION_RETENTION_LIMIT, config.versionRetentionLimit);
         assertEquals(ExampleServiceState.VERSION_RETENTION_FLOOR, config.versionRetentionFloor);
         assertEquals(exampleService.getPeerNodeSelectorPath(), config.peerNodeSelectorPath);
+        assertEquals(exampleService.getDocumentIndexPath(), config.documentIndexPath);
     }
 
 }

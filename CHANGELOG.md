@@ -2,6 +2,18 @@
 
 ## 1.4.2-SNAPSHOT
 
+* Add Service.get/SetDocumentIndexPath() enabling a service type to use
+  a custom index service instance. This enables many new scenarios, for production
+  or testing, since the per service instance indexing of the I/O pipeline can now use
+  new types of indexing service. This is similar to the node selector per service path
+  accessors and capability.
+
+* Add InMemoryLuceneDocumentIndexService, which uses the lucene document index service
+  code but relies on the lucene RAMDirectory index store, vs the memory mapped, file based
+  writer. The in memory index service can be optionally started side by side with the
+  durable index service and can be set as the default index service for service types using
+  the new Service.get/SetDocumentIndexPath() accessors
+
 * MigrationTask default page size is increased from 500 to 10,000.
 
 * Switch QueryTaskService to use the 1X node selector, instead of the full replication
