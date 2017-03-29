@@ -424,7 +424,7 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
 
             // restart host
             this.host.stopHostAndPreserveState(vhost);
-            boolean restarted = VerificationHost.restartStatefulHost(vhost);
+            boolean restarted = VerificationHost.restartStatefulHost(vhost, true);
             if (!restarted) {
                 this.host.log(Level.WARNING, "Could not restart host, skipping test...");
                 return;

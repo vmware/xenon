@@ -1025,7 +1025,7 @@ public class TestLuceneDocumentIndexService {
                 h.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(250));
             }
 
-            if (!VerificationHost.restartStatefulHost(h)) {
+            if (!VerificationHost.restartStatefulHost(h, true)) {
                 this.host.log("Failed restart of host, aborting");
                 return;
             }

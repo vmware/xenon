@@ -3331,9 +3331,10 @@ public class VerificationHost extends ExampleServiceHost {
     * The sleep just reduces the false negative test failure rate, but it can still happen.
     * Not much else we can do other adding some weird polling on all the index files.
     *
-    * Returns true of host restarted, false if retry attempts expired or other exceptions where thrown
+    * Returns true if host restarted, false if retry attempts expired or other exceptions where thrown
      */
-    public static boolean restartStatefulHost(ServiceHost host) throws Throwable {
+    public static boolean restartStatefulHost(ServiceHost host, boolean failOnIndexDeletion)
+            throws Throwable {
         long exp = Utils.fromNowMicrosUtc(host.getOperationTimeoutMicros());
 
         do {
@@ -3352,7 +3353,7 @@ public class VerificationHost extends ExampleServiceHost {
                 } catch (Throwable e1) {
                     return false;
                 }
-                if (e instanceof LockObtainFailedException) {
+                if (e instanceof LockObtainFailedException && !failOnIndexDeletion) {
                     Logger.getAnonymousLogger()
                             .warning("Lock held exception on host restart, retrying");
                     continue;

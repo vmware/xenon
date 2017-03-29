@@ -648,7 +648,7 @@ public class TestNodeGroupService {
         hosts[1].setPort(0);
 
         hosts[1].setPeerSynchronizationEnabled(false);
-        assertTrue(VerificationHost.restartStatefulHost(hosts[1]));
+        assertTrue(VerificationHost.restartStatefulHost(hosts[1], false));
         this.host.addPeerNode(hosts[1]);
 
         // Join the nodes and wait for node-group convergence.
@@ -4140,7 +4140,7 @@ public class TestNodeGroupService {
 
         hostToStop.setPort(0);
         hostToStop.setSecurePort(0);
-        if (!VerificationHost.restartStatefulHost(hostToStop)) {
+        if (!VerificationHost.restartStatefulHost(hostToStop, false)) {
             this.host.log("Failed restart of host, aborting");
             return;
         }
