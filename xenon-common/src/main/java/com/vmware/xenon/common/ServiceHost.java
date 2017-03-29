@@ -2940,13 +2940,23 @@ public class ServiceHost implements ServiceRequestSender {
                     op.linkState(st).complete();
                 });
 
-        Service indexService = this.documentIndexService;
+        Service indexService = getIndexServiceForService(s);
+
         if (indexService == null) {
             op.fail(new CancellationException());
             return;
         }
 
         indexService.handleRequest(getOp);
+    }
+
+    private Service getIndexServiceForService(Service s) {
+        Service indexService = this.documentIndexService;
+        if (s.getDocumentIndexPath() != null && ServiceUriPaths.CORE_DOCUMENT_INDEX.hashCode() != s
+                .getDocumentIndexPath().hashCode()) {
+            indexService = this.findService(s.getDocumentIndexPath());
+        }
+        return indexService;
     }
 
     /**
@@ -3001,7 +3011,7 @@ public class ServiceHost implements ServiceRequestSender {
 
     void loadInitialServiceState(Service s, Operation serviceStartPost, ProcessingStage next,
             boolean hasClientSuppliedState) {
-        Service indexService = this.documentIndexService;
+        Service indexService = getIndexServiceForService(s);
         if (indexService == null) {
             serviceStartPost.fail(new CancellationException());
             return;
@@ -5194,7 +5204,7 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
-        Service indexService = this.documentIndexService;
+        Service indexService = getIndexServiceForService(s);
 
         // serialize state and compute signature. The index service will take
         // the serialized state and store as is, and it will index all fields

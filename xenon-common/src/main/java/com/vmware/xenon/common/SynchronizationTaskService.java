@@ -88,6 +88,12 @@ public class SynchronizationTaskService
          */
         public EnumSet<ServiceOption> childOptions;
 
+
+        /**
+         * Document index link used by the child service
+         */
+        public String childDocumentIndexLink;
+
         /**
          * Upper limit to the number of results per page of the broadcast query task.
          */
@@ -116,7 +122,6 @@ public class SynchronizationTaskService
          */
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public int synchCompletionCount;
-
     }
 
     private Supplier<Service> childServiceInstantiator;
@@ -164,9 +169,11 @@ public class SynchronizationTaskService
         // in the CREATED stage. This is because, handleStart only creates a
         // place-holder task per factoryService without actually kicking-off
         // the state-machine.
+        Service childTemplate = this.childServiceInstantiator.get();
         initialState.taskInfo = new TaskState();
         initialState.taskInfo.stage = TaskState.TaskStage.CREATED;
-        initialState.childOptions = this.childServiceInstantiator.get().getOptions();
+        initialState.childOptions = childTemplate.getOptions();
+        initialState.childDocumentIndexLink = childTemplate.getDocumentIndexPath();
         initialState.documentExpirationTimeMicros = Long.MAX_VALUE;
     }
 
@@ -471,6 +478,7 @@ public class SynchronizationTaskService
     private QueryTask buildChildQueryTask(State task) {
         QueryTask queryTask = new QueryTask();
         queryTask.querySpec = new QueryTask.QuerySpecification();
+        queryTask.indexLink = task.childDocumentIndexLink;
         queryTask.taskInfo.isDirect = true;
 
         // Add clause for documentSelfLink = <FactorySelfLink>/*

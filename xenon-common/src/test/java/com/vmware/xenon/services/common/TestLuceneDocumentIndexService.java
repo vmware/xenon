@@ -167,6 +167,19 @@ public class TestLuceneDocumentIndexService {
         }
     }
 
+    public static class InMemoryExampleService extends ExampleService {
+        public static final String FACTORY_LINK = "test/in-memory-examples";
+
+        public InMemoryExampleService() {
+            super();
+            super.setDocumentIndexPath(ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX);
+        }
+
+        public static FactoryService createFactory() {
+            return FactoryService.create(InMemoryExampleService.class);
+        }
+    }
+
     /**
      * Parameter that specifies number of durable service instances to create
      */
@@ -244,6 +257,8 @@ public class TestLuceneDocumentIndexService {
     @Rule
     public TestResults testResults = new TestResults();
 
+    private String indexLink = ServiceUriPaths.CORE_DOCUMENT_INDEX;
+
     private void setUpHost(boolean isAuthEnabled) throws Throwable {
         if (this.host != null) {
             return;
@@ -283,7 +298,13 @@ public class TestLuceneDocumentIndexService {
                         TimeUnit.SECONDS.toMicros(this.serviceCacheClearIntervalSeconds));
             }
 
+            this.host.addPrivilegedService(InMemoryLuceneDocumentIndexService.class);
+
             this.host.start();
+
+            this.host.setSystemAuthorizationContext();
+            createInMemoryIndexAndExampleService(this.host);
+            this.host.resetAuthorizationContext();
 
             if (isAuthEnabled) {
                 createUsersAndRoles();
@@ -871,6 +892,23 @@ public class TestLuceneDocumentIndexService {
         interleaveUpdate = true;
         doThroughputSelfLinkQuery(exampleFactoryUri, this.updateCount, doPostOrUpdates,
                 interleaveUpdate);
+
+        // now for the in memory index and the example services associated with it
+        doPostOrUpdates = true;
+        interleaveUpdate = false;
+        this.indexLink = ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX;
+        URI inMemExampleFactoryUri = UriUtils.buildUri(this.host,
+                InMemoryExampleService.FACTORY_LINK);
+        // notice that we also create K versions per link, for the mutable factory to
+        // better quantify query processing throughput when multiple versions per link are
+        // present in the index results
+        doThroughputSelfLinkQuery(inMemExampleFactoryUri, this.updateCount, doPostOrUpdates,
+                interleaveUpdate);
+        doPostOrUpdates = false;
+        interleaveUpdate = true;
+        doThroughputSelfLinkQuery(inMemExampleFactoryUri, this.updateCount, doPostOrUpdates,
+                interleaveUpdate);
+
     }
 
     private void doThroughputSelfLinkQuery(URI factoryUri, Integer updateCount,
@@ -1991,6 +2029,18 @@ public class TestLuceneDocumentIndexService {
         return factoryUri;
     }
 
+    URI createInMemoryIndexAndExampleService(VerificationHost h) throws Throwable {
+        h.startServiceAndWait(InMemoryLuceneDocumentIndexService.class,
+                InMemoryLuceneDocumentIndexService.SELF_LINK);
+
+        Service exampleFactory = InMemoryExampleService.createFactory();
+        exampleFactory = h.startServiceAndWait(exampleFactory,
+                InMemoryExampleService.FACTORY_LINK, null);
+
+        URI factoryUri = exampleFactory.getUri();
+        return factoryUri;
+    }
+
     private double getHostPauseCount() {
         return getMgmtStat(ServiceHostManagementService.STAT_NAME_PAUSE_COUNT);
     }
@@ -2004,8 +2054,9 @@ public class TestLuceneDocumentIndexService {
     }
 
     private ServiceStat getLuceneStat(String name) {
+        URI indexUri = UriUtils.buildUri(this.host, this.indexLink);
         Map<String, ServiceStat> hostStats = this.host
-                .getServiceStats(this.host.getDocumentIndexServiceUri());
+                .getServiceStats(indexUri);
         ServiceStat st = hostStats.get(name);
         if (st == null) {
             return new ServiceStat();
@@ -2149,7 +2200,7 @@ public class TestLuceneDocumentIndexService {
                         .addFieldClause(ExampleServiceState.FIELD_NAME_ID, "saffsdfs")
                         .build())
                 .build();
-
+        queryTask.indexLink = this.indexLink;
         doThroughputPost(interleaveQueries, factoryUri, null, queryTask);
     }
 
