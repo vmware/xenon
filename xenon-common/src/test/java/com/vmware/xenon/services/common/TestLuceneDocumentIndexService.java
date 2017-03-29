@@ -167,6 +167,17 @@ public class TestLuceneDocumentIndexService {
         }
     }
 
+    public static class InMemoryExampleService extends ExampleService {
+        public InMemoryExampleService() {
+            super();
+            super.setDocumentIndexPath(ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX);
+        }
+
+        public static FactoryService createFactory() {
+            return FactoryService.create(InMemoryExampleService.class);
+        }
+    }
+
     /**
      * Parameter that specifies number of durable service instances to create
      */
@@ -283,7 +294,13 @@ public class TestLuceneDocumentIndexService {
                         TimeUnit.SECONDS.toMicros(this.serviceCacheClearIntervalSeconds));
             }
 
+            this.host.addPrivilegedService(InMemoryLuceneDocumentIndexService.class);
+
             this.host.start();
+
+            this.host.setSystemAuthorizationContext();
+            createInMemoryIndexAndExampleService(this.host);
+            this.host.resetAuthorizationContext();
 
             if (isAuthEnabled) {
                 createUsersAndRoles();
@@ -1988,6 +2005,18 @@ public class TestLuceneDocumentIndexService {
                 "immutable-examples", null);
 
         URI factoryUri = immutableFactory.getUri();
+        return factoryUri;
+    }
+
+    URI createInMemoryIndexAndExampleService(VerificationHost h) throws Throwable {
+        h.startServiceAndWait(InMemoryLuceneDocumentIndexService.class,
+                InMemoryLuceneDocumentIndexService.SELF_LINK);
+
+        Service exampleFactory = InMemoryExampleService.createFactory();
+        exampleFactory = h.startServiceAndWait(exampleFactory,
+                "in-memory-examples", null);
+
+        URI factoryUri = exampleFactory.getUri();
         return factoryUri;
     }
 

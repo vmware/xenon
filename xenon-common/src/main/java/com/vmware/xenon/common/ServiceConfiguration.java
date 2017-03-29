@@ -26,6 +26,7 @@ public class ServiceConfiguration extends ServiceDocument {
     public long versionRetentionLimit;
     public long versionRetentionFloor;
     public String peerNodeSelectorPath;
+    public String documentIndexPath;
     public EnumSet<ServiceOption> options;
 
     public ServiceConfiguration() {

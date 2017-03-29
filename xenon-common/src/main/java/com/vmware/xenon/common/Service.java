@@ -495,12 +495,25 @@ public interface Service extends ServiceRequestSender {
      * The default node selector services uses a consistent hashing scheme and
      * picks among all available nodes.
      */
-    void setPeerNodeSelectorPath(String link);
+    void setPeerNodeSelectorPath(String path);
 
     /**
-     * If replication is enabled, returns the URI path for the replication selector associated with the service
+     * Returns the URI path for the replication selector associated with the service
      */
     String getPeerNodeSelectorPath();
+
+    /**
+     * Sets the URI path to a document index service instance.
+     *
+     * The default document index is durable (disk backed) and is used when {@link ServiceOption#PERSISTENCE}
+     * is enabled
+     */
+    void setDocumentIndexPath(String path);
+
+    /**
+     * Returns the URI path for the document index service associated with the service
+     */
+    String getDocumentIndexPath();
 
     ServiceStat getStat(String name);
 
