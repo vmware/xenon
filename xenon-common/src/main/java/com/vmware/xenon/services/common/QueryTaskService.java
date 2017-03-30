@@ -40,6 +40,7 @@ import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
+import com.vmware.xenon.services.common.LuceneDocumentIndexService.DeleteContextRequest;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
@@ -726,6 +727,27 @@ public class QueryTaskService extends StatefulService {
                 scheduleTaskExpiration(task);
             }
         }
+    }
+
+    @Override
+    public void handleDelete(Operation delete) {
+        if (delete.isFromReplication()) {
+            delete.complete();
+            return;
+        }
+
+        QueryTask state = getState(delete);
+
+        if (state.querySpec.context != null) {
+            DeleteContextRequest deleteContextRequest = new DeleteContextRequest();
+            deleteContextRequest.documentKind = DeleteContextRequest.KIND;
+            deleteContextRequest.context = state.querySpec.context;
+            Operation deleteContextPatch = Operation.createPatch(this, state.indexLink)
+                    .setBodyNoCloning(deleteContextRequest);
+            sendRequest(deleteContextPatch);
+        }
+
+        delete.complete();
     }
 
     @Override

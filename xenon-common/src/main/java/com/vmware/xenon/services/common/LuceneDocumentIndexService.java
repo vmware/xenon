@@ -46,7 +46,6 @@ import java.util.stream.Stream;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
@@ -286,6 +285,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     static final String STAT_NAME_ITERATIONS_PER_QUERY = "iterationsPerQuery";
 
+    static final String STAT_NAME_PAGINATED_SEARCHER_FORCE_DELETION_COUNT = "paginatedSearcherForceDeletionCount";
+
     private static final EnumSet<AggregationType> AGGREGATION_TYPE_AVG_MAX =
             EnumSet.of(AggregationType.AVG, AggregationType.MAX);
 
@@ -364,6 +365,11 @@ public class LuceneDocumentIndexService extends StatelessService {
         public long creationTimeMicros;
         public long expirationTimeMicros;
         public IndexSearcher searcher;
+    }
+
+    public static class DeleteContextRequest extends ServiceDocument {
+        static final String KIND = Utils.buildKind(DeleteContextRequest.class);
+        public QuerySpecification.QueryRuntimeContext context;
     }
 
     public static class BackupRequest extends ServiceDocument {
@@ -760,6 +766,12 @@ public class LuceneDocumentIndexService extends StatelessService {
                             handleQueryTaskPatch(op, task);
                             break;
                         }
+                        if (sd.documentKind.equals(DeleteContextRequest.KIND)) {
+                            DeleteContextRequest deleteRequest = (DeleteContextRequest)
+                                    op.getBodyRaw();
+                            handleDeleteContextPatch(op, deleteRequest);
+                            break;
+                        }
                         if (sd.documentKind.equals(BackupRequest.KIND)) {
                             handleBackup(op);
                             break;
@@ -914,6 +926,59 @@ public class LuceneDocumentIndexService extends StatelessService {
             break;
         }
         return false;
+    }
+
+    private void handleDeleteContextPatch(Operation op, DeleteContextRequest request) {
+        if (request.context == null) {
+            op.fail(new IllegalArgumentException("Context must be present"));
+            return;
+        }
+
+        IndexSearcher nativeSearcher = (IndexSearcher) request.context.nativeSearcher;
+        if (nativeSearcher == null) {
+            op.complete();
+            return;
+        }
+
+        PaginatedSearcherInfo infoToRemove = null;
+        synchronized (this.searchSync) {
+            Iterator<Entry<Long, PaginatedSearcherInfo>> itr =
+                    this.paginatedSearchersByCreationTime.entrySet().iterator();
+            while (itr.hasNext()) {
+                Entry<Long, PaginatedSearcherInfo> entry = itr.next();
+                PaginatedSearcherInfo info = entry.getValue();
+                if (info.searcher.equals(nativeSearcher)) {
+                    infoToRemove = info;
+                    itr.remove();
+                    break;
+                }
+            }
+
+            if (infoToRemove == null) {
+                op.complete();
+                return;
+            }
+
+            long expirationTime = infoToRemove.expirationTimeMicros;
+            List<PaginatedSearcherInfo> expirationList =
+                    this.paginatedSearchersByExpirationTime.get(expirationTime);
+            if (!expirationList.remove(infoToRemove)) {
+                logWarning("Expiration list did not contain paginated searcher info");
+            }
+            if (expirationList.isEmpty()) {
+                this.paginatedSearchersByExpirationTime.remove(expirationTime);
+            }
+
+            this.searcherUpdateTimesMicros.remove(infoToRemove.searcher.hashCode());
+        }
+
+        try {
+            infoToRemove.searcher.getIndexReader().close();
+        } catch (Throwable ignored) {
+        }
+
+        adjustTimeSeriesStat(STAT_NAME_PAGINATED_SEARCHER_FORCE_DELETION_COUNT,
+                AGGREGATION_TYPE_SUM, 1);
     }
 
     private IndexSearcher createOrUpdatePaginatedQuerySearcher(long expirationMicros,
