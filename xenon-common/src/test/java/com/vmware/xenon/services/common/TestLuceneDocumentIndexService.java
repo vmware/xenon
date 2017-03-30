@@ -2037,8 +2037,11 @@ public class TestLuceneDocumentIndexService {
     }
 
     URI createInMemoryIndexAndExampleService(VerificationHost h) throws Throwable {
-        h.startServiceAndWait(InMemoryLuceneDocumentIndexService.class,
-                InMemoryLuceneDocumentIndexService.SELF_LINK);
+        InMemoryLuceneDocumentIndexService inMemoryIndexService = new InMemoryLuceneDocumentIndexService();
+        if (!this.host.isStressTest()) {
+            inMemoryIndexService.toggleOption(ServiceOption.INSTRUMENTATION, true);
+        }
+        h.startServiceAndWait(inMemoryIndexService, InMemoryLuceneDocumentIndexService.SELF_LINK, null);
 
         Service exampleFactory = InMemoryExampleService.createFactory();
         exampleFactory = h.startServiceAndWait(exampleFactory,
