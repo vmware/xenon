@@ -25,7 +25,9 @@ import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.services.common.LuceneDocumentIndexService.DeleteQueryContext;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
+import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryRuntimeContext;
 
 public class QueryPageService extends StatelessService {
     public static final String KIND = Utils.buildKind(QueryTask.class);
@@ -122,8 +124,7 @@ public class QueryPageService extends StatelessService {
 
     private void forwardToLucene(QueryTask task, Operation get) {
         try {
-            Operation localPatch = Operation.createPatch(UriUtils.buildUri(getHost(),
-                    task.indexLink))
+            Operation localPatch = Operation.createPatch(this, task.indexLink)
                     .setBodyNoCloning(task)
                     .setCompletion((o, e) -> {
                         if (e == null) {
@@ -143,14 +144,15 @@ public class QueryPageService extends StatelessService {
             LuceneQueryPage ctx = (LuceneQueryPage) task.querySpec.context.nativePage;
             if (ctx.isFirstPage() && (e instanceof AlreadyClosedException)
                     && !getHost().isStopping()) {
-                // The lucene index service periodically grooms index writers and index searchers.
+                // The Lucene index service periodically grooms index writers and index searchers.
                 // When the system is under load, the grooming will occur more often, potentially
                 // closing a writer that is indirectly used by a paginated query task.
-                // Paginated queries cache the index searcher to use, when the very first page is
-                // is retrieved. If we detect that failure occurred doing a query for the first page,
-                // we re-open the searcher, still providing a consistent snapshot of the index across
-                // all pages. If any page other than the first encounters failure however, we are forced
-                // to fail the query task itself, and client has to retry.
+                // Paginated queries cache the index searcher to use when the initial task is
+                // created. If we detect that failure occurred doing a query for the first page of
+                // results, we re-open the searcher, still providing a consistent snapshot of the
+                // index across all pages. If any page other than the first encounters failure,
+                // however, we are forced to fail the query task itself, and the client has to
+                // retry.
                 logWarning("Retrying query because index context is out of date");
                 task.querySpec.context.nativeSearcher = null;
                 forwardToLucene(task, get);
@@ -161,11 +163,33 @@ public class QueryPageService extends StatelessService {
             QueryTask t = new QueryTask();
             t.taskInfo.stage = TaskStage.FAILED;
             t.taskInfo.failure = Utils.toServiceErrorResponse(e);
-            get.setBody(t).fail(e);
+            get.setBodyNoCloning(t).fail(e);
             return;
         }
 
-        // null the native query context in the cloned spec, so it does not serialize on the wire
+        if (task.results.nextPageLink == null) {
+            DeleteQueryContext request = new DeleteQueryContext();
+            request.documentKind = DeleteQueryContext.KIND;
+            request.context = new QueryRuntimeContext();
+            request.context.nativeSearcher = spec.context.nativeSearcher;
+
+            Operation patch = Operation.createPatch(this, task.indexLink)
+                    .setBodyNoCloning(request)
+                    .setCompletion((o, ex) -> {
+                        if (ex != null) {
+                            logWarning("Failed to delete index searcher: " + Utils.toString(ex));
+                        }
+                        completeGet(task, get);
+                    });
+
+            sendRequest(patch);
+            return;
+        }
+
+        completeGet(task, get);
+    }
+
+    private void completeGet(QueryTask task, Operation get) {
         task.querySpec.context = null;
         task.taskInfo.stage = TaskStage.FINISHED;
         QueryTaskUtils.expandLinks(getHost(), task, get);
