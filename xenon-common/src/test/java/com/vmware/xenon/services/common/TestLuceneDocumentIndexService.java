@@ -51,6 +51,7 @@ import javax.xml.bind.DatatypeConverter;
 
 import org.apache.lucene.search.IndexSearcher;
 import org.junit.After;
+import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -315,6 +316,12 @@ public class TestLuceneDocumentIndexService {
         } catch (Throwable e) {
             throw new Exception(e);
         }
+    }
+
+    @Before
+    public void setUp() {
+        // re-initialize
+        this.indexLink = ServiceUriPaths.CORE_DOCUMENT_INDEX;
     }
 
     @After
