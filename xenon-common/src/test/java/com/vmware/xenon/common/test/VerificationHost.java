@@ -2500,13 +2500,16 @@ public class VerificationHost extends ExampleServiceHost {
      * @return list of full urls of the created example services
      */
     public List<URI> createExampleServices(ServiceHost h, long serviceCount, Long expiration) {
-        return createExampleServices(h, serviceCount, expiration, false);
+        return createExampleServices(h, serviceCount, expiration, false,
+                ExampleService.FACTORY_LINK, ExampleService.class);
     }
 
     /**
      * @return list of full urls of the created example services
      */
-    public List<URI> createExampleServices(ServiceHost h, long serviceCount, Long expiration, boolean skipAvailabilityCheck) {
+    public List<URI> createExampleServices(
+            ServiceHost h, long serviceCount, Long expiration, boolean skipAvailabilityCheck,
+            String factoryLink, Class<? extends ExampleService> type) {
 
         if (!skipAvailabilityCheck) {
             waitForServiceAvailable(ExampleService.FACTORY_LINK);
@@ -2521,7 +2524,7 @@ public class VerificationHost extends ExampleServiceHost {
                 initState.documentExpirationTimeMicros = expiration;
             }
             initState.name = initState.documentSelfLink = UUID.randomUUID().toString();
-            Operation post = Operation.createPost(UriUtils.buildFactoryUri(h, ExampleService.class)).setBody(initState);
+            Operation post = Operation.createPost(UriUtils.buildFactoryUri(h, type)).setBody(initState);
             ops.add(post);
         }
         List<ExampleServiceState> result =  this.sender.sendAndWait(ops, ExampleServiceState.class);
