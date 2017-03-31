@@ -305,6 +305,7 @@ class ServiceSynchronizationTracker {
         // (or the most valid one, depending on peer consensus)
 
         SynchronizePeersRequest t = SynchronizePeersRequest.create();
+        t.indexLink = s.getDocumentIndexPath();
         t.stateDescription = this.host.buildDocumentDescription(s);
         t.options = s.getOptions();
         t.state = op.hasBody() ? op.getBody(s.getStateType()) : null;
