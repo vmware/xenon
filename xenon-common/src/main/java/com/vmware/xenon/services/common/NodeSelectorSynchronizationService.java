@@ -56,6 +56,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             return r;
         }
 
+        public String indexLink;
         public ServiceDocument state;
         public ServiceDocumentDescription stateDescription;
         public EnumSet<ServiceOption> options;
@@ -135,6 +136,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
 
         URI localQueryUri = UriUtils.buildDocumentQueryUri(
                 getHost(),
+                body.indexLink,
                 body.state.documentSelfLink,
                 false,
                 true,
