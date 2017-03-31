@@ -16,6 +16,7 @@ package com.vmware.xenon.common;
 import static java.util.stream.Collectors.toList;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
@@ -37,9 +38,10 @@ import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
+import com.vmware.xenon.services.common.InMemoryLuceneDocumentIndexService;
 import com.vmware.xenon.services.common.NodeGroupService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
-
+import com.vmware.xenon.services.common.TestLuceneDocumentIndexService.InMemoryExampleService;
 
 class SynchRetryExampleService extends StatefulService {
 
@@ -91,9 +93,14 @@ public class TestSynchronizationTaskService extends BasicTestCase {
     }
 
     @Override
-    public void beforeHostStart(VerificationHost host) {
+    public void beforeHostStart(VerificationHost host) throws Throwable {
         host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(
                 VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
+        this.host.addPrivilegedService(InMemoryLuceneDocumentIndexService.class);
+        this.host.startServiceAndWait(InMemoryLuceneDocumentIndexService.class,
+                InMemoryLuceneDocumentIndexService.SELF_LINK);
+
+        this.host.startFactory(InMemoryExampleService.class, InMemoryExampleService::createFactory);
     }
 
     @Before
@@ -112,6 +119,16 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         URI exampleFactoryUri = UriUtils.buildUri(
                 this.host.getPeerServiceUri(ExampleService.FACTORY_LINK));
         this.host.waitForReplicatedFactoryServiceAvailable(exampleFactoryUri);
+
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            h.addPrivilegedService(InMemoryLuceneDocumentIndexService.class);
+            h.startCoreServicesSynchronously(new InMemoryLuceneDocumentIndexService());
+            h.startFactory(new InMemoryExampleService());
+        }
+
+        URI inMemoryExampleFactoryUri = UriUtils.buildUri(
+                this.host.getPeerServiceUri(InMemoryExampleService.FACTORY_LINK));
+        this.host.waitForReplicatedFactoryServiceAvailable(inMemoryExampleFactoryUri);
     }
 
     @After
@@ -127,12 +144,16 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         // is started on a non-owner node, the task should
         // self-cancel.
         setUpMultiNode();
+        ownershipValidationDo(ExampleService.FACTORY_LINK);
+        ownershipValidationDo(InMemoryExampleService.FACTORY_LINK);
+    }
 
-        this.host.createExampleServices(this.host.getPeerHost(), this.serviceCount, null);
+    public void ownershipValidationDo(String factoryLink) throws Throwable {
+        this.host.createExampleServices(this.host.getPeerHost(), this.serviceCount, null, false, factoryLink);
 
         long membershipUpdateTimeMicros = getLatestMembershipUpdateTime(this.host.getPeerHostUri());
 
-        SynchronizationTaskService.State task = createSynchronizationTaskState(membershipUpdateTimeMicros);
+        SynchronizationTaskService.State task = createSynchronizationTaskState(membershipUpdateTimeMicros, factoryLink);
         List<Operation> ops = this.host.getInProcessHostMap().keySet().stream()
                 .map(uri -> Operation
                     .createPost(UriUtils.buildUri(uri, SynchronizationTaskService.FACTORY_LINK))
@@ -165,7 +186,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
                 this.host, SynchRetryExampleService.FACTORY_LINK);
         this.host.waitForReplicatedFactoryServiceAvailable(factoryUri);
 
-        createExampleServices(sender, this.host, this.serviceCount, "fail");
+        createExampleServices(sender, this.host, this.serviceCount, "fail", SynchRetryExampleService.FACTORY_LINK);
 
         SynchronizationTaskService.State task = createSynchronizationTaskState(
                 null, SynchRetryExampleService.FACTORY_LINK, ServiceDocument.class);
@@ -192,7 +213,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
 
         // Test after all retries the task will be in passed state with at-least half
         // successful synched services in each page.
-        createExampleServices(sender, this.host, this.serviceCount * 3, "pass");
+        createExampleServices(sender, this.host, this.serviceCount * 3, "pass", SynchRetryExampleService.FACTORY_LINK);
         task.queryResultLimit = this.serviceCount * 2;
         op = Operation
                 .createPost(UriUtils.buildUri(this.host, SynchronizationTaskService.FACTORY_LINK))
@@ -224,15 +245,16 @@ public class TestSynchronizationTaskService extends BasicTestCase {
     }
 
     private void createExampleServices(
-            TestRequestSender sender, ServiceHost h, long serviceCount, String selfLinkPostfix) {
+            TestRequestSender sender, ServiceHost h, long serviceCount, String selfLinkPostfix, String factoryLink) {
 
         // create example services
         List<Operation> ops = new ArrayList<>();
         for (int i = 0; i < serviceCount; i++) {
             ServiceDocument initState = new ServiceDocument();
             initState.documentSelfLink = i + selfLinkPostfix;
+
             Operation post = Operation.createPost(
-                    UriUtils.buildUri(h, SynchRetryExampleService.FACTORY_LINK)).setBody(initState);
+                    UriUtils.buildUri(h, factoryLink)).setBody(initState);
             ops.add(post);
         }
 
@@ -241,8 +263,13 @@ public class TestSynchronizationTaskService extends BasicTestCase {
 
     @Test
     public void synchCounts() throws Throwable {
-        this.host.createExampleServices(this.host, this.serviceCount, null);
-        SynchronizationTaskService.State task = createSynchronizationTaskState(Long.MAX_VALUE);
+        synchCountsDo(ExampleService.FACTORY_LINK);
+        synchCountsDo(InMemoryExampleService.FACTORY_LINK);
+    }
+
+    public void synchCountsDo(String factoryLink) throws Throwable {
+        this.host.createExampleServices(this.host, this.serviceCount, null, false, factoryLink);
+        SynchronizationTaskService.State task = createSynchronizationTaskState(Long.MAX_VALUE, factoryLink);
 
         // Add pagination in query results.
         task.queryResultLimit = this.serviceCount / 2;
@@ -267,8 +294,86 @@ public class TestSynchronizationTaskService extends BasicTestCase {
                 .setBody(task);
         result = sender.sendAndWait(op, SynchronizationTaskService.State.class);
 
-        assertTrue (result.taskInfo.stage == TaskState.TaskStage.FINISHED);
-        assertTrue (result.synchCompletionCount == this.serviceCount);
+        assertTrue(result.taskInfo.stage == TaskState.TaskStage.FINISHED);
+        assertTrue(result.synchCompletionCount == this.serviceCount);
+    }
+
+    @Test
+    public void synchAfterOwnerRestart() throws Throwable {
+        setUpMultiNode();
+
+        this.host.setNodeGroupQuorum(this.nodeCount - 1);
+        this.host.waitForNodeGroupConvergence();
+        synchAfterOwnerRestartDo(ExampleService.FACTORY_LINK);
+
+        this.host.setNodeGroupQuorum(this.nodeCount - 1);
+        this.host.waitForNodeGroupConvergence();
+        synchAfterOwnerRestartDo(InMemoryExampleService.FACTORY_LINK);
+    }
+
+    public void synchAfterOwnerRestartDo(String factoryLink) throws Throwable {
+        TestRequestSender sender = new TestRequestSender(this.host);
+
+        List<URI> exampleServices = this.host.createExampleServices(
+                this.host.getPeerHost(), this.serviceCount, null, false, factoryLink);
+
+        ExampleService.ExampleServiceState state = sender.sendAndWait(Operation.createGet(exampleServices.get(0)),
+                ExampleService.ExampleServiceState.class);
+
+        // find out which is the the owner node and restart it
+        VerificationHost owner = restartOwnerNode(state);
+        this.host.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(owner, factoryLink));
+
+        long membershipUpdateTimeMicros = getLatestMembershipUpdateTime(this.host.getPeerHostUri());
+
+        // Start synchronization on all nodes and verify that one node successfully synced all test services.
+        SynchronizationTaskService.State task = createSynchronizationTaskState(membershipUpdateTimeMicros, factoryLink);
+        List<Operation> ops = this.host.getInProcessHostMap().keySet().stream()
+                .map(uri -> Operation
+                        .createPost(UriUtils.buildUri(uri, SynchronizationTaskService.FACTORY_LINK))
+                        .setBody(task)
+                        .setReferer(this.host.getUri())
+                ).collect(toList());
+
+        List<SynchronizationTaskService.State> results = sender
+                .sendAndWait(ops, SynchronizationTaskService.State.class);
+
+        int finishedCount = 0;
+        for (SynchronizationTaskService.State r : results) {
+            assertTrue(r.taskInfo.stage == TaskState.TaskStage.FINISHED ||
+                    r.taskInfo.stage == TaskState.TaskStage.CANCELLED);
+            if (r.taskInfo.stage == TaskState.TaskStage.FINISHED) {
+                finishedCount++;
+                assertEquals(this.serviceCount, r.synchCompletionCount);
+
+            }
+        }
+        assertTrue(finishedCount == 1);
+
+        // Verify that state was synced with restarted node.
+        Operation op = Operation.createGet(owner, state.documentSelfLink);
+        state = sender.sendAndWait(op, ExampleService.ExampleServiceState.class);
+        assertNotNull(state);
+    }
+
+    private VerificationHost restartOwnerNode(ExampleService.ExampleServiceState state) throws Throwable {
+        VerificationHost owner = this.host.getInProcessHostMap().values().stream()
+                .filter(host -> host.getId().contentEquals(state.documentOwner)).findFirst()
+                .orElseThrow(() -> new RuntimeException("couldn't find owner node"));
+        owner.log("Restarting owner node...");
+        this.host.stopHostAndPreserveState(owner);
+        this.host.waitForNodeGroupConvergence(this.nodeCount - 1, this.nodeCount - 1);
+
+        owner.setPort(0);
+        VerificationHost.restartStatefulHost(owner, false);
+        owner.addPrivilegedService(InMemoryLuceneDocumentIndexService.class);
+        owner.startFactory(InMemoryExampleService.class, InMemoryExampleService::createFactory);
+        owner.startServiceAndWait(InMemoryLuceneDocumentIndexService.class,
+                InMemoryLuceneDocumentIndexService.SELF_LINK);
+
+        this.host.addPeerNode(owner);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+        return owner;
     }
 
     @Test
@@ -411,6 +516,12 @@ public class TestSynchronizationTaskService extends BasicTestCase {
             Long membershipUpdateTimeMicros) {
         return createSynchronizationTaskState(
                 membershipUpdateTimeMicros, ExampleService.FACTORY_LINK, ExampleService.ExampleServiceState.class);
+    }
+
+    private SynchronizationTaskService.State createSynchronizationTaskState(
+            Long membershipUpdateTimeMicros, String factoryLink) {
+        return createSynchronizationTaskState(
+                membershipUpdateTimeMicros, factoryLink, ExampleService.ExampleServiceState.class);
     }
 
     private SynchronizationTaskService.State createSynchronizationTaskState(
