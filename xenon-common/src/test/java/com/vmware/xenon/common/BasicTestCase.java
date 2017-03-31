@@ -75,7 +75,7 @@ public class BasicTestCase {
         VerificationHost.initialize(host, args);
     }
 
-    public void beforeHostStart(VerificationHost host) throws Exception {
+    public void beforeHostStart(VerificationHost host) throws Throwable {
 
     }
 
