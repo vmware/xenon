@@ -351,6 +351,9 @@ public class VerificationHost extends ExampleServiceHost {
         if (this.sender != null) {
             this.sender.setTimeout(Duration.ofSeconds(seconds));
         }
+        for (VerificationHost peer : this.localPeerHosts.values()) {
+            peer.setTimeoutSeconds(seconds);
+        }
         return this;
     }
 
