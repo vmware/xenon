@@ -261,6 +261,16 @@ public class JsonMapper {
         return jsonWriter;
     }
 
+    public long hashJson(Object body, long seed) {
+        if (body == null) {
+            return seed;
+        }
+
+        HashingJsonWriter w = new HashingJsonWriter(seed);
+        this.compact.toJson(body, body.getClass(), w);
+        return w.getHash();
+    }
+
     /**
      * Excludes any field with the SENSITIVE option in PropertyUsageOptions.
      */
