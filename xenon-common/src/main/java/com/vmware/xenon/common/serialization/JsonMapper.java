@@ -16,6 +16,7 @@ package com.vmware.xenon.common.serialization;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
 import java.util.Collection;
+import java.util.Date;
 import java.util.function.Consumer;
 
 import com.google.gson.ExclusionStrategy;
@@ -236,6 +237,7 @@ public class JsonMapper {
         bldr.registerTypeAdapter(ZonedDateTimeConverter.TYPE, ZonedDateTimeConverter.INSTANCE);
         bldr.registerTypeHierarchyAdapter(byte[].class, new ByteArrayToBase64TypeAdapter());
         bldr.registerTypeAdapter(RequestRouteConverter.TYPE, RequestRouteConverter.INSTANCE);
+        bldr.registerTypeHierarchyAdapter(Date.class, UtcDateTypeAdapter.INSTANCE);
     }
 
     public void toJsonHtml(Object body, Appendable appendable) {
@@ -259,6 +261,16 @@ public class JsonMapper {
         JsonWriter jsonWriter = new JsonWriter(Streams.writerForAppendable(appendable));
         jsonWriter.setIndent(JSON_INDENT);
         return jsonWriter;
+    }
+
+    public long hashJson(Object body, long seed) {
+        if (body == null) {
+            return seed;
+        }
+
+        HashingJsonWriter w = new HashingJsonWriter(seed);
+        this.compact.toJson(body, body.getClass(), w);
+        return w.getHash();
     }
 
     /**

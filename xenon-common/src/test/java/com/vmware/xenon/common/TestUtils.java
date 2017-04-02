@@ -23,6 +23,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.ByteBuffer;
 import java.nio.charset.MalformedInputException;
@@ -72,6 +73,7 @@ import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
+import com.vmware.xenon.services.common.QueryValidationTestService.NestedType;
 import com.vmware.xenon.services.common.QueryValidationTestService.QueryValidationServiceState;
 
 public class TestUtils {
@@ -351,6 +353,52 @@ public class TestUtils {
         HashMap<String, String> map = new HashMap<>();
         k.register(map.getClass());
         return k;
+    }
+
+    /**
+     * This test detects accidental changes to how the signature is calculated. Change it
+     * if signature calculation has changed, otherwise it is a regression.
+     */
+    @Test
+    public void testSignature() {
+        CommandLineArgumentParser.parseFromProperties(this);
+        ServiceDocumentDescription desc = Builder.create()
+                .buildDescription(QueryValidationServiceState.class);
+
+        QueryValidationServiceState document = new QueryValidationServiceState();
+        document.nestedComplexValue = new NestedType();
+        document.nestedComplexValue.id = "document.nestedComplexValue.id";
+        document.nestedComplexValue.longValue = Long.MIN_VALUE;
+        document.documentKind = Utils.buildKind(document.getClass());
+        document.documentSelfLink = "documentSelfLink";
+        document.documentVersion = 0;
+        document.documentExpirationTimeMicros = 1111111111;
+        document.documentSourceLink = "documentSourceLink";
+        document.documentOwner = "owner";
+        document.documentUpdateTimeMicros = 222222222;
+        document.documentAuthPrincipalLink = "documentAuthPrincipalLink";
+        document.documentUpdateAction = "PUT";
+
+        document.referenceValue = URI.create("http://www.example.com");
+        document.mapOfStrings = new LinkedHashMap<>();
+        document.mapOfStrings.put("key1", "value1");
+        document.binaryContent = document.documentKind.getBytes(Utils.CHARSET_OBJECT);
+        document.booleanValue = false;
+        document.doublePrimitive = 3;
+        document.doubleValue = Double.valueOf(3);
+        document.id = document.documentSelfLink;
+        document.serviceLink = document.documentSelfLink;
+        document.dateValue = new Date(1422344512424L);
+        document.listOfStrings = Arrays.asList("1", "2", "3");
+
+        String wellKnownSignature = "6f06213cfdb5a51a";
+
+        Logger.getAnonymousLogger().info(
+                String.format(
+                        "Expected signature (%s) of document:\n%s",
+                        wellKnownSignature, Utils.toJsonHtml(document)));
+        String sig = Utils.computeSignature(document, desc);
+        assertEquals(wellKnownSignature, sig);
     }
 
     @Test

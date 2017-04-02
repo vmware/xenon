@@ -214,7 +214,6 @@ public final class Utils {
             throw new IllegalArgumentException("description is required");
         }
 
-        byte[] buffer = getBuffer(description.serializedStateSizeLimit);
         long hash = FNVHash.FNV_OFFSET_MINUS_MSB;
 
         for (PropertyDescription pd : description.propertyDescriptions.values()) {
@@ -233,17 +232,13 @@ public final class Utils {
             }
 
             switch (pd.typeName) {
-            case STRING:
-                hash = FNVHash.compute((String) fieldValue, hash);
-                break;
-            case COLLECTION:
-            case MAP:
-            case PODO:
-                hash = Utils.hashJson(fieldValue, hash);
+            case BYTES:
+                // special case for bytes to avoid base64 encoding
+                byte[] bytes = (byte[]) fieldValue;
+                hash = FNVHash.compute(bytes, 0, bytes.length, hash);
                 break;
             default:
-                int position = Utils.toBytes(fieldValue, buffer, 0);
-                hash = FNVHash.compute(buffer, 0, position, hash);
+                hash = Utils.hashJson(fieldValue, hash);
             }
         }
 
@@ -263,10 +258,9 @@ public final class Utils {
         if (body instanceof String) {
             return FNVHash.compute((String) body, hash);
         }
-        StringBuilder content = getBuilder();
+
         JsonMapper mapper = getJsonMapperFor(body);
-        mapper.toJson(body, content);
-        return FNVHash.compute(content, hash);
+        return mapper.hashJson(body, hash);
     }
 
     /**
