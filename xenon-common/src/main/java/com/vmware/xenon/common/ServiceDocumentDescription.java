@@ -23,11 +23,11 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
 import java.util.EnumSet;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -317,7 +317,7 @@ public class ServiceDocumentDescription {
                 Set<String> visited,
                 int depth) {
             PropertyDescription pd = new PropertyDescription();
-            pd.fieldDescriptions = new HashMap<>();
+            pd.fieldDescriptions = new TreeMap<>();
 
             // Prevent infinite recursion if we have already seen this class type
             String typeName = clazz.getTypeName();
