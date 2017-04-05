@@ -734,9 +734,24 @@ public class TestServiceModel extends BasicReusableHostTestCase {
             uris.add(UriUtils.extendUri(nsOwner.getUri(), "/1/2/3"));
             uris.add(UriUtils.extendUri(nsOwner.getUri(), "/1/2/3/?k=v&k1=v1"));
             uris.add(UriUtils.extendUri(nsOwner.getUri(), "/1/2/3/?k=v&k1=v1"));
+            // namespace service owns paths with utility service prefix
+            uris.add(UriUtils.extendUri(nsOwner.getUri(), "/1/2/3/ui"));
+            uris.add(UriUtils.extendUri(nsOwner.getUri(), "/1/2/3/ui/"));
+            uris.add(UriUtils.extendUri(nsOwner.getUri(), "/1/2/3/ui/test"));
+            uris.add(UriUtils.extendUri(nsOwner.getUri(), "/1/2/stats"));
+            uris.add(UriUtils.extendUri(nsOwner.getUri(), "/1/config"));
+            uris.add(UriUtils.extendUri(nsOwner.getUri(), "/1/replication"));
+            uris.add(UriUtils.extendUri(nsOwner.getUri(), "/1/subscriptions"));
 
             EnumSet<Action> actions = EnumSet.allOf(Action.class);
             verifyAllActions(uris, actions, false);
+
+            // these should all fail, utility service suffix
+            uris.clear();
+            uris.add(UriUtils.extendUri(nsOwner.getUri(), "/ui"));
+            uris.add(UriUtils.extendUri(nsOwner.getUri(), "/stats"));
+            actions = EnumSet.of(Action.POST);
+            verifyAllActions(uris, actions, true);
 
             // these should all fail, do not start with prefix
             uris.clear();
@@ -746,6 +761,7 @@ public class TestServiceModel extends BasicReusableHostTestCase {
             uris.add(UriUtils.extendUri(this.host.getUri(), "/1/2/3"));
             uris.add(UriUtils.extendUri(this.host.getUri(), "/1/2/3/?k=v&k1=v1"));
             uris.add(UriUtils.extendUri(this.host.getUri(), "/1/2/3/?k=v&k1=v1"));
+            actions = EnumSet.allOf(Action.class);
             verifyAllActions(uris, actions, true);
         }
 

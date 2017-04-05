@@ -3237,13 +3237,20 @@ public class ServiceHost implements ServiceRequestSender {
             return s;
         }
 
-        s = this.attachedServices.get(UriUtils.normalizeUriPath(uriPath));
-        if (s != null) {
-            return s;
+        String normalizedUriPath = UriUtils.normalizeUriPath(uriPath);
+        // Check if we got a new normalized uri path
+        if (!normalizedUriPath.equals(uriPath)) {
+            s = this.attachedServices.get(normalizedUriPath);
+            if (s != null) {
+                return s;
+            }
         }
 
         if (isHelperServicePath(uriPath)) {
-            return findHelperService(uriPath);
+            s = findHelperService(uriPath);
+            if (s != null) {
+                return s;
+            }
         }
 
         if (!doExactMatch) {
