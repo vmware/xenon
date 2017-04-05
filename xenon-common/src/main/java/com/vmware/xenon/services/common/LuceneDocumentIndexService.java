@@ -228,7 +228,13 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final String STAT_NAME_QUERY_ALL_VERSIONS_DURATION_MICROS = "queryAllVersionsDurationMicros";
 
+    public static final String STAT_NAME_QUERY_COUNT_DURATION_MICROS = "queryCountDurationMicros";
+
+    public static final String STAT_NAME_QUERY_ALL_VERSIONS_COUNT_DURATION_MICROS = "queryAllVersionsCountDurationMicros";
+
     public static final String STAT_NAME_RESULT_PROCESSING_DURATION_MICROS = "resultProcessingDurationMicros";
+
+    public static final String STAT_NAME_RESULT_PROCESSING_COUNT_DURATION_MICROS = "resultProcessingCountDurationMicros";
 
     public static final String STAT_NAME_INDEXED_FIELD_COUNT = "indexedFieldCount";
 
@@ -1505,7 +1511,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             response.documentCount = (long) searcher.count(termQuery);
             long queryTimeMicros = Utils.getNowMicrosUtc() - queryStartTimeMicros;
             response.queryTimeMicros = queryTimeMicros;
-            setTimeSeriesHistogramStat(STAT_NAME_QUERY_ALL_VERSIONS_DURATION_MICROS,
+            setTimeSeriesHistogramStat(STAT_NAME_QUERY_ALL_VERSIONS_COUNT_DURATION_MICROS,
                     AGGREGATION_TYPE_AVG_MAX, queryTimeMicros);
             return response;
         }
@@ -1528,6 +1534,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         do {
             results = searcher.searchAfter(after, termQuery, resultLimit);
             long queryEndTimeMicros = Utils.getNowMicrosUtc();
+            long luceneQueryDurationMicros = queryEndTimeMicros - start;
             long queryDurationMicros = queryEndTimeMicros - queryStartTimeMicros;
             response.queryTimeMicros = queryDurationMicros;
 
@@ -1536,14 +1543,14 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
 
             setTimeSeriesHistogramStat(STAT_NAME_QUERY_ALL_VERSIONS_DURATION_MICROS,
-                    AGGREGATION_TYPE_AVG_MAX, queryDurationMicros);
+                    AGGREGATION_TYPE_AVG_MAX, luceneQueryDurationMicros);
 
             after = processQueryResults(querySpec, queryOptions, resultLimit, searcher,
                     response,
                     results.scoreDocs, start);
 
             long now = Utils.getNowMicrosUtc();
-            setTimeSeriesHistogramStat(STAT_NAME_RESULT_PROCESSING_DURATION_MICROS,
+            setTimeSeriesHistogramStat(STAT_NAME_RESULT_PROCESSING_COUNT_DURATION_MICROS,
                     AGGREGATION_TYPE_AVG_MAX, now - queryEndTimeMicros);
 
             start = now;
