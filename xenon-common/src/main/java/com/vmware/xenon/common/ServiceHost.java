@@ -617,12 +617,12 @@ public class ServiceHost implements ServiceRequestSender {
         CommandLineArgumentParser.parse(hostArgs, args);
         CommandLineArgumentParser.parse(COLOR_LOG_FORMATTER, args);
         initialize(hostArgs);
-        setProcessOwner(true);
         return this;
 
     }
 
     public ServiceHost initialize(Arguments args) throws Throwable {
+        setProcessOwner(true);
         setSystemProperties();
 
         if (args.port == PORT_VALUE_LISTENER_DISABLED
