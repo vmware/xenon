@@ -1649,7 +1649,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                     && results.totalHits > hitCount) {
                 throw new IllegalStateException(
                         "Query returned large number of results, please specify a resultLimit. Results:"
-                                + results.totalHits);
+                                + results.totalHits + ", QuerySpec: " + Utils.toJson(qs));
             }
 
             hits = results.scoreDocs;
