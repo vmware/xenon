@@ -34,6 +34,12 @@
 * "VerificationHost#setTimeoutSeconds()" propagates specified timeout to local
   peer nodes if exist.
 
+* All variants of "ServiceHost.initialize()" methods no longer call "setProcessOwner(true)" as part of
+  initialization. This changes the shutdown behavior via DELETE to "/core/management".
+  If application needs "System.exit" to be called at shutdown, it is now required to explicitly call
+  "setProcessOwner(true)" in application code.
+
+
 ## 1.4.1
 
 * Fix migration task bug that may cause data loss when combined with transformation service.
