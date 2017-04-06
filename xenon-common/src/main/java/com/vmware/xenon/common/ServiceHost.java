@@ -617,7 +617,6 @@ public class ServiceHost implements ServiceRequestSender {
         CommandLineArgumentParser.parse(hostArgs, args);
         CommandLineArgumentParser.parse(COLOR_LOG_FORMATTER, args);
         initialize(hostArgs);
-        setProcessOwner(true);
         return this;
 
     }

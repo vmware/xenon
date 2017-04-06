@@ -224,6 +224,11 @@ public class ServiceHostManagementService extends StatefulService {
         }
     }
 
+    /**
+     * Shutdown the host.
+     *
+     * When host is the process owner, {@code System.exit(0);} is called at the end.
+     */
     @Override
     public void handleDelete(Operation delete) {
         logInfo("Received shutdown request from %s", delete.getReferer());
@@ -239,6 +244,8 @@ public class ServiceHostManagementService extends StatefulService {
 
         if (isProcessOwner) {
             System.exit(0);
+        } else {
+            logInfo("This host is NOT the process owner. Skipping System.exit()");
         }
     }
 
