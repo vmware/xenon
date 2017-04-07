@@ -26,6 +26,20 @@ import com.vmware.xenon.ui.UiService;
  */
 public class DecentralizedControlPlaneHost extends ServiceHost {
 
+    public static class ServiceHostArguments extends Arguments {
+        /**
+         * The email address of a user that should be granted "admin" privileges to all services
+         */
+        public String adminUser = "admin@localhost";
+
+        /**
+         * (Required) The password of the adminUser
+         */
+        public String adminPassword;
+    }
+
+    private ServiceHostArguments args;
+
     public static void main(String[] args) throws Throwable {
         DecentralizedControlPlaneHost h = new DecentralizedControlPlaneHost();
         h.initialize(args);
@@ -35,6 +49,18 @@ public class DecentralizedControlPlaneHost extends ServiceHost {
             h.stop();
             h.log(Level.WARNING, "Host is stopped");
         }));
+    }
+
+    @Override
+    public ServiceHost initialize(String[] args) throws Throwable {
+        this.args = new ServiceHostArguments();
+        super.initialize(args, this.args);
+
+        if (this.args.adminPassword == null) {
+            throw new IllegalStateException("adminPassword is required. specify \"--adminPassword=<pass>\" param");
+        }
+
+        return this;
     }
 
     @Override
@@ -55,8 +81,8 @@ public class DecentralizedControlPlaneHost extends ServiceHost {
 
         AuthorizationSetupHelper.create()
                 .setHost(this)
-                .setUserEmail("admin@localhost")
-                .setUserPassword("changeme")
+                .setUserEmail(this.args.adminUser)
+                .setUserPassword(this.args.adminPassword)
                 .setIsAdmin(true)
                 .start();
 

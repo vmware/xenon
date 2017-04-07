@@ -35,7 +35,8 @@ public class TestDecentralizedControlPlaneHost {
                     "--port=0",
                     "--sandbox=" + tmpFolder.getRoot().getAbsolutePath(),
                     "--bindAddress=" + bindAddress,
-                    "--id=" + hostId
+                    "--id=" + hostId,
+                    "--adminPassword=changeme"
             };
 
             h.initialize(args);
