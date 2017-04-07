@@ -183,6 +183,16 @@ public class QueryTask extends ServiceDocument {
              * Query will return latest versions of documents before {@link QuerySpecification#timeSnapshotBoundaryMicros}
              */
             TIME_SNAPSHOT,
+
+            /**
+             * Query pages will be deleted immediately after first access instead of at query task
+             * expiration time, and any index service resources backing the query will be deleted
+             * after the last page is accessed.
+             *
+             * Note this option disables sharing of index service resources with other queries and
+             * may increase overall resource usage.
+             */
+            SINGLE_USE,
         }
 
         public enum SortOrder {
