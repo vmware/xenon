@@ -25,7 +25,10 @@ import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.services.common.LuceneDocumentIndexService.DeleteQueryRuntimeContextRequest;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
+import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
+import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryRuntimeContext;
 
 public class QueryPageService extends StatelessService {
     public static final String KIND = Utils.buildKind(QueryTask.class);
@@ -165,9 +168,35 @@ public class QueryPageService extends StatelessService {
             return;
         }
 
-        // null the native query context in the cloned spec, so it does not serialize on the wire
+        if (task.querySpec.options.contains(QueryOption.SINGLE_USE)) {
+            getHost().stopService(this);
+        }
+
+        // null the native query context in the cloned spec, so it does not serialize on the wire,
+        // and complete the request.
+        QueryRuntimeContext context = task.querySpec.context;
         task.querySpec.context = null;
         task.taskInfo.stage = TaskStage.FINISHED;
         QueryTaskUtils.expandLinks(getHost(), task, get);
+
+        if (!task.querySpec.options.contains(QueryOption.SINGLE_USE)) {
+            return;
+        }
+
+        if (task.results.nextPageLink == null) {
+            DeleteQueryRuntimeContextRequest request = new DeleteQueryRuntimeContextRequest();
+            request.documentKind = DeleteQueryRuntimeContextRequest.KIND;
+            request.context = context;
+
+            Operation patch = Operation.createPatch(this, task.indexLink)
+                    .setBodyNoCloning(request)
+                    .setCompletion((op, ex) -> {
+                        if (ex != null) {
+                            logWarning("Failed to delete runtime context: %s", Utils.toString(ex));
+                        }
+                    });
+
+            sendRequest(patch);
+        }
     }
 }
