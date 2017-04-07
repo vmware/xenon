@@ -106,6 +106,7 @@ import com.vmware.xenon.services.common.QueryFilter.QueryFilterException;
 import com.vmware.xenon.services.common.QueryPageService.LuceneQueryPage;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
+import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryRuntimeContext;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.ServiceHostManagementService.BackupType;
 
@@ -244,6 +245,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final String STAT_NAME_PAGINATED_SEARCHER_UPDATE_COUNT = "paginatedIndexSearcherUpdateCount";
 
+    public static final String STAT_NAME_PAGINATED_SEARCHER_FORCE_DELETION_COUNT = "paginatedIndexSearcherForceDeletionCount";
+
     public static final String STAT_NAME_WRITER_ALREADY_CLOSED_EXCEPTION_COUNT = "indexWriterAlreadyClosedFailureCount";
 
     public static final String STAT_NAME_READER_ALREADY_CLOSED_EXCEPTION_COUNT = "indexReaderAlreadyClosedFailureCount";
@@ -362,7 +365,13 @@ public class LuceneDocumentIndexService extends StatelessService {
     public static class PaginatedSearcherInfo {
         public long creationTimeMicros;
         public long expirationTimeMicros;
+        public boolean oneShot;
         public IndexSearcher searcher;
+    }
+
+    public static class DeleteQueryRuntimeContextRequest extends ServiceDocument {
+        public QueryRuntimeContext context;
+        static final String KIND = Utils.buildKind(DeleteQueryRuntimeContextRequest.class);
     }
 
     /**
@@ -645,6 +654,60 @@ public class LuceneDocumentIndexService extends StatelessService {
                 Utils.getNowMicrosUtc());
     }
 
+    private void handleDeleteRuntimeContext(Operation op) throws Throwable {
+        DeleteQueryRuntimeContextRequest request = (DeleteQueryRuntimeContextRequest)
+                op.getBodyRaw();
+        if (request.context == null) {
+            throw new IllegalArgumentException("Context cannot be null");
+        }
+
+        IndexSearcher nativeSearcher = (IndexSearcher) request.context.nativeSearcher;
+        if (nativeSearcher == null) {
+            throw new IllegalArgumentException("Native searcher must be present");
+        }
+
+        PaginatedSearcherInfo infoToRemove = null;
+        synchronized (this.searchSync) {
+            Iterator<Entry<Long, PaginatedSearcherInfo>> itr =
+                    this.paginatedSearchersByCreationTime.entrySet().iterator();
+            while (itr.hasNext()) {
+                PaginatedSearcherInfo info = itr.next().getValue();
+                if (info.searcher.equals(nativeSearcher)) {
+                    infoToRemove = info;
+                    itr.remove();
+                    break;
+                }
+            }
+
+            if (infoToRemove == null) {
+                op.complete();
+                return;
+            }
+
+            long expirationTime = infoToRemove.expirationTimeMicros;
+            List<PaginatedSearcherInfo> expirationList =
+                    this.paginatedSearchersByExpirationTime.get(expirationTime);
+            if (!expirationList.remove(infoToRemove)) {
+                logWarning("Expiration list did not contain paginated searcher info");
+            }
+            if (expirationList.isEmpty()) {
+                this.paginatedSearchersByExpirationTime.remove(expirationTime);
+            }
+
+            this.searcherUpdateTimesMicros.remove(infoToRemove.searcher.hashCode());
+        }
+
+        try {
+            infoToRemove.searcher.getIndexReader().close();
+        } catch (Throwable ignored) {
+        }
+
+        op.complete();
+
+        adjustTimeSeriesStat(STAT_NAME_PAGINATED_SEARCHER_FORCE_DELETION_COUNT,
+                AGGREGATION_TYPE_SUM, 1);
+    }
+
     private void handleBackup(Operation op) throws Throwable {
 
         if (!isDurable()) {
@@ -770,6 +833,10 @@ public class LuceneDocumentIndexService extends StatelessService {
                             handleQueryTaskPatch(op, task);
                             break;
                         }
+                        if (sd.documentKind.equals(DeleteQueryRuntimeContextRequest.KIND)) {
+                            handleDeleteRuntimeContext(op);
+                            break;
+                        }
                         if (sd.documentKind.equals(BackupRequest.KIND)) {
                             handleBackup(op);
                             break;
@@ -883,7 +950,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             // for this query and all its pages. It will be expired when the query task itself expires
             Set<String> documentKind = qs.context.kindScope;
             s = createOrUpdatePaginatedQuerySearcher(task.documentExpirationTimeMicros,
-                    this.writer, documentKind, qs.options.contains(QueryOption.DO_NOT_REFRESH));
+                    this.writer, documentKind, qs.options);
         }
 
         if (!queryIndex(s, op, null, qs.options, luceneQuery, lucenePage,
@@ -927,10 +994,13 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private IndexSearcher createOrUpdatePaginatedQuerySearcher(long expirationMicros,
-            IndexWriter w, Set<String> kindScope, boolean doNotRefresh) throws IOException {
+            IndexWriter w, Set<String> kindScope, EnumSet<QueryOption> queryOptions)
+            throws IOException {
 
-        if (!doNotRefresh && kindScope == null) {
-            return createPaginatedQuerySearcher(expirationMicros, w);
+        boolean doNotRefresh = queryOptions.contains(QueryOption.DO_NOT_REFRESH);
+        boolean oneShot = queryOptions.contains(QueryOption.ONE_SHOT);
+        if (oneShot || (!doNotRefresh && kindScope == null)) {
+            return createPaginatedQuerySearcher(expirationMicros, w, oneShot);
         }
 
         IndexSearcher searcher;
@@ -947,7 +1017,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             return searcher;
         }
 
-        return createPaginatedQuerySearcher(expirationMicros, w);
+        return createPaginatedQuerySearcher(expirationMicros, w, false);
     }
 
     private IndexSearcher getOrUpdateExistingSearcher(long newExpirationMicros,
@@ -957,7 +1027,20 @@ public class LuceneDocumentIndexService extends StatelessService {
             return null;
         }
 
-        PaginatedSearcherInfo info = this.paginatedSearchersByCreationTime.lastEntry().getValue();
+        PaginatedSearcherInfo info = null;
+        Iterator<Entry<Long, PaginatedSearcherInfo>> itr =
+                this.paginatedSearchersByCreationTime.entrySet().iterator();
+        while (itr.hasNext()) {
+            PaginatedSearcherInfo i = itr.next().getValue();
+            if (!i.oneShot) {
+                info = i;
+                break;
+            }
+        }
+
+        if (info == null) {
+            return null;
+        }
 
         if (kindScope != null) {
             long searcherUpdateTime = this.searcherUpdateTimesMicros.get(info.searcher.hashCode());
@@ -991,8 +1074,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         return info.searcher;
     }
 
-    private IndexSearcher createPaginatedQuerySearcher(long expirationMicros, IndexWriter w)
-            throws IOException {
+    private IndexSearcher createPaginatedQuerySearcher(long expirationMicros, IndexWriter w,
+            boolean oneShot) throws IOException {
         if (w == null) {
             throw new IllegalStateException("Writer not available");
         }
@@ -1006,6 +1089,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         PaginatedSearcherInfo info = new PaginatedSearcherInfo();
         info.creationTimeMicros = now;
         info.expirationTimeMicros = expirationMicros;
+        info.oneShot = oneShot;
         info.searcher = s;
 
         synchronized (this.searchSync) {
@@ -1393,7 +1477,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         if (s == null && qs.groupResultLimit != null) {
             s = createOrUpdatePaginatedQuerySearcher(task.documentExpirationTimeMicros,
-                    this.writer, kindScope, qs.options.contains(QueryOption.DO_NOT_REFRESH));
+                    this.writer, kindScope, qs.options);
         }
 
         if (s == null) {
