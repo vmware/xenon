@@ -692,6 +692,117 @@ public class TestLuceneDocumentIndexService {
 
             return true;
         });
+
+        // Create a new direct paginated searcher with a long expiration and the SINGLE_USE option,
+        // traverse all of the results pages, and verify that the pages and the index searcher were
+        // closed.
+        queryTask = QueryTask.Builder.create()
+                .setQuery(query)
+                .setResultLimit(2)
+                .addOption(QueryOption.SINGLE_USE)
+                .build();
+        queryTask.documentExpirationTimeMicros = extendedQueryExpirationTimeMicros;
+
+        this.host.log("Creating a query task with SINGLE_USE with expiration time %d",
+                queryTask.documentExpirationTimeMicros);
+
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+        assertNotNull(queryTask.results.nextPageLink);
+
+        ServiceStat forceDeletionStat = getLuceneStat(
+                LuceneDocumentIndexService.STAT_NAME_PAGINATED_SEARCHER_FORCE_DELETION_COUNT
+                        + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+        assertEquals(0.0, forceDeletionStat.latestValue, 0.01);
+
+        paginatedSearchers = this.indexService.verifyPaginatedSearcherListsEqual();
+        assertEquals(2, paginatedSearchers.size());
+        for (Entry<Long, List<PaginatedSearcherInfo>> entry : paginatedSearchers.entrySet()) {
+            long expirationMicros = entry.getKey();
+            List<PaginatedSearcherInfo> expirationList = entry.getValue();
+            if (expirationMicros == queryExpirationTimeMicros) {
+                assertEquals(1, expirationList.size());
+            } else if (expirationMicros == extendedQueryExpirationTimeMicros) {
+                assertEquals(2, expirationList.size());
+            } else {
+                throw new IllegalStateException("Unexpected expiration time: " + expirationMicros);
+            }
+        }
+
+        TestContext ctx = this.host.testCreate(1);
+        List<String> pageLinks = traversePageLinks(ctx, queryTask.results.nextPageLink);
+        this.host.testWait(ctx);
+
+        // Verify that the query page services have been stopped. Note this should happen
+        // synchronously during GET processing.
+        TestContext getCtx = this.host.testCreate(pageLinks.size());
+        AtomicInteger remaining = new AtomicInteger(pageLinks.size());
+        for (String pageLink : pageLinks) {
+            Operation get = Operation.createGet(this.host, pageLink).setCompletion((o, e) -> {
+                if (e != null && (e instanceof ServiceHost.ServiceNotFoundException)) {
+                    remaining.decrementAndGet();
+                }
+                getCtx.complete();
+            });
+
+            this.host.send(get);
+        }
+        this.host.testWait(getCtx);
+
+        assertEquals(0, remaining.get());
+
+        this.host.waitFor("Failed to delete index searcher (stat)", () -> {
+            ServiceStat deletionStat = getLuceneStat(
+                    LuceneDocumentIndexService.STAT_NAME_PAGINATED_SEARCHER_FORCE_DELETION_COUNT
+                            + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+            return deletionStat.latestValue == 1.0;
+        });
+
+        this.host.waitFor("Failed to delete index searcher (list)", () -> {
+            Map<Long, List<PaginatedSearcherInfo>> searcherInfo =
+                    this.indexService.verifyPaginatedSearcherListsEqual();
+            assertEquals(2, searcherInfo.size());
+            for (Entry<Long, List<PaginatedSearcherInfo>> entry : searcherInfo.entrySet()) {
+                long expirationMicros = entry.getKey();
+                List<PaginatedSearcherInfo> expirationList = entry.getValue();
+                if (expirationMicros == queryExpirationTimeMicros) {
+                    assertEquals(1, expirationList.size());
+                } else if (expirationMicros != extendedQueryExpirationTimeMicros) {
+                    throw new IllegalStateException("Unexpected expiration time: "
+                            + expirationMicros);
+                } else {
+                    return expirationList.size() == 1;
+                }
+            }
+
+            throw new IllegalStateException("Unreachable");
+        });
+    }
+
+    private List<String> traversePageLinks(TestContext ctx, String nextPageLink) {
+        List<String> nextPageLinks = new ArrayList<>();
+        traversePageLinks(ctx, nextPageLink, nextPageLinks);
+        return nextPageLinks;
+    }
+
+    private void traversePageLinks(TestContext ctx, String nextPageLink, List<String> nextPageLinks) {
+        nextPageLinks.add(nextPageLink);
+        Operation get = Operation.createGet(this.host, nextPageLink)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        ctx.fail(e);
+                        return;
+                    }
+
+                    QueryTask page = o.getBody(QueryTask.class);
+                    if (page.results.nextPageLink == null) {
+                        ctx.complete();
+                        return;
+                    }
+
+                    traversePageLinks(ctx, page.results.nextPageLink, nextPageLinks);
+                });
+
+        this.host.send(get);
     }
 
     private void updateServices(Map<URI, ExampleServiceState> exampleServices, boolean expectFailure)
