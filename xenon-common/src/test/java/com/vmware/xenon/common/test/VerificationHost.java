@@ -136,6 +136,8 @@ public class VerificationHost extends ExampleServiceHost {
     public static final String LOCATION1 = "L1";
     public static final String LOCATION2 = "L2";
 
+    private static int STRICT_UPDATE_ACCEPTABLE_VERSION = -1;
+
     private volatile TestContext context;
 
     private int timeoutSeconds = 30;
@@ -1356,7 +1358,12 @@ public class VerificationHost extends ExampleServiceHost {
                     // only used for strict update checking, serialized requests
                     l[0] = new CountDownLatch(1);
                     // we have to serialize requests and properly set version
-                    body.documentVersion = expectedVersion[0];
+                    if (i < count / 2) {
+                        body.documentVersion = expectedVersion[0];
+                    } else {
+                        body.documentVersion = STRICT_UPDATE_ACCEPTABLE_VERSION;
+                    }
+
                     updateOp.setCompletion((o, ex) -> {
                         if (ex == null || isFailureExpectedFinal) {
                             MinimalTestServiceState rsp = o.getBody(MinimalTestServiceState.class);
