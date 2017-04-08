@@ -101,7 +101,8 @@ public interface Service extends ServiceRequestSender {
          * request body must match the signature. The version is ignored.
          *
          * If there is no signature in the current state, then the version from the current state
-         * must match the version in the request body.
+         * must match the version in the request body, or version in request body should be -1 when
+         * caller do not care about the version in current state.
          *
          * Requires: REPLICATION
          *

@@ -42,6 +42,8 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
  */
 public class StatefulService implements Service {
 
+    private static int STRICT_UPDATE_ACCEPTABLE_VERSION = -1;
+
     private static class AdditionalContext {
         public long maintenanceInterval;
         public transient OperationProcessingChain opProcessingChain;
@@ -650,7 +652,8 @@ public class StatefulService implements Service {
 
         ServiceDocument sdBody = (ServiceDocument) body;
 
-        boolean isVersionMatch = this.context.version == sdBody.documentVersion;
+        boolean isVersionMatch = (this.context.version == sdBody.documentVersion)
+                || (sdBody.documentVersion == STRICT_UPDATE_ACCEPTABLE_VERSION);
 
         // if the document is not the owner, and service is partitioned, then we do not do
         // validation. We let the owner service instance decide if this is a good request or not

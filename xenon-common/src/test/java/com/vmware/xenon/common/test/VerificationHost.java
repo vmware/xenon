@@ -1356,7 +1356,12 @@ public class VerificationHost extends ExampleServiceHost {
                     // only used for strict update checking, serialized requests
                     l[0] = new CountDownLatch(1);
                     // we have to serialize requests and properly set version
-                    body.documentVersion = expectedVersion[0];
+                    if (i < count/2) {
+                        body.documentVersion = expectedVersion[0];
+                    } else {
+                        body.documentVersion = -1;
+                    }
+
                     updateOp.setCompletion((o, ex) -> {
                         if (ex == null || isFailureExpectedFinal) {
                             MinimalTestServiceState rsp = o.getBody(MinimalTestServiceState.class);
