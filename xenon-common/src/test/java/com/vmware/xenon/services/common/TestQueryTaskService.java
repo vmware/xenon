@@ -338,6 +338,7 @@ public class TestQueryTaskService {
 
             TestContext ctx = ctxRef.get();
             if (body.results.continuousResults == null) {
+                this.host.log("Query task result %s ", body.results.documentLinks.size());
                 ctx.fail(new IllegalStateException("Continuous results expected"));
                 return;
             }
