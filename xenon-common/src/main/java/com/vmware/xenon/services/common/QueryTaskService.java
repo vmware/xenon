@@ -502,6 +502,9 @@ public class QueryTaskService extends StatefulService {
         case CREATED:
             return false;
         case STARTED:
+            if (patchBody.results.continuousResults == null) {
+                patchBody.results.continuousResults = new ContinuousResult();
+            }
             // if the new state is STARTED, and we are in STARTED, this is just a update notification
             // from the index that either the initial query completed, or a new update passed the
             // query filter. Subscribers can subscribe to this task and see what changed.
@@ -512,27 +515,21 @@ public class QueryTaskService extends StatefulService {
                 if (state.results.documentCount == null) {
                     state.results.documentCount = 0L;
                 }
-
-                if (state.results.continuousResults == null) {
-                    state.results.continuousResults = new ContinuousResult();
-                }
             } else {
-                if (state.results.continuousResults == null) {
-                    state.results.continuousResults = new ContinuousResult();
-                }
                 // After it has STARTED, now adjust the count based on
                 // documentUpdateAction.
                 if (this.results.documents != null) {
                     this.results.documents.values().stream().forEach((doc) -> {
                         ServiceDocument serviceDocument = (ServiceDocument) doc;
-                        if (serviceDocument.documentUpdateAction == Action.DELETE.name()) {
+                        if (serviceDocument.documentUpdateAction.equals(Action.DELETE.name())) {
                             --state.results.documentCount;
                             ++state.results.continuousResults.documentCountDeleted;
-                        } else if (serviceDocument.documentUpdateAction == Action.POST.name()) {
+                        } else if (serviceDocument.documentUpdateAction.equals(Action.POST.name())
+                                && serviceDocument.documentVersion == 0) {
                             ++state.results.documentCount;
                             ++state.results.continuousResults.documentCountAdded;
-                        } else if (serviceDocument.documentUpdateAction == Action.PATCH.name()
-                                || serviceDocument.documentUpdateAction == Action.PUT.name()) {
+                        } else if (serviceDocument.documentUpdateAction.equals(Action.PATCH.name())
+                                || serviceDocument.documentUpdateAction.equals(Action.PUT.name())) {
                             ++state.results.continuousResults.documentCountUpdated;
                         }
                     });
@@ -562,6 +559,9 @@ public class QueryTaskService extends StatefulService {
         if (state.querySpec.options.contains(QueryOption.COUNT)) {
             patch.setBodyNoCloning(state).complete();
         } else {
+            if (patchBody.results.continuousResults == null) {
+                patchBody.results.continuousResults = new ContinuousResult();
+            }
             patch.complete();
         }
         return true;
