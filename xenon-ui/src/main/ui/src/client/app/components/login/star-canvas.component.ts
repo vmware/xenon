@@ -76,9 +76,9 @@ export class StarCanvasComponent implements AfterViewInit {
             this._context.scale(ratio, ratio);
         }
 
-        this._context.fillStyle = 'rgba(255, 255, 255, .5)';
+        this._context.fillStyle = 'rgba(41, 182, 246, .5)';
         this._context.lineWidth = .5;
-        this._context.strokeStyle = 'rgba(255, 255, 255, .25)';
+        this._context.strokeStyle = 'rgba(41, 182, 246, .25)';
 
         setInterval(() => {
             this._render();

@@ -21,6 +21,13 @@
                     <i class="fa fa-trash-o"></i>
                     {{ 'ACTION_DELETE' | translate }}
                 </button>
+                <button class="btn btn-sm btn-link"
+                    (click)="onToggleStats()"
+                    title="{{ 'ACTION_COLLAPSE_EXPAND' | translate }} {{ 'CHILD_SERVICE_STATS_PANEL' | translate }}">
+                    <i class="fa"
+                        [class.fa-angle-right]="statsState === 'expand'"
+                        [class.fa-angle-left]="statsState === 'collapse'"></i>
+                </button>
             </aside>
         </div>
         <small class="form-subtitle">
@@ -28,16 +35,6 @@
             <span class="separator">|</span>
             {{'EXPIRES' | translate}}: <strong>{{getTimeStamp(getSelectedChildService().documentExpirationTimeMicros)}}</strong>
         </small>
-        <section class="charts">
-            <figure class="chart">
-                <figcaption class="title">{{ 'CHILD_SERVICE_DETAIL_OPERATION_COUNT_TITLE' | translate }}</figcaption>
-                <canvas id="operationCountChart" class="canvas"></canvas>
-            </figure>
-            <figure class="chart">
-                <figcaption class="title">{{ 'CHILD_SERVICE_DETAIL_OPERATION_DURATION_TITLE' | translate }}</figcaption>
-                <canvas id="operationDurationChart" class="canvas"></canvas>
-            </figure>
-        </section>
         <section>
             <h5 class="section-title">{{ 'PROPERTIES' | translate }}</h5>
             <xe-property-table [properties]="getSelectedChildService()"></xe-property-table>
@@ -45,23 +42,34 @@
     </form>
 </div>
 <div id="childServiceHistory" class="right-side-area area"
-    *ngIf="isNullOrUndefined(getSelectedChildService()) === false">
-    <h4>
-        {{ 'CHILD_SERVICE_DETAIL_ACTIVITIES_TITLE' | translate }}
-    </h4>
-    <div class="timeline">
-        <div class="timeline-connector"></div>
-        <div class="timeline-item"
-            *ngFor="let timeline of getTimeline()">
-            <div class="timeline-dot"></div>
-            <div class="timeline-content">
-                <h5 class="title">{{timeline?.name}} <small>x {{timeline?.count}}</small></h5>
-                <small class="timestamp">
-                    {{ 'LAST_REQUESTED' | translate }}: <strong>{{getTimeStamp(timeline?.timestamp)}}</strong>
-                </small>
+    *ngIf="isNullOrUndefined(getSelectedChildService()) === false"
+    [@statsState]="statsState">
+    <figure>
+        <figcaption class="h5">{{ 'CHILD_SERVICE_DETAIL_OPERATION_COUNT_TITLE' | translate }}</figcaption>
+        <canvas id="operationCountChart" class="canvas"></canvas>
+    </figure>
+    <figure>
+        <figcaption class="h5">{{ 'CHILD_SERVICE_DETAIL_OPERATION_DURATION_TITLE' | translate }}</figcaption>
+        <canvas id="operationDurationChart" class="canvas"></canvas>
+    </figure>
+    <section>
+        <h5>
+            {{ 'CHILD_SERVICE_DETAIL_ACTIVITIES_TITLE' | translate }}
+        </h5>
+        <div class="timeline">
+            <div class="timeline-connector"></div>
+            <div class="timeline-item"
+                *ngFor="let timeline of getTimeline()">
+                <div class="timeline-dot"></div>
+                <div class="timeline-content">
+                    <h5 class="title">{{timeline?.name}} <small>x {{timeline?.count}}</small></h5>
+                    <small class="timestamp">
+                        {{ 'LAST_REQUESTED' | translate }}: <strong>{{getTimeStamp(timeline?.timestamp)}}</strong>
+                    </small>
+                </div>
             </div>
         </div>
-    </div>
+    </section>
 </div>
 
 <div id="editChildServiceModal" class="modal fade"

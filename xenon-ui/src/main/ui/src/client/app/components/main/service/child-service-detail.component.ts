@@ -1,6 +1,7 @@
 // angular
 import { AfterViewChecked, ChangeDetectionStrategy, Input,
-    SimpleChange, OnChanges, OnDestroy } from '@angular/core';
+    SimpleChange, OnChanges, OnDestroy,
+    trigger, state, style, animate, transition } from '@angular/core';
 import { Subscription } from 'rxjs/Subscription';
 import * as _ from 'lodash';
 
@@ -22,7 +23,20 @@ const OPERATIONS: string[] = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'];
     moduleId: module.id,
     templateUrl: './child-service-detail.component.html',
     styleUrls: ['./child-service-detail.component.css'],
-    changeDetection: ChangeDetectionStrategy.Default
+    changeDetection: ChangeDetectionStrategy.Default,
+    animations: [
+        trigger('statsState', [
+            state('expand', style({
+                width: '432px',
+                padding: '24px 36px'
+            })),
+            state('collapse', style({
+                width: '0',
+                padding: '24px 0'
+            })),
+            transition('expand <=> collapse', animate('200ms ease-out'))
+        ])
+    ]
 })
 
 export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges, OnDestroy {
@@ -59,6 +73,8 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
             documentSelfLink: ''
         }
     };
+
+    statsState: string = 'expand';
 
     /**
      * Selected child service document
@@ -272,6 +288,10 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
                     messages: [`[${error.statusCode}] ${error.message}`]
                 }]);
             });
+    }
+
+    onToggleStats(): void {
+        this.statsState = this.statsState === 'expand' ? 'collapse' : 'expand';
     }
 
     private _getData(): void {

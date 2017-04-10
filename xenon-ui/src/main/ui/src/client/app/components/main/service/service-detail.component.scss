@@ -35,19 +35,28 @@
         .left-side-area {
             min-width: baselinerem(12);
             width: 20%;
-            overflow-y: scroll;
+            background: $grey-50;
+            box-shadow: none;
 
             .list-group-item {
                 border: none;
                 padding-left: baselinerem(1.5);
                 cursor: pointer;
+                background: transparent;
+                color: $grey-500;
+                @include break-word();
+                @include transition(all);
 
                 &:hover {
                     box-shadow: rpx(4) 0 0 $light-blue-300 inset;
+                    background: $white-base;
+                    color: $grey-600;
                 }
 
                 &:focus, &:active, &.active {
                     box-shadow: rpx(4) 0 0 $light-blue-400 inset;
+                    background: $white-base;
+                    color: $black-base;
                 }
             }
         }

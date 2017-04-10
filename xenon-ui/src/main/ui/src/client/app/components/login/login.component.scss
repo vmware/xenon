@@ -3,10 +3,10 @@
 
 .background-logo {
     position: absolute;
-    top: -320px;
-    left: -232px;
-    width: 580px;
-    opacity: .1;
+    top: -290px;
+    right: -200px;
+    width: 560px;
+    opacity: .15;
 }
 
 .login {
@@ -31,5 +31,5 @@
 .star-canvas {
     @include flexbox();
     @include flex(1 1 auto);
-    @include gradient-background();
+    background: $white-base;
 }

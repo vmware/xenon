@@ -12,6 +12,7 @@
         h4 {
             @include flex(1 1 auto);
             @include break-word();
+            @include text-multiline-ellipsis();
             margin: 0;
         }
 
@@ -46,7 +47,10 @@
 }
 
 #childServiceHistory.right-side-area {
-    width: baselinerem(15);
+    width: baselinerem(18);
     padding: baselinerem(1) baselinerem(1.5);
-    background: $grey-50;
+
+    > * {
+        margin-bottom: baselinerem(1);
+    }
 }

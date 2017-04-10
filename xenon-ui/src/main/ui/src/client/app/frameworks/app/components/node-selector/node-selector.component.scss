@@ -23,7 +23,7 @@
     .node-selector-title {
         margin: 0;
         padding: 0 0 baselinerem(1);
-        border-bottom: 1px solid $grey-300;
+        border-bottom: 1px solid $grey-400;
         @include flexbox();
 
         span {
@@ -60,6 +60,7 @@
 
         .right-side-area {
             width: 50%;
+            box-shadow: none;
         }
     }
 }

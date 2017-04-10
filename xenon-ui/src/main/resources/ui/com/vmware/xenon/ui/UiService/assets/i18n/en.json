@@ -30,6 +30,7 @@
     "SERVICE_CORE_SERVICES_TITLE": "Core Services",
     "SERVICE_COSTOM_SERVICES_TITLE": "Custom Services",
     "SERVICE_SERVICE_OPTIONS": "Options",
+    "CHILD_SERVICE_STATS_PANEL": "Stats Panel",
     "CHILD_SERVICE_DETAIL_OPERATION_COUNT_TITLE": "# of Requests",
     "CHILD_SERVICE_DETAIL_OPERATION_DURATION_TITLE": "Operation Durations",
     "CHILD_SERVICE_DETAIL_ACTIVITIES_TITLE": "Recent Activities",
@@ -45,6 +46,7 @@
     "PROCESS_VIEW_FULL_LOGS": "View Full Logs",
 
     "QUERY_TITLE": "Queries",
+    "QUERY_BUILDER": "Query Builder",
     "QUERY_MODE_INTERACTIVE_TITLE": "Interactive",
     "QUERY_MODE_ADVANCED_TITLE": "Advanced",
     "QUERY_BUILDER_TITLE_OF_DOCUMENTS": "of documents owned by",
@@ -119,7 +121,7 @@
     "ACTION_YES": "Yes",
     "ACTION_NO": "No",
     "ACTION_CLOSE": "Close",
-    "ACTION_COLLAPSE_HELP": "Collapse/Expand Query Builder",
+    "ACTION_COLLAPSE_EXPAND": "Collapse/Expand",
 
     "USERNAME": "Username",
     "PASSWORD": "Password",
