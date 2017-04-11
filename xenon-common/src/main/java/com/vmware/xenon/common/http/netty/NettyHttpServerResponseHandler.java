@@ -97,7 +97,7 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
             // We only have one request/response per stream, so remove the association.
             channelContext.removeOperationForStream(streamId);
         } else {
-            request = ctx.channel().attr(NettyChannelContext.OPERATION_KEY).get();
+            request = ctx.channel().attr(NettyChannelContext.OPERATION_KEY).getAndRemove();
             if (request == null) {
                 this.logger.warning("Can't find operation for channel");
                 return null;
