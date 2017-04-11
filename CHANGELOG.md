@@ -2,6 +2,10 @@
 
 ## 1.4.2-SNAPSHOT
 
+* Add ability to expand only selected fields in queries
+  See QueryOption.EXPAND_SELECTED_FIELDS and querySpec.selectTerms
+  also odata format: $select=<comma-separated-list-of-fieldnames>
+
 * Add Service.get/SetDocumentIndexPath() enabling a service type to use
   a custom index service instance. This enables many new scenarios, for production
   or testing, since the per service instance indexing of the I/O pipeline can now use

@@ -41,6 +41,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.junit.After;
 import org.junit.Rule;
@@ -77,6 +78,7 @@ import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
+import com.vmware.xenon.services.common.QueryTask.Builder;
 import com.vmware.xenon.services.common.QueryTask.NumericRange;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
@@ -89,6 +91,7 @@ import com.vmware.xenon.services.common.QueryValidationTestService.QueryValidati
 import com.vmware.xenon.services.common.TenantService.TenantState;
 
 public class TestQueryTaskService {
+
     private static final String TEXT_VALUE = "the decentralized control plane is a nice framework for queries";
     private static final String STRING_VALUE = "First@Last.com";
     private static final String SERVICE_LINK_VALUE = "provisioning/dhcp-subnets/192.4.0.0/16";
@@ -370,7 +373,7 @@ public class TestQueryTaskService {
                     UriUtils.buildStatsUri(this.host.getDocumentIndexServiceUri()));
             ServiceStat activeQueryStat = indexStats.entries.get(
                     LuceneDocumentIndexService.STAT_NAME_ACTIVE_QUERY_FILTERS
-                            + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR);
+                    + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR);
             return activeQueryStat != null && activeQueryStat.latestValue >= 1.0;
         });
 
@@ -430,10 +433,10 @@ public class TestQueryTaskService {
     }
 
     /**
-     * This tests a specific bug we encountered that a continuous query task with replay
-     * would fail when there was state to replay. We never got the notification for the
-     * replay because kryo through an exception: Class cannot be created (missing no-arg
-     * constructor)
+     * This tests a specific bug we encountered that a continuous query task
+     * with replay would fail when there was state to replay. We never got the
+     * notification for the replay because kryo through an exception: Class
+     * cannot be created (missing no-arg constructor)
      */
     @Test
     public void continuousQueryTaskWithReplay() throws Throwable {
@@ -511,24 +514,174 @@ public class TestQueryTaskService {
     }
 
     @Test
-    public void expandContent() throws Throwable {
+    public void testExpandContent() throws Throwable {
+        testExpand(new ExpansionStrategy() {
+
+            @Override
+            public ExampleServiceState createInitialDocumentState() {
+                ExampleServiceState initialState = new ExampleServiceState();
+                initialState.name = UUID.randomUUID().toString();
+                return initialState;
+            }
+
+            @Override
+            public Builder adjustBuilder(Builder builder) {
+                return builder.addOption(QueryOption.EXPAND_CONTENT);
+            }
+
+            @Override
+            public URI adjustURI(URI uri) {
+                return UriUtils.buildExpandLinksQueryUri(uri);
+            }
+
+            @Override
+            public void validateDocumentResults(ServiceDocumentQueryResult taskResult, int expectedCount,
+                    int expectedVersion,
+                    Action expectedLastAction) {
+
+                String kind = Utils.buildKind(ExampleServiceState.class);
+                assertEquals(expectedCount, taskResult.documentLinks.size());
+                assertEquals(taskResult.documentLinks.size(), taskResult.documents.size());
+                for (Entry<String, Object> e : taskResult.documents.entrySet()) {
+                    ExampleServiceState st = Utils.fromJson(e.getValue(), ExampleServiceState.class);
+
+                    assertEquals(e.getKey(), st.documentSelfLink);
+                    assertTrue(st.name != null);
+                    assertTrue(st.documentVersion == expectedVersion);
+                    assertEquals(kind, st.documentKind);
+                    assertEquals(expectedLastAction.toString(), st.documentUpdateAction);
+                }
+            }
+
+            @Override
+            public void validateExpandBuiltin(VerificationHost host, Query kindClause, ServiceDocumentQueryResult taskResult) {
+
+                // verify built-in only corresponds to previous expansion
+                QueryTask task = QueryTask.Builder.createDirectTask()
+                        .setQuery(kindClause)
+                        .addOption(QueryOption.EXPAND_CONTENT)
+                        .addOption(QueryOption.EXPAND_BUILTIN_CONTENT_ONLY)
+                        .build();
+
+                host.createQueryTaskService(task, false,
+                        task.taskInfo.isDirect, task, null);
+                // confirm that only the built in fields were in the expanded results
+                for (Object o : task.results.documents.values()) {
+                    String json = Utils.toJson(o);
+                    ExampleServiceState st = Utils.fromJson(json, ExampleServiceState.class);
+                    assertTrue(st.counter == null);
+                    assertTrue(st.name == null);
+                    assertTrue(st.keyValues.isEmpty());
+                    // compare with fully expanded state from a previous query task
+                    ExampleServiceState fullState = Utils.fromJson(
+                            taskResult.documents.get(st.documentSelfLink),
+                            ExampleServiceState.class);
+                    assertEquals(fullState.documentExpirationTimeMicros, st.documentExpirationTimeMicros);
+                    assertEquals(fullState.documentVersion, st.documentVersion);
+                    assertEquals(fullState.documentUpdateAction, st.documentUpdateAction);
+                    assertEquals(fullState.documentKind, st.documentKind);
+                    assertEquals(fullState.documentUpdateTimeMicros, st.documentUpdateTimeMicros);
+                    assertEquals(fullState.documentOwner, st.documentOwner);
+                }
+            }
+
+        });
+
+    }
+
+    @Test
+    public void testExpandSelectedFields() throws Throwable {
+        testExpand(new ExpansionStrategy() {
+
+            private final List<String> fields = Arrays.asList(new String[]{"name", "tags"});
+
+            @Override
+            public ExampleServiceState createInitialDocumentState() {
+                ExampleServiceState initialState = new ExampleServiceState();
+                initialState.name = UUID.randomUUID().toString();
+                initialState.tags = Stream.of("a", "b").collect(Collectors.toSet());
+                initialState.keyValues = new HashMap<>();
+                initialState.keyValues.put("key", "value");
+                return initialState;
+            }
+
+            @Override
+            public Builder adjustBuilder(Builder builder) {
+                builder.addOption(QueryOption.EXPAND_SELECTED_FIELDS);
+                fields.forEach((field) -> {
+                    builder.addSelectTerm(field);
+                });
+                return builder;
+            }
+
+            @Override
+            public URI adjustURI(URI uri) {
+                return UriUtils.buildSelectFieldsQueryUri(uri, fields);
+            }
+
+            @Override
+            public void validateDocumentResults(ServiceDocumentQueryResult taskResult, int expectedCount,
+                    int expectedVersion,
+                    Action expectedLastAction) {
+
+                assertEquals(expectedCount, taskResult.documentLinks.size());
+                assertEquals(taskResult.documentLinks.size(), taskResult.documents.size());
+                for (Entry<String, Object> e : taskResult.documents.entrySet()) {
+                    ExampleServiceState st = Utils.fromJson(e.getValue(), ExampleServiceState.class);
+                    // select fields - validate only the requested fields were populated
+                    assertTrue(st.name != null);
+                    assertEquals(0, st.keyValues.size());
+                    assertEquals(2, st.tags.size());
+                    assertNull(st.documentSelfLink);
+                    assertEquals(0, st.documentVersion);
+                    assertNull(st.documentKind);
+                    assertNull(st.documentUpdateAction);
+                }
+            }
+        });
+    }
+
+    /**
+     * Internal interface permitting multiple implementations of expansion
+     * modifiers and validators
+     */
+    private static interface ExpansionStrategy {
+
+        public ExampleServiceState createInitialDocumentState();
+
+        public Builder adjustBuilder(Builder builder);
+
+        public URI adjustURI(URI uri);
+
+        public void validateDocumentResults(ServiceDocumentQueryResult taskResult, int expectedCount,
+                int expectedVersion,
+                Action expectedLastAction);
+
+        default void validateExpandBuiltin(VerificationHost host, Query kindClause, ServiceDocumentQueryResult taskResult) {
+            // do nothing by default, only overridden when a builtin fields are available in expansion
+        }
+
+    }
+
+    /** Generic tester for different expansion strategies */
+    private void testExpand(ExpansionStrategy expansionStrategy) throws Throwable {
+
         setUpHost();
         Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(null,
                 this.serviceCount,
-                ExampleServiceState.class, (o) -> {
-                    ExampleServiceState initialState = new ExampleServiceState();
-                    initialState.name = UUID.randomUUID().toString();
-                    o.setBody(initialState);
-                },
+                ExampleServiceState.class, (o) -> o.setBody(expansionStrategy.createInitialDocumentState()),
                 UriUtils.buildFactoryUri(this.host, ExampleService.class));
 
         Query kindClause = Query.Builder.create()
                 .addKindFieldClause(ExampleServiceState.class)
                 .build();
 
-        QueryTask task = QueryTask.Builder.createDirectTask()
-                .setQuery(kindClause)
-                .addOption(QueryOption.EXPAND_CONTENT).build();
+        Builder builder = QueryTask.Builder.createDirectTask()
+                .setQuery(kindClause);
+
+        builder = expansionStrategy.adjustBuilder(builder);
+
+        QueryTask task = builder.build();
 
         if (task.documentExpirationTimeMicros != 0) {
             // the value was set as an interval by the calling test. Make absolute here so
@@ -558,14 +711,16 @@ public class TestQueryTaskService {
                 task.taskInfo.isDirect, task, null);
 
         URI factoryURI = UriUtils.buildFactoryUri(this.host, ExampleService.class);
-        factoryURI = UriUtils.buildExpandLinksQueryUri(factoryURI);
-        // verify expand from both factory and a direct query task
+        // verify expand only from factory, verify expand and select field from both factory and a direct query task
+
+        factoryURI = expansionStrategy.adjustURI(factoryURI);
+
         ServiceDocumentQueryResult factoryGetResult = this.host
                 .getFactoryState(factoryURI);
-        validateExpandedResults(factoryGetResult, states.size(), count, Action.PATCH);
+        expansionStrategy.validateDocumentResults(factoryGetResult, states.size(), count, Action.PATCH);
 
         ServiceDocumentQueryResult taskResult = task.results;
-        validateExpandedResults(taskResult, states.size(), count, Action.PATCH);
+        expansionStrategy.validateDocumentResults(taskResult, states.size(), count, Action.PATCH);
 
         // delete a service, verify its filtered from the results
         URI serviceToRemove = states.keySet().iterator().next();
@@ -585,56 +740,15 @@ public class TestQueryTaskService {
             assertTrue(!st.name.equals(removedState.name));
         }
 
-        factoryGetResult = this.host
-                .getFactoryState(factoryURI);
-        validateExpandedResults(factoryGetResult, states.size(), count, Action.PATCH);
-
         taskResult = task.results;
-        validateExpandedResults(taskResult, states.size(), count, Action.PATCH);
+        expansionStrategy.validateDocumentResults(taskResult, states.size(), count, Action.PATCH);
 
-        task = QueryTask.Builder.createDirectTask()
-                .setQuery(kindClause)
-                .addOption(QueryOption.EXPAND_CONTENT)
-                .addOption(QueryOption.EXPAND_BUILTIN_CONTENT_ONLY)
-                .build();
+        // verify expand from the factory too
+        factoryGetResult = this.host.getFactoryState(factoryURI);
+        expansionStrategy.validateDocumentResults(factoryGetResult, states.size(), count, Action.PATCH);
 
-        this.host.createQueryTaskService(task, false,
-                task.taskInfo.isDirect, task, null);
-        // confirm that only the built in fields were in the expanded results
-        for (Object o : task.results.documents.values()) {
-            String json = Utils.toJson(o);
-            ExampleServiceState st = Utils.fromJson(json, ExampleServiceState.class);
-            assertTrue(st.counter == null);
-            assertTrue(st.name == null);
-            assertTrue(st.keyValues.isEmpty());
-            // compare with fully expanded state from a previous query task
-            ExampleServiceState fullState = Utils.fromJson(
-                    taskResult.documents.get(st.documentSelfLink),
-                    ExampleServiceState.class);
-            assertEquals(fullState.documentExpirationTimeMicros, st.documentExpirationTimeMicros);
-            assertEquals(fullState.documentVersion, st.documentVersion);
-            assertEquals(fullState.documentUpdateAction, st.documentUpdateAction);
-            assertEquals(fullState.documentKind, st.documentKind);
-            assertEquals(fullState.documentUpdateTimeMicros, st.documentUpdateTimeMicros);
-            assertEquals(fullState.documentOwner, st.documentOwner);
-        }
-
-    }
-
-    private void validateExpandedResults(ServiceDocumentQueryResult taskResult, int expectedCount,
-            int expectedVersion,
-            Action expectedLastAction) {
-        String kind = Utils.buildKind(ExampleServiceState.class);
-        assertEquals(expectedCount, taskResult.documentLinks.size());
-        assertEquals(taskResult.documentLinks.size(), taskResult.documents.size());
-        for (Entry<String, Object> e : taskResult.documents.entrySet()) {
-            ExampleServiceState st = Utils.fromJson(e.getValue(), ExampleServiceState.class);
-            assertEquals(e.getKey(), st.documentSelfLink);
-            assertTrue(st.name != null);
-            assertTrue(st.documentVersion == expectedVersion);
-            assertEquals(kind, st.documentKind);
-            assertEquals(expectedLastAction.toString(), st.documentUpdateAction);
-        }
+        // (optionally) validate expansion of jsut builtins matches this expansion
+        expansionStrategy.validateExpandBuiltin(this.host, kindClause, taskResult);
     }
 
     @Test
@@ -680,8 +794,8 @@ public class TestQueryTaskService {
 
         Map<String, ServiceStat> stats = this.host.getServiceStats(this.host.getDocumentIndexServiceUri());
         String statName = String.format(LuceneDocumentIndexService.STAT_NAME_DOCUMENT_KIND_QUERY_COUNT_FORMAT,
-                Utils.buildKind(QueryValidationServiceState.class) + ", " +
-                        Utils.buildKind(ExampleServiceState.class));
+                Utils.buildKind(QueryValidationServiceState.class) + ", "
+                + Utils.buildKind(ExampleServiceState.class));
         ServiceStat kindStat = stats.get(statName);
         ServiceStat nonKindQueryStat = stats.get(
                 LuceneDocumentIndexService.STAT_NAME_NON_DOCUMENT_KIND_QUERY_COUNT);
@@ -898,7 +1012,7 @@ public class TestQueryTaskService {
         verifyNoPaginatedIndexSearchers();
     }
 
-    @SuppressWarnings({ "rawtypes" })
+    @SuppressWarnings({"rawtypes"})
     private void doMapQuery(String mapName, Map map, long documentCount, long expectedResultCount)
             throws Throwable {
         for (Object o : map.entrySet()) {
@@ -952,7 +1066,7 @@ public class TestQueryTaskService {
                 documentCount, expectedResultCount);
     }
 
-    @SuppressWarnings({ "rawtypes" })
+    @SuppressWarnings({"rawtypes"})
     private void doInCollectionQuery(String collName, Collection coll, long documentCount,
             long expectedResultCount)
             throws Throwable {
@@ -1171,7 +1285,7 @@ public class TestQueryTaskService {
         setUpHost();
         VerificationHost targetHost = this.host;
         URI exampleFactoryURI = UriUtils.buildUri(targetHost, ExampleService.FACTORY_LINK);
-        String[] groupArray = new String[] { "one", "two", "three", "four" };
+        String[] groupArray = new String[]{"one", "two", "three", "four"};
         List<String> groups = Arrays.asList(groupArray);
         List<URI> exampleServices = new ArrayList<>();
 
@@ -1215,7 +1329,7 @@ public class TestQueryTaskService {
         this.host.deleteAllChildServices(exampleFactoryURI);
 
         // create new batch of example services grouped by numeric fields
-        Long[] numericGroupArray = new Long[] { 1L, 2L, 3L, 4L };
+        Long[] numericGroupArray = new Long[]{1L, 2L, 3L, 4L};
         List<Long> numericGroups = Arrays.asList(numericGroupArray);
         createNumericGroupedExampleServices(numericGroups, exampleFactoryURI, exampleServices);
         verifyNumericGroupQueryPaginatedPerGroup(targetHost, numericGroups);
@@ -1414,7 +1528,7 @@ public class TestQueryTaskService {
     }
 
     private void verifyNumericGroupQueryPaginatedPerGroup(VerificationHost targetHost,
-                                                          List<Long> groups) throws Throwable {
+            List<Long> groups) throws Throwable {
         Query query = Query.Builder.create()
                 .addKindFieldClause(ExampleServiceState.class)
                 .build();
@@ -1433,7 +1547,7 @@ public class TestQueryTaskService {
     }
 
     private void verifyNumericGroupQueryPaginatedAcrossGroups(VerificationHost targetHost,
-                                                              List<Long> groups) throws Throwable {
+            List<Long> groups) throws Throwable {
         Query query = Query.Builder.create()
                 .addKindFieldClause(ExampleServiceState.class)
                 .build();
@@ -1455,7 +1569,7 @@ public class TestQueryTaskService {
     }
 
     private void createNumericGroupedExampleServices(Collection<Long> groups, URI exampleFactoryURI,
-                                                     List<URI> exampleServices)
+            List<URI> exampleServices)
             throws Throwable {
         TestContext ctx = this.host.testCreate(this.serviceCount * groups.size());
         for (Long group : groups) {
@@ -1562,9 +1676,9 @@ public class TestQueryTaskService {
     }
 
     private void validateNumericGroupByResults(VerificationHost targetHost, List<Long> groups,
-                                               Long groupToDelete, QueryTask finalState,
-                                               Map<String, ServiceDocumentQueryResult> resultsPerGroup,
-                                               int expectedCountPerPage) throws Throwable {
+            Long groupToDelete, QueryTask finalState,
+            Map<String, ServiceDocumentQueryResult> resultsPerGroup,
+            int expectedCountPerPage) throws Throwable {
         assertTrue(finalState.results != null);
         assertTrue(finalState.results.documentLinks.isEmpty());
         assertTrue(finalState.results.documents == null
@@ -1838,8 +1952,8 @@ public class TestQueryTaskService {
 
                     QueryTask rsp = o.getBody(QueryTask.class);
                     if (rsp.results.documentCount != 0) {
-                        targetHost.failIteration(new IllegalStateException("Incorrect number of documents returned: " +
-                                "0 expected, but " + rsp.results.documentCount + " returned"));
+                        targetHost.failIteration(new IllegalStateException("Incorrect number of documents returned: "
+                                + "0 expected, but " + rsp.results.documentCount + " returned"));
                         return;
                     }
 
@@ -1906,9 +2020,9 @@ public class TestQueryTaskService {
                         documentLinksList.add(rsp.results.documentLinks);
 
                         if (rsp.results.documentCount != resultLimit) {
-                            targetHost.failIteration(new IllegalStateException("Incorrect number of documents " +
-                                    "returned: " + resultLimit + " was expected, but " + rsp.results.documentCount +
-                                    " was returned."));
+                            targetHost.failIteration(new IllegalStateException("Incorrect number of documents "
+                                    + "returned: " + resultLimit + " was expected, but " + rsp.results.documentCount
+                                    + " was returned."));
                             return;
                         }
 
@@ -2048,9 +2162,9 @@ public class TestQueryTaskService {
 
                                 if (rsp.results.documentCount != 0) {
                                     targetHost.failIteration(new IllegalStateException(
-                                            "Incorrect number of documents returned: " +
-                                                    "0 expected, but " + rsp.results.documentCount
-                                                    + " returned"));
+                                            "Incorrect number of documents returned: "
+                                            + "0 expected, but " + rsp.results.documentCount
+                                            + " returned"));
                                     return;
                                 }
 
@@ -2059,8 +2173,8 @@ public class TestQueryTaskService {
                                         BroadcastQueryPageService.SELF_LINK_PREFIX);
                                 if (!rsp.results.nextPageLink.contains(expectedPageLinkSegment)) {
                                     targetHost.failIteration(new IllegalStateException(
-                                            "Incorrect next page link returned: " +
-                                                    rsp.results.nextPageLink));
+                                            "Incorrect next page link returned: "
+                                            + rsp.results.nextPageLink));
                                     return;
                                 }
 
@@ -2158,8 +2272,8 @@ public class TestQueryTaskService {
             assertTrue(ex.getMessage().contains("/core/query-tasks returned error 500 for POST"));
             limitChecked = true;
         }
-        assertTrue("Expected QueryTask failure with INTERNAL_SERVER_ERROR because" +
-                "response payload size was over limit.", limitChecked);
+        assertTrue("Expected QueryTask failure with INTERNAL_SERVER_ERROR because"
+                + "response payload size was over limit.", limitChecked);
     }
 
     @Test
@@ -2486,7 +2600,7 @@ public class TestQueryTaskService {
         assertNotNull(nextPageLink);
 
         List<ExampleServiceState> documents = Collections.synchronizedList(new ArrayList<>());
-        final int[] numberOfDocumentLinks = { task.results.documentLinks.size() };
+        final int[] numberOfDocumentLinks = {task.results.documentLinks.size()};
         assertTrue(numberOfDocumentLinks[0] == 0);
 
         List<URI> toDelete = new ArrayList<>(exampleServices);
@@ -2692,7 +2806,7 @@ public class TestQueryTaskService {
         this.host
                 .log("results %d, expected %d",
                         finishedTaskState.results.documentLinks.size(), sc - offset
-                                * 2 - 1);
+                        * 2 - 1);
         assertTrue(finishedTaskState.results.documentLinks.size() == sc - offset
                 * 2 - 1);
 
@@ -3210,7 +3324,7 @@ public class TestQueryTaskService {
         assertNotNull(task.results);
         assertNotNull(task.results.documentLinks);
 
-        final int[] numberOfDocumentLinks = { task.results.documentLinks.size() };
+        final int[] numberOfDocumentLinks = {task.results.documentLinks.size()};
 
         assertEquals(0, numberOfDocumentLinks[0]);
 
@@ -3325,7 +3439,7 @@ public class TestQueryTaskService {
         ServiceStats stats = this.host.getServiceState(null, ServiceStats.class, luceneStatsUri);
         ServiceStat paginatedSearcherRefreshCountStat = stats.entries.get(
                 LuceneDocumentIndexService.STAT_NAME_PAGINATED_SEARCHER_UPDATE_COUNT
-                        + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+                + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
         if (paginatedSearcherRefreshCountStat == null) {
             return null;
         }
@@ -4131,9 +4245,9 @@ public class TestQueryTaskService {
             QueryValidationServiceState state =
                     Utils.fromJson(finishedTaskState.results.documents.get(documentLink), QueryValidationServiceState.class);
 
-            assertTrue(state.documentUpdateTimeMicros <  timeSnapshotBoundaryMicros);
+            assertTrue(state.documentUpdateTimeMicros < timeSnapshotBoundaryMicros);
             // Should match versionCount which is the version latest before timeSnapshotBoundaryMicros
-            assertTrue(state.documentVersion ==  versionCount);
+            assertTrue(state.documentVersion == versionCount);
         }
         assertTrue(totalPages == count);
 
@@ -4233,16 +4347,15 @@ public class TestQueryTaskService {
         }
     }
 
-
     @Test
     public void indexSearcherReuseBasedOnDocumentKind() throws Throwable {
         setUpHost();
 
-        String searcherUpdateStatName = LuceneDocumentIndexService.STAT_NAME_SEARCHER_UPDATE_COUNT +
-                ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
+        String searcherUpdateStatName = LuceneDocumentIndexService.STAT_NAME_SEARCHER_UPDATE_COUNT
+                + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
 
-        String searcherReuseStatName = LuceneDocumentIndexService.STAT_NAME_SEARCHER_REUSE_BY_DOCUMENT_KIND_COUNT +
-                ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
+        String searcherReuseStatName = LuceneDocumentIndexService.STAT_NAME_SEARCHER_REUSE_BY_DOCUMENT_KIND_COUNT
+                + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
 
         // Get the index searcher update count before making a query to the factory
         ServiceStat searcherUpdateCountBefore = getLuceneStat(searcherUpdateStatName);
@@ -4418,7 +4531,8 @@ public class TestQueryTaskService {
                 (notifyOp) -> {
                     try {
                         QueryTask body = notifyOp.getBody(QueryTask.class);
-                        if (body.results == null || body.results.continuousResults == null
+                        if (body.results == null
+                                || body.results.continuousResults == null
                                 || body.results.continuousResults.documentCountUpdated < totalCount) {
                             return;
                         }
@@ -4443,7 +4557,7 @@ public class TestQueryTaskService {
                     UriUtils.buildStatsUri(this.host.getDocumentIndexServiceUri()));
             ServiceStat activeQueryStat = indexStats.entries.get(
                     LuceneDocumentIndexService.STAT_NAME_ACTIVE_QUERY_FILTERS
-                            + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR);
+                    + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR);
             if (activeQueryStat == null || activeQueryStat.latestValue < 1.0) {
                 return false;
             }
