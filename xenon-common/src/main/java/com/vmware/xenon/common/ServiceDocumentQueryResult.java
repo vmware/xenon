@@ -39,8 +39,8 @@ public class ServiceDocumentQueryResult extends ServiceDocument {
     public List<String> documentLinks = new ArrayList<>();
 
     /**
-     * If the query included QueryOption.EXPAND, this map populated with the JSON serialized service
-     * state document associated with each link
+     * If the query included QueryOption.EXPAND or QueryOption.EXPAND_SELECTED_FIELDS,
+     * this map populated with full or partial JSON serialized service state document associated with each link
      */
     public Map<String, Object> documents;
 

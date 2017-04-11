@@ -207,6 +207,25 @@ public class QueryTaskService extends StatefulService {
             }
         }
 
+        if (initState.querySpec.options.contains(QueryOption.EXPAND_SELECTED_FIELDS)) {
+            final String errFmt = QueryOption.EXPAND_SELECTED_FIELDS + " is not compatible with %s";
+            if (initState.querySpec.options.contains(QueryOption.EXPAND_CONTENT)) {
+                startPost.fail(new IllegalArgumentException(
+                        String.format(errFmt, QueryOption.EXPAND_CONTENT)));
+                return false;
+            }
+            if (initState.querySpec.options.contains(QueryOption.EXPAND_BINARY_CONTENT)) {
+                startPost.fail(new IllegalArgumentException(
+                        String.format(errFmt, QueryOption.EXPAND_BINARY_CONTENT)));
+                return false;
+            }
+            if (initState.querySpec.selectTerms == null || initState.querySpec.selectTerms.isEmpty()) {
+                startPost.fail(new IllegalArgumentException(
+                        "querySpec.fieldTerms must have at least one entry"));
+                return false;
+            }
+        }
+
         if (initState.taskInfo.isDirect
                 && initState.querySpec.options.contains(QueryOption.CONTINUOUS)) {
             startPost.fail(new IllegalArgumentException("direct query task is not compatible with "
