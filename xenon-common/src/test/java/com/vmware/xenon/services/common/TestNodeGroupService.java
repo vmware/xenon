@@ -15,6 +15,7 @@ package com.vmware.xenon.services.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.lang.reflect.Field;
@@ -112,6 +113,23 @@ import com.vmware.xenon.services.common.RoleService.RoleState;
 import com.vmware.xenon.services.common.UserService.UserState;
 
 public class TestNodeGroupService {
+
+    public static class IdempotentExampleFactoryService extends FactoryService {
+
+        public static final String SELF_LINK = "/test/examples-idempotent";
+
+        public IdempotentExampleFactoryService() {
+            super(ExampleServiceState.class);
+        }
+
+        @Override
+        public Service createServiceInstance() throws Throwable {
+            ExampleService s = new ExampleService();
+            s.toggleOption(ServiceOption.IDEMPOTENT_POST, true);
+            super.toggleOption(ServiceOption.IDEMPOTENT_POST, true);
+            return s;
+        }
+    }
 
     public static class NonPersistedExampleFactoryService extends FactoryService {
         public static final String SELF_LINK = "/test/examples-non-persisted";
@@ -578,6 +596,116 @@ public class TestNodeGroupService {
     }
 
     @Test
+    public void synchronizationWithIdempotentPost() throws Throwable {
+
+        // This test verifies that duplicate documents are not created when synchronization is
+        // performed for IDEMPOTENT_POST services.
+
+        this.isPeerSynchronizationEnabled = false;
+        setUp(this.nodeCount);
+
+        // start the idempotent post factory service on each node
+        this.replicationTargetFactoryLink = IdempotentExampleFactoryService.SELF_LINK;
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            h.startServiceAndWait(IdempotentExampleFactoryService.class,
+                    IdempotentExampleFactoryService.SELF_LINK);
+        }
+
+        ExampleServiceState state = new ExampleServiceState();
+        state.name = "testing";
+
+        // Create a document on each node at version 0
+        ConcurrentSkipListSet<String> links = new ConcurrentSkipListSet<>();
+        TestContext ctx = this.host.testCreate(this.serviceCount * this.nodeCount);
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            for (int i = 0; i < this.serviceCount; i++) {
+                state.documentSelfLink = "example-" + i;
+                Operation postOp = Operation
+                        .createPost(h, IdempotentExampleFactoryService.SELF_LINK)
+                        .setBody(state)
+                        .setReferer(this.host.getUri())
+                        .setCompletion((o, e) -> {
+                            if (e != null) {
+                                ctx.fail(e);
+                                return;
+                            }
+                            ExampleServiceState rsp = o.getBody(ExampleServiceState.class);
+                            links.add(rsp.documentSelfLink);
+                            ctx.complete();
+                        });
+                this.host.sendRequest(postOp);
+            }
+            Thread.sleep(2000);
+        }
+        this.host.testWait(ctx);
+
+        // Join the nodes and wait for the node group to converge.
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+
+        // Kick off synchronization
+        VerificationHost owner = null;
+        for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
+            if (peer.isOwner(IdempotentExampleFactoryService.SELF_LINK,
+                    ServiceUriPaths.DEFAULT_NODE_SELECTOR)) {
+                owner = peer;
+                break;
+            }
+        }
+
+        startSynchronizationTaskAndWait(owner, IdempotentExampleFactoryService.SELF_LINK,
+                ExampleServiceState.class, 1L);
+
+        TestRequestSender sender = new TestRequestSender(this.host);
+
+        // Verify that only one instance of each document exists on each host.
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            URI queryUri = UriUtils.buildUri(h, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
+            for (String documentSelfLink : links) {
+
+                QueryTask queryTask = QueryTask.Builder.createDirectTask()
+                        .setQuery(Query.Builder.create()
+                                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK,
+                                        documentSelfLink)
+                                .build())
+                        .setResultLimit(1)
+                        .build();
+
+                QueryTask result = sender.sendPostAndWait(queryUri, queryTask, QueryTask.class);
+                assertNotNull(result.results.nextPageLink);
+                URI nextPageUri = UriUtils.buildUri(h, result.results.nextPageLink);
+
+                QueryTask page = sender.sendGetAndWait(nextPageUri, QueryTask.class);
+                assertNull(page.results.nextPageLink);
+            }
+        }
+
+        startSynchronizationTaskAndWait(owner, IdempotentExampleFactoryService.SELF_LINK,
+                ExampleServiceState.class, 2);
+
+        // Verify that only one instance of each document exists on each host.
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            URI queryUri = UriUtils.buildUri(h, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
+            for (String documentSelfLink : links) {
+
+                QueryTask queryTask = QueryTask.Builder.createDirectTask()
+                        .setQuery(Query.Builder.create()
+                                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK,
+                                        documentSelfLink)
+                                .build())
+                        .setResultLimit(1)
+                        .build();
+
+                QueryTask result = sender.sendPostAndWait(queryUri, queryTask, QueryTask.class);
+                assertNotNull(result.results.nextPageLink);
+                URI nextPageUri = UriUtils.buildUri(h, result.results.nextPageLink);
+
+                QueryTask page = sender.sendGetAndWait(nextPageUri, QueryTask.class);
+                assertNull(page.results.nextPageLink);
+            }
+        }
+    }
+
+    @Test
     public void synchronizationAfterStaleHostRestart() throws Throwable {
         // This test verifies that if a stale host joins
         // a node-group after restart and becomes OWNER for services
@@ -622,7 +750,7 @@ public class TestNodeGroupService {
         ExampleServiceState patchState = new ExampleServiceState();
         for (int i = 0; i < this.updateCount; i++) {
             TestContext patchCtx = this.host.testCreate(links.size());
-            patchState.counter = (long)(i + 10);
+            patchState.counter = (long) (i + 10);
             int counter = 0;
             boolean deleteServices = i == this.updateCount - 1;
             for (String documentSelfLink : links) {
@@ -754,7 +882,7 @@ public class TestNodeGroupService {
     }
 
     private void startSynchronizationTaskAndWait(VerificationHost owner,
-              String factoryLink, Class<?> stateType, long membershipUpdateTimeMicros) {
+            String factoryLink, Class<?> stateType, long membershipUpdateTimeMicros) {
         SynchronizationTaskService.State task = new SynchronizationTaskService.State();
         task.documentSelfLink = UriUtils.convertPathCharsFromLink(factoryLink);
         task.factorySelfLink = factoryLink;
@@ -1308,7 +1436,6 @@ public class TestNodeGroupService {
             });
         }
     }
-
 
     @Test
     public void synchronizationOneByOneWithAbruptNodeStop() throws Throwable {
@@ -2405,7 +2532,6 @@ public class TestNodeGroupService {
         Map<URI, ReplicationTestServiceState> serviceMap = this.host.doFactoryChildServiceStart(
                 null, serviceCount, ReplicationTestServiceState.class, setBodyCallback, factoryUri);
 
-
         Map<URI, String> uriToSignature = new HashMap<>();
         this.host.waitFor("factory results did not converge", () -> {
             boolean isConverged = true;
@@ -2737,7 +2863,7 @@ public class TestNodeGroupService {
                                 for (URI u : this.host.getNodeGroupMap().keySet()) {
                                     if (!u.getHost().equals(rsp.ownerNodeGroupReference.getHost())
                                             || u.getPort() != rsp.ownerNodeGroupReference
-                                                    .getPort()) {
+                                            .getPort()) {
                                         nonOwner = u;
                                         break;
                                     }
@@ -3356,7 +3482,6 @@ public class TestNodeGroupService {
         testContext.await();
         this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
     }
-
 
     @Test
     public void forwardingAndSelection() throws Throwable {
