@@ -41,6 +41,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.junit.After;
 import org.junit.Rule;
@@ -77,6 +78,7 @@ import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
+import com.vmware.xenon.services.common.QueryTask.Builder;
 import com.vmware.xenon.services.common.QueryTask.NumericRange;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
@@ -511,24 +513,47 @@ public class TestQueryTaskService {
     }
 
     @Test
-    public void expandContent() throws Throwable {
+    public void testExpandContent() throws Throwable {
+        testExpandContentOrSelectField(true);
+    }
+
+    @Test
+    public void testSelectField() throws Throwable {
+        testExpandContentOrSelectField(false);
+    }
+
+    private void testExpandContentOrSelectField(boolean expand) throws Throwable {
         setUpHost();
         Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(null,
                 this.serviceCount,
                 ExampleServiceState.class, (o) -> {
                     ExampleServiceState initialState = new ExampleServiceState();
                     initialState.name = UUID.randomUUID().toString();
+                    initialState.tags = Stream.of("a", "b").collect(Collectors.toSet());
+                    initialState.keyValues = new HashMap<String,String>();
+                    initialState.keyValues.put("key", "value");
                     o.setBody(initialState);
                 },
                 UriUtils.buildFactoryUri(this.host, ExampleService.class));
+
+        List<String> fields = Arrays.asList(new String[] { "name", "tags" });
 
         Query kindClause = Query.Builder.create()
                 .addKindFieldClause(ExampleServiceState.class)
                 .build();
 
-        QueryTask task = QueryTask.Builder.createDirectTask()
-                .setQuery(kindClause)
-                .addOption(QueryOption.EXPAND_CONTENT).build();
+        Builder builder = QueryTask.Builder.createDirectTask()
+                .setQuery(kindClause);
+        if (expand) {
+            builder.addOption(QueryOption.EXPAND_CONTENT);
+        } else {
+            builder.addOption(QueryOption.SELECT_FIELDS);
+            for (String field : fields) {
+                builder.addSelectTerm(field);
+            }
+        }
+
+        QueryTask task = builder.build();
 
         if (task.documentExpirationTimeMicros != 0) {
             // the value was set as an interval by the calling test. Make absolute here so
@@ -558,14 +583,18 @@ public class TestQueryTaskService {
                 task.taskInfo.isDirect, task, null);
 
         URI factoryURI = UriUtils.buildFactoryUri(this.host, ExampleService.class);
-        factoryURI = UriUtils.buildExpandLinksQueryUri(factoryURI);
-        // verify expand from both factory and a direct query task
+        // verify expand only from factory, verify expand and select field from both factory and a direct query task
+        if (expand) {
+            factoryURI = UriUtils.buildExpandLinksQueryUri(factoryURI);
+        } else {
+            factoryURI = UriUtils.buildSelectFieldsQueryUri(factoryURI, fields);
+        }
         ServiceDocumentQueryResult factoryGetResult = this.host
                 .getFactoryState(factoryURI);
-        validateExpandedResults(factoryGetResult, states.size(), count, Action.PATCH);
+        validateDocumentResults(expand, factoryGetResult, states.size(), count, Action.PATCH);
 
         ServiceDocumentQueryResult taskResult = task.results;
-        validateExpandedResults(taskResult, states.size(), count, Action.PATCH);
+        validateDocumentResults(expand, taskResult, states.size(), count, Action.PATCH);
 
         // delete a service, verify its filtered from the results
         URI serviceToRemove = states.keySet().iterator().next();
@@ -585,43 +614,48 @@ public class TestQueryTaskService {
             assertTrue(!st.name.equals(removedState.name));
         }
 
-        factoryGetResult = this.host
-                .getFactoryState(factoryURI);
-        validateExpandedResults(factoryGetResult, states.size(), count, Action.PATCH);
-
         taskResult = task.results;
-        validateExpandedResults(taskResult, states.size(), count, Action.PATCH);
+        validateDocumentResults(expand, taskResult, states.size(), count, Action.PATCH);
 
-        task = QueryTask.Builder.createDirectTask()
-                .setQuery(kindClause)
-                .addOption(QueryOption.EXPAND_CONTENT)
-                .addOption(QueryOption.EXPAND_BUILTIN_CONTENT_ONLY)
-                .build();
+        // verify expand from the factory too
+        factoryGetResult = this.host
+            .getFactoryState(factoryURI);
+        validateDocumentResults(expand, factoryGetResult, states.size(), count, Action.PATCH);
 
-        this.host.createQueryTaskService(task, false,
-                task.taskInfo.isDirect, task, null);
-        // confirm that only the built in fields were in the expanded results
-        for (Object o : task.results.documents.values()) {
-            String json = Utils.toJson(o);
-            ExampleServiceState st = Utils.fromJson(json, ExampleServiceState.class);
-            assertTrue(st.counter == null);
-            assertTrue(st.name == null);
-            assertTrue(st.keyValues.isEmpty());
-            // compare with fully expanded state from a previous query task
-            ExampleServiceState fullState = Utils.fromJson(
-                    taskResult.documents.get(st.documentSelfLink),
-                    ExampleServiceState.class);
-            assertEquals(fullState.documentExpirationTimeMicros, st.documentExpirationTimeMicros);
-            assertEquals(fullState.documentVersion, st.documentVersion);
-            assertEquals(fullState.documentUpdateAction, st.documentUpdateAction);
-            assertEquals(fullState.documentKind, st.documentKind);
-            assertEquals(fullState.documentUpdateTimeMicros, st.documentUpdateTimeMicros);
-            assertEquals(fullState.documentOwner, st.documentOwner);
+        if (expand) {
+
+            // verify built-in only corresponds to previous expansion
+            task = QueryTask.Builder.createDirectTask()
+                    .setQuery(kindClause)
+                    .addOption(QueryOption.EXPAND_CONTENT)
+                    .addOption(QueryOption.EXPAND_BUILTIN_CONTENT_ONLY)
+                    .build();
+
+            this.host.createQueryTaskService(task, false,
+                    task.taskInfo.isDirect, task, null);
+            // confirm that only the built in fields were in the expanded results
+            for (Object o : task.results.documents.values()) {
+                String json = Utils.toJson(o);
+                ExampleServiceState st = Utils.fromJson(json, ExampleServiceState.class);
+                assertTrue(st.counter == null);
+                assertTrue(st.name == null);
+                assertTrue(st.keyValues.isEmpty());
+                // compare with fully expanded state from a previous query task
+                ExampleServiceState fullState = Utils.fromJson(
+                        taskResult.documents.get(st.documentSelfLink),
+                        ExampleServiceState.class);
+                assertEquals(fullState.documentExpirationTimeMicros, st.documentExpirationTimeMicros);
+                assertEquals(fullState.documentVersion, st.documentVersion);
+                assertEquals(fullState.documentUpdateAction, st.documentUpdateAction);
+                assertEquals(fullState.documentKind, st.documentKind);
+                assertEquals(fullState.documentUpdateTimeMicros, st.documentUpdateTimeMicros);
+                assertEquals(fullState.documentOwner, st.documentOwner);
+            }
         }
 
     }
 
-    private void validateExpandedResults(ServiceDocumentQueryResult taskResult, int expectedCount,
+    private void validateDocumentResults(boolean expand, ServiceDocumentQueryResult taskResult, int expectedCount,
             int expectedVersion,
             Action expectedLastAction) {
         String kind = Utils.buildKind(ExampleServiceState.class);
@@ -629,11 +663,24 @@ public class TestQueryTaskService {
         assertEquals(taskResult.documentLinks.size(), taskResult.documents.size());
         for (Entry<String, Object> e : taskResult.documents.entrySet()) {
             ExampleServiceState st = Utils.fromJson(e.getValue(), ExampleServiceState.class);
-            assertEquals(e.getKey(), st.documentSelfLink);
-            assertTrue(st.name != null);
-            assertTrue(st.documentVersion == expectedVersion);
-            assertEquals(kind, st.documentKind);
-            assertEquals(expectedLastAction.toString(), st.documentUpdateAction);
+            if (expand) {
+                assertEquals(e.getKey(), st.documentSelfLink);
+                assertEquals(1, st.keyValues.size());
+                assertEquals(2, st.tags.size());
+                assertTrue(st.name != null);
+                assertTrue(st.documentVersion == expectedVersion);
+                assertEquals(kind, st.documentKind);
+                assertEquals(expectedLastAction.toString(), st.documentUpdateAction);
+            } else {
+                // select fields - validate only the requested fields were populated
+                assertTrue(st.name != null);
+                assertEquals(0,st.keyValues.size());
+                assertEquals(2, st.tags.size());
+                assertNull(st.documentSelfLink);
+                assertEquals(0, st.documentVersion);
+                assertNull(st.documentKind);
+                assertNull(st.documentUpdateAction);
+            }
         }
     }
 

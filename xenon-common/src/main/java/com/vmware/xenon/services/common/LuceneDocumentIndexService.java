@@ -45,7 +45,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
@@ -1257,7 +1260,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             options = EnumSet.noneOf(QueryOption.class);
         }
 
-        if (options.contains(QueryOption.EXPAND_CONTENT) || options.contains(QueryOption.EXPAND_BINARY_CONTENT)) {
+        if (options.contains(QueryOption.EXPAND_CONTENT)
+                || options.contains(QueryOption.EXPAND_BINARY_CONTENT)
+                || options.contains(QueryOption.SELECT_FIELDS)) {
             rsp.documents = new HashMap<>();
         }
 
@@ -1958,7 +1963,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         Set<String> fieldsToLoad = this.fieldsToLoadNoExpand;
         if (options.contains(QueryOption.EXPAND_CONTENT)
                 || options.contains(QueryOption.OWNER_SELECTION)
-                || options.contains(QueryOption.EXPAND_BINARY_CONTENT)) {
+                || options.contains(QueryOption.EXPAND_BINARY_CONTENT)
+                || options.contains(QueryOption.SELECT_FIELDS)) {
             fieldsToLoad = this.fieldsToLoadWithExpand;
         }
 
@@ -2067,7 +2073,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             ServiceDocument state = null;
 
             if (options.contains(QueryOption.EXPAND_CONTENT)
-                    || options.contains(QueryOption.OWNER_SELECTION)) {
+                    || options.contains(QueryOption.OWNER_SELECTION)
+                    || options.contains(QueryOption.SELECT_FIELDS)) {
                 state = getStateFromLuceneDocument(visitor, originalLink);
                 if (state == null) {
                     // support reading JSON serialized state for backwards compatibility
@@ -2104,6 +2111,22 @@ public class LuceneDocumentIndexService extends StatelessService {
                     JsonObject jo = Utils.fromJson(json, JsonObject.class);
                     rsp.documents.put(link, jo);
                 }
+            } else if (options.contains(QueryOption.SELECT_FIELDS) && !rsp.documents.containsKey(link)) {
+                // filter out only the selected fields
+                Set<String> selectFields = new HashSet<>();
+                for (QueryTask.QueryTerm qt : qs.selectTerms) {
+                    selectFields.add(qt.propertyName);
+                }
+
+                JsonObject jo = new JsonParser().parse(json).getAsJsonObject();
+                Iterator<Entry<String,JsonElement>> it = jo.entrySet().iterator();
+                while (it.hasNext()) {
+                    Entry<String,JsonElement> entry = it.next();
+                    if (!selectFields.contains(entry.getKey())) {
+                        it.remove();
+                    }
+                }
+                rsp.documents.put(link, jo);
             }
 
             if (options.contains(QueryOption.SELECT_LINKS)) {

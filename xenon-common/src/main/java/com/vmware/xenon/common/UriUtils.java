@@ -60,6 +60,7 @@ public final class UriUtils {
     public static final String URI_PARAM_ODATA_SKIP_TO = "$skipto";
     public static final String URI_PARAM_ODATA_NODE = "$nodeid";
     public static final String URI_PARAM_ODATA_TENANTLINKS = "$tenantLinks";
+    public static final String URI_PARAM_ODATA_SELECT = "$select";
     public static final String HTTP_SCHEME = "http";
     public static final String HTTPS_SCHEME = "https";
     public static final String FILE_SCHEME = "file";
@@ -592,6 +593,12 @@ public final class UriUtils {
                 ServiceDocumentQueryResult.FIELD_NAME_DOCUMENT_LINKS);
     }
 
+    public static URI buildSelectFieldsQueryUri(URI factoryServiceUri, List<String> fields) {
+        // we assume field names are legal in csv and query params
+        String value = String.join(",", fields);
+        return extendUriWithQuery(factoryServiceUri, UriUtils.URI_PARAM_ODATA_SELECT, value);
+    }
+
     /**
      * Returns true if the host name and port in the URI are the same as in the host instance
      */
@@ -800,6 +807,10 @@ public final class UriUtils {
 
     public static String getODataTenantLinksParamValue(URI uri) {
         return getODataParamValueAsString(uri, URI_PARAM_ODATA_TENANTLINKS);
+    }
+
+    public static String getODataSelectFieldsParamValue(URI uri) {
+        return getODataParamValueAsString(uri, URI_PARAM_ODATA_SELECT);
     }
 
     public static Integer getODataParamValue(final URI uri, final String uriParamOdataType) {

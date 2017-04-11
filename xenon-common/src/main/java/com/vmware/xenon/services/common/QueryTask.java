@@ -175,6 +175,14 @@ public class QueryTask extends ServiceDocument {
             SELECT_LINKS,
 
             /**
+             * Query results include the values for all fields included in
+             * {@link QuerySpecification#selectTerms}. The fields are then available through
+             * the state documents in the {@link ServiceDocumentQueryResult#documents}
+             * collection
+             */
+            SELECT_FIELDS,
+
+            /**
              * Groups results using the {@link QuerySpecification::groupByTerms}
              */
             GROUP_BY,
@@ -209,6 +217,12 @@ public class QueryTask extends ServiceDocument {
          * {@code QueryOption#SELECT_LINKS}
          */
         public List<QueryTerm> linkTerms;
+
+        /**
+         * Property names of fields to select. Used in combination with
+         * {@code QueryOption#SELECT_FIELDS}
+         */
+        public List<QueryTerm> selectTerms;
 
         /**
          * Property name to use for primary sort. Used in combination with {@code QueryOption#SORT}
@@ -359,6 +373,7 @@ public class QueryTask extends ServiceDocument {
             clonedSpec.context.nativeSort = this.context.nativeSort;
             clonedSpec.expectedResultCount = this.expectedResultCount;
             clonedSpec.linkTerms = this.linkTerms;
+            clonedSpec.selectTerms = this.selectTerms;
             clonedSpec.groupByTerm = this.groupByTerm;
             clonedSpec.options = EnumSet.copyOf(this.options);
             clonedSpec.query = this.query;
@@ -1146,6 +1161,20 @@ public class QueryTask extends ServiceDocument {
                 this.querySpec.linkTerms = new ArrayList<>();
             }
             this.querySpec.linkTerms.add(linkTerm);
+            return this;
+        }
+
+        /**
+         * Add the given field name to the {@code QuerySpecification#fieldTerms}
+         */
+        public Builder addSelectTerm(String selectFieldName) {
+            QueryTerm fieldTerm = new QueryTerm();
+            fieldTerm.propertyName = selectFieldName;
+            fieldTerm.propertyType = TypeName.STRING;
+            if (this.querySpec.selectTerms == null) {
+                this.querySpec.selectTerms = new ArrayList<>();
+            }
+            this.querySpec.selectTerms.add(fieldTerm);
             return this;
         }
 
