@@ -97,7 +97,7 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
             // We only have one request/response per stream, so remove the association.
             channelContext.removeOperationForStream(streamId);
         } else {
-            request = ctx.channel().attr(NettyChannelContext.OPERATION_KEY).get();
+            request = ctx.channel().attr(NettyChannelContext.OPERATION_KEY).getAndSet(null);
             if (request == null) {
                 this.logger.warning("Can't find operation for channel");
                 return null;
@@ -188,7 +188,7 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        Operation request = ctx.channel().attr(NettyChannelContext.OPERATION_KEY).get();
+        Operation request = ctx.channel().attr(NettyChannelContext.OPERATION_KEY).getAndSet(null);
 
         if (request == null) {
             // This will happen when using HTTP/2 because we have multiple requests
