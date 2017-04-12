@@ -1295,7 +1295,16 @@ public class NettyHttpServiceClientTest {
     }
 
     @Test
-    public void keepAliveFalseInServer() throws Throwable {
+    public void testErrorResponse() throws Throwable {
+        testErrorResponse(false);
+    }
+
+    @Test
+    public void testErrorResponseWithKeepAlive() throws Throwable {
+        testErrorResponse(true);
+    }
+
+    private void testErrorResponse(boolean keepAlive) throws Throwable {
 
         // When keepAlive=false is set in server side and channels is closed, response was
         // always code=400, message="Socket channel closed:..."
@@ -1306,13 +1315,15 @@ public class NettyHttpServiceClientTest {
                 get.setStatusCode(Operation.STATUS_CODE_CONFLICT);
                 get.setContentType("text/xml");
                 get.setBody("<error>hello</error>");
-                get.setKeepAlive(false);
+                get.setKeepAlive(keepAlive);
                 get.complete();
             }
         };
-        this.host.startServiceAndWait(failureService, "/keepAliveFalseInServer", null);
 
-        Operation put = Operation.createGet(this.host, "/keepAliveFalseInServer").forceRemote();
+        String servicePath = "/keepAliveInServer" + keepAlive;
+        this.host.startServiceAndWait(failureService, servicePath, null);
+
+        Operation put = Operation.createGet(this.host, servicePath).forceRemote();
         TestRequestSender sender = new TestRequestSender(this.host);
         FailureResponse resp = sender.sendAndWaitFailure(put);
 
