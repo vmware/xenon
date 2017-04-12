@@ -102,6 +102,7 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
                 this.logger.warning("Can't find operation for channel");
                 return null;
             }
+            ctx.channel().attr(NettyChannelContext.OPERATION_KEY).set(null);
         }
         return request;
     }
@@ -199,6 +200,8 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
                     "Channel exception but no HTTP/1.1 request to fail:" + cause.getMessage());
             return;
         }
+
+        ctx.channel().attr(NettyChannelContext.OPERATION_KEY).set(null);
 
         // I/O exception this code recommends retry since it never made it to the remote end
         request.setStatusCode(Operation.STATUS_CODE_BAD_REQUEST);
