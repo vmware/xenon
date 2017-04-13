@@ -834,8 +834,23 @@ public final class FileUtils {
                     final Path destFile = Paths.get(destDir.toString(),
                             file.toString());
 
-                    Logger.getAnonymousLogger().info("Extracting file " + destFile);
-                    Files.copy(file, destFile, StandardCopyOption.REPLACE_EXISTING);
+                    Logger.getAnonymousLogger().info("AAA from=" + file);
+                    Logger.getAnonymousLogger().info("AAA from exist=" + Files.exists(destFile));
+                    Logger.getAnonymousLogger().info("AAA dest=" + destFile);
+                    Logger.getAnonymousLogger().info("AAA dest exist=" + Files.exists(destFile));
+                    Logger.getAnonymousLogger().info("AAA dest readable=" + Files.isReadable(destFile));
+                    Logger.getAnonymousLogger().info("AAA dest writable=" + Files.isWritable(destFile));
+                    Logger.getAnonymousLogger().info("AAA dest regular=" + Files.isRegularFile(destFile));
+
+                    boolean b = Files.deleteIfExists(destFile);
+                    Logger.getAnonymousLogger().info("AAA deleted=" + b);
+
+                    try {
+                        Files.copy(file, destFile, StandardCopyOption.REPLACE_EXISTING);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        Logger.getAnonymousLogger().info("AAA exception=" + Utils.toString(e));
+                    }
                     return FileVisitResult.CONTINUE;
                 }
 
