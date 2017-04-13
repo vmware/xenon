@@ -829,10 +829,9 @@ public final class FileUtils {
             // walk the zip file tree and copy files to the destination
             Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
                 @Override
-                public FileVisitResult visitFile(Path file,
-                        BasicFileAttributes attrs) throws IOException {
-                    final Path destFile = Paths.get(destDir.toString(),
-                            file.toString());
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                    // due to ProviderMismatchException, need to construct a Path based on string
+                    Path destFile = Paths.get(destDir.toString(), file.toString());
 
                     Logger.getAnonymousLogger().info("Extracting file " + destFile);
                     Files.copy(file, destFile, StandardCopyOption.REPLACE_EXISTING);
