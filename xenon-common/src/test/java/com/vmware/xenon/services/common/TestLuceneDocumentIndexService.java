@@ -3095,6 +3095,12 @@ public class TestLuceneDocumentIndexService {
         TestRequestSender sender = new TestRequestSender(this.host);
         BackupResponse backupResponse = sender.sendAndWait(backupOp, BackupResponse.class);
 
+        // destroy and spin up new host
+        this.host.tearDown();
+        this.host = null;
+        setUpHost(false);
+        sender = this.host.getTestRequestSender();
+
         LuceneDocumentIndexService.RestoreRequest r = new LuceneDocumentIndexService.RestoreRequest();
         r.documentKind = LuceneDocumentIndexService.RestoreRequest.KIND;
         r.backupFile = backupResponse.backupFile;
