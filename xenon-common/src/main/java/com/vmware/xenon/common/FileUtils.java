@@ -59,6 +59,8 @@ import java.util.zip.ZipOutputStream;
 
 public final class FileUtils {
 
+    private static final boolean IS_WINDOWS = System.getProperty("os.name").toLowerCase().contains("windows");
+
     private FileUtils() {
 
     }
@@ -829,13 +831,51 @@ public final class FileUtils {
             // walk the zip file tree and copy files to the destination
             Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
                 @Override
-                public FileVisitResult visitFile(Path file,
-                        BasicFileAttributes attrs) throws IOException {
-                    final Path destFile = Paths.get(destDir.toString(),
-                            file.toString());
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
 
-                    Logger.getAnonymousLogger().info("Extracting file " + destFile);
-                    Files.copy(file, destFile, StandardCopyOption.REPLACE_EXISTING);
+                    // due to ProviderMismatchException, need to construct a Path based on string
+                    Path destFile = Paths.get(destDir.toString(), file.toString());
+
+                    Logger.getAnonymousLogger().info("AAA destdir=" + destDir);
+                    Logger.getAnonymousLogger().info("AAA from=" + file);
+                    Logger.getAnonymousLogger().info("AAA from exist=" + Files.exists(destFile));
+                    Logger.getAnonymousLogger().info("AAA dest=" + destFile);
+                    Logger.getAnonymousLogger().info("AAA dest exist=" + Files.exists(destFile));
+                    Logger.getAnonymousLogger().info("AAA dest readable=" + Files.isReadable(destFile));
+                    Logger.getAnonymousLogger().info("AAA dest writable=" + Files.isWritable(destFile));
+                    Logger.getAnonymousLogger().info("AAA dest regular=" + Files.isRegularFile(destFile));
+
+//                    boolean b = Files.deleteIfExists(destFile);
+//                    Logger.getAnonymousLogger().info("AAA deleted=" + b);
+
+///                    Files.delete(destFile);
+//                    Logger.getAnonymousLogger().info("AAA after delete dest exist=" + Files.exists(destFile));
+
+                    if (IS_WINDOWS) {
+                        Files.write(destFile, Files.readAllBytes(file));
+                    } else {
+                        Files.copy(file, destFile, StandardCopyOption.REPLACE_EXISTING);
+                    }
+
+//                    try {
+//                                                Files.copy(file, destFile, StandardCopyOption.REPLACE_EXISTING);
+//
+////                    } catch (AccessDeniedException e) {
+////                        Logger.getAnonymousLogger().info("AAA ADE exception=" + Utils.toString(e));
+////                        Path p = Paths.get(destFile.toUri());
+////                        Logger.getAnonymousLogger().info("AAA ade exist=" + Files.exists(p));
+////
+//////                        Files.copy(file, destFile, StandardCopyOption.REPLACE_EXISTING);
+//////                        Logger.getAnonymousLogger().info("AAA ade size=" + Files.size(p));
+//////                        throw e;
+//                    } catch (FileAlreadyExistsException e) {
+//                        Logger.getAnonymousLogger().info("AAA FAE exception=" + Utils.toString(e));
+//                        Path p = Paths.get(destFile.toUri());
+//                        Logger.getAnonymousLogger().info("AAA fae exist=" + Files.exists(p));
+////                        Logger.getAnonymousLogger().info("AAA fae size=" + Files.size(p));
+////                        throw e;
+//
+//                    }
                     return FileVisitResult.CONTINUE;
                 }
 
