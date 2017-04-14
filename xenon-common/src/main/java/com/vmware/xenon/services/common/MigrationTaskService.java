@@ -569,7 +569,7 @@ public class MigrationTaskService extends StatefulService {
         URI sourceHostUri = selectRandomUri(sourceURIs);
         URI factoryUri = UriUtils.buildUri(sourceHostUri, currentState.destinationFactoryLink);
         URI factoryConfigUri = UriUtils.buildConfigUri(factoryUri);
-        Operation configGet = Operation.createGet(factoryConfigUri);
+        Operation configGet = Operation.createGet(factoryConfigUri).setExpiration(documentExpirationTimeMicros);
         this.sendWithDeferredResult(configGet)
                 .thenCompose(op -> {
                     FactoryServiceConfiguration factoryConfig = op.getBody(FactoryServiceConfiguration.class);
@@ -592,12 +592,15 @@ public class MigrationTaskService extends StatefulService {
 
                     countQuery.documentExpirationTimeMicros = documentExpirationTimeMicros;
                     Operation countOp = Operation.createPost(UriUtils.buildUri(sourceHostUri, ServiceUriPaths.CORE_QUERY_TASKS))
-                            .setBody(countQuery);
+                            .setBody(countQuery)
+                            .setExpiration(documentExpirationTimeMicros);
                     return this.sendWithDeferredResult(countOp);
                 })
                 .thenAccept(countOp -> {
                     QueryTask countQueryTask = countOp.getBody(QueryTask.class);
                     Long estimatedTotalServiceCount = countQueryTask.results.documentCount;
+                    adjustStat(STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT, estimatedTotalServiceCount);
+                    logInfo("Estimated total service count %,d", estimatedTotalServiceCount);
 
                     // query time for count query
                     setStat(STAT_NAME_COUNT_QUERY_TIME_DURATION_MICRO, countQueryTask.results.queryTimeMicros);
@@ -630,8 +633,6 @@ public class MigrationTaskService extends StatefulService {
                                         .filter(operation -> operation.getBody(QueryTask.class).results.nextPageLink != null)
                                         .map(this::getNextPageLinkUri)
                                         .collect(Collectors.toSet());
-
-                                adjustStat(STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT, estimatedTotalServiceCount);
 
                                 // if there are no next page links we are done early with migration
                                 if (currentPageLinks.isEmpty()) {
@@ -1091,6 +1092,7 @@ public class MigrationTaskService extends StatefulService {
                             return;
                         }
                     } else {
+                        logInfo("MigrationTask created %s entries in destination", posts.size());
                         adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
                         migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
                     }
