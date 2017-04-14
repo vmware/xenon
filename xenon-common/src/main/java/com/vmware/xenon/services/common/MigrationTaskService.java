@@ -1091,6 +1091,7 @@ public class MigrationTaskService extends StatefulService {
                             return;
                         }
                     } else {
+                        logInfo("Migration performed %s entries", posts.size());
                         adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
                         migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
                     }
