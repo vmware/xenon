@@ -569,14 +569,16 @@ public class MigrationTaskService extends StatefulService {
         URI sourceHostUri = selectRandomUri(sourceURIs);
         URI factoryUri = UriUtils.buildUri(sourceHostUri, currentState.destinationFactoryLink);
         URI factoryConfigUri = UriUtils.buildConfigUri(factoryUri);
-        Operation configGet = Operation.createGet(factoryConfigUri);
+        Operation configGet = Operation.createGet(factoryConfigUri).setExpiration(documentExpirationTimeMicros);
         this.sendWithDeferredResult(configGet)
                 .thenCompose(op -> {
+                    logInfo("Config retrieved");
                     FactoryServiceConfiguration factoryConfig = op.getBody(FactoryServiceConfiguration.class);
 
                     QueryTask countQuery = QueryTask.Builder.createDirectTask()
                             .addOption(QueryOption.COUNT)
                             .setQuery(buildFieldClause(currentState))
+                            .setResultLimit(currentState.querySpec.resultLimit)
                             .build();
 
                     // When source hosts are older version of xenon, factory config request may not contain childOptions.
@@ -590,14 +592,19 @@ public class MigrationTaskService extends StatefulService {
                         countQuery.querySpec.options.add(QueryOption.INCLUDE_ALL_VERSIONS);
                     }
 
+
                     countQuery.documentExpirationTimeMicros = documentExpirationTimeMicros;
+                    logInfo("Calling count query. query=%s", Utils.toJson(countQuery));
                     Operation countOp = Operation.createPost(UriUtils.buildUri(sourceHostUri, ServiceUriPaths.CORE_QUERY_TASKS))
-                            .setBody(countQuery);
+                            .setBody(countQuery)
+                            .setExpiration(documentExpirationTimeMicros);
                     return this.sendWithDeferredResult(countOp);
                 })
                 .thenAccept(countOp -> {
                     QueryTask countQueryTask = countOp.getBody(QueryTask.class);
                     Long estimatedTotalServiceCount = countQueryTask.results.documentCount;
+                    adjustStat(STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT, estimatedTotalServiceCount);
+                    logInfo("Estimated total service count %,d", estimatedTotalServiceCount);
 
                     // query time for count query
                     setStat(STAT_NAME_COUNT_QUERY_TIME_DURATION_MICRO, countQueryTask.results.queryTimeMicros);
@@ -614,7 +621,7 @@ public class MigrationTaskService extends StatefulService {
                     Set<Operation> queryOps = sourceURIs.stream()
                             .map(sourceUri -> {
                                 URI uri = UriUtils.buildUri(sourceUri, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
-                                return Operation.createPost(uri).setBody(queryTask);
+                                return Operation.createPost(uri).setBody(queryTask).setExpiration(documentExpirationTimeMicros);
                             })
                             .collect(Collectors.toSet());
 
@@ -630,8 +637,6 @@ public class MigrationTaskService extends StatefulService {
                                         .filter(operation -> operation.getBody(QueryTask.class).results.nextPageLink != null)
                                         .map(this::getNextPageLinkUri)
                                         .collect(Collectors.toSet());
-
-                                adjustStat(STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT, estimatedTotalServiceCount);
 
                                 // if there are no next page links we are done early with migration
                                 if (currentPageLinks.isEmpty()) {
@@ -1091,6 +1096,7 @@ public class MigrationTaskService extends StatefulService {
                             return;
                         }
                     } else {
+                        logInfo("MigrationTask created %s entries in destination", posts.size());
                         adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
                         migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
                     }
