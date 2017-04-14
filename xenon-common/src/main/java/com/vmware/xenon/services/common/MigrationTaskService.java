@@ -573,11 +573,6 @@ public class MigrationTaskService extends StatefulService {
                 .thenAccept(op -> {
                     FactoryServiceConfiguration factoryConfig = op.getBody(FactoryServiceConfiguration.class);
 
-                    QueryTask countQuery = QueryTask.Builder.createDirectTask()
-                            .addOption(QueryOption.COUNT)
-                            .setQuery(buildFieldClause(currentState))
-                            .build();
-
                     // When source hosts are older version of xenon, factory config request may not contain childOptions.
                     // To support count query to use "INCLUDE_ALL_VERSIONS" in that case, here also checks user specified
                     // query options.
@@ -587,15 +582,8 @@ public class MigrationTaskService extends StatefulService {
                             currentState.querySpec.options.contains(QueryOption.INCLUDE_ALL_VERSIONS) ||
                                     factoryConfig.childOptions.contains(ServiceOption.IMMUTABLE);
 
-                    if (currentState.querySpec.options.contains(QueryOption.INCLUDE_ALL_VERSIONS)
-                            || factoryConfig.childOptions.contains(ServiceOption.IMMUTABLE)) {
-                        // Use INCLUDE_ALL_VERSIONS speeds up count query for immutable docs
-                        countQuery.querySpec.options.add(QueryOption.INCLUDE_ALL_VERSIONS);
-                    }
-
-
                     // asynchronously calculate total service count for estimate
-                    calculateTotalServiceCount(currentState, sourceURIs, addIncludeAllVersions);
+//                    calculateTotalServiceCount(currentState, sourceURIs, addIncludeAllVersions);
 
 
                     QueryTask queryTask = QueryTask.create(currentState.querySpec).setDirect(true);
