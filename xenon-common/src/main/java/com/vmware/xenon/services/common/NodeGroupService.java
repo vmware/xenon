@@ -935,7 +935,9 @@ public class NodeGroupService extends StatefulService {
                 needsUpdate = true;
             }
 
-            if (remoteEntry.status == NodeStatus.UNAVAILABLE && needsUpdate) {
+            if (remoteEntry.status == NodeStatus.UNAVAILABLE
+                    && currentEntry.status == NodeStatus.UNAVAILABLE
+                    && needsUpdate) {
                 // nodes increment their own entry version, except, if they are unavailable
                 remoteEntry.documentVersion++;
             }
