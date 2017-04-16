@@ -691,6 +691,43 @@ public class TestNodeGroupService {
     }
 
     @Test
+    public void nodeGroupConvergenceAfterHostRestart() throws Throwable {
+        for (int i = 0; i < this.iterationCount; i++) {
+            this.tearDown();
+            doNodeGroupConvergenceAfterHostRestart();
+        }
+    }
+
+    public void doNodeGroupConvergenceAfterHostRestart() throws Throwable {
+        setUp(this.nodeCount);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+
+        URI exampleFactoryUri = UriUtils.buildUri(
+                this.host.getPeerServiceUri(ExampleService.FACTORY_LINK));
+        this.host.waitForReplicatedFactoryServiceAvailable(exampleFactoryUri);
+
+        this.host.setNodeGroupQuorum(this.nodeCount - 1);
+        this.host.waitForNodeGroupConvergence();
+
+        VerificationHost hostToRestart = this.host.getPeerHost();
+        restartHost(hostToRestart);
+
+        this.host.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(hostToRestart, ExampleService.FACTORY_LINK));
+    }
+
+    private VerificationHost restartHost(VerificationHost hostToRestart) throws Throwable {
+        this.host.stopHostAndPreserveState(hostToRestart);
+        this.host.waitForNodeGroupConvergence(this.nodeCount - 1, this.nodeCount - 1);
+
+        hostToRestart.setPort(0);
+        VerificationHost.restartStatefulHost(hostToRestart, false);
+
+        this.host.addPeerNode(hostToRestart);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+        return hostToRestart;
+    }
+
+    @Test
     public void synchronizationCollisionWithPosts() throws Throwable {
         // POST requests go through the FactoryService
         // and do not get queued with Synchronization
