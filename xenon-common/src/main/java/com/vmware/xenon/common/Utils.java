@@ -714,12 +714,8 @@ public final class Utils {
         }
 
         if (service.getMaintenanceIntervalMicros() > 0 &&
-                service.getMaintenanceIntervalMicros() < host.getMaintenanceIntervalMicros()) {
-            host.log(
-                    Level.WARNING,
-                    "Service maintenance interval %d is less than host interval %d, reducing host interval",
-                    service.getMaintenanceIntervalMicros(), host.getMaintenanceIntervalMicros());
-            host.setMaintenanceIntervalMicros(service.getMaintenanceIntervalMicros());
+                service.getMaintenanceIntervalMicros() < host.getMaintenanceCheckIntervalMicros()) {
+            host.setMaintenanceCheckIntervalMicros(service.getMaintenanceIntervalMicros());
         }
         return true;
     }

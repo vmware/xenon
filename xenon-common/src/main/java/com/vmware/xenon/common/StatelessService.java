@@ -626,6 +626,11 @@ public class StatelessService implements Service {
         }
 
         this.maintenanceIntervalMicros = micros;
+        if (getHost() != null
+                && getProcessingStage() == ProcessingStage.AVAILABLE
+                && micros < getHost().getMaintenanceCheckIntervalMicros()) {
+            getHost().scheduleServiceMaintenance(this);
+        }
     }
 
     @Override

@@ -2095,6 +2095,11 @@ public class StatefulService implements Service {
 
         allocateExtraContext();
         this.context.extras.maintenanceInterval = micros;
+        if (getHost() != null
+                && getProcessingStage() == ProcessingStage.AVAILABLE
+                && micros < getHost().getMaintenanceCheckIntervalMicros()) {
+            getHost().scheduleServiceMaintenance(this);
+        }
     }
 
     @Override

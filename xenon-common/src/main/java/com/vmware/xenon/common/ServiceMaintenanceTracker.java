@@ -56,6 +56,10 @@ class ServiceMaintenanceTracker {
             interval = this.host.getMaintenanceIntervalMicros();
         }
 
+        if (interval < this.host.getMaintenanceCheckIntervalMicros()) {
+            this.host.setMaintenanceCheckIntervalMicros(interval);
+        }
+
         long nextExpirationMicros = Math.max(now, now + interval - SCHEDULING_EPSILON_MICROS);
         String selfLink = s.getSelfLink();
 

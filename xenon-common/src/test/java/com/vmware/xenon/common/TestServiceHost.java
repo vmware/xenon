@@ -1348,6 +1348,36 @@ public class TestServiceHost {
             }
         }
 
+        // some services are at 100ms maintenance and the host is at 30 seconds, verify the
+        // check maintenance interval is the minimum of the two
+        long currentMaintInterval = this.host.getMaintenanceIntervalMicros();
+        long currentCheckInterval = this.host.getMaintenanceCheckIntervalMicros();
+        assertTrue(currentMaintInterval > currentCheckInterval);
+
+        // create new set of services
+        services = this.host.doThroughputServiceStart(
+                this.serviceCount, MinimalTestService.class, this.host.buildMinimalTestState(),
+                caps,
+                null);
+
+        // set the  interval for a service to something smaller than the host interval, then confirm
+        // that only the maintenance *check* interval changed, not the host global maintenance interval, which
+        // can affect all services
+        for (Service s : services) {
+            s.setMaintenanceIntervalMicros(currentCheckInterval / 2);
+            break;
+        }
+
+        this.host.waitFor("check interval not updated", () -> {
+            // verify the check interval is now lower
+            if (currentCheckInterval / 2 != this.host.getMaintenanceCheckIntervalMicros()) {
+                return false;
+            }
+            if (currentMaintInterval != this.host.getMaintenanceIntervalMicros()) {
+                return false;
+            }
+            return true;
+        });
     }
 
     private void verifyMgmtServiceStats() {
