@@ -298,10 +298,10 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
 
     private void copyInMemoryLuceneIndexToDirectory(IndexCommit commit, Path directoryPath) throws IOException {
         Directory from = commit.getDirectory();
-        Directory to = new NIOFSDirectory(directoryPath);
-
-        for (String filename : commit.getFileNames()) {
-            to.copyFrom(from, filename, filename, IOContext.DEFAULT);
+        try (Directory to = new NIOFSDirectory(directoryPath)) {
+            for (String filename : commit.getFileNames()) {
+                to.copyFrom(from, filename, filename, IOContext.DEFAULT);
+            }
         }
     }
 
