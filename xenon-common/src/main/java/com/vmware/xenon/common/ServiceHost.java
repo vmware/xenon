@@ -107,7 +107,6 @@ import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
 import com.vmware.xenon.services.common.NodeGroupUtils;
 import com.vmware.xenon.services.common.ODataQueryService;
 import com.vmware.xenon.services.common.OperationIndexService;
-import com.vmware.xenon.services.common.ProcessFactoryService;
 import com.vmware.xenon.services.common.QueryFilter;
 import com.vmware.xenon.services.common.QueryTaskFactoryService;
 import com.vmware.xenon.services.common.ReliableSubscriptionService;
@@ -1483,7 +1482,6 @@ public class ServiceHost implements ServiceRequestSender {
 
         List<Service> coreServices = new ArrayList<>();
         coreServices.add(this.managementService);
-        coreServices.add(new ProcessFactoryService());
         coreServices.add(new ODataQueryService());
 
         // Start persisted factories here, after document index is added

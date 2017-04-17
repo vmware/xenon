@@ -27,6 +27,7 @@ import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+import org.junit.Before;
 import org.junit.Test;
 
 import com.vmware.xenon.common.BasicTestCase;
@@ -42,6 +43,11 @@ public class TestProcessService extends BasicTestCase {
     public void beforeHostStart(VerificationHost host) {
         host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS
                 .toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
+    }
+
+    @Before
+    public void setUp() throws Throwable {
+        this.host.startServiceAndWait(ProcessFactoryService.class, ProcessFactoryService.SELF_LINK);
     }
 
     @Test
