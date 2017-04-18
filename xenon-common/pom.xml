@@ -11,7 +11,7 @@
   <artifactId>xenon-common</artifactId>
 
   <properties>
-    <gson.version>2.3.1</gson.version>
+    <gson.version>2.8.0</gson.version>
     <kryo.version>3.0.2</kryo.version>
     <lucene.version>6.0.0</lucene.version>
     <netty.version>4.1.6.Final</netty.version>

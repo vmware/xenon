@@ -136,6 +136,19 @@ public final class HashingJsonWriter extends JsonWriter {
     }
 
     @Override
+    public JsonWriter value(Boolean value) throws IOException {
+        long h = this.hash;
+        h = FNVHash.compute(BOOL, h);
+        if (value != null) {
+            h = FNVHash.compute(Boolean.hashCode(value), h);
+        } else {
+            h = FNVHash.compute(NULL, h);
+        }
+        this.hash = h;
+        return this;
+    }
+
+    @Override
     public JsonWriter value(long value) throws IOException {
         long h = this.hash;
         h = FNVHash.compute(NUMBER, h);
