@@ -15,6 +15,7 @@ package com.vmware.xenon.common;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentSkipListMap;
 
@@ -41,6 +42,23 @@ public class SystemHostInfo {
     public long totalDiskByteCount;
     public String osName;
     public OsFamily osFamily;
+
+    public String getOsName() {
+        return this.properties.get(SystemHostInfo.PROPERTY_NAME_OS_NAME);
+    }
+
+    public static OsFamily determineOsFamily(String osName) {
+        osName = osName == null ? "" : osName.toLowerCase(Locale.ENGLISH);
+        if (osName.contains("mac")) {
+            return OsFamily.MACOS;
+        } else if (osName.contains("win")) {
+            return OsFamily.WINDOWS;
+        } else if (osName.contains("nux")) {
+            return OsFamily.LINUX;
+        } else {
+            return OsFamily.OTHER;
+        }
+    }
 
     public enum OsFamily {
         WINDOWS,

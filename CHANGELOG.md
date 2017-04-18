@@ -2,6 +2,9 @@
 
 ## 1.5.0-SNAPSHOT
 
+* Remove Utils.computeHash, Utils.getCurrentFileDirectory, Utils.atomicGetOrCreate, Utils.toHexString,
+  Utils.toServiceErrorResponseJson as there are obvious/shorter/standard ways to achive the same.
+
 ## 1.4.2
 
 * Add ability to expand only selected fields in queries
