@@ -13,17 +13,15 @@
 
 package com.vmware.xenon.common;
 
-
 import static com.vmware.xenon.common.ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS;
+import static com.vmware.xenon.common.serialization.GsonSerializers.getJsonMapperFor;
 
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Field;
-import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.net.Inet6Address;
 import java.net.InetAddress;
@@ -36,13 +34,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.EnumSet;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
@@ -58,7 +53,6 @@ import com.esotericsoftware.kryo.io.Output;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.google.gson.reflect.TypeToken;
 
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ServiceOption;
@@ -69,6 +63,7 @@ import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.SystemHostInfo.OsFamily;
 import com.vmware.xenon.common.logging.StackAwareLogRecord;
+import com.vmware.xenon.common.serialization.GsonSerializers;
 import com.vmware.xenon.common.serialization.JsonMapper;
 import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -83,8 +78,6 @@ public final class Utils {
     public static final String CHARSET = "UTF-8";
     public static final String UI_DIRECTORY_NAME = "ui";
     public static final String PROPERTY_NAME_TIME_COMPARISON = "timeComparisonEpsilonMicros";
-
-    private static final char[] HEX_CHARS = "0123456789abcdef".toCharArray();
 
     /**
      * Number of IO threads is used for the HTTP selector event processing. Most of the
@@ -126,9 +119,6 @@ public final class Utils {
     private static long timeComparisonEpsilon = initializeTimeEpsilon();
     private static long timeDriftThresholdMicros = DEFAULT_TIME_DRIFT_THRESHOLD_MICROS;
 
-    private static final JsonMapper JSON = new JsonMapper();
-    private static final ConcurrentMap<Class<?>, JsonMapper> CUSTOM_JSON = new ConcurrentSkipListMap<>(
-            Comparator.comparingInt((Class<?> c) -> c.hashCode()).<String>thenComparing(Class::getName));
 
     private static final ConcurrentMap<String, String> KINDS = new ConcurrentSkipListMap<>();
     private static final ConcurrentMap<String, Class<?>> KIND_TO_TYPE = new ConcurrentSkipListMap<>();
@@ -137,31 +127,6 @@ public final class Utils {
     private static final StringBuilderThreadLocal builderPerThread = new StringBuilderThreadLocal();
 
     private Utils() {
-    }
-
-    private static JsonMapper getJsonMapperFor(Type type) {
-        if (type instanceof Class) {
-            return getJsonMapperFor((Class<?>) type);
-        } else if (type instanceof ParameterizedType) {
-            Type rawType = ((ParameterizedType) type).getRawType();
-            return getJsonMapperFor(rawType);
-        } else {
-            return JSON;
-        }
-    }
-
-    private static JsonMapper getJsonMapperFor(Object instance) {
-        if (instance == null) {
-            return JSON;
-        }
-        return getJsonMapperFor(instance.getClass());
-    }
-
-    private static JsonMapper getJsonMapperFor(Class<?> type) {
-        if (type.isArray() && type != byte[].class) {
-            type = type.getComponentType();
-        }
-        return CUSTOM_JSON.getOrDefault(type, JSON);
     }
 
     /**
@@ -180,7 +145,7 @@ public final class Utils {
      */
     public static void registerCustomJsonMapper(Class<?> clazz,
             JsonMapper mapper) {
-        CUSTOM_JSON.putIfAbsent(clazz, mapper);
+        GsonSerializers.registerCustomJsonMapper(clazz, mapper);
     }
 
     /**
@@ -238,29 +203,11 @@ public final class Utils {
                 hash = FNVHash.compute(bytes, 0, bytes.length, hash);
                 break;
             default:
-                hash = Utils.hashJson(fieldValue, hash);
+                hash = GsonSerializers.hashJson(fieldValue, hash);
             }
         }
 
         return Long.toHexString(hash);
-    }
-
-    /**
-     * converts object to json representation and computes a hash of it.
-     * @param body a possibly null object
-     * @return
-     */
-    public static long hashJson(Object body) {
-        return hashJson(body, FNVHash.FNV_OFFSET_MINUS_MSB);
-    }
-
-    private static long hashJson(Object body, long hash) {
-        if (body instanceof String) {
-            return FNVHash.compute((String) body, hash);
-        }
-
-        JsonMapper mapper = getJsonMapperFor(body);
-        return mapper.hashJson(body, hash);
     }
 
     /**
@@ -314,10 +261,6 @@ public final class Utils {
 
     public static String computeHash(CharSequence content) {
         return Long.toHexString(FNVHash.compute(content));
-    }
-
-    public static String computeHash(byte[] content, int offset, int length) {
-        return Long.toHexString(FNVHash.compute(content, offset, length));
     }
 
     public static String toJson(Object body) {
@@ -375,17 +318,21 @@ public final class Utils {
     }
 
     public static <T> T getJsonMapValue(Object json, String key, Class<T> valueClazz) {
-        Map<String, JsonElement> runtimeMap = Utils.fromJson(json,
-                new TypeToken<Map<String, JsonElement>>() {
-                }.getType());
-        return Utils.fromJson(runtimeMap.get(key), valueClazz);
+        JsonElement je = Utils.fromJson(json, JsonElement.class);
+        je = je.getAsJsonObject().get(key);
+        if (je == null) {
+            return null;
+        }
+        return Utils.fromJson(je, valueClazz);
     }
 
     public static <T> T getJsonMapValue(Object json, String key, Type valueType) {
-        Map<String, JsonElement> runtimeMap = Utils.fromJson(json,
-                new TypeToken<Map<String, JsonElement>>() {
-                }.getType());
-        return Utils.fromJson(runtimeMap.get(key), valueType);
+        JsonElement je = Utils.fromJson(json, JsonElement.class);
+        je = je.getAsJsonObject().get(key);
+        if (je == null) {
+            return null;
+        }
+        return Utils.fromJson(je, valueType);
     }
 
     public static String toString(Throwable t) {
@@ -406,15 +353,6 @@ public final class Utils {
         }
 
         return writer.toString();
-    }
-
-    public static String getCurrentFileDirectory() {
-        try {
-            return new File(".").getCanonicalPath();
-        } catch (IOException e) {
-            Logger.getAnonymousLogger().warning(Utils.toString(e));
-            return null;
-        }
     }
 
     public static void log(Class<?> type, String classOrUri, Level level, String fmt,
@@ -501,10 +439,6 @@ public final class Utils {
         return ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST);
     }
 
-    public static String toServiceErrorResponseJson(Throwable e) {
-        return Utils.toJson(toServiceErrorResponse(e));
-    }
-
     public static ServiceErrorResponse toValidationErrorResponse(Throwable t, Operation op) {
         ServiceErrorResponse rsp = new ServiceErrorResponse();
 
@@ -520,18 +454,6 @@ public final class Utils {
     public static boolean isValidationError(Throwable e) {
         return (e instanceof IllegalArgumentException)
                 || (e instanceof LocalizableValidationException);
-    }
-
-    public static String toHexString(byte[] data) {
-        //http://stackoverflow.com/a/9855338
-        char[] sb = new char[data.length * 2];
-        for (int i = 0; i < data.length; i++) {
-            int v = data[i] & 0xFF;
-            sb[2 * i] = HEX_CHARS[v >>> 4];
-            sb[2 * i + 1] = HEX_CHARS[v & 0x0F];
-        }
-
-        return new String(sb);
     }
 
     /**
@@ -720,23 +642,6 @@ public final class Utils {
         return true;
     }
 
-    public static String getOsName(SystemHostInfo systemInfo) {
-        return systemInfo.properties.get(SystemHostInfo.PROPERTY_NAME_OS_NAME);
-    }
-
-    public static OsFamily determineOsFamily(String osName) {
-        osName = osName == null ? "" : osName.toLowerCase(Locale.ENGLISH);
-        if (osName.contains("mac")) {
-            return OsFamily.MACOS;
-        } else if (osName.contains("win")) {
-            return OsFamily.WINDOWS;
-        } else if (osName.contains("nux")) {
-            return OsFamily.LINUX;
-        } else {
-            return OsFamily.OTHER;
-        }
-    }
-
     /**
      * An alternative to {@link InetAddress#isReachable(int)} which accounts for the Windows
      * implementation of that method NOT using ICMP. This method invokes the "ping" command
@@ -779,7 +684,8 @@ public final class Utils {
      * Specifically, Java formats link-local IPv6 addresses in Linux-friendly manner:
      * {@code <address>%<interface_name>} e.g. {@code fe80:0:0:0:5971:14f6:c8ac:9e8f%eth0}. However,
      * Windows requires a different format for such addresses: {@code <address>%<numeric_scope_id>}
-     * e.g. {@code fe80:0:0:0:5971:14f6:c8ac:9e8f%34}. This method {@link #determineOsFamily detects if
+     * e.g. {@code fe80:0:0:0:5971:14f6:c8ac:9e8f%34}. The method
+     * {@link SystemHostInfo#determineOsFamily(String)}  detects if
      * the OS on the host} and will adjust the host address accordingly.
      *
      * Otherwise, this will delegate to the original method.
@@ -1046,30 +952,6 @@ public final class Utils {
             return Paths.get(UI_DIRECTORY_NAME, servicePath);
         }
         return null;
-    }
-
-    /**
-     * Atomically returns a map element for the specifying key. A new instance of value is created if it is
-     * missing. This may be efficiently used for creating map of maps/sets.
-     * <p/>
-     * This method is thread-safe.
-     *
-     * @param map  Map to take value from.
-     * @param key  Key to use.
-     * @param ctor Value constructor. This constructor may be invoked multiple times for the same value, but
-     *             only one value is returned.
-     * @param <K>  Map key type.
-     * @param <V>  Map value type.
-     * @return new or existing element value.
-     */
-    public static <K, V> V atomicGetOrCreate(ConcurrentMap<K, V> map, K key, Callable<V> ctor) {
-        return map.computeIfAbsent(key, k -> {
-            try {
-                return ctor.call();
-            } catch (Exception e) {
-                throw new RuntimeException("Element constructor should now throw an exception", e);
-            }
-        });
     }
 
     /**
@@ -1505,7 +1387,7 @@ public final class Utils {
      * location (in space), and the value from {@link Utils#getNowMicrosUtc()} as the
      * point in time. As long as the location id (for example, the local host ID) is
      * unique within the node group, the UUID should be unique within the node group as
-     * well
+     * well.
      */
     public static String buildUUID(String id) {
         return Utils.getBuilder()

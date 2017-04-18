@@ -25,6 +25,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.internal.Streams;
+import com.google.gson.internal.bind.JsonTreeWriter;
 import com.google.gson.stream.JsonWriter;
 
 import com.vmware.xenon.common.ServiceDocument;
@@ -103,6 +104,27 @@ public class JsonMapper {
             try {
                 this.compact.toJson(body, appendable);
                 return;
+            } catch (IllegalStateException e) {
+                handleIllegalStateException(e, i);
+            }
+        }
+    }
+
+    /**
+     * Convert an object to JsonElement without intermediate string representations.
+     * @param body
+     * @return
+     */
+    public JsonElement toJsonElement(Object body) {
+        if (body == null) {
+            return null;
+        }
+
+        for (int i = 1;; i++) {
+            try {
+                JsonTreeWriter writer = new JsonTreeWriter();
+                this.compact.toJson(body, body.getClass(), writer);
+                return writer.get();
             } catch (IllegalStateException e) {
                 handleIllegalStateException(e, i);
             }

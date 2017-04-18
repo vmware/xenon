@@ -26,6 +26,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.google.gson.JsonElement;
+
 import com.vmware.xenon.common.AuthUtils;
 import com.vmware.xenon.common.Claims;
 import com.vmware.xenon.common.Operation;
@@ -247,18 +249,26 @@ public class AuthorizationContextService extends StatelessService {
         ServiceDocument userState = QueryFilterUtils.getServiceState(getOp, getHost());
         if (userState == null) {
             Object rawBody = getOp.getBodyRaw();
-            Class<?> serviceTypeClass = null;
+            JsonElement jsonBody = null;
+            Class<?> serviceTypeClass;
             if (rawBody instanceof String) {
-                String kind = Utils.getJsonMapValue(rawBody, ServiceDocument.FIELD_NAME_KIND,
-                        String.class);
+                jsonBody = Utils.fromJson(rawBody, JsonElement.class);
+                String kind = Utils.getJsonMapValue(jsonBody,
+                        ServiceDocument.FIELD_NAME_KIND, String.class);
                 serviceTypeClass = Utils.getTypeFromKind(kind);
             } else {
                 serviceTypeClass = rawBody.getClass();
             }
             if (serviceTypeClass != null) {
-                userState = (ServiceDocument)Utils.fromJson(rawBody, serviceTypeClass);
+                if (jsonBody != null) {
+                    // reuse already parsed jsonBody
+                    userState = (ServiceDocument) Utils.fromJson(jsonBody, serviceTypeClass);
+                } else {
+                    userState = (ServiceDocument) Utils.fromJson(rawBody, serviceTypeClass);
+                }
             }
         }
+
         return userState;
     }
 
