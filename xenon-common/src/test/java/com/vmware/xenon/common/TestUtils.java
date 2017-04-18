@@ -179,6 +179,11 @@ public class TestUtils {
         Logger.getAnonymousLogger().info("Collisions: " + collisionCount);
     }
 
+
+    private static String computeHash(byte[] content, int offset, int length) {
+        return Long.toHexString(FNVHash.compute(content, offset, length));
+    }
+
     @Test
     public void computeByteHash() throws UnsupportedEncodingException {
         CommandLineArgumentParser.parseFromProperties(this);
@@ -189,8 +194,8 @@ public class TestUtils {
         for (int i = 0; i < this.iterationCount; i++) {
             String k = "-string-" + i;
             byte[] bytes = k.getBytes(Utils.CHARSET);
-            String stringHash = Utils.computeHash(bytes, 0, bytes.length);
-            String stringHash2 = Utils.computeHash(bytes, 0, bytes.length);
+            String stringHash = computeHash(bytes, 0, bytes.length);
+            String stringHash2 = computeHash(bytes, 0, bytes.length);
             assertEquals(stringHash, stringHash2);
             assertTrue(keys.add(k));
         }
@@ -234,30 +239,6 @@ public class TestUtils {
         long e = System.nanoTime() / 1000;
         double thpt = this.iterationCount / ((e - s) / 1000000.0);
         Logger.getAnonymousLogger().info("Throughput: " + thpt);
-    }
-
-    @Test
-    public void toHexString() {
-        byte[] bytes = new byte[4];
-        bytes[0] = 0x12;
-        bytes[1] = 0x34;
-        bytes[2] = (byte) 0xAB;
-        bytes[3] = (byte) 0xCD;
-
-        String out = Utils.toHexString(bytes);
-        assertEquals("1234abcd", out);
-    }
-
-    @Test
-    public void toHexStringZeroes() {
-        byte[] bytes = new byte[4];
-        bytes[0] = 0x00;
-        bytes[1] = 0x00;
-        bytes[2] = 0x00;
-        bytes[3] = 0x00;
-
-        String out = Utils.toHexString(bytes);
-        assertEquals("00000000", out);
     }
 
     @Test
@@ -907,40 +888,40 @@ public class TestUtils {
         SystemHostInfo systemHostInfo = new SystemHostInfo();
         systemHostInfo.properties.put(SystemHostInfo.PROPERTY_NAME_OS_NAME, expected);
 
-        assertEquals(expected, Utils.getOsName(systemHostInfo));
+        assertEquals(expected, systemHostInfo.getOsName());
     }
 
     @Test
     public void testDetermineOsFamilyForWindows() throws Exception {
         final String osName = "Windows NT";
 
-        assertEquals(OsFamily.WINDOWS, Utils.determineOsFamily(osName));
+        assertEquals(OsFamily.WINDOWS, SystemHostInfo.determineOsFamily(osName));
     }
 
     @Test
     public void testDetermineOsFamilyForLinux() throws Exception {
         final String osName = "Linux";
 
-        assertEquals(OsFamily.LINUX, Utils.determineOsFamily(osName));
+        assertEquals(OsFamily.LINUX, SystemHostInfo.determineOsFamily(osName));
     }
 
     @Test
     public void testDetermineOsFamilyForMac() throws Exception {
         final String osName = "Mac OS X";
 
-        assertEquals(OsFamily.MACOS, Utils.determineOsFamily(osName));
+        assertEquals(OsFamily.MACOS, SystemHostInfo.determineOsFamily(osName));
     }
 
     @Test
     public void testDetermineOsFamilyForOther() throws Exception {
         final String osName = "TI 99/4A";
 
-        assertEquals(OsFamily.OTHER, Utils.determineOsFamily(osName));
+        assertEquals(OsFamily.OTHER, SystemHostInfo.determineOsFamily(osName));
     }
 
     @Test
     public void testDetermineOsFamilyForNull() throws Exception {
-        assertEquals(OsFamily.OTHER, Utils.determineOsFamily(null));
+        assertEquals(OsFamily.OTHER, SystemHostInfo.determineOsFamily(null));
     }
 
     @Test

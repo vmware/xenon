@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -47,7 +48,6 @@ import java.util.stream.Stream;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
@@ -103,6 +103,7 @@ import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.serialization.GsonSerializers;
 import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.services.common.QueryFilter.QueryFilterException;
 import com.vmware.xenon.services.common.QueryPageService.LuceneQueryPage;
@@ -2082,8 +2083,6 @@ public class LuceneDocumentIndexService extends StatelessService {
                     if (json == null) {
                         continue;
                     }
-                } else {
-                    json = Utils.toJson(state);
                 }
             }
 
@@ -2106,27 +2105,44 @@ public class LuceneDocumentIndexService extends StatelessService {
                     ServiceDocument stateClone = new ServiceDocument();
                     state.copyTo(stateClone);
                     rsp.documents.put(link, stateClone);
+                } else if (state == null) {
+                    rsp.documents.put(link, Utils.fromJson(json, JsonElement.class));
                 } else {
-                    JsonObject jo = Utils.fromJson(json, JsonObject.class);
+                    JsonObject jo = toJsonElement(state);
                     rsp.documents.put(link, jo);
                 }
             } else if (options.contains(QueryOption.EXPAND_SELECTED_FIELDS) && !rsp.documents.containsKey(link)) {
                 // filter out only the selected fields
-                Set<String> selectFields = new HashSet<>();
+                Set<String> selectFields = new TreeSet<>();
                 if (qs != null) {
-                    qs.selectTerms.forEach((qt) -> {
-                        selectFields.add(qt.propertyName);
-                    });
+                    qs.selectTerms.forEach(qt -> selectFields.add(qt.propertyName));
                 }
 
-                JsonObject jo = Utils.fromJson(json, JsonObject.class);
-                Iterator<Entry<String,JsonElement>> it = jo.entrySet().iterator();
+                // create an uninitialized copy
+                ServiceDocument copy = state.getClass().newInstance();
+                for (String selectField : selectFields) {
+                    // transfer only needed fields
+                    Field field = ReflectionUtils.getFieldIfExists(state.getClass(), selectField);
+                    if (field != null) {
+                        Object value = field.get(state);
+                        if (value != null) {
+                            field.set(copy, value);
+                        }
+                    } else {
+                        logFine("Unknown field '%s' passed for EXPAND_SELECTED_FIELDS", selectField);
+                    }
+                }
+
+                JsonObject jo = toJsonElement(copy);
+                Iterator<Entry<String, JsonElement>> it = jo.entrySet().iterator();
                 while (it.hasNext()) {
-                    Entry<String,JsonElement> entry = it.next();
+                    Entry<String, JsonElement> entry = it.next();
                     if (!selectFields.contains(entry.getKey())) {
+                        // this is called only for primitive-typed fields, the rest are nullified already
                         it.remove();
                     }
                 }
+
                 rsp.documents.put(link, jo);
             }
 
@@ -2141,6 +2157,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         rsp.documentLinks.addAll(uniques);
         rsp.documentCount = (long) rsp.documentLinks.size();
         return lastDocVisited;
+    }
+
+    private JsonObject toJsonElement(ServiceDocument state) {
+        return (JsonObject) GsonSerializers.getJsonMapperFor(state.getClass()).toJsonElement(state);
     }
 
     private void loadDoc(IndexSearcher s, DocumentStoredFieldVisitor visitor, int docId, Set<String> fields) throws IOException {

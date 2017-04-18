@@ -4858,8 +4858,8 @@ public class ServiceHost implements ServiceRequestSender {
     public SystemHostInfo updateSystemInfo(boolean enumerateNetworkInterfaces) {
 
         this.info.availableProcessorCount = Runtime.getRuntime().availableProcessors();
-        this.info.osName = Utils.getOsName(this.info);
-        this.info.osFamily = Utils.determineOsFamily(this.info.osName);
+        this.info.osName = this.info.getOsName();
+        this.info.osFamily = SystemHostInfo.determineOsFamily(this.info.osName);
 
         updateMemoryAndDiskInfo();
 
