@@ -410,7 +410,6 @@ public class NettyHttpServiceClient implements ServiceClient {
                 fail(e, op, originalBody);
                 return;
             }
-            op.toggleOption(OperationOption.SOCKET_ACTIVE, true);
             sendHttpRequest(op);
         });
 
@@ -583,6 +582,7 @@ public class NettyHttpServiceClient implements ServiceClient {
                 op.complete();
             });
 
+            op.toggleOption(OperationOption.SOCKET_ACTIVE, true);
             op.getSocketContext().writeHttpRequest(request);
         } catch (Throwable e) {
             op.setBody(ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST,
