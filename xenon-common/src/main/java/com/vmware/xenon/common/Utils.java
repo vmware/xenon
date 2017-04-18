@@ -56,6 +56,7 @@ import java.util.zip.GZIPOutputStream;
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Output;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.reflect.TypeToken;
@@ -1156,6 +1157,14 @@ public final class Utils {
         }
 
         return false;
+    }
+
+    public static JsonElement toJsonElement(Object obj) {
+        if (obj == null) {
+            return JsonNull.INSTANCE;
+        }
+
+        return getJsonMapperFor(obj.getClass()).toJsonElement(obj);
     }
 
     /**
