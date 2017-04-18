@@ -20,6 +20,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.junit.After;
 import org.junit.Before;
@@ -37,6 +38,7 @@ import com.vmware.xenon.common.TestResults;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
+import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.MinimalTestService;
@@ -327,26 +329,29 @@ public class NettyHttp2Test {
         MinimalTestServiceState body = new MinimalTestServiceState();
         body.id = MinimalTestService.STRING_MARKER_TIMEOUT_REQUEST;
 
-        int count = 10;
-        this.host.testStart(count);
-        for (int i = 0; i < count; i++) {
-            Operation request = Operation
-                    .createPatch(service.getUri())
-                    .forceRemote()
-                    .setConnectionSharing(true)
-                    .setBody(body)
-                    .setCompletion((o, e) -> {
-                        if (e != null) {
-                            // timeout occurred, good
-                            this.host.completeIteration();
-                            return;
-                        }
-                        this.host.failIteration(new IllegalStateException(
-                                "Request should have timed out"));
-                    });
-            this.host.send(request);
+        for (int i = 0; i < this.iterationCount; i++) {
+            TestContext ctx = this.host.testCreate(this.requestCount);
+            for (int j = 0; j < this.requestCount; j++) {
+                Operation request = Operation.createPatch(serviceUri)
+                        .forceRemote()
+                        .setConnectionSharing(true)
+                        .setBody(body)
+                        .setCompletion((o, e) -> {
+                            if (e != null && e instanceof TimeoutException) {
+                                ctx.complete();
+                                return;
+                            }
+                            if (e != null) {
+                                ctx.fail(e);
+                                return;
+                            }
+                            ctx.fail(new IllegalStateException("Request should have timed out"));
+                        });
+                this.host.send(request);
+            }
+            this.host.testWait(ctx);
         }
-        this.host.testWait();
+
         this.host.toggleNegativeTestMode(false);
 
         // Validate that we used a single connection for this. We do this indirectly:
@@ -369,7 +374,8 @@ public class NettyHttp2Test {
 
         assertTrue(context != null);
         this.host.log("Largest stream ID: %d", context.getLargestStreamId());
-        assertTrue(context.getLargestStreamId() > 22);
+        assertTrue(context.getLargestStreamId() >
+                2 * (1 + this.iterationCount * this.requestCount));
     }
 
     /**

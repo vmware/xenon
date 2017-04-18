@@ -1223,6 +1223,9 @@ public class Operation implements Cloneable {
         case STATUS_CODE_FORBIDDEN:
             fail(new IllegalAccessError("forbidden"));
             break;
+        case STATUS_CODE_TIMEOUT:
+            fail(new TimeoutException());
+            break;
         default:
             fail(new Exception("request failed, no additional details provided"));
             break;
