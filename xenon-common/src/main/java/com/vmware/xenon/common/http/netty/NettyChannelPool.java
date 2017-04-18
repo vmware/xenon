@@ -39,7 +39,6 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.ssl.SslContext;
 
 import com.vmware.xenon.common.Operation;
-import com.vmware.xenon.common.Operation.OperationOption;
 import com.vmware.xenon.common.OperationQueue;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceClient.ConnectionPoolMetrics;
@@ -331,7 +330,6 @@ public class NettyChannelPool {
             // If the connection is open, send immediately
             if (context.getChannel() != null) {
                 context.setOperation(request);
-                request.toggleOption(OperationOption.SOCKET_ACTIVE, true);
                 request.complete();
                 return;
             }
@@ -358,7 +356,6 @@ public class NettyChannelPool {
                         } else {
                             context.setOpenInProgress(false);
                             context.setChannel(channel).setOperation(request);
-                            request.toggleOption(OperationOption.SOCKET_ACTIVE, true);
                             sendAfterConnect(channel, context, request, null);
                         }
                     } else {
@@ -567,7 +564,6 @@ public class NettyChannelPool {
                     synchronized (group) {
                         contextFinal.setOpenInProgress(false);
                         contextFinal.setChannel(future.channel()).setOperation(request);
-                        request.toggleOption(OperationOption.SOCKET_ACTIVE, true);
                         group.pendingRequests.transferAll(pendingOps);
                     }
 
@@ -576,7 +572,6 @@ public class NettyChannelPool {
                     // trigger pending operations
                     for (Operation pendingOp : pendingOps) {
                         pendingOp.setSocketContext(contextFinal);
-                        pendingOp.toggleOption(OperationOption.SOCKET_ACTIVE, true);
                         pendingOp.complete();
                     }
                 } else {
@@ -676,7 +671,6 @@ public class NettyChannelPool {
             connectOrReuse(context.getKey(), pendingOp);
         } else {
             context.setOperation(pendingOp);
-            pendingOp.toggleOption(OperationOption.SOCKET_ACTIVE, true);
             pendingOp.complete();
         }
     }
