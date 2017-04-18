@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -47,7 +48,6 @@ import java.util.stream.Stream;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
@@ -2082,8 +2082,6 @@ public class LuceneDocumentIndexService extends StatelessService {
                     if (json == null) {
                         continue;
                     }
-                } else {
-                    json = Utils.toJson(state);
                 }
             }
 
@@ -2107,26 +2105,45 @@ public class LuceneDocumentIndexService extends StatelessService {
                     state.copyTo(stateClone);
                     rsp.documents.put(link, stateClone);
                 } else {
-                    JsonObject jo = Utils.fromJson(json, JsonObject.class);
-                    rsp.documents.put(link, jo);
+                    if (state == null) {
+                        rsp.documents.put(link, Utils.fromJson(json, JsonElement.class));
+                    } else {
+                        JsonObject jo = (JsonObject) Utils.toJsonObject(state);
+                        rsp.documents.put(link, jo);
+                    }
                 }
             } else if (options.contains(QueryOption.EXPAND_SELECTED_FIELDS) && !rsp.documents.containsKey(link)) {
                 // filter out only the selected fields
-                Set<String> selectFields = new HashSet<>();
+                Set<String> selectFields = new TreeSet<>();
                 if (qs != null) {
-                    qs.selectTerms.forEach((qt) -> {
-                        selectFields.add(qt.propertyName);
-                    });
+                    qs.selectTerms.forEach(qt -> selectFields.add(qt.propertyName));
                 }
 
-                JsonObject jo = Utils.fromJson(json, JsonObject.class);
-                Iterator<Entry<String,JsonElement>> it = jo.entrySet().iterator();
+                // create an uninitialized copy
+                ServiceDocument copy = state.getClass().newInstance();
+                for (String selectField : selectFields) {
+                    // transfer only needed fields
+                    try {
+                        Field field = ReflectionUtils.getField(state.getClass(), selectField);
+                        Object value = field.get(state);
+                        if (value != null) {
+                            field.set(copy, value);
+                        }
+                    } catch (ReflectiveOperationException ignore) {
+                        //probably bad field in query
+                    }
+                }
+
+                JsonObject jo = (JsonObject) Utils.toJsonObject(copy);
+                Iterator<Entry<String, JsonElement>> it = jo.entrySet().iterator();
                 while (it.hasNext()) {
-                    Entry<String,JsonElement> entry = it.next();
+                    Entry<String, JsonElement> entry = it.next();
                     if (!selectFields.contains(entry.getKey())) {
+                        // this is called only for primitive-typed fields, the rest are nullified already
                         it.remove();
                     }
                 }
+
                 rsp.documents.put(link, jo);
             }
 

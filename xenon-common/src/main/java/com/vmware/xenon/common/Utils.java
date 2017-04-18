@@ -1158,6 +1158,10 @@ public final class Utils {
         return false;
     }
 
+    public static JsonElement toJsonObject(Object obj) {
+        return getJsonMapperFor(JsonObject.class).toJsonElement(obj);
+    }
+
     /**
      * Contains flags describing the result of a state merging operation through the
      * {@link Utils#mergeWithStateAdvanced} method.
