@@ -46,6 +46,7 @@ import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.http.netty.NettyChannelContext.Protocol;
 
 /**
  * Asynchronous connection management pool
@@ -419,21 +420,21 @@ public class NettyChannelPool {
         NettyChannelContext badContext = null;
         int limit = this.getConnectionLimitPerTag(group.getKey().connectionTag);
         synchronized (group) {
-            if (!group.inUseChannels.isEmpty()) {
-                // Increase locality: we want to re-use a HTTP2 context, for the same target link
-                int index = Math.abs(link.hashCode() % group.inUseChannels.size());
-                NettyChannelContext ctx = group.inUseChannels.get(index);
-                if (ctx.hasRemainingStreamIds()) {
-                    context = ctx;
-                } else {
-                    LOGGER.info(ctx.getLargestStreamId() + ":" + group.getKey());
+            int activeChannelCount = group.inUseChannels.size();
+            if (activeChannelCount >= limit) {
+                context = selectInUseHttp2ContextUnsafe(group, activeChannelCount, link);
+                if (context != null) {
+                    // It's possible that we've selected a channel we think is open, but it's not.
+                    // If so, it's a bad context, so recreate it.
+                    Channel channel = context.getChannel();
+                    if (channel != null && !channel.isOpen()) {
+                        badContext = context;
+                        context = null;
+                    }
                 }
-            }
 
-            if (context != null) {
-                if (context.isOpenInProgress() || !group.pendingRequests.isEmpty()) {
-                    // If the channel is being opened, indicate that caller should
-                    // queue the operation to be delivered later.
+                if (context != null && context.isOpenInProgress()) {
+                    // If the channel is still being opened, queue the operation to be sent later.
                     if (request != null) {
                         queuePendingRequest(request, group);
                     }
@@ -441,39 +442,41 @@ public class NettyChannelPool {
                 }
             }
 
-            int activeChannelCount = group.inUseChannels.size();
-            if (context != null && context.hasActiveStreams()
-                    && activeChannelCount < limit) {
-                // create a new channel, we are below limit for concurrent connections
-                context = null;
-            } else if (context == null) {
-                // This is rare: do a search until we find a valid channel, the modulo scheme did
-                // not produce a valid context
-                for (NettyChannelContext ctx : group.inUseChannels) {
-                    if (ctx.hasRemainingStreamIds()) {
-                        context = ctx;
-                        break;
-                    }
-                }
-            }
-
-            if (context != null && context.getChannel() != null
-                    && !context.getChannel().isOpen()) {
-                badContext = context;
-                context = null;
-            }
-
             if (context == null) {
-                // If there was no channel, open one
-                context = new NettyChannelContext(group.getKey(),
-                        NettyChannelContext.Protocol.HTTP2);
-                context.setOpenInProgress(true);
+                context = new NettyChannelContext(group.getKey(), Protocol.HTTP2);
                 group.inUseChannels.add(context);
             }
         }
 
         closeBadChannelContext(badContext);
         context.updateLastUseTime();
+        return context;
+    }
+
+    private NettyChannelContext selectInUseHttp2ContextUnsafe(NettyChannelGroup group,
+            int activeChannelCount, String link) {
+        NettyChannelContext context = null;
+
+        // Attempt to re-use the same HTTP/2 context for a given target link.
+        int index = Math.abs(link.hashCode() % activeChannelCount);
+        NettyChannelContext selectedCtx = group.inUseChannels.get(index);
+        if (selectedCtx.hasRemainingStreamIds()) {
+            context = selectedCtx;
+        } else {
+            LOGGER.info(selectedCtx.getLargestStreamId() + ":" + group.getKey());
+        }
+
+        if (context == null) {
+            // This is uncommon: the modulo scheme above did not produce a valid context.
+            // Iterate through the in-use channel list until we find a valid context.
+            for (NettyChannelContext ctx : group.inUseChannels) {
+                if (ctx.hasRemainingStreamIds()) {
+                    context = ctx;
+                    break;
+                }
+            }
+        }
+
         return context;
     }
 
@@ -507,18 +510,14 @@ public class NettyChannelPool {
                     queuePendingRequest(request, group);
                     return null;
                 }
-                context = new NettyChannelContext(group.getKey(),
-                        NettyChannelContext.Protocol.HTTP11);
-                context.setOpenInProgress(true);
+                context = new NettyChannelContext(group.getKey(), Protocol.HTTP11);
             }
 
             // It's possible that we've selected a channel that we think is open, but
             // it's not. If so, it's a bad context, so recreate it.
             if (context.getChannel() != null && !context.getChannel().isOpen()) {
                 badContext = context;
-                context = new NettyChannelContext(group.getKey(),
-                        NettyChannelContext.Protocol.HTTP11);
-                context.setOpenInProgress(true);
+                context = new NettyChannelContext(group.getKey(), Protocol.HTTP11);
             }
             group.inUseChannels.add(context);
         }
