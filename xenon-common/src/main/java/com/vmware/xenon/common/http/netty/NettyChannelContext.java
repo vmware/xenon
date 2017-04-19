@@ -17,7 +17,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 
 import io.netty.buffer.PooledByteBufAllocator;
@@ -105,7 +104,7 @@ public class NettyChannelContext extends SocketContext {
 
     // We need to know if an HTTP/2 connection is being opened so that we can queue
     // pending operations instead of adding a new HTTP/2 connection
-    private AtomicBoolean openInProgress = new AtomicBoolean(false);
+    private boolean openInProgress = true;
 
     // We track the largest stream ID seen, so we know when the connection is exhausted
     private int largestStreamId = 0;
@@ -211,11 +210,11 @@ public class NettyChannelContext extends SocketContext {
     }
 
     public boolean isOpenInProgress() {
-        return this.openInProgress.get();
+        return this.openInProgress;
     }
 
     public void setOpenInProgress(boolean inProgress) {
-        this.openInProgress.set(inProgress);
+        this.openInProgress = inProgress;
     }
 
     public Protocol getProtocol() {
@@ -257,7 +256,6 @@ public class NettyChannelContext extends SocketContext {
     @Override
     public void close() {
         Channel c = this.channel;
-        this.openInProgress.set(false);
         if (c == null) {
             return;
         }

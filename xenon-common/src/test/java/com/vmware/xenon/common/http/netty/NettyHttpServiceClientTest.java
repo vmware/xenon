@@ -56,7 +56,6 @@ import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceClient.ConnectionPoolMetrics;
 import com.vmware.xenon.common.ServiceDocument;
-import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.StatelessService;
@@ -65,7 +64,6 @@ import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
-import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
@@ -287,7 +285,7 @@ public class NettyHttpServiceClientTest {
         validateTagInfo(this.host, tag);
     }
 
-    private static void validateTagInfo(VerificationHost host, String tag) {
+    static void validateTagInfo(VerificationHost host, String tag) {
         validateTagInfo(host, host.getClient(), tag, null);
     }
 
@@ -634,7 +632,7 @@ public class NettyHttpServiceClientTest {
                     }
                     this.host.failIteration(
                             new IllegalStateException("Operation was expected to fail because " +
-                            "op.getContentLength() is more than allowed"));
+                                    "op.getContentLength() is more than allowed"));
                 });
         this.host.send(put);
         this.host.testWait();
@@ -1329,51 +1327,5 @@ public class NettyHttpServiceClientTest {
 
         assertEquals(Operation.STATUS_CODE_CONFLICT, resp.op.getStatusCode());
         assertEquals("<error>hello</error>", resp.op.getBodyRaw());
-    }
-
-    public static void verifyPerHostPendingRequestLimit(
-            VerificationHost host,
-            List<Service> services,
-            String tag,
-            long requestCount,
-            boolean connectionSharing) {
-        int pendingLimit = host.getClient().getPendingRequestQueueLimit();
-        try {
-            host.getClient().setPendingRequestQueueLimit(1);
-            // verify pending request limit enforcement
-            TestContext ctx = host.testCreate(services.size() * requestCount);
-            ctx.setTestName("Request limit validation").logBefore();
-            AtomicInteger limitFailures = new AtomicInteger();
-            for (Service s : services) {
-                for (int i = 0; i < requestCount; i++) {
-                    Operation put = Operation.createPut(s.getUri())
-                            .forceRemote()
-                            .setBodyNoCloning(host.buildMinimalTestState())
-                            .setConnectionSharing(connectionSharing)
-                            .setCompletion((o, e) -> {
-                                if (e == null) {
-                                    ctx.complete();
-                                    return;
-                                }
-                                ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
-                                if (ServiceErrorResponse.ERROR_CODE_CLIENT_QUEUE_LIMIT_EXCEEDED == rsp
-                                        .getErrorCode()) {
-                                    limitFailures.incrementAndGet();
-                                }
-                                ctx.complete();
-                            });
-                    host.send(put);
-                }
-            }
-            ctx.await();
-            ctx.logAfter();
-            host.log("Queue limit failures: %d", limitFailures.get());
-            assertTrue(limitFailures.get() > 0);
-            if (!connectionSharing) {
-                validateTagInfo(host, tag);
-            }
-        } finally {
-            host.getClient().setPendingRequestQueueLimit(pendingLimit);
-        }
     }
 }

@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.After;
 import org.junit.Before;
@@ -33,6 +34,7 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceClient.ConnectionPoolMetrics;
+import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.TestResults;
 import com.vmware.xenon.common.UriUtils;
@@ -470,26 +472,30 @@ public class NettyHttp2Test {
         for (int i = 0; i < this.iterationCount; i++) {
             this.tearDown();
             setUpHost(false);
+
             List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
                     MinimalTestService.class,
                     this.host.buildMinimalTestState(),
                     null, null);
-            String tag = ServiceClient.CONNECTION_TAG_DEFAULT;
 
+            // we need a fresh connection pool, with no connections already created
+            // HTTP 1.1 test (connectionSharing == false)
+            String tag = ServiceClient.CONNECTION_TAG_DEFAULT;
             int http11Count = Math.max(services.size() * this.requestCount,
                     services.size() * this.host.getClient().getConnectionLimitPerTag(tag) * 4);
-            // we need a fresh connection pool, with no connections already created
-            // HTTP1.1 test
-            NettyHttpServiceClientTest.verifyPerHostPendingRequestLimit(this.host, services,
+            verifyPerHostPendingRequestLimit(this.host, services,
                     tag,
                     http11Count / services.size(),
                     false);
 
-            tag = ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT;
             // HTTP/2 test (connectionSharing == true)
-            NettyHttpServiceClientTest.verifyPerHostPendingRequestLimit(this.host, services,
+            // Limit the per-tag connection limit to 1 to reduce the likelihood that a connection
+            // will be fully established before subsequent operations are submitted.
+            tag = ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT;
+            this.host.getClient().setConnectionLimitPerTag(tag, 1);
+            verifyPerHostPendingRequestLimit(this.host, services,
                     tag,
-                    this.host.getClient().getConnectionLimitPerTag(tag) * this.requestCount,
+                    this.requestCount,
                     true);
             this.host.getClient().stop();
         }
@@ -517,9 +523,6 @@ public class NettyHttp2Test {
         // use global limit, which applies by default to all tags
         int limit = this.host.getClient()
                 .getConnectionLimitPerTag(ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT);
-
-        NettyHttpServiceClientTest.verifyPerHostPendingRequestLimit(this.host, services,
-                ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT, limit, true);
 
         this.host.connectionTag = null;
         this.host.log("Using default http2 connection limit %d", limit);
@@ -581,5 +584,51 @@ public class NettyHttp2Test {
             sb.append(UUID.randomUUID().toString());
         }
         return sb.toString();
+    }
+
+    private static void verifyPerHostPendingRequestLimit(
+            VerificationHost host,
+            List<Service> services,
+            String tag,
+            long requestCount,
+            boolean connectionSharing) {
+        int pendingLimit = host.getClient().getPendingRequestQueueLimit();
+        try {
+            host.getClient().setPendingRequestQueueLimit(1);
+            // verify pending request limit enforcement
+            TestContext ctx = host.testCreate(services.size() * requestCount);
+            ctx.setTestName("Request limit validation").logBefore();
+            AtomicInteger limitFailures = new AtomicInteger();
+            for (Service s : services) {
+                for (int i = 0; i < requestCount; i++) {
+                    Operation put = Operation.createPut(s.getUri())
+                            .forceRemote()
+                            .setBodyNoCloning(host.buildMinimalTestState())
+                            .setConnectionSharing(connectionSharing)
+                            .setCompletion((o, e) -> {
+                                if (e == null) {
+                                    ctx.complete();
+                                    return;
+                                }
+                                ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
+                                if (ServiceErrorResponse.ERROR_CODE_CLIENT_QUEUE_LIMIT_EXCEEDED == rsp
+                                        .getErrorCode()) {
+                                    limitFailures.incrementAndGet();
+                                }
+                                ctx.complete();
+                            });
+                    host.send(put);
+                }
+            }
+            ctx.await();
+            ctx.logAfter();
+            host.log("Queue limit failures: %d", limitFailures.get());
+            assertTrue(limitFailures.get() > 0);
+            if (!connectionSharing) {
+                NettyHttpServiceClientTest.validateTagInfo(host, tag);
+            }
+        } finally {
+            host.getClient().setPendingRequestQueueLimit(pendingLimit);
+        }
     }
 }
