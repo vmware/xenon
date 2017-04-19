@@ -16,6 +16,7 @@ package com.vmware.xenon.common;
 import static java.util.stream.Collectors.toList;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
@@ -295,6 +296,85 @@ public class TestSynchronizationTaskService extends BasicTestCase {
 
         assertTrue(result.taskInfo.stage == TaskState.TaskStage.FINISHED);
         assertTrue(result.synchCompletionCount == this.serviceCount);
+    }
+
+    @Test
+    public void synchAfterOwnerRestart() throws Throwable {
+        setUpMultiNode();
+        synchAfterOwnerRestartDo(ExampleService.FACTORY_LINK);
+        synchAfterOwnerRestartDo(InMemoryExampleService.FACTORY_LINK);
+    }
+
+    public void synchAfterOwnerRestartDo(String factoryLink) throws Throwable {
+        TestRequestSender sender = new TestRequestSender(this.host);
+        this.host.setNodeGroupQuorum(this.nodeCount - 1);
+        this.host.waitForNodeGroupConvergence();
+
+        List<URI> exampleServices = this.host.createExampleServices(
+                this.host.getPeerHost(), this.serviceCount, null, false, factoryLink);
+
+        final ExampleService.ExampleServiceState state = sender.sendAndWait(Operation.createGet(exampleServices.get(0)),
+                ExampleService.ExampleServiceState.class);
+
+        // Find out which is the the owner node and restart it
+        VerificationHost owner = this.host.getInProcessHostMap().values().stream()
+                .filter(host -> host.getId().contentEquals(state.documentOwner)).findFirst()
+                .orElseThrow(() -> new RuntimeException("couldn't find owner node"));
+
+        // Make sure initial synchronization was completed.
+        this.host.waitForReplicatedFactoryServiceAvailable(
+                (UriUtils.buildUri(owner, factoryLink)));
+
+        restartHost(owner);
+
+        long membershipUpdateTimeMicros = getLatestMembershipUpdateTime(this.host.getPeerHostUri());
+
+        // Start synchronization on all nodes and verify that one node successfully synced all test services.
+        SynchronizationTaskService.State task = createSynchronizationTaskState(membershipUpdateTimeMicros, factoryLink);
+        List<Operation> ops = this.host.getInProcessHostMap().keySet().stream()
+                .map(uri -> Operation
+                        .createPost(UriUtils.buildUri(uri, SynchronizationTaskService.FACTORY_LINK))
+                        .setBody(task)
+                        .setReferer(this.host.getUri())
+                ).collect(toList());
+
+        List<SynchronizationTaskService.State> results = sender
+                .sendAndWait(ops, SynchronizationTaskService.State.class);
+
+        int finishedCount = 0;
+        for (SynchronizationTaskService.State r : results) {
+            assertTrue(r.taskInfo.stage == TaskState.TaskStage.FINISHED ||
+                    r.taskInfo.stage == TaskState.TaskStage.CANCELLED);
+            if (r.taskInfo.stage == TaskState.TaskStage.FINISHED) {
+                finishedCount++;
+                assertEquals(this.serviceCount, r.synchCompletionCount);
+
+            }
+        }
+        assertTrue(finishedCount == 1);
+
+        // Verify that state was synced with restarted node.
+        Operation op = Operation.createGet(owner, state.documentSelfLink);
+        ExampleService.ExampleServiceState newState = sender.sendAndWait(op, ExampleService.ExampleServiceState.class);
+        assertNotNull(newState);
+    }
+
+    private VerificationHost restartHost(VerificationHost hostToRestart) throws Throwable {
+        this.host.stopHostAndPreserveState(hostToRestart);
+        this.host.waitForNodeGroupConvergence(this.nodeCount - 1, this.nodeCount - 1);
+
+        hostToRestart.setPort(0);
+        VerificationHost.restartStatefulHost(hostToRestart, false);
+
+        // Start in-memory index service, and in-memory example factory.
+        hostToRestart.addPrivilegedService(InMemoryLuceneDocumentIndexService.class);
+        hostToRestart.startFactory(InMemoryExampleService.class, InMemoryExampleService::createFactory);
+        hostToRestart.startServiceAndWait(InMemoryLuceneDocumentIndexService.class,
+                InMemoryLuceneDocumentIndexService.SELF_LINK);
+
+        this.host.addPeerNode(hostToRestart);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+        return hostToRestart;
     }
 
     @Test
