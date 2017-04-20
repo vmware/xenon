@@ -3140,7 +3140,15 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        // set current context from the operation so all acive query task notifications carry the
+        if (op.getAction() == Action.DELETE) {
+            // This code path is reached for document expiration, but the last update action for
+            // expired documents is usually a PATCH or PUT. Dummy up a document body with a last
+            // update action of DELETE for the purpose of providing notifications.
+            latestState = Utils.clone(latestState);
+            latestState.documentUpdateAction = Action.DELETE.name();
+        }
+
+        // set current context from the operation so all active query task notifications carry the
         // same context as the operation that updated the index
         OperationContext.setFrom(op);
 
