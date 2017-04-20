@@ -25,6 +25,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -75,6 +76,8 @@ class SynchRetryExampleService extends StatefulService {
 }
 
 public class TestSynchronizationTaskService extends BasicTestCase {
+
+    public static final String STAT_NAME_PATCH_REQUEST_COUNT = "PATCHrequestCount";
 
     public int updateCount = 10;
     public int serviceCount = 10;
@@ -375,6 +378,33 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         this.host.addPeerNode(hostToRestart);
         this.host.joinNodesAndVerifyConvergence(this.nodeCount);
         return hostToRestart;
+    }
+
+    @Test
+    public void synchTaskStopsSelfPatchingOnFactoryDelete() throws Throwable {
+        String factoryLink = ExampleService.FACTORY_LINK;
+        this.host.createExampleServices(this.host, this.serviceCount, null, false, factoryLink);
+        SynchronizationTaskService.State task = createSynchronizationTaskState(Long.MAX_VALUE, factoryLink);
+
+        Operation op = Operation
+                .createPost(UriUtils.buildUri(this.host, SynchronizationTaskService.FACTORY_LINK))
+                .setBody(task);
+
+        TestRequestSender sender = new TestRequestSender(this.host);
+        sender.sendRequest(Operation.createDelete(UriUtils.buildUri(this.host, factoryLink)));
+        SynchronizationTaskService.State result = sender.sendAndWait(op, SynchronizationTaskService.State.class);
+
+        // Verify that patch count stops incrementing after a while
+        AtomicInteger previousValue = new AtomicInteger();
+        this.host.waitFor("Expected synch task to stop patching itself", () -> {
+            // Get the latest patch count
+            URI statsURI = UriUtils.buildStatsUri(this.host, result.documentSelfLink);
+            ServiceStats stats = this.host.getServiceState(null, ServiceStats.class, statsURI);
+            ServiceStats.ServiceStat synchRetryCount = stats.entries
+                    .get(STAT_NAME_PATCH_REQUEST_COUNT);
+
+            return previousValue.getAndSet((int)synchRetryCount.latestValue) == synchRetryCount.latestValue;
+        });
     }
 
     @Test
