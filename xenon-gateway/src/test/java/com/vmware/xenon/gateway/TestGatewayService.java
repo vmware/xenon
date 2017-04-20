@@ -27,6 +27,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
@@ -242,6 +243,7 @@ public class TestGatewayService {
      * GatewayService, when the gateway service is expected
      * to fail incoming requests.
      */
+    @Ignore("https://www.pivotaltracker.com/story/show/143064197")
     @Test
     public void testGatewayErrors() throws Throwable {
         // Gateway is currently UNAVAILABLE. All http requests
