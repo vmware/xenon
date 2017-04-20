@@ -7,6 +7,10 @@
   obvious/shorter/standard ways to achieve the same. Methods `Utils.getOsName` and
   `Utils.determineOsFamily` are moved to `SystemHostInfo`.
 
+* Upgrade Lucene to [6.5.0](http://lucene.apache.org/core/6_5_0/changes/Changes.html)
+
+* Upgrade Gson to [2.8.0](https://github.com/google/gson/blob/master/CHANGELOG.md#version-28)
+
 ## 1.4.2
 
 * Add ability to expand only selected fields in queries
