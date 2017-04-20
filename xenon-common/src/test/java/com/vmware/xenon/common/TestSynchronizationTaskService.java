@@ -20,10 +20,12 @@ import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -33,6 +35,7 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import com.vmware.xenon.common.test.ExceptionTestUtils;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
@@ -74,6 +77,8 @@ class SynchRetryExampleService extends StatefulService {
 }
 
 public class TestSynchronizationTaskService extends BasicTestCase {
+
+    public static final String STAT_NAME_PATCH_REQUEST_COUNT = "PATCHrequestCount";
 
     public int updateCount = 10;
     public int serviceCount = 10;
@@ -295,6 +300,49 @@ public class TestSynchronizationTaskService extends BasicTestCase {
 
         assertTrue(result.taskInfo.stage == TaskState.TaskStage.FINISHED);
         assertTrue(result.synchCompletionCount == this.serviceCount);
+    }
+
+    @Test
+    public void synchTaskStopsSelfPatchingOnFactoryDelete() throws Throwable {
+        String factoryLink = ExampleService.FACTORY_LINK;
+        this.host.createExampleServices(this.host, this.serviceCount, null, false, factoryLink);
+        SynchronizationTaskService.State task = createSynchronizationTaskState(Long.MAX_VALUE, factoryLink);
+
+        Operation op = Operation
+                .createPost(UriUtils.buildUri(this.host, SynchronizationTaskService.FACTORY_LINK))
+                .setBody(task);
+
+        TestRequestSender sender = new TestRequestSender(this.host);
+        sender.sendRequest(Operation.createDelete(UriUtils.buildUri(this.host, factoryLink)));
+        SynchronizationTaskService.State result = sender.sendAndWait(op, SynchronizationTaskService.State.class);
+
+        // Verify that patch count stops incrementing after a while
+        waitForServiceToStopProcessingPatches(result.documentSelfLink);
+    }
+
+    private void waitForServiceToStopProcessingPatches(String link)
+            throws InterruptedException, TimeoutException {
+        ExceptionTestUtils.executeSafely(() -> {
+            Date exp = this.host.getTestExpiration();
+            double previousCount = 0;
+            while (new Date().before(exp)) {
+                // sleep for a tenth of the maintenance interval
+                Thread.sleep(TimeUnit.MICROSECONDS.toMillis(this.host.getMaintenanceIntervalMicros()) / 10);
+
+                // Get the latest patch count
+                URI statsURI = UriUtils.buildStatsUri(this.host, link);
+                ServiceStats stats = this.host.getServiceState(null, ServiceStats.class, statsURI);
+                ServiceStats.ServiceStat synchRetryCount = stats.entries
+                        .get(STAT_NAME_PATCH_REQUEST_COUNT);
+
+                boolean same = previousCount == synchRetryCount.latestValue;
+                previousCount = synchRetryCount.latestValue;
+                if (same) {
+                    return;
+                }
+            }
+            throw new TimeoutException("Expected synch task to stop patching itself");
+        });
     }
 
     @Test

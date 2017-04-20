@@ -359,6 +359,25 @@ public class SynchronizationTaskService
     }
 
     /**
+     * Validate that the PATCH we got requests reasonable changes to our state.
+     */
+    @Override
+    protected boolean validateTransition(
+            Operation patch, SynchronizationTaskService.State currentTask, SynchronizationTaskService.State patchBody) {
+        boolean validTransition = super.validateTransition(patch, currentTask, patchBody);
+        if (!validTransition) {
+            return false;
+        }
+
+        if (!TaskState.isInProgress(currentTask.taskInfo) && !TaskState.isInProgress(patchBody.taskInfo)) {
+            patch.fail(new IllegalArgumentException("Task stage cannot transitioned to same stopped state"));
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * Synchronization-Task self-patches as it progress through the
      * state-machine. handlePatch checks for state transitions and
      * invokes the correct behavior given the task's next stage.
