@@ -361,6 +361,12 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         State finalServiceState = waitForServiceCompletion(state.documentSelfLink, getDestinationHost());
         assertEquals(TaskStage.FINISHED, finalServiceState.taskInfo.stage);
 
+        // estimated count is calculated asynchronously, wait for it is calculated
+        host.waitFor("waiting for total service count to be calculated", () -> {
+            ServiceStats stats = this.sender.sendStatsGetAndWait(UriUtils.buildUri(getDestinationHost(), state.documentSelfLink));
+            return stats.entries.containsKey(MigrationTaskService.STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT);
+        });
+
         // check stats
         ServiceStats stats = getStats(state.documentSelfLink, getDestinationHost());
         long processedDocuments = (long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue;
@@ -949,13 +955,23 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
         Set<TaskStage> finalStages = new HashSet<>(Arrays.asList(TaskStage.FAILED, TaskStage.FINISHED));
         State finalServiceState = waitForServiceCompletion(state.documentSelfLink, getDestinationHost(), finalStages);
-        ServiceStats stats = getStats(state.documentSelfLink, getDestinationHost());
-
         assertEquals(TaskStage.FINISHED, finalServiceState.taskInfo.stage);
-        Long processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
-        Long estimatedTotalServiceCount = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT).latestValue);
-        assertTrue(Long.valueOf(this.serviceCount) + " <= " + processedDocuments, Long.valueOf(this.serviceCount) <= processedDocuments);
-        assertTrue(Long.valueOf(this.serviceCount) + " <= " + estimatedTotalServiceCount, Long.valueOf(this.serviceCount) <= estimatedTotalServiceCount);
+
+        // estimated count is calculated asynchronously, wait for it is calculated
+        host.waitFor("waiting for total service count to be calculated", () -> {
+            ServiceStats stats = this.sender.sendStatsGetAndWait(UriUtils.buildUri(getDestinationHost(), state.documentSelfLink));
+            return stats.entries.containsKey(MigrationTaskService.STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT);
+        });
+
+        // check stats
+        ServiceStats stats = getStats(state.documentSelfLink, getDestinationHost());
+        long processedDocuments = (long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue;
+        long estimatedTotalServiceCount = (long) stats.entries.get(MigrationTaskService.STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT).latestValue;
+
+        boolean processed = this.serviceCount <= processedDocuments;
+        boolean estimated = this.serviceCount <= estimatedTotalServiceCount;
+        assertTrue(String.format("%d <= %d", this.serviceCount, processedDocuments), processed);
+        assertTrue(String.format("%d <= %d", this.serviceCount, estimatedTotalServiceCount), estimated);
         assertEquals(Long.valueOf(time), finalServiceState.latestSourceUpdateTimeMicros);
 
         // check if object is in new host
@@ -1322,8 +1338,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     }
 
     private ServiceStats getStats(String documentLink, VerificationHost host) {
-        Operation op = Operation.createGet(UriUtils.buildStatsUri(host, documentLink));
-        return this.sender.sendAndWait(op, ServiceStats.class);
+        return this.sender.sendStatsGetAndWait(UriUtils.buildUri(host, documentLink));
     }
 
     private void checkReusableHostAndCleanup(VerificationHost host) throws Throwable {
