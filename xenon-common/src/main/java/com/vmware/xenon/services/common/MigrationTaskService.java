@@ -45,6 +45,7 @@ import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
+import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceMaintenanceRequest;
 import com.vmware.xenon.common.ServiceMaintenanceRequest.MaintenanceReason;
@@ -229,6 +230,12 @@ public class MigrationTaskService extends StatefulService {
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public EnumSet<MigrationOption> migrationOptions;
 
+        /**
+         * (Optional) Flag enabling calculation of estimated number of documents to migrate (default: false).
+         */
+        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
+        public Boolean calculateEstimate;
+
         // The following attributes are the outputs of the task.
         /**
          * Timestamp of the newest document migrated. This will only be accurate once the migration
@@ -345,6 +352,9 @@ public class MigrationTaskService extends StatefulService {
         }
         if (initState.continuousMigration) {
             initState.migrationOptions.add(MigrationOption.CONTINUOUS);
+        }
+        if (initState.calculateEstimate == null) {
+            initState.calculateEstimate = Boolean.FALSE;
         }
         return initState;
     }
@@ -562,9 +572,8 @@ public class MigrationTaskService extends StatefulService {
         long documentExpirationTimeMicros = currentState.documentExpirationTimeMicros;
 
         // 1) request config GET on source factory, and checks whether target docs are immutable or not
-        // 2) compose count query
-        // 3) perform count query and set as estimated total count to migrate
-        // 4) start migration
+        // 2) when "calculateEstimate==true", perform count query and set as estimated total count to migrate
+        // 3) start migration
 
         URI sourceHostUri = selectRandomUri(sourceURIs);
         URI factoryUri = UriUtils.buildUri(sourceHostUri, currentState.destinationFactoryLink);
@@ -590,17 +599,35 @@ public class MigrationTaskService extends StatefulService {
                         countQuery.querySpec.options.add(QueryOption.INCLUDE_ALL_VERSIONS);
                     }
 
-                    countQuery.documentExpirationTimeMicros = documentExpirationTimeMicros;
-                    Operation countOp = Operation.createPost(UriUtils.buildUri(sourceHostUri, ServiceUriPaths.CORE_QUERY_TASKS))
-                            .setBody(countQuery);
-                    return this.sendWithDeferredResult(countOp);
+
+                    if (currentState.calculateEstimate) {
+                        countQuery.documentExpirationTimeMicros = documentExpirationTimeMicros;
+                        Operation countOp = Operation.createPost(UriUtils.buildUri(sourceHostUri, ServiceUriPaths.CORE_QUERY_TASKS))
+                                .setBody(countQuery);
+                        return this.sendWithDeferredResult(countOp);
+                    } else {
+                        // populate necessary fields in next step
+                        countQuery.results = new ServiceDocumentQueryResult();
+                        countQuery.results.documentCount = -1L;
+                        countQuery.results.queryTimeMicros = -1L;
+
+                        Operation dummyOp = Operation.createGet(null).setBody(countQuery);
+                        return DeferredResult.completed(dummyOp);
+                    }
                 })
                 .thenAccept(countOp -> {
                     QueryTask countQueryTask = countOp.getBody(QueryTask.class);
                     Long estimatedTotalServiceCount = countQueryTask.results.documentCount;
+                    long queryTimeMicros = countQueryTask.results.queryTimeMicros;
 
                     // query time for count query
-                    setStat(STAT_NAME_COUNT_QUERY_TIME_DURATION_MICRO, countQueryTask.results.queryTimeMicros);
+                    logInfo("[factory=%s] Estimated total service count =%,d calculation took %,d microsec ",
+                            currentState.sourceFactoryLink, estimatedTotalServiceCount, queryTimeMicros);
+                    setStat(STAT_NAME_COUNT_QUERY_TIME_DURATION_MICRO, queryTimeMicros);
+
+                    // estimated count
+                    adjustStat(STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT, estimatedTotalServiceCount);
+
 
                     QueryTask queryTask = QueryTask.create(currentState.querySpec).setDirect(true);
 
@@ -631,7 +658,6 @@ public class MigrationTaskService extends StatefulService {
                                         .map(this::getNextPageLinkUri)
                                         .collect(Collectors.toSet());
 
-                                adjustStat(STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT, estimatedTotalServiceCount);
 
                                 // if there are no next page links we are done early with migration
                                 if (currentPageLinks.isEmpty()) {
@@ -1091,6 +1117,8 @@ public class MigrationTaskService extends StatefulService {
                             return;
                         }
                     } else {
+                        logInfo("[source=%s][dest=%s] MigrationTask created %,d entries in destination.",
+                                state.sourceFactoryLink, state.destinationFactoryLink, posts.size());
                         adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
                         migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
                     }
