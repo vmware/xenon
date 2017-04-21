@@ -371,7 +371,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         long expectedFetchedCount = this.nodeCount * this.serviceCount;
         long expectedOwnerMismatchCount = expectedFetchedCount - this.serviceCount;
         assertEquals("processed docs count", this.serviceCount, processedDocuments);
-        assertEquals("estimated total count", this.serviceCount, estimatedTotalServiceCount);
+        assertEquals("estimated total count is default disabled and expect -1", -1, estimatedTotalServiceCount);
         assertEquals("fetched docs count", expectedFetchedCount, fetchedCount);
         assertEquals("owner mismatch count", expectedOwnerMismatchCount, ownerMismatchCount);
         assertEquals("latest source update time", expectedLastSourceUpdateTime, finalServiceState.latestSourceUpdateTimeMicros);
@@ -479,29 +479,15 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
     @Test
     public void successNoDocuments() throws Throwable {
-        // start migration
-        MigrationTaskService.State migrationState = validMigrationState(
-                ExampleService.FACTORY_LINK);
+        // start migration with no data populated
+        MigrationTaskService.State migrationState = validMigrationState(ExampleService.FACTORY_LINK);
+        Operation post = Operation.createPost(this.destinationFactoryUri).setBody(migrationState);
+        ServiceDocument taskState = this.sender.sendAndWait(post, ServiceDocument.class);
+        State finalState = waitForServiceCompletion(taskState.documentSelfLink, getDestinationHost());
+        assertEquals(TaskStage.FINISHED, finalState.taskInfo.stage);
 
-        TestContext ctx = testCreate(1);
-        String[] out = new String[1];
-        Operation op = Operation.createPost(this.destinationFactoryUri)
-                .setBody(migrationState)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.log("Post service error: %s", Utils.toString(e));
-                        ctx.failIteration(e);
-                        return;
-                    }
-                    out[0] = o.getBody(State.class).documentSelfLink;
-                    ctx.completeIteration();
-                });
-        getDestinationHost().send(op);
-        testWait(ctx);
-
-        State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
-        ServiceStats stats = getStats(out[0], getDestinationHost());
-        assertEquals(TaskStage.FINISHED, waitForServiceCompletion.taskInfo.stage);
+        // verify stats
+        ServiceStats stats = this.sender.sendStatsGetAndWait(UriUtils.buildUri(getDestinationHost(), taskState.documentSelfLink));
         assertFalse(stats.entries.containsKey(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS));
     }
 
@@ -949,13 +935,14 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
         Set<TaskStage> finalStages = new HashSet<>(Arrays.asList(TaskStage.FAILED, TaskStage.FINISHED));
         State finalServiceState = waitForServiceCompletion(state.documentSelfLink, getDestinationHost(), finalStages);
-        ServiceStats stats = getStats(state.documentSelfLink, getDestinationHost());
-
         assertEquals(TaskStage.FINISHED, finalServiceState.taskInfo.stage);
-        Long processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
-        Long estimatedTotalServiceCount = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT).latestValue);
-        assertTrue(Long.valueOf(this.serviceCount) + " <= " + processedDocuments, Long.valueOf(this.serviceCount) <= processedDocuments);
-        assertTrue(Long.valueOf(this.serviceCount) + " <= " + estimatedTotalServiceCount, Long.valueOf(this.serviceCount) <= estimatedTotalServiceCount);
+
+        // check stats
+        ServiceStats stats = getStats(state.documentSelfLink, getDestinationHost());
+        long processedDocuments = (long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue;
+
+        boolean processed = this.serviceCount <= processedDocuments;
+        assertTrue(String.format("%d <= %d", this.serviceCount, processedDocuments), processed);
         assertEquals(Long.valueOf(time), finalServiceState.latestSourceUpdateTimeMicros);
 
         // check if object is in new host
@@ -1322,8 +1309,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     }
 
     private ServiceStats getStats(String documentLink, VerificationHost host) {
-        Operation op = Operation.createGet(UriUtils.buildStatsUri(host, documentLink));
-        return this.sender.sendAndWait(op, ServiceStats.class);
+        return this.sender.sendStatsGetAndWait(UriUtils.buildUri(host, documentLink));
     }
 
     private void checkReusableHostAndCleanup(VerificationHost host) throws Throwable {
@@ -1459,4 +1445,26 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         assertNotNull(processedDocsStats);
         assertEquals("Num of processed documents", expected, (long) processedDocsStats.latestValue);
     }
+
+    @Test
+    public void successMigrateWithCalculateEstimateOption() throws Throwable {
+
+        createExampleDocuments(this.exampleSourceFactory, getSourceHost(), this.serviceCount);
+
+        // start migration with calculateEstimate option
+        MigrationTaskService.State migrationState = validMigrationState(ExampleService.FACTORY_LINK);
+        migrationState.calculateEstimate = true;
+        Operation post = Operation.createPost(this.destinationFactoryUri).setBody(migrationState);
+
+        ServiceDocument taskState = this.sender.sendAndWait(post, ServiceDocument.class);
+        State finalState = waitForServiceCompletion(taskState.documentSelfLink, getDestinationHost());
+        assertEquals(TaskStage.FINISHED, finalState.taskInfo.stage);
+
+        // verify stats
+        ServiceStats stats = this.sender.sendStatsGetAndWait(UriUtils.buildUri(getDestinationHost(), taskState.documentSelfLink));
+        ServiceStat statValue = stats.entries.get(MigrationTaskService.STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT);
+        assertNotNull("estimatedTotalServiceCount should be populated", statValue);
+        assertEquals("estimatedTotalServiceCount", this.serviceCount, (long) statValue.latestValue);
+    }
+
 }
