@@ -362,9 +362,44 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         assertNotNull(newState);
     }
 
+    @Test
+    public void NpePostRepro() throws Throwable {
+        setUpMultiNode();
+        TestRequestSender sender = new TestRequestSender(this.host);
+        this.host.setNodeGroupQuorum(this.nodeCount - 1);
+        this.host.waitForNodeGroupConvergence();
+
+        List<URI> exampleServices = this.host.createExampleServices(
+                this.host.getPeerHost(), this.serviceCount, null, false, ExampleService.FACTORY_LINK);
+
+        final ExampleService.ExampleServiceState state = sender.sendAndWait(Operation.createGet(exampleServices.get(0)),
+                ExampleService.ExampleServiceState.class);
+
+        // Find out which is the the owner node and restart it
+        VerificationHost owner = this.host.getInProcessHostMap().values().stream()
+                .filter(host -> host.getId().contentEquals(state.documentOwner)).findFirst()
+                .orElseThrow(() -> new RuntimeException("couldn't find owner node"));
+
+        VerificationHost workingHost = this.host.getInProcessHostMap().values().stream()
+                .filter(host -> !host.getId().contentEquals(owner.getId())).findFirst()
+                .orElseThrow(() -> new RuntimeException("couldn't find other node"));
+
+        this.host.waitForReplicatedFactoryServiceAvailable(
+                (UriUtils.buildUri(owner, ExampleService.FACTORY_LINK)));
+
+        for (int i = 0; i < 1000; i++) {
+            restartHost(owner);
+            ExampleService.ExampleServiceState initState = new ExampleService.ExampleServiceState();
+            initState.counter = 123L;
+            initState.name = initState.documentSelfLink = UUID.randomUUID().toString();
+            Operation post = Operation.createPost(UriUtils.buildUri(workingHost, ExampleService.FACTORY_LINK)).setBody(initState);
+            sender.sendRequest(post);
+        }
+    }
+
     private VerificationHost restartHost(VerificationHost hostToRestart) throws Throwable {
         this.host.stopHostAndPreserveState(hostToRestart);
-        this.host.waitForNodeGroupConvergence(this.nodeCount - 1, this.nodeCount - 1);
+        // this.host.waitForNodeGroupConvergence(this.nodeCount - 1, this.nodeCount - 1);
 
         hostToRestart.setPort(0);
         VerificationHost.restartStatefulHost(hostToRestart, false);

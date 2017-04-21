@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.CompletionHandler;
@@ -356,6 +357,11 @@ public abstract class FactoryService extends StatelessService {
             String suffix = null;
             if (o.isSynchronizeOwner()) {
                 // If it's a synchronization request, let's re-use the documentSelfLink.
+                if (initialState == null) {
+                    this.log(Level.SEVERE, "initialState is null");
+                    System.exit(-1);
+                }
+
                 suffix = initialState.documentSelfLink;
 
             } else if (this.useBodyForSelfLink) {
