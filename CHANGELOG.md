@@ -11,6 +11,12 @@
 
 * Upgrade Gson to [2.8.0](https://github.com/google/gson/blob/master/CHANGELOG.md#version-28)
 
+* In MigrationTaskService, calculation of migration target docs(available in
+  "estimatedTotalServiceCount" stats) became optional and default is disabled.
+  To enable getting estimate count, "calculateEstimate" option needs to be
+  set to true when triggering a migration task.
+
+
 ## 1.4.2
 
 * Add ability to expand only selected fields in queries
