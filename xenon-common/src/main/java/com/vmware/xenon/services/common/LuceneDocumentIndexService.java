@@ -142,6 +142,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final int DEFAULT_QUERY_PAGE_RESULT_LIMIT = 10000;
 
+    public static final int DEFAULT_EXPIRED_DOCUMENT_SEARCH_THRESHOLD = 10000;
+
     private static final String DOCUMENTS_WITHOUT_RESULTS = "DocumentsWithoutResults";
 
     protected String indexDirectory;
@@ -339,11 +341,18 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private long writerCreationTimeMicros;
 
+    /**
+     * Time when memory pressure removed {@link #updatesPerLink} entries.
+     */
+    private long serviceRemovalDetectedTimeMicros;
+
     private final Map<String, DocumentUpdateInfo> updatesPerLink = new HashMap<>();
     private final Map<String, Long> liveVersionsPerLink = new HashMap<>();
     private final Map<String, Long> immutableParentLinks = new HashMap<>();
     private final Map<String, Long> documentKindUpdateInfo = new HashMap<>();
-    private long updateMapMemoryLimitMB;
+
+    // memory pressure threshold in bytes
+    long updateMapMemoryLimit;
 
     private Sort versionSort;
 
@@ -587,7 +596,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             cacheSizeMB = Math.max(1, cacheSizeMB);
             iwc.setRAMBufferSizeMB(cacheSizeMB);
             // reserve 1% of service memory budget for version cache
-            this.updateMapMemoryLimitMB = Math.max(1, totalMBs / 100);
+            long memoryLimitMB = Math.max(1, totalMBs / 100);
+            this.updateMapMemoryLimit = memoryLimitMB * 1024 * 1024;
         }
 
 
@@ -2274,11 +2284,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (s == null) {
             return 0L;
         }
-        Long time = this.searcherUpdateTimesMicros.get(s.hashCode());
-        if (time != null) {
-            return time;
-        }
-        return queryStartTimeMicros;
+        return this.searcherUpdateTimesMicros.getOrDefault(s.hashCode(), queryStartTimeMicros);
     }
 
     private long getLatestVersion(IndexSearcher s,
@@ -2746,8 +2752,15 @@ public class LuceneDocumentIndexService extends StatelessService {
             int resultLimit, long searcherUpdateTime) {
         if (selfLink != null && resultLimit == 1) {
             DocumentUpdateInfo du = this.updatesPerLink.get(selfLink);
-            if (du != null
-                    && du.updateTimeMicros >= searcherUpdateTime) {
+
+            // ODL services may be created and removed due to memory pressure while searcher was not updated.
+            // Then, retrieval of those services will fail because searcher doesn't know the creation yet.
+            // To incorporate such service removal, also check the serviceRemovalDetectedTimeMicros.
+            if (du == null && (searcherUpdateTime < this.serviceRemovalDetectedTimeMicros)) {
+                return true;
+            }
+
+            if (du != null && du.updateTimeMicros >= searcherUpdateTime) {
                 return true;
             } else {
                 String parent = UriUtils.getParentPath(selfLink);
@@ -3052,7 +3065,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     void applyMemoryLimitToDocumentUpdateInfo() {
-        long memThresholdBytes = this.updateMapMemoryLimitMB * 1024 * 1024;
+        long memThresholdBytes = this.updateMapMemoryLimit;
         final int bytesPerLinkEstimate = 64;
         int count = 0;
 
@@ -3069,7 +3082,6 @@ public class LuceneDocumentIndexService extends StatelessService {
             if (memThresholdBytes > this.updatesPerLink.size() * bytesPerLinkEstimate) {
                 return;
             }
-            count = this.updatesPerLink.size();
             Iterator<Entry<String, DocumentUpdateInfo>> li = this.updatesPerLink.entrySet()
                     .iterator();
             while (li.hasNext()) {
@@ -3087,6 +3099,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (count == 0) {
             return;
         }
+        this.serviceRemovalDetectedTimeMicros = Utils.getNowMicrosUtc();
 
         logInfo("Cleared %d document update entries", count);
     }

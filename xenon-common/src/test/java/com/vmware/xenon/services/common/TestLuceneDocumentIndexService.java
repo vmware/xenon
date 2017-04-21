@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.services.common;
 
+import static java.util.stream.Collectors.toList;
 import static javax.xml.bind.DatatypeConverter.printBase64Binary;
 
 import static org.junit.Assert.assertEquals;
@@ -86,6 +87,7 @@ import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.common.test.VerificationHost;
+import com.vmware.xenon.services.common.ExampleService.ExampleODLService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService.BackupResponse;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService.PaginatedSearcherInfo;
@@ -252,8 +254,6 @@ public class TestLuceneDocumentIndexService {
 
     private FaultInjectionLuceneDocumentIndexService indexService;
 
-    private int expiredDocumentSearchThreshold;
-
     private VerificationHost host;
 
     @Rule
@@ -322,8 +322,6 @@ public class TestLuceneDocumentIndexService {
                 createUsersAndRoles();
             }
 
-            this.expiredDocumentSearchThreshold = LuceneDocumentIndexService
-                    .getExpiredDocumentSearchThreshold();
         } catch (Throwable e) {
             throw new Exception(e);
         }
@@ -352,8 +350,8 @@ public class TestLuceneDocumentIndexService {
         this.host = null;
         LuceneDocumentIndexService.setIndexFileCountThresholdForWriterRefresh(
                 LuceneDocumentIndexService.DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH);
-        LuceneDocumentIndexService
-                .setExpiredDocumentSearchThreshold(this.expiredDocumentSearchThreshold);
+        LuceneDocumentIndexService.setExpiredDocumentSearchThreshold(
+                LuceneDocumentIndexService.DEFAULT_EXPIRED_DOCUMENT_SEARCH_THRESHOLD);
     }
 
     @Test
@@ -1801,6 +1799,49 @@ public class TestLuceneDocumentIndexService {
     }
 
     @Test
+    public void accessODLAfterRemovedByMemoryPressure() throws Throwable {
+
+        LuceneDocumentIndexService indexService = new LuceneDocumentIndexService();
+        this.host = VerificationHost.create(0);
+        this.host.setDocumentIndexingService(indexService);
+        this.host.start();
+
+        this.host.startFactory(new ExampleODLService());
+        this.host.waitForServiceAvailable(ExampleODLService.FACTORY_LINK);
+
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+        List<Operation> posts = new ArrayList<>();
+        for (int i = 0; i < 30; i++) {
+            ExampleServiceState state = new ExampleServiceState();
+            state.name = "foo-" + i;
+            state.documentSelfLink = state.name;
+
+            posts.add(Operation.createPost(this.host, ExampleODLService.FACTORY_LINK).setBody(state));
+        }
+        List<ExampleServiceState> states = sender.sendAndWait(posts, ExampleServiceState.class);
+
+        // perform deletes mimicking ODL stop
+        List<Operation> deletes = states.stream().map(state ->
+                Operation.createDelete(this.host, state.documentSelfLink)
+                        .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)
+                        .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_FORWARDING)
+        ).collect(toList());
+        sender.sendAndWait(deletes);
+
+        // memory pressure to update document update info. set limit=1 so that all entries will be updated.
+        indexService.updateMapMemoryLimit = 1;
+        indexService.applyMemoryLimitToDocumentUpdateInfo();
+
+        // verify those removed ODL should be accessible
+        List<Operation> gets = states.stream()
+                .map(state -> Operation.createGet(this.host, state.documentSelfLink))
+                .collect(toList());
+        sender.sendAndWait(gets);
+
+    }
+
+    @Test
     public void interleavedUpdatesWithQueries() throws Throwable {
         setUpHost(false);
         this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
@@ -2000,10 +2041,6 @@ public class TestLuceneDocumentIndexService {
                     ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS);
         }
 
-        // Set the document expiration limit to something low enough that document expiration will
-        // be forced to run in batches.
-        LuceneDocumentIndexService.setExpiredDocumentSearchThreshold(10);
-
         // This code path is designed to simulate POST and query throughput under heavy load,
         // processing queries which match many results.
         QueryTask queryTask = QueryTask.Builder.createDirectTask()
@@ -2013,6 +2050,11 @@ public class TestLuceneDocumentIndexService {
                 .build();
 
         setUpHost(false);
+
+        // Set the document expiration limit to something low enough that document expiration will
+        // be forced to run in batches.
+        LuceneDocumentIndexService.setExpiredDocumentSearchThreshold(10);
+
         URI factoryUri = createImmutableFactoryService(this.host);
         this.indexService.toggleOption(ServiceOption.INSTRUMENTATION, true);
         this.host.log("Starting throughout POST, expiration: %d", this.expirationSeconds);
@@ -2769,8 +2811,7 @@ public class TestLuceneDocumentIndexService {
                             + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
 
             // in batch expiration mode, wait till at least first batch completes
-            if (servicesFinal.size() >
-                    LuceneDocumentIndexService.getExpiredDocumentSearchThreshold()) {
+            if (servicesFinal.size() > LuceneDocumentIndexService.getExpiredDocumentSearchThreshold()) {
                 if (expiredDocumentForcedMaintenanceCount == null) {
                     this.host.log("Forced maintenance count was null");
                     return false;
