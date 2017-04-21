@@ -562,16 +562,15 @@ public class MigrationTaskService extends StatefulService {
         long documentExpirationTimeMicros = currentState.documentExpirationTimeMicros;
 
         // 1) request config GET on source factory, and checks whether target docs are immutable or not
-        // 2) compose count query
-        // 3) perform count query and set as estimated total count to migrate
-        // 4) start migration
+        // 2) asynchronously perform count query and set as estimated total count to migrate
+        // 3) start migration
 
         URI sourceHostUri = selectRandomUri(sourceURIs);
         URI factoryUri = UriUtils.buildUri(sourceHostUri, currentState.destinationFactoryLink);
         URI factoryConfigUri = UriUtils.buildConfigUri(factoryUri);
         Operation configGet = Operation.createGet(factoryConfigUri);
         this.sendWithDeferredResult(configGet)
-                .thenCompose(op -> {
+                .thenAccept(op -> {
                     FactoryServiceConfiguration factoryConfig = op.getBody(FactoryServiceConfiguration.class);
 
                     QueryTask countQuery = QueryTask.Builder.createDirectTask()
@@ -584,28 +583,25 @@ public class MigrationTaskService extends StatefulService {
                     // query options.
                     // When retrieval query(user specified) contains INCLUDE_ALL_VERSIONS, or target data is immutable,
                     // add INCLUDE_ALL_VERSIONS to count query
+                    boolean addIncludeAllVersions =
+                            currentState.querySpec.options.contains(QueryOption.INCLUDE_ALL_VERSIONS) ||
+                                    factoryConfig.childOptions.contains(ServiceOption.IMMUTABLE);
+
                     if (currentState.querySpec.options.contains(QueryOption.INCLUDE_ALL_VERSIONS)
                             || factoryConfig.childOptions.contains(ServiceOption.IMMUTABLE)) {
                         // Use INCLUDE_ALL_VERSIONS speeds up count query for immutable docs
                         countQuery.querySpec.options.add(QueryOption.INCLUDE_ALL_VERSIONS);
                     }
 
-                    countQuery.documentExpirationTimeMicros = documentExpirationTimeMicros;
-                    Operation countOp = Operation.createPost(UriUtils.buildUri(sourceHostUri, ServiceUriPaths.CORE_QUERY_TASKS))
-                            .setBody(countQuery);
-                    return this.sendWithDeferredResult(countOp);
-                })
-                .thenAccept(countOp -> {
-                    QueryTask countQueryTask = countOp.getBody(QueryTask.class);
-                    Long estimatedTotalServiceCount = countQueryTask.results.documentCount;
 
-                    // query time for count query
-                    setStat(STAT_NAME_COUNT_QUERY_TIME_DURATION_MICRO, countQueryTask.results.queryTimeMicros);
+                    // asynchronously calculate total service count for estimate
+                    calculateTotalServiceCount(currentState, sourceURIs, addIncludeAllVersions);
+
 
                     QueryTask queryTask = QueryTask.create(currentState.querySpec).setDirect(true);
 
                     // to speed up query for immutable docs, also include include_all_version option for retrieval
-                    if (countQueryTask.querySpec.options.contains(QueryOption.INCLUDE_ALL_VERSIONS)) {
+                    if (addIncludeAllVersions) {
                         queryTask.querySpec.options.add(QueryOption.INCLUDE_ALL_VERSIONS);
                     }
 
@@ -631,7 +627,6 @@ public class MigrationTaskService extends StatefulService {
                                         .map(this::getNextPageLinkUri)
                                         .collect(Collectors.toSet());
 
-                                adjustStat(STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT, estimatedTotalServiceCount);
 
                                 // if there are no next page links we are done early with migration
                                 if (currentPageLinks.isEmpty()) {
@@ -645,6 +640,45 @@ public class MigrationTaskService extends StatefulService {
                 .exceptionally(throwable -> {
                     failTask(throwable);
                     throw new CompletionException(throwable);
+                });
+    }
+
+    private void calculateTotalServiceCount(State currentState, List<URI> sourceURIs, boolean addIncludeAllVersions) {
+
+        URI sourceHostUri = selectRandomUri(sourceURIs);
+        String sourceFactoryLink = currentState.sourceFactoryLink;
+
+        QueryTask countQuery = QueryTask.Builder.createDirectTask()
+                .addOption(QueryOption.COUNT)
+                .setQuery(buildFieldClause(currentState))
+                .build();
+
+        countQuery.documentExpirationTimeMicros = currentState.documentExpirationTimeMicros;
+
+        if (addIncludeAllVersions) {
+            // Use INCLUDE_ALL_VERSIONS speeds up count query for immutable docs
+            countQuery.querySpec.options.add(QueryOption.INCLUDE_ALL_VERSIONS);
+        }
+
+        URI uri = UriUtils.buildUri(sourceHostUri, ServiceUriPaths.CORE_QUERY_TASKS);
+        sendWithDeferredResult(Operation.createPost(uri).setBody(countQuery))
+                .thenAccept(countOp -> {
+                    QueryTask countQueryTask = countOp.getBody(QueryTask.class);
+                    Long estimatedTotalServiceCount = countQueryTask.results.documentCount;
+
+                    // query time for count query
+                    long queryTimeMicros = countQueryTask.results.queryTimeMicros;
+                    logInfo("[factory=%s] Estimated total service count =%,d calculation took %,d microsec ",
+                            sourceFactoryLink, estimatedTotalServiceCount, queryTimeMicros);
+                    setStat(STAT_NAME_COUNT_QUERY_TIME_DURATION_MICRO, queryTimeMicros);
+
+                    // estimated count
+                    adjustStat(STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT, estimatedTotalServiceCount);
+                })
+                .exceptionally(e -> {
+                    logWarning("[factory=%s] Failed to calculate estimated total count. %s",
+                            sourceFactoryLink, Utils.toString(e));
+                    return null;
                 });
     }
 
@@ -1091,6 +1125,8 @@ public class MigrationTaskService extends StatefulService {
                             return;
                         }
                     } else {
+                        logInfo("[source=%s][dest=%s] MigrationTask created %,d entries in destination.",
+                                state.sourceFactoryLink, state.destinationFactoryLink, posts.size());
                         adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
                         migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
                     }
