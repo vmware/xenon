@@ -19,7 +19,8 @@ public class LocalQueryTaskFactoryService extends QueryTaskFactoryService {
     public static final String SELF_LINK = ServiceUriPaths.CORE_LOCAL_QUERY_TASKS;
 
     public LocalQueryTaskFactoryService() {
-        super();
+        super.toggleOption(ServiceOption.REPLICATION, false);
+        super.toggleOption(ServiceOption.OWNER_SELECTION, false);
     }
 
     @Override
@@ -27,8 +28,6 @@ public class LocalQueryTaskFactoryService extends QueryTaskFactoryService {
         QueryTaskService service = new QueryTaskService();
         service.toggleOption(ServiceOption.REPLICATION, false);
         service.toggleOption(ServiceOption.OWNER_SELECTION, false);
-        super.toggleOption(ServiceOption.REPLICATION, false);
-        super.toggleOption(ServiceOption.OWNER_SELECTION, false);
         return service;
     }
 }

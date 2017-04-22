@@ -65,6 +65,7 @@ public class GraphQueryTask extends TaskService.TaskServiceState {
             PropertyUsageOption.SINGLE_ASSIGNMENT,
             PropertyUsageOption.SERVICE_USE })
     public int depthLimit;
+
     @PropertyOptions(usage = {
             PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL,
             PropertyUsageOption.SERVICE_USE })

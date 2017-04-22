@@ -270,7 +270,7 @@ public final class QueryTaskUtils {
                         pd.fieldDescriptions, complexFieldNestLevel - 1);
 
                 return innerPropertyNames.stream()
-                        .map((p) -> QuerySpecification.buildCompositeFieldName(propertyName, p))
+                        .map(p -> QuerySpecification.buildCompositeFieldName(propertyName, p))
                         .collect(Collectors.toSet());
             } else {
                 return Collections.emptySet();
@@ -282,7 +282,7 @@ public final class QueryTaskUtils {
                         complexFieldNestLevel - 1);
 
                 return innerPropertyNames.stream()
-                        .map((p) -> QuerySpecification.buildCompositeFieldName(propertyName, p))
+                        .map(p -> QuerySpecification.buildCompositeFieldName(propertyName, p))
                         .collect(Collectors.toSet());
             } else {
                 return Collections.emptySet();

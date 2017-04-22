@@ -329,7 +329,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             }
 
             AtomicInteger remaining = new AtomicInteger(peerStates.size());
-            CompletionHandler c = ((o, e) -> {
+            CompletionHandler c = (o, e) -> {
                 int r = remaining.decrementAndGet();
                 if (e != null) {
                     logWarning("Peer update to %s:%d for %s failed with %s, remaining %d",
@@ -342,7 +342,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 }
 
                 post.complete();
-            });
+            };
 
             if (incrementEpoch) {
                 logInfo("Incrementing epoch from %d to %d for %s", bestPeerRsp.documentEpoch,

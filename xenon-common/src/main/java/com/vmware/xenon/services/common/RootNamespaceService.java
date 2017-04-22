@@ -13,10 +13,14 @@
 
 package com.vmware.xenon.services.common;
 
+import java.util.Collections;
 import java.util.EnumSet;
+import java.util.Map;
 
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.StatelessService;
+import com.vmware.xenon.common.UriUtils;
 
 public class RootNamespaceService extends StatelessService {
     public static final String SELF_LINK = "/";
@@ -28,6 +32,20 @@ public class RootNamespaceService extends StatelessService {
     @Override
     public void handleGet(Operation get) {
         EnumSet<ServiceOption> options = EnumSet.of(ServiceOption.FACTORY);
+        if (get.getUri().getQuery() != null) {
+            Map<String, String> q = UriUtils.parseUriQueryParams(get.getUri());
+            String stateless = q.get("stateless");
+            if (stateless != null && !stateless.equals("false")) {
+                options.add(ServiceOption.STATELESS);
+            }
+        }
+
+        get.nestCompletion((o, e) -> {
+            if (e == null) {
+                Collections.sort(((ServiceDocumentQueryResult) o.getBodyRaw()).documentLinks);
+            }
+            get.complete();
+        });
         getHost().queryServiceUris(options, false, get);
     }
 }
