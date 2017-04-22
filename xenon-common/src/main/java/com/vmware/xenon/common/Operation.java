@@ -1471,7 +1471,7 @@ public class Operation implements Cloneable {
      * Checks if a directive is present. Lower case strings must be used.
      */
     public boolean hasPragmaDirective(String directive) {
-        String existingDirectives = getRequestHeader(PRAGMA_HEADER, false);
+        String existingDirectives = getRequestHeaderAsIs(PRAGMA_HEADER);
         return existingDirectives != null
                 && indexOfPragmaDirective(existingDirectives, directive) != -1;
     }
@@ -1480,7 +1480,7 @@ public class Operation implements Cloneable {
      * Removes a directive. Lower case strings must be used.
      */
     public Operation removePragmaDirective(String directive) {
-        String existingDirectives = getRequestHeader(PRAGMA_HEADER, false);
+        String existingDirectives = getRequestHeaderAsIs(PRAGMA_HEADER);
         if (existingDirectives != null) {
             int i = indexOfPragmaDirective(existingDirectives, directive);
             if (i == -1) {

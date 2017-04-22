@@ -5531,6 +5531,7 @@ public class ServiceHost implements ServiceRequestSender {
         }
         r.documentOwner = getId();
         r.documentCount = (long) r.documentLinks.size();
+        Collections.sort(r.documentLinks);
         get.setBodyNoCloning(r).complete();
     }
 

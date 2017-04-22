@@ -13,13 +13,19 @@
 
 package com.vmware.xenon.services.common;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.Collections;
 
 import org.junit.Before;
 import org.junit.Test;
 
 import com.vmware.xenon.common.BasicTestCase;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.UriUtils;
 
 public class TestRootNamespaceService extends BasicTestCase {
@@ -38,7 +44,8 @@ public class TestRootNamespaceService extends BasicTestCase {
 
         // create a root service
         Operation get = Operation
-                .createGet(serviceUri).setCompletion((o, e) -> {
+                .createGet(serviceUri)
+                .setCompletion((o, e) -> {
                     if (e != null) {
                         this.host.failIteration(e);
                         return;
@@ -47,5 +54,26 @@ public class TestRootNamespaceService extends BasicTestCase {
                 });
         this.host.send(get);
         this.host.testWait();
+    }
+
+    @Test
+    public void getRootNamespaceServiceWithStateless() throws Throwable {
+        this.host.waitForServiceAvailable(RootNamespaceService.SELF_LINK);
+        URI serviceUri = UriUtils.buildUri(this.host, RootNamespaceService.class);
+
+        // create a root service
+        Operation get = Operation
+                .createGet(UriUtils.extendUriWithQuery(serviceUri, "stateless", "1"));
+
+        get = this.host.waitForResponse(get);
+        ServiceDocumentQueryResult res = get.getBody(ServiceDocumentQueryResult.class);
+
+        // at least one stateless service
+        assertTrue(res.documentLinks.contains("/"));
+
+        // links must be sorted
+        ArrayList<String> copy = new ArrayList<>(res.documentLinks);
+        Collections.sort(copy);
+        assertEquals(copy, res.documentLinks);
     }
 }

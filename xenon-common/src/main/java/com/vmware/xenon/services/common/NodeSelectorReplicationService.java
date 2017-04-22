@@ -160,17 +160,17 @@ public class NodeSelectorReplicationService extends StatelessService {
         // try cached value first
         Integer count = this.nodeCountPerLocation.get(location);
         if (count != null) {
-            return count.intValue();
+            return count;
         }
 
         // fill cache maps
-        int intCount = (int) nodes.stream()
+        count = (int) nodes.stream()
                 .filter(ns -> Objects.equals(location,
                         ns.customProperties.get(NodeState.PROPERTY_NAME_LOCATION)))
                 .peek(ns -> this.locationPerNodeURI.put(ns.groupReference, location))
                 .count();
-        this.nodeCountPerLocation.put(location, Integer.valueOf(intCount));
-        return intCount;
+        this.nodeCountPerLocation.put(location, count);
+        return count;
     }
 
     private void updateLocation(NodeState node) {

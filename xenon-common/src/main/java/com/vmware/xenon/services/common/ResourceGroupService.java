@@ -30,11 +30,6 @@ public class ResourceGroupService extends StatefulService {
     public static final String FACTORY_LINK = ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS;
 
     public static Service createFactory() {
-        // workaround for GSON issue https://github.com/google/gson/issues/764
-        // We serialize the complex type once, on service creation, to avoid possible GSON race
-        ResourceGroupState st = new ResourceGroupState();
-        st.query = QueryTask.Query.Builder.create().addFieldClause("one", "one").build();
-        Utils.toJson(st);
         return FactoryService.createIdempotent(ResourceGroupService.class);
     }
 
