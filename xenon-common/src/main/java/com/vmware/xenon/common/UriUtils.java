@@ -23,6 +23,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -720,15 +721,28 @@ public final class UriUtils {
         return getODataParamValueAsString(uri, FORWARDING_URI_PARAM_NAME_PEER);
     }
 
+    public static boolean hasNavigationQueryParams(URI uri) {
+        if (uri.getQuery() == null) {
+            return false;
+        }
+
+        Set<String> q = UriUtils.parseUriQueryParams(uri).keySet();
+        return q.contains(FORWARDING_URI_PARAM_NAME_PATH)
+                || q.contains(FORWARDING_URI_PARAM_NAME_PEER);
+    }
+
     public static boolean hasODataQueryParams(URI uri) {
         if (uri.getQuery() == null) {
             return false;
         }
-        String q = uri.getQuery();
+
+        Set<String> q = UriUtils.parseUriQueryParams(uri).keySet();
         return q.contains(URI_PARAM_ODATA_TOP)
                 || q.contains(URI_PARAM_ODATA_COUNT)
                 || q.contains(URI_PARAM_ODATA_LIMIT)
                 || q.contains(URI_PARAM_ODATA_SKIP)
+                || q.contains(URI_PARAM_ODATA_SELECT)
+                || q.contains(URI_PARAM_ODATA_ORDER_BY)
                 || q.contains(URI_PARAM_ODATA_FILTER);
     }
 

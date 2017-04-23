@@ -357,4 +357,23 @@ public class TestUriUtils {
         URI uri = UriUtils.buildDocumentQueryUri(host, "/my-index-service", "my-service", false, false, EnumSet.of(ServiceOption.NONE));
         assertEquals("/my-index-service", uri.getPath());
     }
+
+    @Test
+    public void testHasQueryParams() {
+        URI navigationUri = UriUtils.buildUri("http://example.com:8000/?path=abc&peer=pqr");
+        URI randomUri = UriUtils.buildUri("http://example.com:8000/?a=c&x=y");
+
+        assertTrue(UriUtils.hasNavigationQueryParams(navigationUri));
+        assertFalse(UriUtils.hasNavigationQueryParams(randomUri));
+
+        URI odataQueryUri = UriUtils.buildUri("http://example.com:8000/?$filter=abc&$count=true");
+        assertTrue(UriUtils.hasODataQueryParams(odataQueryUri));
+
+        URI fakeOdataQueryUri = UriUtils.buildUri("http://example.com:8000/?$filtered=abc&$counter=true&$expanding");
+
+        assertFalse(UriUtils.hasODataQueryParams(fakeOdataQueryUri));
+        assertFalse(UriUtils.hasODataQueryParams(randomUri));
+
+
+    }
 }
