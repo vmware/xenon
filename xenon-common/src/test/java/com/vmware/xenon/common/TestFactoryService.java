@@ -1225,7 +1225,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
             String fieldName, boolean asc, boolean filter) throws Throwable {
         String queryString = String.format("$orderby=%s %s", fieldName, asc ? "asc" : "desc");
         if (filter) {
-            queryString += String.format("&$filter=%s lt %s", fieldName, stateSupplier.get().count());
+            queryString += String.format("&$filter=%s lt %s&$expand", fieldName, stateSupplier.get().count());
         }
         ServiceDocumentQueryResult result = getResult(queryString);
 
