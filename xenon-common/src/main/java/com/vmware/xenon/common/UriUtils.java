@@ -729,6 +729,7 @@ public final class UriUtils {
                 || q.contains(URI_PARAM_ODATA_COUNT)
                 || q.contains(URI_PARAM_ODATA_LIMIT)
                 || q.contains(URI_PARAM_ODATA_SKIP)
+                || q.contains(URI_PARAM_ODATA_SELECT)
                 || q.contains(URI_PARAM_ODATA_FILTER);
     }
 

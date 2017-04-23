@@ -558,23 +558,24 @@ public abstract class FactoryService extends StatelessService {
 
     private void handleGetCompletion(Operation op) {
         String query = op.getUri().getQuery();
+
         boolean isODataQuery = UriUtils.hasODataQueryParams(op.getUri());
-        boolean expand = UriUtils.hasODataExpandParamValue(op.getUri());
-        if (query == null || (!isODataQuery && expand)) {
+
+        if (query == null || !isODataQuery) {
             completeGetWithQuery(op, this.childOptions);
         } else {
-            handleGetOdataCompletion(op);
+            String path = UriUtils.getPathParamValue(op.getUri());
+            String peer = UriUtils.getPeerParamValue(op.getUri());
+
+            if (path != null && peer != null) {
+                handleNavigationRequest(op);
+            } else {
+                handleGetOdataCompletion(op);
+            }
         }
     }
 
     private void handleGetOdataCompletion(Operation op) {
-        String path = UriUtils.getPathParamValue(op.getUri());
-        String peer = UriUtils.getPeerParamValue(op.getUri());
-        if (path != null && peer != null) {
-            handleNavigationRequest(op);
-            return;
-        }
-
         Set<String> expandedQueryPropertyNames = QueryTaskUtils
                 .getExpandedQueryPropertyNames(this.childTemplate.documentDescription);
 
