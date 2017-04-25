@@ -11,6 +11,8 @@
 
 * Upgrade Gson to [2.8.0](https://github.com/google/gson/blob/master/CHANGELOG.md#version-28)
 
+* Bug fix related to serialized QuerySpecification objects in Kryo
+
 ## 1.4.2
 
 * Add ability to expand only selected fields in queries
