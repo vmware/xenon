@@ -32,7 +32,6 @@ import org.junit.After;
 import org.junit.Test;
 
 import com.vmware.xenon.common.AuthorizationSetupHelper;
-import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceConfiguration;
@@ -50,28 +49,11 @@ import com.vmware.xenon.common.test.TestNodeGroupManager;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.common.test.VerificationHost;
+import com.vmware.xenon.services.common.ExampleService.ExampleODLService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 
 public class TestExampleService {
-
-    public static class ExampleODLService extends ExampleService {
-        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/odl-examples";
-
-        /**
-         * Create a default factory service that starts instances of this service on POST.
-         * This method is optional, {@code FactoryService.create} can be used directly
-         */
-        public static FactoryService createFactory() {
-            return FactoryService.create(ExampleODLService.class);
-        }
-
-        public ExampleODLService() {
-            super();
-            super.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
-            super.toggleOption(ServiceOption.INSTRUMENTATION, false);
-        }
-    }
 
     private static final Long COUNTER_VALUE = Long.MAX_VALUE;
     private static final String PREFIX = "example-";

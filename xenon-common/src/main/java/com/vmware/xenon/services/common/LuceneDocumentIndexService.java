@@ -142,6 +142,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final int DEFAULT_QUERY_PAGE_RESULT_LIMIT = 10000;
 
+    public static final int DEFAULT_EXPIRED_DOCUMENT_SEARCH_THRESHOLD = 10000;
+
     private static final String DOCUMENTS_WITHOUT_RESULTS = "DocumentsWithoutResults";
 
     protected String indexDirectory;
@@ -343,7 +345,9 @@ public class LuceneDocumentIndexService extends StatelessService {
     private final Map<String, Long> liveVersionsPerLink = new HashMap<>();
     private final Map<String, Long> immutableParentLinks = new HashMap<>();
     private final Map<String, Long> documentKindUpdateInfo = new HashMap<>();
-    private long updateMapMemoryLimitMB;
+
+    // memory pressure threshold in bytes
+    long updateMapMemoryLimit;
 
     private Sort versionSort;
 
@@ -587,7 +591,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             cacheSizeMB = Math.max(1, cacheSizeMB);
             iwc.setRAMBufferSizeMB(cacheSizeMB);
             // reserve 1% of service memory budget for version cache
-            this.updateMapMemoryLimitMB = Math.max(1, totalMBs / 100);
+            long memoryLimitMB = Math.max(1, totalMBs / 100);
+            this.updateMapMemoryLimit = memoryLimitMB * 1024 * 1024;
         }
 
 
@@ -2746,8 +2751,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             int resultLimit, long searcherUpdateTime) {
         if (selfLink != null && resultLimit == 1) {
             DocumentUpdateInfo du = this.updatesPerLink.get(selfLink);
-            if (du != null
-                    && du.updateTimeMicros >= searcherUpdateTime) {
+            if (du == null && (searcherUpdateTime < this.writerUpdateTimeMicros)) {
+                return true;
+            } else if (du != null && du.updateTimeMicros >= searcherUpdateTime) {
                 return true;
             } else {
                 String parent = UriUtils.getParentPath(selfLink);
@@ -3052,7 +3058,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     void applyMemoryLimitToDocumentUpdateInfo() {
-        long memThresholdBytes = this.updateMapMemoryLimitMB * 1024 * 1024;
+        long memThresholdBytes = this.updateMapMemoryLimit;
         final int bytesPerLinkEstimate = 64;
         int count = 0;
 
@@ -3069,7 +3075,6 @@ public class LuceneDocumentIndexService extends StatelessService {
             if (memThresholdBytes > this.updatesPerLink.size() * bytesPerLinkEstimate) {
                 return;
             }
-            count = this.updatesPerLink.size();
             Iterator<Entry<String, DocumentUpdateInfo>> li = this.updatesPerLink.entrySet()
                     .iterator();
             while (li.hasNext()) {
