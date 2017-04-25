@@ -1,5 +1,7 @@
 # CHANGELOG
 
+## 1.4.2-CR1
+
 ## 1.4.2
 
 * Add ability to expand only selected fields in queries
