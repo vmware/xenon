@@ -41,6 +41,7 @@ import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.InMemoryLuceneDocumentIndexService;
 import com.vmware.xenon.services.common.NodeGroupService;
+import com.vmware.xenon.services.common.QueryTaskFactoryService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.TestLuceneDocumentIndexService.InMemoryExampleService;
 
@@ -329,6 +330,9 @@ public class TestSynchronizationTaskService extends BasicTestCase {
                 (UriUtils.buildUri(owner, factoryLink)));
 
         restartHost(owner);
+
+        this.host.waitForReplicatedFactoryServiceAvailable(
+                (UriUtils.buildUri(owner, QueryTaskFactoryService.SELF_LINK)));
 
         long membershipUpdateTimeMicros = getLatestMembershipUpdateTime(this.host.getPeerHostUri());
 
