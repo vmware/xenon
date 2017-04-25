@@ -146,7 +146,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     protected String indexDirectory;
 
-    private static int expiredDocumentSearchThreshold = 1000;
+    private int expiredDocumentSearchThreshold = 1000;
 
     private static int indexFileCountThresholdForWriterRefresh = DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH;
 
@@ -182,12 +182,12 @@ public class LuceneDocumentIndexService extends StatelessService {
         return indexFileCountThresholdForWriterRefresh;
     }
 
-    public static void setExpiredDocumentSearchThreshold(int count) {
-        expiredDocumentSearchThreshold = count;
+    public void setExpiredDocumentSearchThreshold(int count) {
+        this.expiredDocumentSearchThreshold = count;
     }
 
-    public static int getExpiredDocumentSearchThreshold() {
-        return expiredDocumentSearchThreshold;
+    public int getExpiredDocumentSearchThreshold() {
+        return this.expiredDocumentSearchThreshold;
     }
 
     public static void setVersionRetentionBulkCleanupThreshold(int count) {
@@ -343,7 +343,9 @@ public class LuceneDocumentIndexService extends StatelessService {
     private final Map<String, Long> liveVersionsPerLink = new HashMap<>();
     private final Map<String, Long> immutableParentLinks = new HashMap<>();
     private final Map<String, Long> documentKindUpdateInfo = new HashMap<>();
-    private long updateMapMemoryLimitMB;
+
+    // memory pressure threshold in bytes
+    long updateMapMemoryLimit;
 
     private Sort versionSort;
 
@@ -587,7 +589,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             cacheSizeMB = Math.max(1, cacheSizeMB);
             iwc.setRAMBufferSizeMB(cacheSizeMB);
             // reserve 1% of service memory budget for version cache
-            this.updateMapMemoryLimitMB = Math.max(1, totalMBs / 100);
+            long memoryLimitMB = Math.max(1, totalMBs / 100);
+            this.updateMapMemoryLimit = memoryLimitMB * 1024 * 1024;
         }
 
 
@@ -2746,8 +2749,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             int resultLimit, long searcherUpdateTime) {
         if (selfLink != null && resultLimit == 1) {
             DocumentUpdateInfo du = this.updatesPerLink.get(selfLink);
-            if (du != null
-                    && du.updateTimeMicros >= searcherUpdateTime) {
+            if (du != null && du.updateTimeMicros >= searcherUpdateTime) {
                 return true;
             } else {
                 String parent = UriUtils.getParentPath(selfLink);
@@ -3052,7 +3054,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     void applyMemoryLimitToDocumentUpdateInfo() {
-        long memThresholdBytes = this.updateMapMemoryLimitMB * 1024 * 1024;
+        long memThresholdBytes = this.updateMapMemoryLimit;
         final int bytesPerLinkEstimate = 64;
         int count = 0;
 
@@ -3069,15 +3071,14 @@ public class LuceneDocumentIndexService extends StatelessService {
             if (memThresholdBytes > this.updatesPerLink.size() * bytesPerLinkEstimate) {
                 return;
             }
-            count = this.updatesPerLink.size();
-            Iterator<Entry<String, DocumentUpdateInfo>> li = this.updatesPerLink.entrySet()
-                    .iterator();
-            while (li.hasNext()) {
-                Entry<String, DocumentUpdateInfo> e = li.next();
-                // remove entries for services no longer attached / started on host
-                if (getHost().getServiceStage(e.getKey()) == null) {
+
+            for (Entry<String, DocumentUpdateInfo> entry : this.updatesPerLink.entrySet()) {
+                String selfLink = entry.getKey();
+                DocumentUpdateInfo du = entry.getValue();
+                if (getHost().getServiceStage(selfLink) == null) {
+                    // update timestamp so that searcher will be refreshed when accessing this doc
+                    du.updateTimeMicros = Utils.getNowMicrosUtc();
                     count++;
-                    li.remove();
                 }
             }
             // update index time to force searcher update, per thread
@@ -3102,7 +3103,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         Map<String, Long> latestVersions = new HashMap<>();
 
         do {
-            TopDocs results = s.searchAfter(after, versionQuery, expiredDocumentSearchThreshold,
+            TopDocs results = s.searchAfter(after, versionQuery, this.expiredDocumentSearchThreshold,
                     this.versionSort, false, false);
             if (results.scoreDocs == null || results.scoreDocs.length == 0) {
                 return;
@@ -3110,7 +3111,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             after = results.scoreDocs[results.scoreDocs.length - 1];
 
-            if (firstQuery && results.totalHits > expiredDocumentSearchThreshold) {
+            if (firstQuery && results.totalHits > this.expiredDocumentSearchThreshold) {
                 adjustTimeSeriesStat(STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT,
                         AGGREGATION_TYPE_SUM, 1);
             }
