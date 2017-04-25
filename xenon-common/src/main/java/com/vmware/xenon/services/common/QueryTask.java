@@ -222,6 +222,7 @@ public class QueryTask extends ServiceDocument {
          * Property names of fields to select. Used in combination with
          * {@code QueryOption#SELECT_FIELDS}
          */
+        @Since(ReleaseConstants.RELEASE_VERSION_1_4_2)
         public List<QueryTerm> selectTerms;
 
         /**

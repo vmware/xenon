@@ -2,6 +2,8 @@
 
 ## 1.4.2-CR1
 
+* Bug fix related to serialized QuerySpecification objects in Kryo
+
 ## 1.4.2
 
 * Add ability to expand only selected fields in queries
