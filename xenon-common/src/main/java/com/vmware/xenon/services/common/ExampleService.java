@@ -36,6 +36,25 @@ public class ExampleService extends StatefulService {
 
     public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/examples";
 
+
+    public static class ExampleODLService extends ExampleService {
+        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/odl-examples";
+
+        /**
+         * Create a default factory service that starts instances of this service on POST.
+         * This method is optional, {@code FactoryService.create} can be used directly
+         */
+        public static FactoryService createFactory() {
+            return FactoryService.create(ExampleODLService.class);
+        }
+
+        public ExampleODLService() {
+            super();
+            super.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
+            super.toggleOption(ServiceOption.INSTRUMENTATION, false);
+        }
+    }
+
     /**
      * Request for strict update version check of a service.  This shows an example of implementing
      * compareAndSet operation in a service.  We implement handler that will check the supplied documentVersion
