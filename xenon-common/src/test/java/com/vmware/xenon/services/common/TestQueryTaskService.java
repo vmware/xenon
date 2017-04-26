@@ -1413,6 +1413,32 @@ public class TestQueryTaskService {
     }
 
     @Test
+    public void multiNodeBroadcastQueryWithEmptyResults() throws Throwable {
+        final int nodeCount = 3;
+
+        setUpHost();
+
+        this.host.setUpPeerHosts(nodeCount);
+        this.host.joinNodesAndVerifyConvergence(nodeCount);
+
+        QueryValidationServiceState initialState = new QueryValidationServiceState();
+        initialState.textValue = UUID.randomUUID().toString();
+
+        VerificationHost peerHost = this.host.getPeerHost();
+        peerHost.doThroughputServiceStart(this.serviceCount, QueryValidationTestService.class,
+                initialState, null, null);
+
+        Query query = QueryTask.Query.Builder.create()
+                .addKindFieldClause(QueryValidationServiceState.class).build();
+        QueryTask queryTask = QueryTask.Builder.createDirectTask()
+                .setQuery(query)
+                .addOption(QueryOption.BROADCAST)
+                .build();
+        peerHost.createQueryTaskService(queryTask, false, true, queryTask, null);
+        assertEquals(this.serviceCount, (long) queryTask.results.documentCount);
+    }
+
+    @Test
     public void multiNodeQueryTasksReadAfterWrite() throws Throwable {
         final int nodeCount = 3;
         final int stressTestServiceCountThreshold = 1000;
