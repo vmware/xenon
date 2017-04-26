@@ -325,7 +325,9 @@ public class QueryTaskService extends StatefulService {
         List<ServiceDocumentQueryResult> queryResults = new ArrayList<>();
         for (Map.Entry<URI, String> entry : jsonResponses.entrySet()) {
             QueryTask rsp = Utils.fromJson(entry.getValue(), QueryTask.class);
-            queryResults.add(rsp.results);
+            if (rsp.results != null) {
+                queryResults.add(rsp.results);
+            }
         }
 
         boolean isPaginatedQuery = queryTask.querySpec.resultLimit != null
