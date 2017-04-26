@@ -1588,6 +1588,9 @@ public class StatefulService implements Service {
 
     @Override
     public URI getUri() {
+        if (this.context.host == null) {
+            return null;
+        }
         return UriUtils.buildUri(this.context.host, this.context.selfLink);
     }
 

@@ -3517,6 +3517,14 @@ public class ServiceHost implements ServiceRequestSender {
             Consumer<AuthorizationContext> authorizationContextHandler) {
         boolean shoudRetry = true;
         URI tokenVerificationUri = getAuthenticationServiceUri();
+        if (tokenVerificationUri == null) {
+            // It is possible to receive a request while the host is starting up: the listener is
+            // processing requests but the core authorization/authentication services are not yet
+            // started
+            log(Level.WARNING, "Error verifying token, authentication service not initialized");
+            authorizationContextHandler.accept(null);
+            return;
+        }
 
         if (getBasicAuthenticationServiceUri().equals(getAuthenticationServiceUri())) {
             // if authenticationService is BasicAuthenticationService, then no need to retry

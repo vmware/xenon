@@ -308,6 +308,9 @@ public class StatelessService implements Service {
 
     @Override
     public URI getUri() {
+        if (this.host == null) {
+            return null;
+        }
         return UriUtils.buildUri(this.host, this.selfLink);
     }
 
