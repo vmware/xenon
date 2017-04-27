@@ -594,9 +594,11 @@ public class TestQueryTaskService {
         ctxRef.set(ctx);
         List<URI> createdServices = startQueryTargetServices(this.serviceCount, initialState);
         this.host.testWait(ctx);
-        assertEquals(2 * this.serviceCount, (long) queryTaskRef.get().results.documentCount);
+        QueryTask qt = queryTaskRef.get();
+        assertEquals(String.format("QueryTask body had unexpected document count: %s", Utils.toJsonHtml(qt)),
+                2 * this.serviceCount, (long) qt.results.documentCount);
 
-        QueryTask qt = this.host.getServiceState(null, QueryTask.class, queryTaskUri);
+        qt = this.host.getServiceState(null, QueryTask.class, queryTaskUri);
         assertEquals(2 * this.serviceCount, (long) qt.results.documentCount);
         assertEquals(this.serviceCount, (long) qt.results.continuousResults.documentCountAdded);
         assertEquals(0, (long) qt.results.continuousResults.documentCountUpdated);
