@@ -293,7 +293,7 @@ public class QueryTaskService extends StatefulService {
                     if (!rsp.failures.isEmpty()) {
                         if (rsp.jsonResponses.size() < rsp.membershipQuorum) {
                             failTask(new IllegalStateException(
-                                    "Failures received: " + Utils.toJsonHtml(rsp)),
+                                            "Failures received: " + Utils.toJsonHtml(rsp)),
                                     startPost, null);
                             return;
                         } else {
@@ -340,8 +340,8 @@ public class QueryTaskService extends StatefulService {
                     queryTask.querySpec.options);
         } else {
             URI broadcastPageServiceUri = UriUtils.buildUri(this.getHost(), UriUtils.buildUriPath(ServiceUriPaths.CORE,
-                            BroadcastQueryPageService.SELF_LINK_PREFIX,
-                            String.valueOf(Utils.getNowMicrosUtc())));
+                    BroadcastQueryPageService.SELF_LINK_PREFIX,
+                    String.valueOf(Utils.getNowMicrosUtc())));
 
             URI forwarderUri = UriUtils.buildForwardToPeerUri(broadcastPageServiceUri, getHost().getId(),
                     ServiceUriPaths.DEFAULT_NODE_SELECTOR, EnumSet.noneOf(ServiceOption.class));
@@ -457,6 +457,8 @@ public class QueryTaskService extends StatefulService {
         }
 
         QueryTask patchBody = patch.getBody(QueryTask.class);
+        logInfo("Received patch op %d (%s) with body %s", patch.getId(), patch.getReferer(),
+                Utils.toJsonHtml(patchBody));
         TaskState newTaskState = patchBody.taskInfo;
 
         this.results = patchBody.results;
