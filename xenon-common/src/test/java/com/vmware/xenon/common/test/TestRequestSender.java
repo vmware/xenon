@@ -17,12 +17,23 @@ import static java.util.stream.Collectors.toList;
 
 import java.net.URI;
 import java.time.Duration;
+import java.util.AbstractMap.SimpleEntry;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceRequestSender;
 import com.vmware.xenon.common.ServiceStats;
@@ -38,12 +49,26 @@ public class TestRequestSender implements ServiceRequestSender {
         public Throwable failure;
     }
 
+    /**
+     * Statistics of operations performed by {@link TestRequestSender}.
+     *
+     * All stats are based on milli seconds.
+     */
+    public static class OperationStats {
+        long count;
+        long sum;
+        long max;
+        long min;
+    }
+
     private static ThreadLocal<String> authenticationToken = new ThreadLocal<>();
 
     private ServiceRequestSender sender;
     private Duration timeout = Duration.ofSeconds(30);
     private URI referer;
 
+    private ConcurrentMap<Action, OperationStats> operationStats = new ConcurrentHashMap<>();
+    private boolean isOperationStatsEnabled = true;
 
     /**
      * Set auth token to current thread. The token is used when this class sends a request.
@@ -63,6 +88,11 @@ public class TestRequestSender implements ServiceRequestSender {
         if (this.sender instanceof VerificationHost) {
             this.timeout = Duration.ofSeconds(((VerificationHost) this.sender).getTimeoutSeconds());
         }
+
+        // initialize stats
+        for (Action action : Action.values()) {
+            this.operationStats.put(action, new OperationStats());
+        }
     }
 
     /**
@@ -70,18 +100,117 @@ public class TestRequestSender implements ServiceRequestSender {
      */
     @Override
     public void sendRequest(Operation op) {
+        sendRequest(Collections.singletonList(op), false);
+    }
+
+
+    private List<Entry<Operation, Throwable>> sendRequest(List<Operation> ops, boolean wait) {
+        Operation[] response = new Operation[ops.size()];
+        Throwable[] errors = new Throwable[ops.size()];
+
         URI referer = this.referer;
         if (referer == null) {
             referer = getDefaultReferer();
         }
-        op.setReferer(referer);
-
         String authToken = authenticationToken.get();
-        if (authToken != null) {
-            op.addRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER, authToken);
-        }
 
-        this.sender.sendRequest(op);
+        int waitCount = wait ? ops.size() : 0;
+        TestContext waitContext = new TestContext(waitCount, this.timeout);
+        for (int i = 0; i < ops.size(); i++) {
+            int index = i;
+            Operation op = ops.get(i);
+
+            // prepare op
+            op.setReferer(referer);
+            if (authToken != null) {
+                op.addRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER, authToken);
+            }
+
+            CompletionHandler originalHandler = op.getCompletion();
+
+            long beforeSend = System.currentTimeMillis();
+            op.setCompletion((o, e) -> {
+                if (this.isOperationStatsEnabled) {
+                    long duration = System.currentTimeMillis() - beforeSend;
+                    // since operationStats is ConcurrentMap, compute is performed atomically
+                    this.operationStats.compute(o.getAction(), (action, stats) -> {
+                        stats.count++;
+                        stats.sum += duration;
+                        stats.max = Math.max(stats.max, duration);
+                        stats.min = stats.min == 0 ? duration : Math.min(stats.min, duration);
+                        return stats;
+                    });
+                }
+
+                if (originalHandler != null) {
+                    originalHandler.handle(o, e);
+                }
+
+                response[index] = o;
+                errors[index] = e;
+                waitContext.complete();
+            });
+
+            this.sender.sendRequest(op);
+        }
+        waitContext.await();
+
+        // when wait=false, response and errors array may not fully populated yet, but it's ok
+        // since caller should not use the returned result when wait=false(async)
+        List<Entry<Operation, Throwable>> result = new ArrayList<>();
+        for (int i = 0; i < ops.size(); i++) {
+            result.add(new SimpleEntry<>(response[i], errors[i]));
+        }
+        return result;
+    }
+
+    public void resetOperationStats() {
+        Arrays.stream(Action.values()).forEach(this::resetOperationStats);
+    }
+
+    public OperationStats resetOperationStats(Action action) {
+        return this.operationStats.compute(action, (key, stats) -> new OperationStats());
+    }
+
+    public OperationStats getOperationStats(Action action) {
+        return this.operationStats.get(action);
+    }
+
+    public void setOperationStats(boolean enable) {
+        this.isOperationStatsEnabled = enable;
+    }
+
+    public void enableOperationStats() {
+        setOperationStats(true);
+    }
+
+    public void disableOperationStats() {
+        setOperationStats(false);
+    }
+
+    /**
+     * Log all operation stats.
+     */
+    public void logOperationStats() {
+        Arrays.stream(Action.values()).forEach(this::logOperationStats);
+    }
+
+    /**
+     * Log operation stats.
+     *
+     * Stats include:
+     * - request throughput per second
+     * - total number of sent operations
+     * - average, maximum, and minimum operation processing time per milli second
+     */
+    public void logOperationStats(Action action) {
+        OperationStats stats = this.operationStats.get(action);
+        double avg = stats.count == 0 ? 0 : (double) stats.sum / stats.count;
+        double throughput = avg == 0.0 ? 0 : (double) TimeUnit.SECONDS.toMillis(1) / avg;
+
+        String msg = String.format("%s throughput=%,.2f/sec, count=%,dreqs, avg=%,.2fmsec max=%,dmsec min=%,dmsec",
+                action, throughput, stats.count, avg, stats.max, stats.min);
+        Logger.getAnonymousLogger().log(Level.INFO, msg);
     }
 
     private URI getDefaultReferer() {
@@ -166,35 +295,33 @@ public class TestRequestSender implements ServiceRequestSender {
      * The order of result corresponds to the input order.
      *
      * @param ops operations to perform
+     * @param checkResponse when set to true, check the result of operations and throw exception if there are failures
      * @return callback operations
      */
     public List<Operation> sendAndWait(List<Operation> ops, boolean checkResponse) {
-        Operation[] response = new Operation[ops.size()];
 
-        // Keep caller stack information for operation failure.
-        // Actual operation failure will be added to this exception as suppressed exception.
-        // This way, it'll display the original caller location in stacktrace
-        String callerStackMessage = "Received Failure response. (See suppressed exception for detail)";
-        Exception callerStack = new RuntimeException(callerStackMessage);
+        List<Entry<Operation, Throwable>> results = sendRequest(ops, true);
 
-        TestContext waitContext = new TestContext(ops.size(), this.timeout);
-        for (int i = 0; i < ops.size(); i++) {
-            int index = i;
-            Operation op = ops.get(i);
-            op.appendCompletion((o, e) -> {
-                if (e != null && checkResponse) {
-                    callerStack.addSuppressed(e);
-                    waitContext.fail(callerStack);
-                    return;
-                }
-                response[index] = o;
-                waitContext.complete();
-            });
-            sendRequest(op);
+        if (checkResponse) {
+            List<Throwable> failures = results.stream()
+                    .map(Entry::getValue)
+                    .filter(Objects::nonNull)
+                    .collect(toList());
+            if (!failures.isEmpty()) {
+                // Keep caller stack information for operation failure.
+                // Actual operation failure will be added to this exception as suppressed exception.
+                // This way, it'll display the original caller location in stacktrace
+                String callerStackMessage = "Received Failure response. (See suppressed exception for detail)";
+                RuntimeException callerStack = new RuntimeException(callerStackMessage);
+
+                failures.forEach(callerStack::addSuppressed);
+                throw callerStack;
+            }
         }
-        waitContext.await();
 
-        return Arrays.asList(response);
+        return results.stream()
+                .map(Entry::getKey)
+                .collect(toList());
     }
 
     /**
@@ -240,7 +367,7 @@ public class TestRequestSender implements ServiceRequestSender {
     }
 
     /**
-     * See {@link #sendPostAndWait(String, Class)}
+     * See {@link #sendPostAndWait(String, T, Class)}
      */
     public <T extends ServiceDocument> T sendPostAndWait(URI uri, T body, Class<T> bodyType) {
         return sendAndWait(Operation.createPost(uri).setBody(body), bodyType);

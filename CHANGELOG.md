@@ -19,6 +19,10 @@
   To enable getting estimate count, "ESTIMATE_COUNT" migration option needs to be
   set in migration request.
 
+* To measure operation performance in test, `TestRequestSender` now supports collecting statistical
+  information per operation action(POST, GET, etc.). It is enabled by default.
+  `logOperationStats` methods are added to log performance stats including throughput.
+
 
 ## 1.4.2
 
