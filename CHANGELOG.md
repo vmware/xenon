@@ -11,6 +11,10 @@
 
 * Upgrade Gson to [2.8.0](https://github.com/google/gson/blob/master/CHANGELOG.md#version-28)
 
+* To measure operation performance in test, `TestRequestSender` now support for collecting statistical
+  information per operation action(POST, GET, etc.) and enabled by default.
+  `logOperationStats` methods are added to log those stats including throughput.
+
 ## 1.4.2
 
 * Add ability to expand only selected fields in queries
