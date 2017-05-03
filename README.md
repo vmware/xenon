@@ -1,4 +1,4 @@
-# 1.0 Brief Introduction to Xenon
+# 1.0 Brief Introduction to Xenon [![Build Status](https://travis-ci.org/vmware/xenon.svg?branch=master)](https://travis-ci.org/vmware/xenon)
 
 ## 1.1 Xenon Highlights
 Xenon is a framework for writing small REST-based services. (Some people call them microservices.)
