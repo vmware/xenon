@@ -1,0 +1,13 @@
+language: java
+sudo: false
+install: true
+
+jdk:
+  - oraclejdk8
+
+script:
+  - mvn install -P coverage -DskipGO=true
+
+cache:
+  directories:
+    - '$HOME/.m2/repository'
