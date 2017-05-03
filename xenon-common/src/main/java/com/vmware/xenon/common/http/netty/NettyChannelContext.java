@@ -77,7 +77,7 @@ public class NettyChannelContext extends SocketContext {
         // sizes require us to pass things like max order and page size.
         // maxOrder determines the allocation chunk size as a multiple of page size
         int maxOrder = 4;
-        return new PooledByteBufAllocator(true, 2, 2, 8192, maxOrder, 64, 32, 16);
+        return new PooledByteBufAllocator(true, 2, 2, 8192, maxOrder, 64, 32, 16, true);
     }
 
     public static final String ENABLE_ALPN_PROPERTY_NAME =
