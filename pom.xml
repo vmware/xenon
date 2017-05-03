@@ -144,7 +144,7 @@
         <module>xenon-websocket-test</module>
         <module>xenon-quickstart</module>
         <module>xenon-gateway</module>
-        <module>xenon-workshop/jan-2017</module>
+        <module>xenon-workshop</module>
       </modules>
       <activation>
         <activeByDefault>true</activeByDefault>
