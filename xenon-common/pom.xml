@@ -86,7 +86,7 @@
       <plugin>
         <groupId>pl.project13.maven</groupId>
         <artifactId>git-commit-id-plugin</artifactId>
-        <version>2.1.10</version>
+        <version>2.2.2</version>
         <executions>
           <execution>
             <goals>
@@ -99,6 +99,9 @@
           <generateGitPropertiesFile>true</generateGitPropertiesFile>
           <generateGitPropertiesFilename>src/main/resources/xenon.git.properties</generateGitPropertiesFilename>
           <excludeProperties>
+            <excludeProperty>git.tags*</excludeProperty>
+            <excludeProperty>git.dirty*</excludeProperty>
+            <excludeProperty>git.closest.*</excludeProperty>
             <excludeProperty>git.branch.*</excludeProperty>
             <excludeProperty>git.build.*</excludeProperty>
             <excludeProperty>git.commit.message.*</excludeProperty>
