@@ -2,6 +2,9 @@
 
 ## 1.5.0-SNAPSHOT
 
+* Upgrade Netty to [4.1.10](http://netty.io/news/2017/04/30/4-0-46-Final-4-1-10-Final.html) and
+  netty-tcnative to [2.0.1](https://github.com/netty/netty-tcnative/releases/tag/netty-tcnative-parent-2.0.1.Final)
+
 * Remove `Utils.computeHash`, `Utils.getCurrentFileDirectory`, `Utils.atomicGetOrCreate`,
   `Utils.toHexString`, `Utils.toServiceErrorResponseJson` as there are
   obvious/shorter/standard ways to achieve the same. Methods `Utils.getOsName` and
