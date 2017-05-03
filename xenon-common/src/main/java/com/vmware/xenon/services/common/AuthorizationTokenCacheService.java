@@ -37,7 +37,7 @@ public class AuthorizationTokenCacheService extends StatefulService {
     @Override
     public void handlePatch(Operation patch) {
         AuthorizationTokenCacheServiceState state = getBody(patch);
-        Operation postClearCacheRequest = Operation.createPost(this, ServiceUriPaths.CORE_AUTHZ_VERIFICATION)
+        Operation postClearCacheRequest = Operation.createPost(getHost().getAuthorizationServiceUri())
                 .setBody(AuthorizationCacheClearRequest.create(state.serviceLink))
                 .setCompletion((clearOp, clearEx) -> {
                     if (clearEx != null) {
