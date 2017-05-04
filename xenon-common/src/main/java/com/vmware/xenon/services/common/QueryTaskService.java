@@ -563,6 +563,8 @@ public class QueryTaskService extends StatefulService {
                         this.results.continuousResults = state.results.continuousResults;
                     }
                     patchBody.results.continuousResults = state.results.continuousResults;
+                } else if (this.results.documentCount != null) {
+                    state.results.documentCount += this.results.documentCount;
                 }
             }
             break;
