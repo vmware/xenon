@@ -14,6 +14,7 @@
 package com.vmware.workshop.labs.answer;
 
 import java.util.function.Consumer;
+import java.util.logging.Level;
 
 import com.vmware.workshop.labs.BookService;
 import com.vmware.workshop.labs.Top10BookRankingService;
@@ -44,10 +45,10 @@ public class BookstoreDemoAnswer {
 
         // subscription callback
         Consumer<Operation> target = (notifyOp) -> {
-            System.out.println("notification: " + notifyOp);
+            host.log(Level.INFO, "notification: %s", notifyOp);
             if (notifyOp.getAction() == Service.Action.POST) {
                 BookService.BookState state = notifyOp.getBody(BookService.BookState.class);
-                System.out.println("sold=" + state.sold);
+                host.log(Level.INFO, "title=%s, sold=%d", state.title, state.sold);
             }
             notifyOp.complete();
         };
