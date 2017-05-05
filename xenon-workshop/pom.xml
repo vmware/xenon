@@ -51,6 +51,7 @@
     <module>stateless</module>
     <module>subscription</module>
     <module>task</module>
+    <module>ui</module>
     <module>upgrade/upgrade-01-initial</module>
     <module>upgrade/upgrade-02-add-logging</module>
     <module>upgrade/upgrade-03-add-fields-validation</module>

@@ -35,6 +35,5 @@ public class UiDemo {
         host.startFactory(ExampleService.class, ExampleService::createFactory);
     }
 
-    private UiDemo() {
-    }
+    private UiDemo() {}
 }
