@@ -14,9 +14,8 @@
 package com.vmware.xenon.workshop;
 
 import com.vmware.xenon.common.ServiceHost;
-import com.vmware.xenon.services.common.RootNamespaceService;
-
 import com.vmware.xenon.services.common.ExampleService;
+import com.vmware.xenon.services.common.RootNamespaceService;
 
 /**
  * Xenon UI demo
@@ -35,6 +34,5 @@ public class UiDemo {
         host.startFactory(ExampleService.class, ExampleService::createFactory);
     }
 
-    private UiDemo() {
-    }
+    private UiDemo() {}
 }
