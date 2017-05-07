@@ -225,7 +225,9 @@ public class ServiceHost implements ServiceRequestSender {
         public String[] peerNodes;
 
         /**
-         * A stable identity associated with this host
+         * Optional stable identity associated with this host. If not specified and a host configuration
+         * file is not present in the current sandbox, a random unique identifier will be assigned to this
+         * host and persisted in the serviceHostConfig.json file so its used on restart
          */
         public String id;
 
@@ -264,17 +266,18 @@ public class ServiceHost implements ServiceRequestSender {
         public boolean isAuthorizationEnabled = false;
 
         /**
-         * Base URI of the xenon instance that acts as the auth source for this service host
+         * Optional base URI of the xenon node that acts as the auth source for this service host
          */
         public String authProviderHostUri;
+
         /**
-         * File directory path to resource files. If specified resources will loaded from here instead of
+         * Optional file directory path to resource files. If specified, resources will be loaded from here instead of
          * the JAR file of the host
          */
         public Path resourceSandbox;
 
         /**
-         * The logical location of this host, if any
+         * Optional tag specifying the logical or geographic location of this host
          */
         public String location;
 
