@@ -164,10 +164,12 @@ public class StatelessService implements Service {
         }
     }
 
+    @NotSupported
     public void handlePut(Operation put) {
         Operation.failActionNotSupported(put);
     }
 
+    @NotSupported
     public void handlePatch(Operation patch) {
         Operation.failActionNotSupported(patch);
     }
@@ -203,6 +205,7 @@ public class StatelessService implements Service {
         options.complete();
     }
 
+    @NotSupported
     public void handlePost(Operation post) {
         Operation.failActionNotSupported(post);
     }

@@ -92,6 +92,7 @@ import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
 import com.vmware.xenon.common.jwt.JWTUtils;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.common.jwt.Verifier;
+import com.vmware.xenon.internal.ServiceDocumentDescriptionHelper;
 import com.vmware.xenon.services.common.AuthCredentialsService;
 import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.AuthorizationTokenCacheService;
@@ -5587,8 +5588,9 @@ public class ServiceHost implements ServiceRequestSender {
 
             // Description has to be built in three stages:
             // 1) Build the base description and add it to the cache
-            desc = this.descriptionBuilder.buildDescription(serviceStateClass, s.getOptions(),
-                    RequestRouter.findRequestRouter(s.getOperationProcessingChain()));
+            desc = this.descriptionBuilder.buildDescription(this, s,
+                    s.getOptions(),
+                    ServiceDocumentDescriptionHelper.findOrCreateRequestRouter(s));
 
             if (s.getOptions().contains(ServiceOption.IMMUTABLE)) {
                 if (desc.versionRetentionLimit > ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT) {
@@ -6000,5 +6002,4 @@ public class ServiceHost implements ServiceRequestSender {
                 ServiceErrorResponse.ERROR_CODE_SERVICE_ALREADY_EXISTS,
                 e);
     }
-
 }
