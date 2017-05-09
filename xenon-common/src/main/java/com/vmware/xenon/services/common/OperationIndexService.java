@@ -82,6 +82,7 @@ public class OperationIndexService extends LuceneDocumentIndexService {
         state.documentUpdateAction = action.toString();
 
         UpdateIndexRequest req = new UpdateIndexRequest();
+        req.updateAction = UpdateIndexRequest.IndexUpdateAction.COMMIT;
         req.description = SerializedOperation.DESCRIPTION;
         req.document = state;
 

@@ -3608,6 +3608,100 @@ public class TestLuceneDocumentIndexService {
         FileUtils.copyFiles(new File(pathToOldLuceneDir.toURI()), curLuceneIndexPath.toFile());
     }
 
+    @Test
+    public void testProposeCommit() throws Throwable {
+        setUpHost(false);
+
+        String initialName = UUID.randomUUID().toString();
+
+        Map<URI, ExampleServiceState> exampleServices = this.host.doFactoryChildServiceStart(null,
+                this.serviceCount, ExampleServiceState.class,
+                (o) -> {
+                    ExampleServiceState state = new ExampleServiceState();
+                    state.name = initialName;
+                    o.setBody(state);
+                }, UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+
+        Query query = Query.Builder.create()
+                .addFieldClause(ExampleServiceState.FIELD_NAME_NAME, initialName)
+                .build();
+        QueryTask queryTask = QueryTask.Builder.create().setQuery(query).build();
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+        assertEquals(queryTask.results.documentLinks.size(), this.serviceCount);
+
+        URI serviceUri = exampleServices.keySet().iterator().next();
+        ExampleServiceState state = this.host.getServiceState(null, ExampleServiceState.class,
+                serviceUri);
+        state.documentVersion++;
+        state.name = "documentName";
+        state.documentUpdateTimeMicros = Utils.getSystemNowMicrosUtc();
+        state.documentUpdateAction = "PATCH";
+
+        this.host.log(Level.INFO, "Updating index: %s", Utils.toJsonHtml(state));
+
+        ServiceDocumentDescription description = this.host.buildDocumentDescription(serviceUri.getPath());
+
+        UpdateIndexRequest updateRequest = new UpdateIndexRequest();
+        updateRequest.updateAction = UpdateIndexRequest.IndexUpdateAction.PROPOSE;
+        updateRequest.document = state;
+        updateRequest.description = description;
+        updateRequest.serializedDocument = null;
+
+        TestContext ctx = this.host.testCreate(1);
+        Operation post = Operation.createPost(this.host, ServiceUriPaths.CORE_DOCUMENT_INDEX)
+                .setBodyNoCloning(updateRequest)
+                .setCompletion(ctx.getCompletion());
+        this.host.send(post);
+        this.host.testWait(ctx);
+
+        query = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                // .addFieldClause(ExampleServiceState.FIELD_NAME_NAME, initialName)
+                .build();
+        queryTask = QueryTask.Builder.create()
+                .addOption(QueryOption.EXPAND_CONTENT)
+                .setQuery(query).build();
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+        assertEquals("Query results: " + Utils.toJsonHtml(queryTask.results),
+                this.serviceCount, queryTask.results.documentLinks.size());
+
+        ExampleServiceState newState = new ExampleServiceState();
+        newState.documentSelfLink = state.documentSelfLink;
+        newState.documentEpoch = state.documentEpoch;
+        newState.documentVersion = state.documentVersion;
+        newState.documentKind = state.documentKind;
+
+        updateRequest = new UpdateIndexRequest();
+        updateRequest.updateAction = UpdateIndexRequest.IndexUpdateAction.COMMIT_EXISTING;
+        updateRequest.document = newState;
+        updateRequest.description = description;
+
+        ctx = this.host.testCreate(1);
+        post = Operation.createPost(this.host, ServiceUriPaths.CORE_DOCUMENT_INDEX)
+                .setBodyNoCloning(updateRequest)
+                .setCompletion(ctx.getCompletion());
+        this.host.send(post);
+        this.host.testWait(ctx);
+
+        query = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+        queryTask = QueryTask.Builder.create()
+                .addOption(QueryOption.EXPAND_CONTENT)
+                .setQuery(query).build();
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+        assertEquals("Query results: " + Utils.toJsonHtml(queryTask.results),
+                this.serviceCount, queryTask.results.documentLinks.size());
+
+        Object document = queryTask.results.documents.get(newState.documentSelfLink);
+        assertNotNull(document);
+        state = Utils.fromJson(document, ExampleServiceState.class);
+        assertEquals("State: " + Utils.toJsonHtml(state),
+                newState.documentVersion, state.documentVersion);
+        assertEquals("State: " + Utils.toJsonHtml(state),
+                newState.documentEpoch, state.documentEpoch);
+    }
+
     private void logQuerySingleStat() {
         Map<String, ServiceStat> stats = this.host
                 .getServiceStats(this.host.getDocumentIndexServiceUri());

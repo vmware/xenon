@@ -5258,6 +5258,7 @@ public class ServiceHost implements ServiceRequestSender {
         // the serialized state and store as is, and it will index all fields
         // from the document instance, using the description for instructions
         UpdateIndexRequest body = new UpdateIndexRequest();
+        body.updateAction = UpdateIndexRequest.IndexUpdateAction.COMMIT;
         body.document = state;
         // retrieve the description through the cached template so its the thread safe,
         // immutable version

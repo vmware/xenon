@@ -17,6 +17,14 @@ import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 
 public class UpdateIndexRequest {
+
+    public enum IndexUpdateAction {
+        PROPOSE,
+        COMMIT,
+        COMMIT_EXISTING,
+    }
+
+    public IndexUpdateAction updateAction;
     public transient ServiceDocument document;
     public transient ServiceDocumentDescription description;
     public byte[] serializedDocument;

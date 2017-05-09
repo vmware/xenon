@@ -58,7 +58,11 @@ import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
  * avoid allocations of Document and Field instances for every service state update.
  */
 class LuceneIndexDocumentHelper {
+
     public static final String GROUP_BY_PROPERTY_NAME_SUFFIX = "_groupBySuffix";
+
+    public static final String FIELD_NAME_UNIQUE_ID = "documentUniqueId";
+
     private Document doc = new Document();
 
     public Document getDoc() {
@@ -90,6 +94,15 @@ class LuceneIndexDocumentHelper {
         }
     };
 
+    private final LongFieldContext epochField = new LongFieldContext() {
+        @Override
+        public void initialize() {
+            this.storedField = new StoredField(ServiceDocument.FIELD_NAME_EPOCH, 0L);
+            this.longPoint = new LongPoint(ServiceDocument.FIELD_NAME_EPOCH, 0L);
+            this.numericDocField = new NumericDocValuesField(ServiceDocument.FIELD_NAME_EPOCH, 0L);
+        }
+    };
+
     private final LongFieldContext updateTimeField = new LongFieldContext() {
         @Override
         public void initialize() {
@@ -117,6 +130,13 @@ class LuceneIndexDocumentHelper {
             this.stringField = new StringField(ServiceDocument.FIELD_NAME_SELF_LINK, "", Store.YES);
             this.sortedField = new SortedDocValuesField(ServiceDocument.FIELD_NAME_SELF_LINK,
                     new BytesRef(" "));
+        }
+    };
+
+    private final StringFieldContext uniqueIdField = new StringFieldContext() {
+        @Override
+        public void initialize() {
+            this.stringField = new StringField(FIELD_NAME_UNIQUE_ID, "", Store.YES);
         }
     };
 
@@ -174,6 +194,8 @@ class LuceneIndexDocumentHelper {
         this.updateActionField.initialize();
         this.updateTimeField.initialize();
         this.versionField.initialize();
+        this.epochField.initialize();
+        this.uniqueIdField.initialize();
     }
 
     void addSelfLinkField(String selfLink) {
@@ -214,6 +236,15 @@ class LuceneIndexDocumentHelper {
 
     void addExpirationTimeField(long exp) {
         updateLongFieldContext(exp, this.expirationTimeField);
+    }
+
+    void addEpochField(long epoch) {
+        updateLongFieldContext(epoch, this.epochField);
+    }
+
+    void addUniqueIdField(String uniqueId) {
+        this.uniqueIdField.stringField.setStringValue(uniqueId);
+        this.doc.add(this.uniqueIdField.stringField);
     }
 
     private void updateLongFieldContext(long value, LongFieldContext ctx) {

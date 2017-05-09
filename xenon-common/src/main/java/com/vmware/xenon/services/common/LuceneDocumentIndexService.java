@@ -52,6 +52,7 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.LongPoint;
+import org.apache.lucene.document.SortedNumericDocValuesField;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexUpgrader;
 import org.apache.lucene.index.IndexWriter;
@@ -112,6 +113,7 @@ import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryRuntimeContext;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.ServiceHostManagementService.BackupType;
+import com.vmware.xenon.services.common.UpdateIndexRequest.IndexUpdateAction;
 
 public class LuceneDocumentIndexService extends StatelessService {
 
@@ -906,7 +908,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                     Object o = op.getBodyRaw();
                     if (o != null) {
                         if (o instanceof UpdateIndexRequest) {
-                            updateIndex(op);
+                            updateIndex(op, (UpdateIndexRequest) o);
                             break;
                         }
                         if (o instanceof MaintenanceRequest) {
@@ -1441,8 +1443,11 @@ public class LuceneDocumentIndexService extends StatelessService {
     private Query updateQuery(Operation op, Query tq, long now) {
         Query expirationClause = LongPoint.newRangeQuery(
                 ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS, 1, now);
+        Query proposedClause = SortedNumericDocValuesField.newRangeQuery(
+                ServiceDocument.FIELD_NAME_EPOCH, Long.MIN_VALUE, -1L);
         BooleanQuery.Builder builder = new BooleanQuery.Builder()
                 .add(expirationClause, Occur.MUST_NOT)
+                .add(proposedClause, Occur.MUST_NOT)
                 .add(tq, Occur.FILTER);
         if (!getHost().isAuthorizationEnabled()) {
             return builder.build();
@@ -2331,7 +2336,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         long updateTime = visitor.documentUpdateTimeMicros;
         // attempt to refresh or create new version cache entry, from the entry in the query results
         // The update method will reject the update if the version is stale
-        updateLinkInfoCache(null, link, null, latestVersion, updateTime);
+        updateLinkInfoCache(IndexUpdateAction.COMMIT, null, link, null, latestVersion, updateTime);
         return latestVersion;
     }
 
@@ -2392,92 +2397,151 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    protected void updateIndex(Operation updateOp) throws Throwable {
-        UpdateIndexRequest r = updateOp.getBody(UpdateIndexRequest.class);
-        ServiceDocument s = r.document;
-        ServiceDocumentDescription desc = r.description;
+    private void updateIndex(Operation op, UpdateIndexRequest request) throws Throwable {
 
-        if (updateOp.isRemote()) {
-            updateOp.fail(new IllegalStateException("Remote requests not allowed"));
+        if (op.isRemote()) {
+            op.fail(new IllegalStateException("Remote requests are not allowed"));
             return;
         }
 
-        if (s == null) {
-            updateOp.fail(new IllegalArgumentException("document is required"));
+        IndexUpdateAction updateAction = request.updateAction;
+        if (updateAction == null) {
+            op.fail(new IllegalArgumentException("updateAction is required"));
             return;
         }
 
-        String link = s.documentSelfLink;
-        if (link == null) {
-            updateOp.fail(new IllegalArgumentException(
-                    "documentSelfLink is required"));
+        ServiceDocument document = request.document;
+        if (document == null) {
+            op.fail(new IllegalArgumentException("document is required"));
             return;
         }
 
-        if (s.documentUpdateAction == null) {
-            updateOp.fail(new IllegalArgumentException(
-                    "documentUpdateAction is required"));
+        ServiceDocumentDescription description = request.description;
+        if (description == null) {
+            op.fail(new IllegalArgumentException("description is required"));
             return;
         }
 
-        if (desc == null) {
-            updateOp.fail(new IllegalArgumentException("description is required"));
+        String documentSelfLink = document.documentSelfLink;
+        if (documentSelfLink == null) {
+            op.fail(new IllegalArgumentException("documentSelfLink is required"));
+            return;
+        }
+
+        if (updateAction == IndexUpdateAction.COMMIT_EXISTING) {
+            handleCommitExistingRequest(op, document, description, documentSelfLink);
+            return;
+        }
+
+        String documentUpdateAction = document.documentUpdateAction;
+        if (documentUpdateAction == null) {
+            op.fail(new IllegalArgumentException("documentUpdateAction is required"));
+            return;
+        }
+
+        if (updateAction == IndexUpdateAction.PROPOSE && document.documentEpoch == null) {
+            op.fail(new IllegalArgumentException("documentEpoch is required on PROPOSE"));
             return;
         }
 
         IndexWriter wr = this.writer;
         if (wr == null) {
-            updateOp.fail(new CancellationException());
+            op.fail(new CancellationException());
             return;
         }
-        s.documentDescription = null;
 
-        LuceneIndexDocumentHelper indexDocHelper = this.indexDocumentHelper.get();
+        document.documentDescription = null;
 
-        indexDocHelper.addSelfLinkField(link);
-        if (s.documentKind != null) {
-            indexDocHelper.addKindField(s.documentKind);
-        }
-        indexDocHelper.addUpdateActionField(s.documentUpdateAction);
-        indexDocHelper.addBinaryStateFieldToDocument(s, r.serializedDocument, desc);
-        if (s.documentAuthPrincipalLink != null) {
-            indexDocHelper.addAuthPrincipalLinkField(s.documentAuthPrincipalLink);
-        }
-        if (s.documentTransactionId != null) {
-            indexDocHelper.addTxIdField(s.documentTransactionId);
-        }
-        indexDocHelper.addUpdateTimeField(s.documentUpdateTimeMicros);
-        if (s.documentExpirationTimeMicros > 0) {
-            indexDocHelper.addExpirationTimeField(s.documentExpirationTimeMicros);
-        }
-        indexDocHelper.addVersionField(s.documentVersion);
+        LuceneIndexDocumentHelper indexDocumentHelper = this.indexDocumentHelper.get();
+        indexDocumentHelper.addSelfLinkField(documentSelfLink);
+        indexDocumentHelper.addVersionField(document.documentVersion);
+        indexDocumentHelper.addUpdateActionField(documentUpdateAction);
+        indexDocumentHelper.addUpdateTimeField(document.documentUpdateTimeMicros);
+        indexDocumentHelper.addBinaryStateFieldToDocument(document, request.serializedDocument,
+                description);
 
-        Document threadLocalDoc = indexDocHelper.getDoc();
+        if (document.documentKind != null) {
+            indexDocumentHelper.addKindField(document.documentKind);
+        }
+
+        if (document.documentAuthPrincipalLink != null) {
+            indexDocumentHelper.addAuthPrincipalLinkField(document.documentAuthPrincipalLink);
+        }
+
+        if (document.documentTransactionId != null) {
+            indexDocumentHelper.addTxIdField(document.documentTransactionId);
+        }
+
+        if (document.documentExpirationTimeMicros > 0) {
+            indexDocumentHelper.addExpirationTimeField(document.documentExpirationTimeMicros);
+        }
+
+        if (updateAction == IndexUpdateAction.PROPOSE) {
+            // The high-order bit stores the proposed state, e.g. whether the document is
+            // proposed or committed.
+            long storedEpoch = document.documentEpoch;
+            storedEpoch |= Long.MIN_VALUE;
+            indexDocumentHelper.addEpochField(storedEpoch);
+
+            // Updating a DocValues field requires a single term to uniquely identify the document.
+            String documentUniqueId = documentSelfLink + ":" + document.documentVersion + ":"
+                    + document.documentEpoch;
+            indexDocumentHelper.addUniqueIdField(documentUniqueId);
+        }
+
+        Document threadLocalDoc = indexDocumentHelper.getDoc();
+
         try {
-            if (desc.propertyDescriptions == null
-                    || desc.propertyDescriptions.isEmpty()) {
-                // no additional property type information, so we will add the
-                // document with common fields indexed plus the full body
-                addDocumentToIndex(wr, updateOp, threadLocalDoc, s, desc);
+            if (description.propertyDescriptions == null
+                    || description.propertyDescriptions.isEmpty()) {
+                // There is no additional property type information. Add the document with common
+                // fields indexed and the full body (with no additional indexing).
+                addDocumentToIndex(updateAction, wr, op, threadLocalDoc, document, description);
                 return;
             }
 
-            indexDocHelper.addIndexableFieldsToDocument(s, desc);
+            indexDocumentHelper.addIndexableFieldsToDocument(document, description);
 
             if (hasOption(ServiceOption.INSTRUMENTATION)) {
-                int fieldCount = indexDocHelper.getDoc().getFields().size();
+                int fieldCount = threadLocalDoc.getFields().size();
                 setTimeSeriesStat(STAT_NAME_INDEXED_FIELD_COUNT, AGGREGATION_TYPE_SUM, fieldCount);
                 ServiceStat st = getHistogramStat(STAT_NAME_FIELD_COUNT_PER_DOCUMENT);
                 setStat(st, fieldCount);
             }
 
-            addDocumentToIndex(wr, updateOp, threadLocalDoc, s, desc);
+            addDocumentToIndex(updateAction, wr, op, threadLocalDoc, document, description);
+
         } finally {
-            // NOTE: The Document is a thread local managed by the index document helper. Its fields
-            // must be cleared *after* its added to the index (above) and *before* its re-used.
-            // After the fields are cleared, the document can not be used in this scope
             threadLocalDoc.clear();
         }
+    }
+
+    private void handleCommitExistingRequest(Operation op, ServiceDocument document,
+            ServiceDocumentDescription description, String documentSelfLink) throws Throwable {
+
+        if (document.documentEpoch == null) {
+            op.fail(new IllegalArgumentException("documentEpoch is required on COMMIT_EXISTING"));
+            return;
+        }
+
+        IndexWriter wr = this.writer;
+        if (wr == null) {
+            op.fail(new CancellationException());
+            return;
+        }
+
+        String documentUniqueId = documentSelfLink + ":" + document.documentVersion + ":"
+                + document.documentEpoch;
+
+        wr.updateNumericDocValue(
+                new Term(LuceneIndexDocumentHelper.FIELD_NAME_UNIQUE_ID, documentUniqueId),
+                ServiceDocument.FIELD_NAME_EPOCH, document.documentEpoch);
+
+        updateLinkInfoCache(IndexUpdateAction.COMMIT_EXISTING, description, documentSelfLink,
+                document.documentKind, document.documentVersion, Utils.getNowMicrosUtc());
+
+        op.complete();
+        checkDocumentRetentionLimit(document, description);
     }
 
     private void checkDocumentRetentionLimit(ServiceDocument state, ServiceDocumentDescription desc)
@@ -2592,7 +2656,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         // be reflected in the new searcher. If the start time would be used,
         // it is possible to race with updating the searcher and NOT have this
         // change be reflected in the searcher.
-        updateLinkInfoCache(null, link, kind, newestVersion, Utils.getNowMicrosUtc());
+        updateLinkInfoCache(IndexUpdateAction.COMMIT, null, link, kind, newestVersion,
+                Utils.getNowMicrosUtc());
         delete.complete();
     }
 
@@ -2609,8 +2674,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         wr.deleteDocuments(bq);
     }
 
-    private void addDocumentToIndex(IndexWriter wr, Operation op, Document doc, ServiceDocument sd,
-            ServiceDocumentDescription desc) throws IOException {
+    private void addDocumentToIndex(IndexUpdateAction updateAction, IndexWriter wr, Operation op,
+            Document doc, ServiceDocument sd, ServiceDocumentDescription desc) throws IOException {
         long startNanos = 0;
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
             startNanos = System.nanoTime();
@@ -2635,14 +2700,19 @@ public class LuceneDocumentIndexService extends StatelessService {
         // be reflected in the new searcher. If the start time would be used,
         // it is possible to race with updating the searcher and NOT have this
         // change be reflected in the searcher.
-        updateLinkInfoCache(desc, sd.documentSelfLink, sd.documentKind, sd.documentVersion,
-                Utils.getNowMicrosUtc());
+        updateLinkInfoCache(updateAction, desc, sd.documentSelfLink, sd.documentKind,
+                sd.documentVersion, Utils.getNowMicrosUtc());
         op.setBody(null).complete();
-        checkDocumentRetentionLimit(sd, desc);
         applyActiveQueries(op, sd, desc);
+
+        if (updateAction == IndexUpdateAction.PROPOSE) {
+            return;
+        }
+
+        checkDocumentRetentionLimit(sd, desc);
     }
 
-    private void updateLinkInfoCache(ServiceDocumentDescription desc,
+    private void updateLinkInfoCache(IndexUpdateAction updateAction, ServiceDocumentDescription desc,
             String link, String kind, long version, long lastAccessTime) {
         boolean isImmutable = desc != null
                 && desc.serviceCapabilities != null
@@ -2665,7 +2735,9 @@ public class LuceneDocumentIndexService extends StatelessService {
                     }
                     if (version >= entry.version) {
                         entry.updateTimeMicros = Math.max(entry.updateTimeMicros, lastAccessTime);
-                        entry.version = version;
+                        if (updateAction == IndexUpdateAction.COMMIT) {
+                            entry.version = version;
+                        }
                     }
                     return entry;
                 });
