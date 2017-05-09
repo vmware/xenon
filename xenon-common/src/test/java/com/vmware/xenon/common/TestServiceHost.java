@@ -259,6 +259,8 @@ public class TestServiceHost {
             assertTrue(desc.serviceCapabilities.contains(ServiceOption.PERSISTENCE));
             assertTrue(desc.serviceCapabilities.contains(ServiceOption.INSTRUMENTATION));
             assertTrue(desc.propertyDescriptions.size() > 1);
+            // check that a description was replaced with contents from HTML file
+            assertTrue(desc.propertyDescriptions.get("keyValues").propertyDocumentation.startsWith("Key/Value"));
         }
     }
 
