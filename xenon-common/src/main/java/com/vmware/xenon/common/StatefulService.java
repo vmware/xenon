@@ -672,10 +672,12 @@ public class StatefulService implements Service {
         return false;
     }
 
+    @NotSupported
     public void handlePost(Operation post) {
         Operation.failActionNotSupported(post);
     }
 
+    @Documentation(description = "Delete this service instance")
     public void handleDelete(Operation delete) {
         delete.complete();
     }
@@ -687,6 +689,7 @@ public class StatefulService implements Service {
         delete.complete();
     }
 
+    @NotSupported
     public void handlePatch(Operation patch) {
         Operation.failActionNotSupported(patch);
     }
@@ -698,12 +701,14 @@ public class StatefulService implements Service {
     /**
      * Replace current state, with the body of the request, in one step
      */
+    @Documentation(description = "Replace current state with the body of the request")
     public void handlePut(Operation put) {
         ServiceDocument newState = put.getBody(this.context.stateType);
         setState(put, newState);
         put.complete();
     }
 
+    @Documentation(description = "Read the service document")
     public void handleGet(Operation get) {
         if (!hasPendingTransactions()) {
             handleGetSimple(get);
@@ -994,7 +999,8 @@ public class StatefulService implements Service {
             ServiceDocument latestState = op.getLinkedState();
             long delta = latestState.documentUpdateTimeMicros - this.context.lastCommitTimeMicros;
             // for delete, services on replica only stop by commit op. thus skipping the delta check.
-            if (op.getAction() != Action.DELETE && delta < getHost().getMaintenanceIntervalMicros()) {
+            if (op.getAction() != Action.DELETE
+                    && delta < getHost().getMaintenanceIntervalMicros()) {
                 return;
             }
 

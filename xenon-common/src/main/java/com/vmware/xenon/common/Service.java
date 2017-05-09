@@ -13,6 +13,10 @@
 
 package com.vmware.xenon.common;
 
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 import java.net.URI;
 import java.util.EnumSet;
 import java.util.concurrent.TimeUnit;
@@ -231,6 +235,13 @@ public interface Service extends ServiceRequestSender {
          * Set by runtime. Service is stateless.
          */
         STATELESS,
+
+        /**
+         * Service is expected to be exposed publicly and thus
+         * should be exposed through public API documentation
+         * such as swagger
+         */
+        PUBLIC,
 
         NONE
     }
@@ -548,4 +559,106 @@ public interface Service extends ServiceRequestSender {
     AuthorizationContext getSystemAuthorizationContext();
 
     void setAuthorizationContext(Operation op, AuthorizationContext ctx);
+
+    /**
+     * Annotation to mark a handler method as not being supported
+     */
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target({ElementType.METHOD})
+    public @interface NotSupported {
+        // this is a marker annotation
+    }
+
+    /**
+     * Documentation annotations for handler methods (doGet, doPost, ...)
+     * This annotation is placed on handler methods to document the
+     * behavior of the http verb.
+     * <p>
+     * Note that the 'description' fields can either directly contain a description,
+     * or can be used as a key to look up a more complete description in an HTML
+     * resource file with the same path as the java class, but with the
+     * file terminating in '.html'.
+     * <p>
+     * The format of the HTML file is that each key must appear on a line on its own
+     * surrounded by &gt;h1&lt; and &gt;/h1&lt; tags, and the lines between that key
+     * and the next key will be inserted as the description.
+     *
+     * Example:
+     * <pre>
+     * {@code
+     *
+     * @Documentation(description = "@CAR",
+     *       queryParams = {
+     *          @QueryParam(description = "@TEAPOT",
+     *                  example = "false", name = "teapot", required = false, type = "boolean")
+     *      },
+     *      consumes = { "application/json", "app/json" },
+     *      produces = { "application/json", "app/json" },
+     *      responses = {
+     *          @ApiResponse(statusCode = 200, description = "OK"),
+     *          @ApiResponse(statusCode = 404, description = "Not Found"),
+     *          @ApiResponse(statusCode = 418, description = "I'm a teapot!")
+     *      })
+     * @Override
+     * public void handlePut(Operation put) {
+     * ...
+     *
+     * Car.html:
+     * <h1>@TEAPOT</h1>
+     *
+     * Test param - if true then do not modify state, and return http status
+     * \"I'm a teapot\"
+     * <h1>@CAR</h1>
+     *
+     * Description of a car
+     *
+     * }
+     * </pre>
+     */
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target({ElementType.METHOD})
+    public @interface Documentation {
+        String description() default "";
+
+        /** defines HTTP status statusCode responses */
+        public ApiResponse[] responses() default {};
+
+        /** defines optional query parameters */
+        public QueryParam[] queryParams() default {};
+
+        /** List of supported media types, defaults to application/json */
+        public String[] consumes() default {};
+
+        /** List of supported media types, defaults to application/json */
+        public String[] produces() default {};
+    }
+
+    /**
+     * Documentation of HTTP response codes for handler methods.
+     * This annotation is used as an embedded annotation inside the @Documentation
+     * annotation.
+     */
+    @Target(value = {ElementType.METHOD})
+    @Retention(value = RetentionPolicy.RUNTIME)
+    public @interface ApiResponse {
+
+        public int statusCode();
+        public String description();
+        public Class<?> response() default Void.class;
+    }
+
+    /**
+     * Documentation of query parameter support for handler methods.
+     * This annotation is used as an embedded annotation inside the @Documentation
+     * annotation.
+     */
+    @Target(value = {ElementType.METHOD})
+    @Retention(value = RetentionPolicy.RUNTIME)
+    public @interface QueryParam {
+        public String name();
+        public String description() default "";
+        public String example() default "";
+        public String type() default "string";
+        public boolean required() default false;
+    }
 }
