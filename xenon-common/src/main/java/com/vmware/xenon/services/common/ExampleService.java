@@ -24,6 +24,7 @@ import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.OperationProcessingChain;
 import com.vmware.xenon.common.RequestRouter;
+import com.vmware.xenon.common.RequestRouter.Route.RouteDocumentation;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
@@ -101,14 +102,18 @@ public class ExampleService extends StatefulService {
         @UsageOption(option = PropertyUsageOption.OPTIONAL)
         @PropertyOptions(indexing = { PropertyIndexingOption.EXPAND,
                 PropertyIndexingOption.FIXED_ITEM_NAME })
+        @Documentation(description = "@KEYVALUE", exampleString = "{ \"key1\" : \"value1\", \"key2\", \"value2\" }")
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public Map<String, String> keyValues = new HashMap<>();
+        @Documentation(description = "Version counter")
         public Long counter;
         @PropertyOptions(indexing = PropertyIndexingOption.SORT)
         public Long sortedCounter;
+        @Documentation(description = "@NAME", exampleString = "myExample")
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         @PropertyOptions(indexing = PropertyIndexingOption.SORT)
         public String name;
+        @Documentation(description = "@TAGS", exampleString = "{ \"tag1\" , \"tag2\" }")
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public Set<String> tags = new HashSet<>();
         @UsageOption(option = PropertyUsageOption.ID)
@@ -155,6 +160,7 @@ public class ExampleService extends StatefulService {
     }
 
     @Override
+    @RouteDocumentation(description = "@PUT")
     public void handlePut(Operation put) {
         ExampleServiceState newState = getBody(put);
         ExampleServiceState currentState = getState(put);
@@ -173,6 +179,7 @@ public class ExampleService extends StatefulService {
     }
 
     @Override
+    @RouteDocumentation(description = "Update selected fields of example document")
     public void handlePatch(Operation patch) {
         updateState(patch);
         // updateState method already set the response body with the merged state

@@ -19,6 +19,10 @@ import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.net.URI;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
@@ -32,6 +36,8 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import com.esotericsoftware.kryo.serializers.VersionFieldSerializer.Since;
+
+import com.google.gson.JsonParseException;
 
 import com.vmware.xenon.common.RequestRouter.Route;
 import com.vmware.xenon.common.Service.Action;
@@ -254,6 +260,10 @@ public class ServiceDocumentDescription {
      */
     public int serializedStateSizeLimit = DEFAULT_SERIALIZED_STATE_LIMIT;
 
+    /** Used internally to parse example timestamps */
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ISO_INSTANT
+            .withZone(ZoneId.of("UTC"));
+
     /**
      * Builder is a parameterized factory for ServiceDocumentDescription instances.
      */
@@ -268,7 +278,7 @@ public class ServiceDocumentDescription {
 
         public ServiceDocumentDescription buildDescription(
                 Class<? extends ServiceDocument> type) {
-            PropertyDescription root = buildPodoPropertyDescription(type, new HashSet<>(), 0);
+            PropertyDescription root = buildPodoPropertyDescription(type, type, new HashSet<>(), 0);
             ServiceDocumentDescription desc = new ServiceDocumentDescription();
 
             IndexingParameters indexingParameters = type.getAnnotation(IndexingParameters.class);
@@ -290,7 +300,7 @@ public class ServiceDocumentDescription {
         }
 
         public PropertyDescription buildPodoPropertyDescription(Class<?> type) {
-            return buildPodoPropertyDescription(type, new HashSet<>(), 0);
+            return buildPodoPropertyDescription(type, type, new HashSet<>(), 0);
         }
 
         public ServiceDocumentDescription buildDescription(
@@ -312,7 +322,23 @@ public class ServiceDocumentDescription {
             return desc;
         }
 
+        public ServiceDocumentDescription buildDescription(
+                ServiceHost host, Service service,
+                EnumSet<Service.ServiceOption> serviceCaps,
+                RequestRouter serviceRequestRouter) {
+            ServiceDocumentDescription desc = buildDescription(service.getStateType(), serviceCaps);
+
+            // look up a richer description from resource files if one exists
+            desc.description = ServiceDocumentDescriptionHelper
+                    .lookupDocumentationDescription(service.getClass(), desc.description);
+            if (serviceRequestRouter != null) {
+                desc.serviceRequestRoutes = serviceRequestRouter.getRoutes();
+            }
+            return desc;
+        }
+
         protected PropertyDescription buildPodoPropertyDescription(
+                Class<?> documentType,
                 Class<?> clazz,
                 Set<String> visited,
                 int depth) {
@@ -358,7 +384,7 @@ public class ServiceDocumentDescription {
                 if (fd.usageOptions.contains(PropertyUsageOption.LINKS)) {
                     fd.indexingOptions.add(PropertyIndexingOption.EXPAND);
                 }
-                buildPropertyDescription(fd, f.getType(), f.getGenericType(), f.getAnnotations(),
+                buildPropertyDescription(documentType, fd, f.getType(), f.getGenericType(), f.getAnnotations(),
                         visited, depth);
 
                 if (ServiceDocument.isBuiltInDocumentFieldWithNullExampleValue(f.getName())) {
@@ -380,6 +406,7 @@ public class ServiceDocumentDescription {
 
         @SuppressWarnings("rawtypes")
         protected void buildPropertyDescription(
+                Class<?> documentType,
                 PropertyDescription pd,
                 Class<?> clazz,
                 Type typ,
@@ -430,6 +457,7 @@ public class ServiceDocumentDescription {
                 pd.typeName = TypeName.URI;
             } else {
                 isSimpleType = false;
+                pd.typeName = null;
             }
 
             // allow annotations to modify certain attributes
@@ -439,10 +467,49 @@ public class ServiceDocumentDescription {
                     if (Documentation.class.equals(a.annotationType())) {
                         Documentation df = (Documentation) a;
                         if (df.description() != null && !df.description().isEmpty()) {
-                            pd.propertyDocumentation = df.description();
+                            pd.propertyDocumentation = ServiceDocumentDescriptionHelper
+                                    .lookupDocumentationDescription(documentType, df.description());
                         }
                         if (df.exampleString() != null && !df.exampleString().isEmpty()) {
-                            pd.exampleValue = df.exampleString();
+                            // we can try and coerse the string into the appropriate type
+                            final String example = df.exampleString();
+                            try {
+                                if (!isSimpleType || pd.typeName == null && example != null
+                                        && !example.isEmpty()) {
+                                    // try to JSON deserialize the string to the type
+                                    pd.exampleValue = Utils.fromJson(example, clazz);
+                                } else if (pd.typeName != null) {
+                                    switch (pd.typeName) {
+                                    case STRING:
+                                        pd.exampleValue = example;
+                                        break;
+                                    case BOOLEAN:
+                                        pd.exampleValue = Boolean.parseBoolean(example);
+                                        break;
+                                    case DATE:
+                                        pd.exampleValue = Date.from(
+                                                ZonedDateTime.parse(example, DATE_FORMAT)
+                                                        .toInstant());
+                                        break;
+                                    case DOUBLE:
+                                        pd.exampleValue = Double.parseDouble(example);
+                                        break;
+                                    case LONG:
+                                        pd.exampleValue = Long.parseLong(example);
+                                        break;
+                                    case URI:
+                                        pd.exampleValue = URI.create(example);
+                                        break;
+                                    default:
+                                        pd.exampleValue = null;
+                                        break;
+                                    }
+                                }
+                            } catch (IllegalArgumentException
+                                    | DateTimeParseException
+                                    | JsonParseException e) {
+                                // cannot parse example - leave empty
+                            }
                         }
                     } else if (UsageOptions.class.equals(a.annotationType())) {
                         UsageOptions usageOptions = (UsageOptions) a;
@@ -485,7 +552,7 @@ public class ServiceDocumentDescription {
                     // An example where this is the case is {@link java.util.Properties}.
                     if (!(typ instanceof ParameterizedType)) {
                         PropertyDescription fd = new PropertyDescription();
-                        buildPropertyDescription(fd, String.class, String.class, null, visited,
+                        buildPropertyDescription(documentType, fd, String.class, String.class, null, visited,
                                 depth + 1);
                         pd.elementDescription = fd;
                         return;
@@ -505,7 +572,7 @@ public class ServiceDocumentDescription {
 
                     // Recurse into self
                     PropertyDescription fd = new PropertyDescription();
-                    buildPropertyDescription(fd, componentClass, componentType, null, visited,
+                    buildPropertyDescription(documentType, fd, componentClass, componentType, null, visited,
                             depth + 1);
                     pd.elementDescription = fd;
                 } else if (Enum.class.isAssignableFrom(clazz)) {
@@ -527,7 +594,7 @@ public class ServiceDocumentDescription {
 
                     // Recurse into self
                     PropertyDescription fd = new PropertyDescription();
-                    buildPropertyDescription(fd, componentClass, componentType, null, visited,
+                    buildPropertyDescription(documentType, fd, componentClass, componentType, null, visited,
                             depth + 1);
                     pd.elementDescription = fd;
                 } else if (Collection.class.isAssignableFrom(clazz)) {
@@ -552,7 +619,7 @@ public class ServiceDocumentDescription {
 
                     // Recurse into self
                     PropertyDescription fd = new PropertyDescription();
-                    buildPropertyDescription(fd, componentClass, componentType, null, visited,
+                    buildPropertyDescription(documentType, fd, componentClass, componentType, null, visited,
                             depth + 1);
                     pd.elementDescription = fd;
                 } else {
@@ -565,7 +632,7 @@ public class ServiceDocumentDescription {
                     }
 
                     // Recurse into object
-                    PropertyDescription podo = buildPodoPropertyDescription(clazz, visited,
+                    PropertyDescription podo = buildPodoPropertyDescription(documentType, clazz, visited,
                             depth + 1);
                     pd.fieldDescriptions = podo.fieldDescriptions;
                 }
