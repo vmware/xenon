@@ -14,6 +14,7 @@
 package com.vmware.xenon.services.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
@@ -57,7 +58,7 @@ public class TestRootNamespaceService extends BasicTestCase {
     }
 
     @Test
-    public void getRootNamespaceServiceWithStateless() throws Throwable {
+    public void getRootNamespaceServiceWithFilter() throws Throwable {
         this.host.waitForServiceAvailable(RootNamespaceService.SELF_LINK);
         URI serviceUri = UriUtils.buildUri(this.host, RootNamespaceService.class);
 
@@ -70,6 +71,30 @@ public class TestRootNamespaceService extends BasicTestCase {
 
         // at least one stateless service
         assertTrue(res.documentLinks.contains("/"));
+
+        // links must be sorted
+        ArrayList<String> copy = new ArrayList<>(res.documentLinks);
+        Collections.sort(copy);
+        assertEquals(copy, res.documentLinks);
+    }
+
+    @Test
+    public void getRootNamespaceServiceWithIncludesExcludes() throws Throwable {
+        this.host.waitForServiceAvailable(RootNamespaceService.SELF_LINK);
+        URI serviceUri = UriUtils.buildUri(this.host, RootNamespaceService.class);
+
+        // create a root service
+        Operation get = Operation
+                .createGet(UriUtils.extendUriWithQuery(serviceUri, "includes", "STATELESS", "excludes", "FACTORY"));
+
+        get = this.host.waitForResponse(get);
+        ServiceDocumentQueryResult res = get.getBody(ServiceDocumentQueryResult.class);
+
+        // at least one stateless service
+        assertTrue(res.documentLinks.contains("/"));
+
+        // no factory service
+        assertFalse(res.documentLinks.contains(ServiceUriPaths.CORE_LOCAL_QUERY_TASKS));
 
         // links must be sorted
         ArrayList<String> copy = new ArrayList<>(res.documentLinks);
