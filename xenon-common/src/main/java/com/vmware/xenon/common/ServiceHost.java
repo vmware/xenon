@@ -13,9 +13,12 @@
 
 package com.vmware.xenon.common;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.URI;
@@ -36,7 +39,9 @@ import java.util.EnumSet;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Properties;
@@ -73,6 +78,7 @@ import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Operation.OperationOption;
+import com.vmware.xenon.common.RequestRouter.Route;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
@@ -549,6 +555,8 @@ public class ServiceHost implements ServiceRequestSender {
     private final Map<String, ServiceDocumentDescription> descriptionCache = new HashMap<>();
     private final Map<String, ServiceDocumentDescription> descriptionCachePerFactoryLink = new HashMap<>();
     private final ServiceDocumentDescription.Builder descriptionBuilder = Builder.create();
+
+    private final Map<String, Map<String,String>> documentationDescriptionCache = new HashMap<>();
 
     private ExecutorService executor;
     private ScheduledExecutorService scheduledExecutor;
@@ -5587,8 +5595,9 @@ public class ServiceHost implements ServiceRequestSender {
 
             // Description has to be built in three stages:
             // 1) Build the base description and add it to the cache
-            desc = this.descriptionBuilder.buildDescription(serviceStateClass, s.getOptions(),
-                    RequestRouter.findRequestRouter(s.getOperationProcessingChain()));
+            desc = this.descriptionBuilder.buildDescription(this, s,
+                    s.getOptions(),
+                    findOrCreateRequestRouter(s));
 
             if (s.getOptions().contains(ServiceOption.IMMUTABLE)) {
                 if (desc.versionRetentionLimit > ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT) {
@@ -5799,6 +5808,119 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     /**
+     * Lookup table for whether or not a given action should
+     * have a default request type (if true) or both request and response type (false) or neither (null)
+     */
+    private static final Map<String, Boolean> actionDefaultTypeMap;
+
+    static {
+        actionDefaultTypeMap = new LinkedHashMap<>();
+        actionDefaultTypeMap.put("Get", false);
+        actionDefaultTypeMap.put("Post", true);
+        actionDefaultTypeMap.put("Put", true);
+        actionDefaultTypeMap.put("Patch", true);
+        actionDefaultTypeMap.put("Delete", null);
+    }
+
+    /**
+     * Look up the RequestRouter for the service, or make a stubbed RequestRouter
+     * with default implementations
+     */
+    private RequestRouter findOrCreateRequestRouter(Service s) {
+        RequestRouter requestRouter = RequestRouter.findRequestRouter(s.getOperationProcessingChain());
+        if (requestRouter != null) {
+            return requestRouter;
+        }
+        requestRouter = new RequestRouter();
+        for (Map.Entry<String, Boolean> entry : actionDefaultTypeMap.entrySet()) {
+            try {
+                String action = entry.getKey();
+                String methodName = "handle" + action;
+                String actionName = action.toUpperCase(Locale.ENGLISH);
+
+                Method method = s.getClass().getMethod(methodName, Operation.class);
+                if (method.getAnnotation(Service.NotSupported.class) != null) {
+                    continue;
+                }
+                // we have an implementation, register the action and description
+
+                Route route = new Route();
+                // if the request / response is not the default (used by stateless) ServiceDocument then enrich
+                if (entry.getValue() != null && !s.getStateType().equals(ServiceDocument.class)) {
+                    // Get, Post, Put all generate a document as response
+                    route.responseType = s.getStateType();
+                    if (entry.getValue().equals(Boolean.TRUE)) {
+                        // Post and Put also accept a document as a request parameter
+                        route.requestType = s.getStateType();
+                    }
+                }
+                // look up the documentation annotation if present
+                Service.Documentation doc = method.getAnnotation(Service.Documentation.class);
+                if (doc != null) {
+                    route.description = lookupDocumentationDescription(s, doc.description());
+                    route.parameters = new ArrayList<>();
+                    if (doc.queryParams() != null) {
+                        for (Service.QueryParam qp : doc.queryParams()) {
+                            RequestRouter.Parameter p =
+                                    new RequestRouter.Parameter(
+                                            qp.name(),
+                                            lookupDocumentationDescription(s, qp.description()),
+                                            qp.type(),
+                                            qp.required(),
+                                            qp.example().isEmpty() ? null : qp.example(),
+                                            RequestRouter.ParamDef.QUERY);
+                            route.parameters.add(p);
+                        }
+                    }
+                    if (doc.responses() != null) {
+                        for (Service.ApiResponse response : doc.responses()) {
+                            RequestRouter.Parameter p =
+                                    new RequestRouter.Parameter(
+                                            Integer.toString(response.statusCode()),
+                                            lookupDocumentationDescription(s, response.description()),
+                                            response.response().getName(), false, null, RequestRouter.ParamDef.RESPONSE);
+                            route.parameters.add(p);
+                        }
+                    }
+                    if (doc.consumes() != null) {
+                        for (String mediaType : doc.consumes()) {
+                            RequestRouter.Parameter p =
+                                    new RequestRouter.Parameter(
+                                            mediaType,
+                                            null,
+                                            null,
+                                            false,
+                                            null,
+                                            RequestRouter.ParamDef.CONSUMES);
+                            route.parameters.add(p);
+                        }
+                    }
+                    if (doc.produces() != null) {
+                        for (String mediaType : doc.produces()) {
+                            RequestRouter.Parameter p =
+                                    new RequestRouter.Parameter(
+                                            mediaType,
+                                            null,
+                                            null,
+                                            false,
+                                            null,
+                                            RequestRouter.ParamDef.PRODUCES);
+                            route.parameters.add(p);
+                        }
+                    }
+                }
+                route.action = Action.valueOf(actionName);
+                route.matcher = new RequestRouter.RequestDefaultMatcher();
+                requestRouter.register(route);
+            } catch (NoSuchMethodException | SecurityException ex) {
+                log(Level.WARNING, "Failure looking up handler method for %s: %s",
+                                        entry.getKey(), Utils.toString(ex));
+            }
+        }
+        return requestRouter;
+    }
+
+    /**
      * Return the system user's authorization context.
      *
      * @return authorization context.
@@ -6001,4 +6123,76 @@ public class ServiceHost implements ServiceRequestSender {
                 e);
     }
 
+    /**
+     * The description field can be used as a key into an HTML document containing more complete documentation
+     * so as to avoid including massive documentation inside the Java sources, and to permit tech-pubs
+     * authors to edit an HTML file instead of modifying in-line descriptions inside Java files
+     */
+    protected String lookupDocumentationDescription(Service s, String description) {
+        if (description == null) {
+            return null;
+        }
+
+        String resourceName = "/" + s.getClass().getName().replaceAll("\\.", "/") + ".html";
+
+        if (!this.documentationDescriptionCache.containsKey(resourceName)) {
+            // this document type has not yet been cached
+            InputStream is = s.getClass().getResourceAsStream(resourceName);
+            if (is == null) {
+                this.documentationDescriptionCache.put(resourceName, null);
+                return description;
+            }
+            Map<String,String> cache = new HashMap<>();
+            // very simple parser - each new description mapping starts on a new line with '<h1>' and the description key,
+            // which is the contents between an '<h1>' and an '</h1>' termination.
+            // The description body must follow on subsequent lines (anything on the same line as the key is ignored).
+
+            String key = null;
+            StringBuilder body = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(is, "UTF-8"))) {
+                String line;
+                int lineNo = 1;
+
+                while ((line = reader.readLine()) != null) {
+                    if (line.startsWith("<h1>")) {
+                        // look for end
+                        int index = line.indexOf("</h1>");
+                        if (index < 0) {
+                            log(Level.WARNING, "Unexpected format in document description file: " + resourceName + " at line " + lineNo);
+                        } else {
+                            if (key != null) {
+                                cache.put(key, body.toString().trim());
+                                body = new StringBuilder();
+                            }
+                            key = line.substring(4, index).trim();
+                        }
+                    } else {
+                        body.append(line).append(" ");
+                    }
+                    lineNo++;
+                }
+            } catch (IOException ex) {
+                Logger.getLogger(ServiceHost.class.getName()).log(Level.SEVERE, null, ex);
+            }
+            // and add last key/value pair if there is one
+            if (body.length() > 0) {
+                cache.put(key, body.toString());
+            }
+
+            // now store this in cache
+            this.documentationDescriptionCache.put(resourceName, cache);
+        }
+
+        Map<String,String> cache = this.documentationDescriptionCache.get(resourceName);
+        if (cache == null) {
+            // no description file, return as-is
+            return description;
+        }
+        String mappedDesc = cache.get(description);
+        if (mappedDesc == null) {
+            // no mapping for this description, return previous description
+            return description;
+        }
+        return mappedDesc;
+    }
 }

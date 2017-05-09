@@ -15,7 +15,7 @@ package com.vmware.xenon.common;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -54,7 +54,11 @@ public class RequestRouter implements Predicate<Operation> {
 
     // Defines where the parameter appears in the given request.
     public enum ParamDef {
-        QUERY("query"), BODY("body");
+        QUERY("query"),
+        BODY("body"),
+        RESPONSE("response"),
+        CONSUMES("consumes"),
+        PRODUCES("produces") ;
 
         String value;
 
@@ -88,6 +92,19 @@ public class RequestRouter implements Predicate<Operation> {
         }
     }
 
+    public static class RequestDefaultMatcher implements Predicate<Operation> {
+
+        @Override
+        public boolean test(Operation op) {
+            return true;
+        }
+
+        @Override
+        public String toString() {
+            return "#";
+        }
+    }
+
     public static class RequestUriMatcher implements Predicate<Operation> {
 
         private Pattern pattern;
@@ -114,7 +131,8 @@ public class RequestRouter implements Predicate<Operation> {
         private final Object fieldValue;
         private final Field field;
 
-        public RequestBodyMatcher(Class<T> typeParameterClass, String fieldName, Object fieldValue) {
+        public RequestBodyMatcher(Class<T> typeParameterClass, String fieldName,
+                Object fieldValue) {
             this.typeParameterClass = typeParameterClass;
 
             this.field = ReflectionUtils.getField(typeParameterClass, fieldName);
@@ -142,10 +160,20 @@ public class RequestRouter implements Predicate<Operation> {
         }
     }
 
-    private HashMap<Action, List<Route>> routes;
+    private Map<Action, List<Route>> routes;
 
     public RequestRouter() {
-        this.routes = new HashMap<>();
+        this.routes = new LinkedHashMap<>();
+    }
+
+    public void register(Route route) {
+        Action action = route.action;
+        List<Route> actionRoutes = this.routes.get(action);
+        if (actionRoutes == null) {
+            actionRoutes = new ArrayList<>();
+        }
+        actionRoutes.add(route);
+        this.routes.put(action, actionRoutes);
     }
 
     public void register(Action action, Predicate<Operation> matcher, Consumer<Operation> handler,

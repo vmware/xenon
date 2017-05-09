@@ -19,6 +19,10 @@ import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.net.URI;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
@@ -32,6 +36,8 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import com.esotericsoftware.kryo.serializers.VersionFieldSerializer.Since;
+
+import com.google.gson.JsonParseException;
 
 import com.vmware.xenon.common.RequestRouter.Route;
 import com.vmware.xenon.common.Service.Action;
@@ -71,21 +77,8 @@ public class ServiceDocumentDescription {
 
     public static final String FIELD_NAME_TENANT_LINKS = "tenantLinks";
 
-
-    public enum TypeName {
-        LONG,
-        STRING,
-        BYTES,
-        PODO,
-        COLLECTION,
-        MAP,
-        BOOLEAN,
-        DOUBLE,
-        InternetAddressV4,
-        InternetAddressV6,
-        DATE,
-        URI,
-        ENUM
+    public static enum TypeName {
+        LONG, STRING, BYTES, PODO, COLLECTION, MAP, BOOLEAN, DOUBLE, InternetAddressV4, InternetAddressV6, DATE, URI, ENUM
     }
 
     public enum PropertyUsageOption {
@@ -254,6 +247,10 @@ public class ServiceDocumentDescription {
      */
     public int serializedStateSizeLimit = DEFAULT_SERIALIZED_STATE_LIMIT;
 
+    /** Used internally to parse example timestamps */
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ISO_INSTANT
+            .withZone(ZoneId.of("UTC"));
+
     /**
      * Builder is a parameterized factory for ServiceDocumentDescription instances.
      */
@@ -306,6 +303,20 @@ public class ServiceDocumentDescription {
                 EnumSet<Service.ServiceOption> serviceCaps,
                 RequestRouter serviceRequestRouter) {
             ServiceDocumentDescription desc = buildDescription(type, serviceCaps);
+            if (serviceRequestRouter != null) {
+                desc.serviceRequestRoutes = serviceRequestRouter.getRoutes();
+            }
+            return desc;
+        }
+
+        public ServiceDocumentDescription buildDescription(
+                ServiceHost host, Service service,
+                EnumSet<Service.ServiceOption> serviceCaps,
+                RequestRouter serviceRequestRouter) {
+            ServiceDocumentDescription desc = buildDescription(service.getStateType(), serviceCaps);
+
+            // look up a richer description from resource files if one exists
+            desc.description = host.lookupDocumentationDescription(service, desc.description);
             if (serviceRequestRouter != null) {
                 desc.serviceRequestRoutes = serviceRequestRouter.getRoutes();
             }
@@ -430,6 +441,7 @@ public class ServiceDocumentDescription {
                 pd.typeName = TypeName.URI;
             } else {
                 isSimpleType = false;
+                pd.typeName = null;
             }
 
             // allow annotations to modify certain attributes
@@ -442,7 +454,45 @@ public class ServiceDocumentDescription {
                             pd.propertyDocumentation = df.description();
                         }
                         if (df.exampleString() != null && !df.exampleString().isEmpty()) {
-                            pd.exampleValue = df.exampleString();
+                            // we can try and coerse the string into the appropriate type
+                            final String example = df.exampleString();
+                            try {
+                                if (!isSimpleType || pd.typeName == null && example != null
+                                        && !example.isEmpty()) {
+                                    // try to JSON deserialize the string to the type
+                                    pd.exampleValue = Utils.fromJson(example, clazz);
+                                } else if (pd.typeName != null) {
+                                    switch (pd.typeName) {
+                                    case STRING:
+                                        pd.exampleValue = example;
+                                        break;
+                                    case BOOLEAN:
+                                        pd.exampleValue = Boolean.parseBoolean(example);
+                                        break;
+                                    case DATE:
+                                        pd.exampleValue = Date.from(
+                                                ZonedDateTime.parse(example, DATE_FORMAT)
+                                                        .toInstant());
+                                        break;
+                                    case DOUBLE:
+                                        pd.exampleValue = Double.parseDouble(example);
+                                        break;
+                                    case LONG:
+                                        pd.exampleValue = Long.parseLong(example);
+                                        break;
+                                    case URI:
+                                        pd.exampleValue = URI.create(example);
+                                        break;
+                                    default:
+                                        pd.exampleValue = null;
+                                        break;
+                                    }
+                                }
+                            } catch (IllegalArgumentException
+                                    | DateTimeParseException
+                                    | JsonParseException e) {
+                                // cannot parse example - leave empty
+                            }
                         }
                     } else if (UsageOptions.class.equals(a.annotationType())) {
                         UsageOptions usageOptions = (UsageOptions) a;

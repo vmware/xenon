@@ -13,6 +13,10 @@
 
 package com.vmware.xenon.common;
 
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 import java.net.URI;
 import java.util.EnumSet;
 import java.util.concurrent.TimeUnit;
@@ -231,6 +235,13 @@ public interface Service extends ServiceRequestSender {
          * Set by runtime. Service is stateless.
          */
         STATELESS,
+
+        /**
+         * Service is expected to be exposed publicly and thus
+         * should be exposed through public API documentation
+         * such as swagger
+         */
+        PUBLIC,
 
         NONE
     }
@@ -548,4 +559,59 @@ public interface Service extends ServiceRequestSender {
     AuthorizationContext getSystemAuthorizationContext();
 
     void setAuthorizationContext(Operation op, AuthorizationContext ctx);
+
+    /**
+     * Annotation to mark a handler method as not being supported
+     */
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target({ElementType.METHOD})
+    public @interface NotSupported {
+        // this is a marker annotation
+    }
+
+    /**
+     * Documentation annotations for handler methods (doGet, doPost, ...)
+     */
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target({ElementType.METHOD})
+    public @interface Documentation {
+        String description() default "";
+
+        /** defines HTTP status statusCode responses */
+        public ApiResponse[] responses() default {};
+
+        /** defines optional query parameters */
+        public QueryParam[] queryParams() default {};
+
+        /** List of supported media types, defaults to application/json */
+        public String[] consumes() default {};
+
+        /** List of supported media types, defaults to application/json */
+        public String[] produces() default {};
+    }
+
+    /**
+     * Documentation of HTTP response codes for handler methods
+     */
+    @Target(value = {ElementType.METHOD})
+    @Retention(value = RetentionPolicy.RUNTIME)
+    public @interface ApiResponse {
+
+        public int statusCode();
+        public String description();
+        public Class<?> response() default Void.class;
+    }
+
+    /**
+     * Documentation of query parameter support for handler methods
+     */
+    @Target(value = {ElementType.METHOD})
+    @Retention(value = RetentionPolicy.RUNTIME)
+    public @interface QueryParam {
+        public String name();
+        public String description() default "";
+        public String example() default "";
+        public String type() default "string";
+        public boolean required() default false;
+    }
 }

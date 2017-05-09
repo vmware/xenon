@@ -97,14 +97,18 @@ public class ExampleService extends StatefulService {
         @UsageOption(option = PropertyUsageOption.OPTIONAL)
         @PropertyOptions(indexing = { PropertyIndexingOption.EXPAND,
                 PropertyIndexingOption.FIXED_ITEM_NAME })
+        @Documentation(description = "Key/Value pairs to store state", exampleString = "{ \"key1\" : \"value1\", \"key2\", \"value2\" }")
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public Map<String, String> keyValues = new HashMap<>();
+        @Documentation(description = "Version counter")
         public Long counter;
         @PropertyOptions(indexing = PropertyIndexingOption.SORT)
         public Long sortedCounter;
+        @Documentation(description = "Document name (not required to be unique", exampleString = "myExample")
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         @PropertyOptions(indexing = PropertyIndexingOption.SORT)
         public String name;
+        @Documentation(description = "Set of tag strings for searching by tag", exampleString = "{ \"tag1\" , \"tag2\" }")
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public Set<String> tags = new HashSet<>();
         @UsageOption(option = PropertyUsageOption.ID)
@@ -120,6 +124,7 @@ public class ExampleService extends StatefulService {
         toggleOption(ServiceOption.REPLICATION, true);
         toggleOption(ServiceOption.INSTRUMENTATION, true);
         toggleOption(ServiceOption.OWNER_SELECTION, true);
+        toggleOption(ServiceOption.PUBLIC, true);
     }
 
     @Override
@@ -144,6 +149,7 @@ public class ExampleService extends StatefulService {
     }
 
     @Override
+    @Documentation(description = "Overwrite example document with new copy")
     public void handlePut(Operation put) {
         ExampleServiceState newState = getBody(put);
         ExampleServiceState currentState = getState(put);
@@ -162,6 +168,7 @@ public class ExampleService extends StatefulService {
     }
 
     @Override
+    @Documentation(description = "Update selected fields of example document")
     public void handlePatch(Operation patch) {
         updateState(patch);
         // updateState method already set the response body with the merged state

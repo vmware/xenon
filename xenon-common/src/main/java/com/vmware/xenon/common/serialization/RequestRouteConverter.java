@@ -148,6 +148,14 @@ public enum RequestRouteConverter implements JsonSerializer<Route>, JsonDeserial
                                 StringUtil.EMPTY_STRING, TypeName.STRING.name(), true,
                                 paramPair.getValue(), RequestRouter.ParamDef.QUERY));
                     }
+                } else if (condition.equals("#")) {
+                    // a default matcher - only decode parameters if present
+                    if (jsonObject.has(FIELD_PARAMETERS)) {
+                        JsonArray parameters = jsonObject.getAsJsonArray(FIELD_PARAMETERS);
+
+                        Type gsonType = new TypeToken<List<RequestRouter.Parameter>>() {}.getType();
+                        route.parameters = Utils.fromJson(parameters, gsonType);
+                    }
                 } else {
                     String[] conditionParts = condition.split(BODY_MATCHER_CLASS_NAME_SPLITTER);
                     if (route.requestType == null) {

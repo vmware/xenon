@@ -53,8 +53,8 @@ public class TestServiceDocument {
     public static final String SOME_OTHER_STRING_VALUE = "some other value";
     public static final String SOME_IGNORE_VALUE = "ignore me";
     public static final String SOME_OTHER_IGNORE_VALUE = "ignore me please";
-    public static final long SOME_OTHER_EXPIRATION_VALUE =
-            Utils.fromNowMicrosUtc(TimeUnit.MINUTES.toMicros(5));
+    public static final long SOME_OTHER_EXPIRATION_VALUE = Utils
+            .fromNowMicrosUtc(TimeUnit.MINUTES.toMicros(5));
 
     private static class Range {
         public final int from;
@@ -112,19 +112,26 @@ public class TestServiceDocument {
         Assert.assertEquals("Auto-annotated expiration field", source.documentExpirationTimeMicros,
                 SOME_OTHER_EXPIRATION_VALUE);
         Assert.assertEquals("Number of list elements", 3, source.listOfStrings.size());
-        Assert.assertTrue("Check existence of element", source.listOfStrings.contains(SOME_STRING_VALUE));
-        Assert.assertTrue("Check existence of element", source.listOfStrings.contains(SOME_OTHER_STRING_VALUE));
+        Assert.assertTrue("Check existence of element",
+                source.listOfStrings.contains(SOME_STRING_VALUE));
+        Assert.assertTrue("Check existence of element",
+                source.listOfStrings.contains(SOME_OTHER_STRING_VALUE));
         Assert.assertEquals("Number of set elements", 2, source.setOfStrings.size());
-        Assert.assertTrue("Check existence of element", source.setOfStrings.contains(SOME_STRING_VALUE));
-        Assert.assertTrue("Check existence of element", source.setOfStrings.contains(SOME_OTHER_STRING_VALUE));
+        Assert.assertTrue("Check existence of element",
+                source.setOfStrings.contains(SOME_STRING_VALUE));
+        Assert.assertTrue("Check existence of element",
+                source.setOfStrings.contains(SOME_OTHER_STRING_VALUE));
         Assert.assertEquals("Number of map elements", 2, source.mapOfStrings.size());
-        Assert.assertTrue("Check existence of element", source.mapOfStrings.containsKey(SOME_STRING_VALUE));
-        Assert.assertTrue("Check existence of element", source.mapOfStrings.containsKey(SOME_OTHER_STRING_VALUE));
+        Assert.assertTrue("Check existence of element",
+                source.mapOfStrings.containsKey(SOME_STRING_VALUE));
+        Assert.assertTrue("Check existence of element",
+                source.mapOfStrings.containsKey(SOME_OTHER_STRING_VALUE));
         Assert.assertEquals("Number of Array elements", 2, source.intArray.length);
 
         patch.intArray = null;
         patch.listOfStrings = null;
-        Assert.assertFalse("Repeated patch should not change source", Utils.mergeWithState(d, source, patch));
+        Assert.assertFalse("Repeated patch should not change source",
+                Utils.mergeWithState(d, source, patch));
     }
 
     /**
@@ -151,14 +158,17 @@ public class TestServiceDocument {
         Assert.assertEquals("Annotated x field", source.x, SOME_OTHER_INT_VALUE);
         Assert.assertNull("Non-annotated ignore field", source.ignore);
         Assert.assertEquals("Number of list elements", 1, source.listOfStrings.size());
-        Assert.assertTrue("Check existence of element", source.listOfStrings.contains(SOME_OTHER_STRING_VALUE));
+        Assert.assertTrue("Check existence of element",
+                source.listOfStrings.contains(SOME_OTHER_STRING_VALUE));
         Assert.assertEquals("Number of map elements", 1, source.mapOfStrings.size());
-        Assert.assertTrue("Check existence of element", source.mapOfStrings.containsKey(SOME_OTHER_STRING_VALUE));
+        Assert.assertTrue("Check existence of element",
+                source.mapOfStrings.containsKey(SOME_OTHER_STRING_VALUE));
         Assert.assertEquals("Number of Array elements", 2, source.intArray.length);
 
         patch.intArray = null;
         patch.listOfStrings = null;
-        Assert.assertFalse("Repeated patch should not change source", Utils.mergeWithState(d, source, patch));
+        Assert.assertFalse("Repeated patch should not change source",
+                Utils.mergeWithState(d, source, patch));
     }
 
     /**
@@ -188,13 +198,19 @@ public class TestServiceDocument {
         patch.mapOfStrings.put("key-3", null);
         patch.mapOfStrings.put("key-4", "value-4-new");
 
-        Assert.assertTrue("There should be changes. One deleted and one added.", Utils.mergeWithState(d, source, patch));
-        Assert.assertEquals("Check map size. One deleted and one added value.", source.mapOfStrings.size(), 3);
-        Assert.assertEquals("Check unmodified key/value is preserved.", source.mapOfStrings.get("key-1"), "value-1");
-        Assert.assertEquals("Check modified key/value is changed as intended.", source.mapOfStrings.get("key-2"), "value-2-patched");
-        Assert.assertEquals("Check new key/value is added.", source.mapOfStrings.get("key-4"), "value-4-new");
+        Assert.assertTrue("There should be changes. One deleted and one added.",
+                Utils.mergeWithState(d, source, patch));
+        Assert.assertEquals("Check map size. One deleted and one added value.",
+                source.mapOfStrings.size(), 3);
+        Assert.assertEquals("Check unmodified key/value is preserved.",
+                source.mapOfStrings.get("key-1"), "value-1");
+        Assert.assertEquals("Check modified key/value is changed as intended.",
+                source.mapOfStrings.get("key-2"), "value-2-patched");
+        Assert.assertEquals("Check new key/value is added.", source.mapOfStrings.get("key-4"),
+                "value-4-new");
 
-        Assert.assertFalse("Repeated patch should not change source", Utils.mergeWithState(d, source, patch));
+        Assert.assertFalse("Repeated patch should not change source",
+                Utils.mergeWithState(d, source, patch));
     }
 
     @Test
@@ -209,7 +225,8 @@ public class TestServiceDocument {
         Map<String, Collection<Object>> collectionsToAdd = new HashMap<>();
         collectionsToRemove.put("listOfStrings", new ArrayList<>(state.listOfStrings));
         collectionsToAdd.put("setOfStrings", new ArrayList<>(Arrays.asList(SOME_STRING_VALUE)));
-        ServiceStateCollectionUpdateRequest request = ServiceStateCollectionUpdateRequest.create(collectionsToAdd, collectionsToRemove);
+        ServiceStateCollectionUpdateRequest request = ServiceStateCollectionUpdateRequest
+                .create(collectionsToAdd, collectionsToRemove);
         boolean changed = Utils.updateCollections(state, request);
         assertTrue(changed);
         assertEquals(state.listOfStrings.size(), 0);
@@ -226,8 +243,8 @@ public class TestServiceDocument {
         state.setOfStrings = new HashSet<String>();
         Map<String, Collection<Object>> collectionsToAdd = new HashMap<>();
         collectionsToAdd.put("setOfStrings", new ArrayList<>(Arrays.asList(SOME_STRING_VALUE)));
-        ServiceStateCollectionUpdateRequest request =
-                ServiceStateCollectionUpdateRequest.create(collectionsToAdd, null);
+        ServiceStateCollectionUpdateRequest request = ServiceStateCollectionUpdateRequest
+                .create(collectionsToAdd, null);
 
         Operation patchOperation = Operation.createPatch(new URI("http://test")).setBody(request);
         ServiceDocumentDescription desc = ServiceDocumentDescription.Builder.create()
@@ -252,8 +269,8 @@ public class TestServiceDocument {
         // collection update with a list collection instead of a set collection
         Map<String, Collection<Object>> collectionsToAdd = new HashMap<>();
         collectionsToAdd.put("setOfStrings", Arrays.asList(SOME_STRING_VALUE));
-        ServiceStateCollectionUpdateRequest request =
-                ServiceStateCollectionUpdateRequest.create(collectionsToAdd, null);
+        ServiceStateCollectionUpdateRequest request = ServiceStateCollectionUpdateRequest
+                .create(collectionsToAdd, null);
 
         Operation patchOperation = Operation.createPatch(new URI("http://test")).setBody(request);
         ServiceDocumentDescription desc = ServiceDocumentDescription.Builder.create()
@@ -277,7 +294,8 @@ public class TestServiceDocument {
         Map<String, Map<Object, Object>> entriesToAdd = new HashMap<>();
         entriesToAdd.put("mapOfStrings", newEntries);
 
-        ServiceStateMapUpdateRequest request = ServiceStateMapUpdateRequest.create(entriesToAdd, null);
+        ServiceStateMapUpdateRequest request = ServiceStateMapUpdateRequest.create(entriesToAdd,
+                null);
         Operation patchOperation = Operation.createPatch(new URI("http://test")).setBody(request);
         ServiceDocumentDescription desc = ServiceDocumentDescription.Builder.create()
                 .buildDescription(MergeTest.class);
@@ -490,7 +508,8 @@ public class TestServiceDocument {
         MergeTest patch = new MergeTest();
         patch.documentExpirationTimeMicros = 0;
 
-        ServiceDocumentDescription d = ServiceDocumentDescription.Builder.create().buildDescription(MergeTest.class);
+        ServiceDocumentDescription d = ServiceDocumentDescription.Builder.create()
+                .buildDescription(MergeTest.class);
 
         boolean merged = Utils.mergeWithState(d, source, patch);
         String msg = "source.expirationTime should NOT change when patch.expirationTime=0";
@@ -506,7 +525,6 @@ public class TestServiceDocument {
         assertTrue(msg, merged);
         assertEquals(msg, SOME_OTHER_EXPIRATION_VALUE, source.documentExpirationTimeMicros);
     }
-
 
     @Test
     public void testComputeSignatureChanged() {
@@ -568,8 +586,7 @@ public class TestServiceDocument {
         public int[] intArray;
     }
 
-    @ServiceDocument.IndexingParameters(serializedStateSize = 8, versionRetention = 44,
-            versionRetentionFloor = 22)
+    @ServiceDocument.IndexingParameters(serializedStateSize = 8, versionRetention = 44, versionRetentionFloor = 22)
     @ServiceDocument.Documentation(name = "Test Document Name", description = "Test Document Desc")
     private static class AnnotatedDoc extends ServiceDocument {
         @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
@@ -578,22 +595,54 @@ public class TestServiceDocument {
         public String opt;
 
         @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.ID)
-        @PropertyOptions(
-                indexing = {
-                    ServiceDocumentDescription.PropertyIndexingOption.SORT,
-                    ServiceDocumentDescription.PropertyIndexingOption.EXCLUDE_FROM_SIGNATURE},
-                usage = {
-                    ServiceDocumentDescription.PropertyUsageOption.OPTIONAL})
+        @PropertyOptions(indexing = {
+                ServiceDocumentDescription.PropertyIndexingOption.SORT,
+                ServiceDocumentDescription.PropertyIndexingOption.EXCLUDE_FROM_SIGNATURE }, usage = {
+                        ServiceDocumentDescription.PropertyUsageOption.OPTIONAL })
         public String opts;
 
+        @Documentation(description = "desc", exampleString = "{ \"from\" : \"1\", \"to\" : \"5\" }")
         @PropertyOptions(indexing = ServiceDocumentDescription.PropertyIndexingOption.EXPAND)
         public Range nestedPodo;
 
+        @Documentation(description = "desc", exampleString = "DOWN")
         @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.OPTIONAL)
         public RoundingMode someEnum;
 
         @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.OPTIONAL)
         public Enum<?> justEnum;
+
+        @Documentation(description = "desc", exampleString = "12345")
+        @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.OPTIONAL)
+        public int someInt;
+
+        @Documentation(description = "desc", exampleString = "9223372036854775807")
+        @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.OPTIONAL)
+        public long someLong;
+
+        @Documentation(description = "desc", exampleString = "false")
+        @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.OPTIONAL)
+        public boolean someBool;
+
+        @Documentation(description = "desc", exampleString = "2011-12-03T10:15:30Z")
+        @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.OPTIONAL)
+        public Date someDate;
+
+        @Documentation(description = "desc", exampleString = "http://localhost:8000")
+        @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.OPTIONAL)
+        public URI someURI;
+
+        @Documentation(description = "desc", exampleString = "3.14")
+        @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.OPTIONAL)
+        public double someDouble;
+
+        @Documentation(description = "desc", exampleString = "{ \"key1\" : \"val1\", \"key2\" : \"val2\" }")
+        @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.OPTIONAL)
+        public Map<String, String> someMap;
+
+        @Documentation(description = "desc", exampleString = "[ \"item1\", \"item2\" ]")
+        @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.OPTIONAL)
+        public Set<String> someSet;
 
         @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.ID)
         @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.REQUIRED)
@@ -622,6 +671,32 @@ public class TestServiceDocument {
         assertEquals(optDesc.exampleValue, "example");
         assertEquals(optDesc.propertyDocumentation, "desc");
 
+        ServiceDocumentDescription.PropertyDescription intDesc = desc.propertyDescriptions
+                .get("someInt");
+        assertEquals(Long.valueOf(12345), intDesc.exampleValue); // all ints are cast to long
+        assertEquals("desc", intDesc.propertyDocumentation);
+
+        ServiceDocumentDescription.PropertyDescription doubleDesc = desc.propertyDescriptions
+                .get("someDouble");
+        assertEquals(Double.valueOf(3.14), doubleDesc.exampleValue);
+        assertEquals("desc", doubleDesc.propertyDocumentation);
+
+        ServiceDocumentDescription.PropertyDescription mapDesc = desc.propertyDescriptions
+                .get("someMap");
+        assertTrue("Map example must implement java.utils.Map",
+                Map.class.isAssignableFrom(mapDesc.exampleValue.getClass()));
+        @SuppressWarnings("unchecked")
+        Map<String, String> map = (Map<String, String>) mapDesc.exampleValue;
+        assertEquals(2, map.size());
+
+        ServiceDocumentDescription.PropertyDescription setDesc = desc.propertyDescriptions
+                .get("someSet");
+        assertTrue("Set example must implement java.utils.Set",
+                Set.class.isAssignableFrom(setDesc.exampleValue.getClass()));
+        @SuppressWarnings("unchecked")
+        Set<String> set = (Set<String>) setDesc.exampleValue;
+        assertEquals(2, set.size());
+
         ServiceDocumentDescription.PropertyDescription optsDesc = desc.propertyDescriptions
                 .get("opts");
         assertEquals(optsDesc.usageOptions,
@@ -647,7 +722,16 @@ public class TestServiceDocument {
     public void testNestedPodosAreAssignedKinds() {
         ServiceDocumentDescription desc = ServiceDocumentDescription.Builder.create()
                 .buildDescription(AnnotatedDoc.class);
-        ServiceDocumentDescription.PropertyDescription nestedPodo = desc.propertyDescriptions.get("nestedPodo");
+        ServiceDocumentDescription.PropertyDescription nestedPodo = desc.propertyDescriptions
+                .get("nestedPodo");
+
+        assertEquals(nestedPodo.exampleValue.getClass(), Range.class);
+        Range exampleValue = (Range) nestedPodo.exampleValue;
+        assertEquals(1, exampleValue.from);
+        assertEquals(5, exampleValue.to);
+
+        assertEquals(nestedPodo.propertyDocumentation, "desc");
+
         assertEquals(Utils.buildKind(Range.class), nestedPodo.kind);
 
         // primitives don't have a kind
@@ -659,9 +743,12 @@ public class TestServiceDocument {
     public void testEnumValuesArePopulated() {
         ServiceDocumentDescription desc = ServiceDocumentDescription.Builder.create()
                 .buildDescription(AnnotatedDoc.class);
-        ServiceDocumentDescription.PropertyDescription someEnum = desc.propertyDescriptions.get("someEnum");
-        ServiceDocumentDescription.PropertyDescription nestedPodo = desc.propertyDescriptions.get("nestedPodo");
-        ServiceDocumentDescription.PropertyDescription justEnum = desc.propertyDescriptions.get("justEnum");
+        ServiceDocumentDescription.PropertyDescription someEnum = desc.propertyDescriptions
+                .get("someEnum");
+        ServiceDocumentDescription.PropertyDescription nestedPodo = desc.propertyDescriptions
+                .get("nestedPodo");
+        ServiceDocumentDescription.PropertyDescription justEnum = desc.propertyDescriptions
+                .get("justEnum");
 
         assertEquals(RoundingMode.values().length, someEnum.enumValues.length);
         assertNull(nestedPodo.enumValues);
@@ -675,8 +762,10 @@ public class TestServiceDocument {
         ServiceDocumentDescription.PropertyDescription desc = ServiceDocumentDescription.Builder
                 .create()
                 .buildPodoPropertyDescription(QueryTask.NumericRange.class);
-        assertEquals(ServiceDocumentDescription.TypeName.DOUBLE, desc.fieldDescriptions.get("min").typeName);
-        assertEquals(ServiceDocumentDescription.TypeName.DOUBLE, desc.fieldDescriptions.get("max").typeName);
+        assertEquals(ServiceDocumentDescription.TypeName.DOUBLE,
+                desc.fieldDescriptions.get("min").typeName);
+        assertEquals(ServiceDocumentDescription.TypeName.DOUBLE,
+                desc.fieldDescriptions.get("max").typeName);
     }
 
     /**
@@ -715,7 +804,7 @@ public class TestServiceDocument {
         public AtomicLong anAtomicLong;
     }
 
-   /**
+    /**
     * Verify that the document builder builds valid example values for all
     * known types.
     *
@@ -732,7 +821,8 @@ public class TestServiceDocument {
                 .buildDescription(MultiTypeServiceDocument.class);
         assertNotNull(desc);
 
-        for (ServiceDocumentDescription.PropertyDescription pd : desc.propertyDescriptions.values()) {
+        for (ServiceDocumentDescription.PropertyDescription pd : desc.propertyDescriptions
+                .values()) {
             pd.accessor.set(doc, pd.exampleValue);
         }
     }
