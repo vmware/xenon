@@ -15,6 +15,7 @@ target
 tmp/
 *.git.properties
 *.espressostorage
+*~
 
 # maven-release-plugin artifacts
 /release.properties

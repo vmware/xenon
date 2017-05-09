@@ -20,6 +20,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.vmware.xenon.common.Operation.AuthorizationContext;
+import com.vmware.xenon.common.RequestRouter.Route.RouteDocumentation;
+import com.vmware.xenon.common.RequestRouter.Route.SupportLevel;
 import com.vmware.xenon.common.ServiceHost.ServiceNotFoundException;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
@@ -164,10 +166,12 @@ public class StatelessService implements Service {
         }
     }
 
+    @RouteDocumentation(supportLevel = SupportLevel.NOT_SUPPORTED)
     public void handlePut(Operation put) {
         Operation.failActionNotSupported(put);
     }
 
+    @RouteDocumentation(supportLevel = SupportLevel.NOT_SUPPORTED)
     public void handlePatch(Operation patch) {
         Operation.failActionNotSupported(patch);
     }
@@ -203,6 +207,7 @@ public class StatelessService implements Service {
         options.complete();
     }
 
+    @RouteDocumentation(supportLevel = SupportLevel.NOT_SUPPORTED)
     public void handlePost(Operation post) {
         Operation.failActionNotSupported(post);
     }

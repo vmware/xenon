@@ -13,8 +13,13 @@
 
 package com.vmware.xenon.services.common;
 
+import java.net.URI;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 import com.vmware.xenon.common.ODataQueryVisitor.BinaryVerb;
 import com.vmware.xenon.common.ODataToken;
@@ -33,9 +38,49 @@ public class RootNamespaceService extends StatelessService {
     }
 
     @Override
+    /**
+     * Returns a list of services, by default only those with ServiceOption.FACTORY.
+     * Query parameter support permits the overriding of which services are returned by ServiceOption
+     *   includes=comma-separated-list  ("ALL" wildcard == all options)
+     *   excludes=comma-separated-list
+     *   matchAllOptions=(true|false) - default false
+     */
     public void handleGet(Operation get) {
-        EnumSet<ServiceOption> options = EnumSet.of(ServiceOption.FACTORY);
 
+        EnumSet<ServiceOption> includeOptions = EnumSet.of(ServiceOption.FACTORY);
+        EnumSet<ServiceOption> excludeOptions = null;
+        boolean matchAllOptions = false;
+
+        URI uri = get.getUri();
+        if (uri.getQuery() != null) {
+            Map<String, String> queryParams = UriUtils.parseUriQueryParams(uri);
+            String[] includes = getValueList(queryParams, "includes");
+            if (includes != null) {
+                Set<ServiceOption> includeOptionsSet = new HashSet<>();
+                for (String option: includes) {
+                    if (option.equals("ALL")) {
+                        includeOptionsSet.addAll(Arrays.asList(ServiceOption.values()));
+                    } else {
+                        includeOptionsSet.add(ServiceOption.valueOf(option));
+                    }
+                }
+                includeOptions = EnumSet.copyOf(includeOptionsSet);
+            }
+            String[] excludes = getValueList(queryParams, "excludes");
+            if (excludes != null) {
+                Set<ServiceOption> excludeOptionsSet = new HashSet<>();
+                for (String option: excludes) {
+                    excludeOptionsSet.add(ServiceOption.valueOf(option));
+                }
+                excludeOptions = EnumSet.copyOf(excludeOptionsSet);
+            }
+            String matchQueryParam = queryParams.get("matchAllOptions");
+            if (matchQueryParam != null) {
+                matchAllOptions = Boolean.valueOf(matchQueryParam);
+            }
+        }
+
+        // backward compatibility allowing use of $filter(options eq 'STATELESS')
         String filter = UriUtils.getODataFilterParamValue(get.getUri());
         if (filter != null) {
             ODataTokenizer tokenizer = new ODataTokenizer(filter);
@@ -48,15 +93,15 @@ public class RootNamespaceService extends StatelessService {
                 }
 
                 if (list.hasNext() && list.next().getUriLiteral().equals(BinaryVerb.EQ.operator)) {
-                    String value = null;
                     if (list.hasNext()) {
-                        value = list.next().getUriLiteral();
+                        String value = list.next().getUriLiteral();
+                        // remove any single quoting of value
+                        if (value.startsWith("'") && value.endsWith("'")) {
+                            value = value.substring(1, value.length() - 1);
+                        }
+                        includeOptions.add(ServiceOption.valueOf(value));
                     }
-
-                    if ("STATELESS".equals(value) || "'STATELESS'".equals(value)) {
-                        options.add(ServiceOption.STATELESS);
-                        break;
-                    }
+                    break;
                 }
             }
         }
@@ -65,10 +110,17 @@ public class RootNamespaceService extends StatelessService {
             if (e == null) {
                 Collections.sort(o.getBody(ServiceDocumentQueryResult.class).documentLinks);
             }
-
             get.complete();
         });
 
-        getHost().queryServiceUris(options, false, get);
+        getHost().queryServiceUris(includeOptions, matchAllOptions, get, excludeOptions);
+    }
+
+    private static String[] getValueList(Map<String, String> queryParams, String queryParam) {
+        String value = queryParams.get(queryParam);
+        if (value == null) {
+            return null;
+        }
+        return value.split("[, ]");
     }
 }

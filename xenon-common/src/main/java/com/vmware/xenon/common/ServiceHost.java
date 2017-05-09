@@ -5635,8 +5635,9 @@ public class ServiceHost implements ServiceRequestSender {
 
             // Description has to be built in three stages:
             // 1) Build the base description and add it to the cache
-            desc = this.descriptionBuilder.buildDescription(serviceStateClass, s.getOptions(),
-                    RequestRouter.findRequestRouter(s.getOperationProcessingChain()));
+            desc = this.descriptionBuilder.buildDescription(this, s,
+                    s.getOptions(),
+                    ServiceDocumentDescriptionHelper.findAndDocumentRequestRouter(s));
 
             if (s.getOptions().contains(ServiceOption.IMMUTABLE)) {
                 if (desc.versionRetentionLimit > ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT) {
@@ -6048,5 +6049,4 @@ public class ServiceHost implements ServiceRequestSender {
                 ServiceErrorResponse.ERROR_CODE_SERVICE_ALREADY_EXISTS,
                 e);
     }
-
 }
