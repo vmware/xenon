@@ -1285,6 +1285,19 @@ public class TestQueryTaskService {
 
         createWaitAndValidateQueryTask(1, services, queryTask.querySpec, true);
 
+        // issue another query this time for the field that has a collection of links
+        query = Query.Builder.create()
+                .addKindFieldClause(QueryValidationServiceState.class)
+                .build();
+        queryTask = QueryTask.Builder.create()
+                .addOption(QueryOption.SELECT_LINKS)
+                .addOption(QueryOption.EXPAND_LINKS)
+                .addLinkTerm("badLinkName")
+                .addLinkTerm(QueryValidationServiceState.FIELD_NAME_SERVICE_LINKS)
+                .setQuery(query).build();
+
+        createWaitAndValidateQueryTask(1, services, queryTask.querySpec, true);
+
         // update one of the links to a bogus link value (pointing to a non existent document)
         // and verify the expanded link, for that document with the broken service link, contains
         // the ServiceErrorResponse we expect
@@ -3605,12 +3618,15 @@ public class TestQueryTaskService {
         List<URI> exampleServices = new ArrayList<>();
         createExampleServices(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK),
                 exampleServices);
+        List<String> serviceLinks = exampleServices.stream().map(URI::getPath)
+                .collect(Collectors.toList());
         TestContext ctx = this.host.testCreate(this.serviceCount);
         for (int i = 0; i < targetServiceURIs.size(); i++) {
             URI queryTargetService = targetServiceURIs.get(i);
             URI exampleService = exampleServices.get(i);
             QueryValidationServiceState patchBody = new QueryValidationServiceState();
             patchBody.serviceLink = exampleService.getPath();
+            patchBody.serviceLinks = serviceLinks;
             Operation patch = Operation.createPatch(queryTargetService)
                     .setBody(patchBody)
                     .setCompletion(ctx.getCompletion());
@@ -3799,21 +3815,24 @@ public class TestQueryTaskService {
         // since QueryValidationServiceState contains a single "serviceLink" field, we expect
         // a single Map, per document. The map should contain the link property name, and the
         // expanded value of the link, in this case a ExampleService state instance.
-        int linksFound = 0;
+        Set<String> uniqueLinks = new HashSet<>();
         for (Map<String, String> selectedLinksPerDocument : page.results.selectedLinksPerDocument.values()) {
             for (Entry<String, String> entry : selectedLinksPerDocument.entrySet()) {
-                if (!QueryValidationServiceState.FIELD_NAME_SERVICE_LINK.equals(entry.getKey())) {
+                String key = entry.getKey();
+                if (!key.equals(QueryValidationServiceState.FIELD_NAME_SERVICE_LINK)
+                        && !key.startsWith(QuerySpecification.buildCollectionItemName(
+                        QueryValidationServiceState.FIELD_NAME_SERVICE_LINKS))) {
                     continue;
                 }
-                linksFound++;
                 String link = entry.getValue();
+                uniqueLinks.add(link);
                 Object doc = page.results.selectedDocuments.get(link);
                 ExampleServiceState expandedState = Utils.fromJson(doc,
                         ExampleServiceState.class);
                 assertEquals(Utils.buildKind(ExampleServiceState.class), expandedState.documentKind);
             }
         }
-        assertEquals(page.results.documentLinks.size(), linksFound);
+        assertEquals(page.results.documentLinks.size(), uniqueLinks.size());
     }
 
     private void validatedExpandLinksResultsWithBogusLink(QueryTask queryTask,
