@@ -122,7 +122,7 @@ public final class ReflectionUtils {
      * @return whether the source map was changed or not
      */
     private static boolean mergeMapField(
-            Map<Object,Object> sourceMap, Map<Object,Object> patchMap) {
+            Map<Object, Object> sourceMap, Map<Object, Object> patchMap) {
         if (patchMap == null || patchMap.isEmpty()) {
             return false;
         }
@@ -228,16 +228,30 @@ public final class ReflectionUtils {
     public static Field getField(Class<?> clazz, String name) {
 
         Map<String, Field> fieldMap = DECLARED_FIELDS_CACHE.computeIfAbsent(clazz, key ->
-                Arrays.stream(key.getDeclaredFields())
-                        .collect(toMap(Field::getName, identity()))
-                );
+                Arrays.stream(key.getDeclaredFields()).collect(toMap(Field::getName, identity())));
 
-        return fieldMap.computeIfPresent(name, (k, field) -> {
+        Field result = fieldMap.computeIfPresent(name, (k, field) -> {
             if (!field.isAccessible()) {
                 field.setAccessible(true);
             }
             return field;
         });
+
+        if (result != null) {
+            return result;
+        }
+
+        // This may be an inherited field, so try getting it directly.
+        result = getFieldIfExists(clazz, name);
+        if (result == null) {
+            return null;
+        }
+
+        if (!result.isAccessible()) {
+            result.setAccessible(true);
+        }
+
+        return result;
     }
 
 }
