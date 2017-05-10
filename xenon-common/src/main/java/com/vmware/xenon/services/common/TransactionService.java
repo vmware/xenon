@@ -181,6 +181,11 @@ public class TransactionService extends StatefulService {
          * Keeps track of services that have failed.
          */
         public Set<String> failedLinks;
+
+        /**
+         * A list of tenant links which can access this service.
+         */
+        public Set<String> tenantLinks;
     }
 
     private TransactionResolutionService resolutionHelper;
