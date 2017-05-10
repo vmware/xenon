@@ -67,6 +67,7 @@ import com.vmware.xenon.common.ServiceHost.ServiceNotFoundException;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
+import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.TestResults;
@@ -1235,6 +1236,18 @@ public class TestQueryTaskService {
         }
     }
 
+    public static class SelectLinksQueryTargetService extends StatefulService {
+
+        public static class State extends QueryValidationServiceState {
+            public String ignored;
+        }
+
+        public SelectLinksQueryTargetService() {
+            super(State.class);
+            super.toggleOption(ServiceOption.PERSISTENCE, true);
+        }
+    }
+
     @Test
     public void selectLinks() throws Throwable {
         setUpHost();
@@ -1311,6 +1324,52 @@ public class TestQueryTaskService {
                 true, queryTask, null);
         validatedExpandLinksResultsWithBogusLink(queryTask,
                 queryValidationServiceWithBrokenServiceLink);
+
+        // Start another set of query target services which use an inherited state class and verify
+        // that links in inherited fields can be selected.
+        ServiceDocumentQueryResult factoryResults = this.host.getFactoryState(
+                UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+        List<String> exampleServiceLinks = factoryResults.documentLinks;
+
+        List<Service> queryTargetServices = new ArrayList<>(this.serviceCount);
+        TestContext ctx = this.host.testCreate(this.serviceCount);
+        for (int i = 0; i < this.serviceCount; i++) {
+            SelectLinksQueryTargetService.State initialState = new SelectLinksQueryTargetService.State();
+            initialState.serviceLink = exampleServiceLinks.get(i);
+            initialState.serviceLinks = exampleServiceLinks;
+
+            Operation post = this.host.createServiceStartPost(ctx).setBody(initialState);
+
+            SelectLinksQueryTargetService service = new SelectLinksQueryTargetService();
+            this.host.startService(post, service);
+            queryTargetServices.add(service);
+        }
+        this.host.testWait(ctx);
+
+        List<URI> queryTargetServiceUris = queryTargetServices.stream().map(Service::getUri)
+                .collect(Collectors.toList());
+
+        query = Query.Builder.create()
+                .addKindFieldClause(SelectLinksQueryTargetService.State.class)
+                .build();
+        queryTask = QueryTask.Builder.create()
+                .addOption(QueryOption.SELECT_LINKS)
+                .addOption(QueryOption.EXPAND_LINKS)
+                .addLinkTerm(QueryValidationServiceState.FIELD_NAME_SERVICE_LINK)
+                .setQuery(query).build();
+
+        createWaitAndValidateQueryTask(1, queryTargetServiceUris, queryTask.querySpec, false);
+
+        query = Query.Builder.create()
+                .addKindFieldClause(SelectLinksQueryTargetService.State.class)
+                .build();
+        queryTask = QueryTask.Builder.create()
+                .addOption(QueryOption.SELECT_LINKS)
+                .addOption(QueryOption.EXPAND_LINKS)
+                .addLinkTerm(QueryValidationServiceState.FIELD_NAME_SERVICE_LINKS)
+                .setQuery(query).build();
+
+        createWaitAndValidateQueryTask(1, queryTargetServiceUris, queryTask.querySpec, false);
     }
 
     @Test
