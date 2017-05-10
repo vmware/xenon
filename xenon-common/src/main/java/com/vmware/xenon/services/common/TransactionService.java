@@ -181,6 +181,11 @@ public class TransactionService extends StatefulService {
          * Keeps track of services that have failed.
          */
         public Set<String> failedLinks;
+
+        /**
+         * A list of tenant links which can access this service.
+         */
+        public Set<String> tenantLinks;
     }
 
     private TransactionResolutionService resolutionHelper;
@@ -614,7 +619,7 @@ public class TransactionService extends StatefulService {
      * Prepare a delete request to a service
      */
     private Operation createDeleteOp(String service) {
-        return Operation
+        Operation deleteOp =  Operation
                 .createDelete(this, service)
                 .setReferer(getUri())
                 .addRequestHeader(Operation.TRANSACTION_REFLINK_HEADER, getSelfLink())
@@ -626,6 +631,8 @@ public class TransactionService extends StatefulService {
                         logInfo("Deletion of service %s succeeded", service);
                     }
                 });
+        setAuthorizationContext(deleteOp, getSystemAuthorizationContext());
+        return deleteOp;
     }
 
     /**

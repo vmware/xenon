@@ -17,6 +17,7 @@ import java.net.URI;
 import java.util.EnumSet;
 import java.util.List;
 
+import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
@@ -55,10 +56,10 @@ public final class TransactionServiceHelper {
      * request.
      */
     static void handleGetWithinTransaction(StatefulService s, Operation get,
-            Handler h, FailRequest fr) {
+            Handler h, FailRequest fr, AuthorizationContext authContext) {
         if (get.isWithinTransaction()) {
             Operation inTransactionQueryOp = buildLatestInTransactionQueryTaskOp(s,
-                    get.getTransactionId()).setCompletion((o, e) -> {
+                    get.getTransactionId(), authContext).setCompletion((o, e) -> {
                         if (e != null) {
                             get.fail(e);
                             return;
@@ -67,7 +68,7 @@ public final class TransactionServiceHelper {
                         QueryTask response = o.getBody(QueryTask.class);
                         if (response.results.documentLinks.isEmpty()) {
                             Operation nonTransactionQueryOp = buildLatestNonTransactionQueryTaskOp(
-                                    s).setCompletion((o2, e2) -> {
+                                    s, authContext).setCompletion((o2, e2) -> {
                                         if (e2 != null) {
                                             get.fail(e);
                                             return;
@@ -83,7 +84,7 @@ public final class TransactionServiceHelper {
                     });
             s.sendRequest(inTransactionQueryOp);
         } else {
-            Operation nonTransactionQueryOp = buildLatestNonTransactionQueryTaskOp(s)
+            Operation nonTransactionQueryOp = buildLatestNonTransactionQueryTaskOp(s, authContext)
                     .setCompletion((o, e) -> {
                         if (e != null) {
                             get.fail(e);
@@ -109,7 +110,8 @@ public final class TransactionServiceHelper {
         get.setBodyNoCloning(obj).complete();
     }
 
-    private static Operation buildLatestInTransactionQueryTaskOp(StatefulService s, String txid) {
+    private static Operation buildLatestInTransactionQueryTaskOp(StatefulService s, String txid,
+            AuthorizationContext authContext) {
         Query.Builder queryBuilder = Query.Builder.create();
         queryBuilder.addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, s.getSelfLink());
         queryBuilder.addFieldClause(ServiceDocument.FIELD_NAME_TRANSACTION_ID, txid);
@@ -121,12 +123,15 @@ public final class TransactionServiceHelper {
         queryTaskBuilder.orderDescending(ServiceDocument.FIELD_NAME_VERSION, TypeName.LONG);
         QueryTask task = queryTaskBuilder.build();
 
-        return Operation
+        Operation returnOp = Operation
                 .createPost(s.getHost(), ServiceUriPaths.CORE_QUERY_TASKS)
                 .setBody(task);
+        returnOp.setAuthorizationContext(authContext);
+        return returnOp;
     }
 
-    private static Operation buildLatestNonTransactionQueryTaskOp(StatefulService s) {
+    private static Operation buildLatestNonTransactionQueryTaskOp(StatefulService s,
+            AuthorizationContext authContext) {
         Query.Builder queryBuilder = Query.Builder.create();
         queryBuilder.addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, s.getSelfLink());
         queryBuilder.addFieldClause(ServiceDocument.FIELD_NAME_TRANSACTION_ID, "*",
@@ -139,9 +144,11 @@ public final class TransactionServiceHelper {
         queryTaskBuilder.orderDescending(ServiceDocument.FIELD_NAME_VERSION, TypeName.LONG);
         QueryTask task = queryTaskBuilder.build();
 
-        return Operation
+        Operation returnOp = Operation
                 .createPost(s.getHost(), ServiceUriPaths.CORE_QUERY_TASKS)
                 .setBody(task);
+        returnOp.setAuthorizationContext(authContext);
+        return returnOp;
     }
 
     /**
@@ -182,7 +189,7 @@ public final class TransactionServiceHelper {
      */
     static boolean handleOperationInTransaction(StatefulService s,
             Class<? extends ServiceDocument> st,
-            Operation request) {
+            Operation request, AuthorizationContext authContext) {
         if (request.getRequestHeaderAsIs(Operation.TRANSACTION_HEADER) == null) {
             return false;
         }
@@ -221,6 +228,7 @@ public final class TransactionServiceHelper {
                     .createPost(uri)
                     .setBody(task)
                     .setCompletion((o, f) -> unshadowQueryCompletion(s, st, o, f, request));
+            startPost.setAuthorizationContext(authContext);
             s.sendRequest(startPost);
 
         } else if (request.getRequestHeaderAsIs(Operation.TRANSACTION_HEADER).equals(

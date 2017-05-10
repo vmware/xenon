@@ -120,6 +120,7 @@ import com.vmware.xenon.services.common.SystemUserService;
 import com.vmware.xenon.services.common.TaskFactoryService;
 import com.vmware.xenon.services.common.TenantService;
 import com.vmware.xenon.services.common.TransactionFactoryService;
+import com.vmware.xenon.services.common.TransactionService;
 import com.vmware.xenon.services.common.UpdateIndexRequest;
 import com.vmware.xenon.services.common.UserGroupService;
 import com.vmware.xenon.services.common.UserService;
@@ -1538,6 +1539,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         Service transactionFactoryService = new TransactionFactoryService();
         coreServices.add(transactionFactoryService);
+        addPrivilegedService(TransactionService.class);
 
         Service[] coreServiceArray = new Service[coreServices.size()];
         coreServices.toArray(coreServiceArray);

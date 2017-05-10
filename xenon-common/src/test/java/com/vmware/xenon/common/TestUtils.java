@@ -1178,5 +1178,4 @@ public class TestUtils {
         assertEquals(exampleService.getPeerNodeSelectorPath(), config.peerNodeSelectorPath);
         assertEquals(exampleService.getDocumentIndexPath(), config.documentIndexPath);
     }
-
 }

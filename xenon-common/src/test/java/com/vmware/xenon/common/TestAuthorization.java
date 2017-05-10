@@ -66,6 +66,7 @@ import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.RoleService;
 import com.vmware.xenon.services.common.RoleService.Policy;
 import com.vmware.xenon.services.common.RoleService.RoleState;
+import com.vmware.xenon.services.common.TransactionService.TransactionServiceState;
 import com.vmware.xenon.services.common.UserGroupService;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
 import com.vmware.xenon.services.common.UserService.UserState;
@@ -735,6 +736,42 @@ public class TestAuthorization extends BasicTestCase {
 
         assertNull(this.host.getAuthorizationContext(s, authContext1.getToken()));
         assertNull(this.host.getAuthorizationContext(s, authContext2.getToken()));
+    }
+
+    @Test
+    public void transactionWithAuth() throws Throwable {
+        // assume system identity so we can create roles
+        this.host.setSystemAuthorizationContext();
+        String resourceGroupLink = this.authHelper.createResourceGroup(this.host,
+                "transaction-group", Builder.create()
+                        .addFieldClause(
+                                ServiceDocument.FIELD_NAME_KIND,
+                                Utils.buildKind(TransactionServiceState.class))
+                        .build());
+        this.authHelper.createRole(this.host, this.authHelper.getUserGroupLink(),
+                resourceGroupLink, EnumSet.allOf(Action.class));
+        this.host.resetAuthorizationContext();
+        // assume identity as Jane and test to see if example service documents can be created
+        this.host.assumeIdentity(this.userServicePath);
+        String txid = TestTransactionUtils.newTransaction(this.host);
+        OperationContext.setTransactionId(txid);
+        createExampleServices("jane");
+        boolean committed = TestTransactionUtils.commit(this.host, txid);
+        assertTrue(committed);
+        OperationContext.setTransactionId(null);
+        ServiceDocumentQueryResult res = host.getFactoryState(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+        assertTrue(res.documentCount == this.serviceCount);
+        // next create docs and abort; these documents must  not be present
+        txid = TestTransactionUtils.newTransaction(this.host);
+        OperationContext.setTransactionId(txid);
+        createExampleServices("jane");
+        res = host.getFactoryState(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+        assertTrue(res.documentCount == 2 * this.serviceCount);
+        boolean aborted = TestTransactionUtils.abort(this.host, txid);
+        assertTrue(aborted);
+        OperationContext.setTransactionId(null);
+        res = host.getFactoryState(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+        assertTrue(res.documentCount == this.serviceCount);
     }
 
     @Test
