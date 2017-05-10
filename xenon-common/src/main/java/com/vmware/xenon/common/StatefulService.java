@@ -411,7 +411,7 @@ public class StatefulService implements Service {
                 isCompletionNested = true;
 
                 if (handleOperationInTransaction(this, this.context.stateType,
-                        request)) {
+                        request, getHost().getSystemAuthorizationContext())) {
                     return;
                 }
 
@@ -709,7 +709,8 @@ public class StatefulService implements Service {
             handleGetSimple(get);
             return;
         }
-        handleGetWithinTransaction(this, get, this::handleGetSimple, this::failRequest);
+        handleGetWithinTransaction(this, get, this::handleGetSimple, this::failRequest,
+                getHost().getSystemAuthorizationContext());
     }
 
     /**
