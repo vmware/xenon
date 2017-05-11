@@ -91,6 +91,7 @@
     <module>xenon-loader-test</module>
     <module>xenon-gateway</module>
     <module>xenon-quickstart</module>
+    <module>xenon-stress-test</module>
   </modules>
 
   <properties>
@@ -159,6 +160,7 @@
         <module>xenon-websocket-test</module>
         <module>xenon-quickstart</module>
         <module>xenon-gateway</module>
+        <module>xenon-stress-test</module>
       </modules>
       <properties>
         <testHeapSizeMb>8192</testHeapSizeMb>
