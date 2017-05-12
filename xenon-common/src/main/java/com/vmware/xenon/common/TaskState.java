@@ -48,7 +48,7 @@ public class TaskState {
     /**
      * Current stage of the query
      */
-    public TaskStage stage;
+    public TaskStage stage = TaskStage.CREATED;
 
     /**
      * Value indicating whether task should complete the creation POST only after its complete.

@@ -48,11 +48,14 @@ public class TestTransactionUtils {
      */
     public static boolean commit(VerificationHost host, String txid) throws Throwable {
         TestRequestSender sender = new TestRequestSender(host);
-        Operation resultOp = sender.sendAndWait(createCommitOperation(host, txid));
-        if (resultOp.getStatusCode() != Operation.STATUS_CODE_OK) {
-            return false;
+        try {
+            Operation resultOp = sender.sendAndWait(createCommitOperation(host, txid));
+            if (resultOp.getStatusCode() == Operation.STATUS_CODE_OK) {
+                return true;
+            }
+        } catch (Exception e) {
         }
-        return true;
+        return false;
     }
 
     /**
@@ -71,11 +74,14 @@ public class TestTransactionUtils {
      */
     public static boolean abort(VerificationHost host, String txid) throws Throwable {
         TestRequestSender sender = new TestRequestSender(host);
-        Operation resultOp = sender.sendAndWait(createAbortOperation(host, txid));
-        if (resultOp.getStatusCode() != Operation.STATUS_CODE_OK) {
-            return false;
+        try {
+            Operation resultOp = sender.sendAndWait(createAbortOperation(host, txid));
+            if (resultOp.getStatusCode() == Operation.STATUS_CODE_OK) {
+                return true;
+            }
+        } catch (Exception e) {
         }
-        return true;
+        return false;
     }
 
     /**

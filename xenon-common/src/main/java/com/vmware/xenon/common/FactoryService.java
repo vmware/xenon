@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.UriUtils.ForwardingTarget;
 import com.vmware.xenon.services.common.NodeGroupBroadcastResponse;
@@ -468,7 +469,8 @@ public abstract class FactoryService extends StatelessService {
                 o.complete();
             });
 
-            if (o.isWithinTransaction() && this.getHost().getTransactionServiceUri() != null) {
+            if (o.isWithinTransaction() && this.getHost().getTransactionServiceUri() != null
+                    && childService.hasOption(ServiceOption.PERSISTENCE)) {
                 childService.sendRequest(TransactionServiceHelper.notifyTransactionCoordinatorOfNewServiceOp(this,
                         childService, o).setCompletion((notifyOp, notifyFailure) -> {
                             if (notifyFailure != null) {
