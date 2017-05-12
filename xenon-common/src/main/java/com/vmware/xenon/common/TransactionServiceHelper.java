@@ -18,6 +18,7 @@ import java.util.EnumSet;
 import java.util.List;
 
 import com.vmware.xenon.common.Operation.AuthorizationContext;
+import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
@@ -202,6 +203,10 @@ public final class TransactionServiceHelper {
 
         if (request.getRequestHeaderAsIs(Operation.TRANSACTION_HEADER).equals(
                 Operation.TX_COMMIT)) {
+            if (!s.getOptions().contains(ServiceOption.PERSISTENCE)) {
+                request.complete();
+                return true;
+            }
             // commit should expose latest state, i.e., remove shadow and bump the version
             // and remove transaction from pending
             String txRefLink = request.getRequestHeader(Operation.TRANSACTION_REFLINK_HEADER);
