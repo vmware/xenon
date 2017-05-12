@@ -14,6 +14,7 @@
 package com.vmware.xenon.common;
 
 import java.util.UUID;
+import java.util.logging.Level;
 
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
@@ -48,11 +49,15 @@ public class TestTransactionUtils {
      */
     public static boolean commit(VerificationHost host, String txid) throws Throwable {
         TestRequestSender sender = new TestRequestSender(host);
-        Operation resultOp = sender.sendAndWait(createCommitOperation(host, txid));
-        if (resultOp.getStatusCode() != Operation.STATUS_CODE_OK) {
-            return false;
+        try {
+            Operation resultOp = sender.sendAndWait(createCommitOperation(host, txid));
+            if (resultOp.getStatusCode() == Operation.STATUS_CODE_OK) {
+                return true;
+            }
+        } catch (Exception e) {
+            host.log(Level.WARNING, "Exception commiting transaction: %s", e.getMessage());
         }
-        return true;
+        return false;
     }
 
     /**
@@ -71,11 +76,15 @@ public class TestTransactionUtils {
      */
     public static boolean abort(VerificationHost host, String txid) throws Throwable {
         TestRequestSender sender = new TestRequestSender(host);
-        Operation resultOp = sender.sendAndWait(createAbortOperation(host, txid));
-        if (resultOp.getStatusCode() != Operation.STATUS_CODE_OK) {
-            return false;
+        try {
+            Operation resultOp = sender.sendAndWait(createAbortOperation(host, txid));
+            if (resultOp.getStatusCode() == Operation.STATUS_CODE_OK) {
+                return true;
+            }
+        } catch (Exception e) {
+            host.log(Level.WARNING, "Exception aborting transaction: %s", e.getMessage());
         }
-        return true;
+        return false;
     }
 
     /**

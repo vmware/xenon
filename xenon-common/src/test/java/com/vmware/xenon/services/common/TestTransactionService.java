@@ -45,6 +45,7 @@ import com.vmware.xenon.common.TestTransactionUtils;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.TestContext;
+import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryTask.Query;
@@ -52,6 +53,7 @@ import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.TestTransactionService.BankAccountService.BankAccountServiceRequest;
 import com.vmware.xenon.services.common.TestTransactionService.BankAccountService.BankAccountServiceState;
+import com.vmware.xenon.services.common.TestTransactionService.NonPersistentStatefulService.NonPersistentStatefulServiceState;
 
 public class TestTransactionService extends BasicReusableHostTestCase {
 
@@ -123,6 +125,10 @@ public class TestTransactionService extends BasicReusableHostTestCase {
                     BankAccountServiceState.class);
             h.startServiceAndWait(bankAccountFactory, BankAccountService.FACTORY_LINK,
                     new BankAccountServiceState());
+            Service nonPersistenServiceFactory = FactoryService.create(NonPersistentStatefulService.class,
+                    NonPersistentStatefulServiceState.class);
+            h.startServiceAndWait(nonPersistenServiceFactory, NonPersistentStatefulService.FACTORY_LINK,
+                    new NonPersistentStatefulServiceState());
         }
     }
 
@@ -217,6 +223,32 @@ public class TestTransactionService extends BasicReusableHostTestCase {
                 exampleURIs.get(0));
         // TODO re-enable when abort logic is debugged
         assertEquals(verifyState.name, newState.name);
+    }
+
+    /**
+     * Test creation of persistent and nonpersistent services
+     *
+     * @throws Throwable
+     */
+    @Test
+    public void testNonPersistentService() throws Throwable {
+        String txid = TestTransactionUtils.newTransaction(this.defaultHost);
+        List<URI> exampleURIs = this.defaultHost.createExampleServices(this.defaultHost, 1, null);
+        ExampleServiceState updatedState = new ExampleServiceState();
+        updatedState.name = "foo";
+        updateExampleService(txid, exampleURIs.get(0), updatedState);
+
+        NonPersistentStatefulServiceState nonPersistentService = new NonPersistentStatefulServiceState();
+        TestRequestSender sender = new TestRequestSender(this.defaultHost);
+        sender.sendAndWait(Operation
+                .createPost(UriUtils.buildUri(this.defaultHost, NonPersistentStatefulService.FACTORY_LINK))
+                .setTransactionId(txid)
+                .setBody(nonPersistentService));
+        boolean committed = TestTransactionUtils.commit(this.defaultHost, txid);
+        assertTrue(committed);
+        ExampleServiceState returnState = this.defaultHost.getServiceState(null, ExampleServiceState.class,
+                exampleURIs.get(0));
+        assertEquals(returnState.name, updatedState.name);
     }
 
     @Test
@@ -1025,6 +1057,20 @@ public class TestTransactionService extends BasicReusableHostTestCase {
             }
         }
 
+    }
+
+    public static class NonPersistentStatefulService extends StatefulService {
+
+        public static final String FACTORY_LINK = ServiceUriPaths.SAMPLES + "/non-persistent-service";
+
+        public static class NonPersistentStatefulServiceState extends ServiceDocument {
+        }
+
+        public NonPersistentStatefulService() {
+            super(NonPersistentStatefulServiceState.class);
+            super.toggleOption(ServiceOption.REPLICATION, true);
+            super.toggleOption(ServiceOption.OWNER_SELECTION, true);
+        }
     }
 
 }

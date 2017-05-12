@@ -165,7 +165,7 @@ public class TransactionService extends StatefulService {
         /**
          * Tracks the task's stages. Managed by DCP.
          */
-        public TaskState taskInfo = new TaskState();
+        public TaskState taskInfo = TaskState.create();
 
         /**
          * Current stage in the protocol -- updated atomically
