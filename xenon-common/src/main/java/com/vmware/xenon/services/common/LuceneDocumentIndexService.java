@@ -2132,7 +2132,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 ServiceDocument copy = state.getClass().newInstance();
                 for (String selectField : selectFields) {
                     // transfer only needed fields
-                    Field field = ReflectionUtils.getFieldIfExists(state.getClass(), selectField);
+                    Field field = ReflectionUtils.getField(state.getClass(), selectField);
                     if (field != null) {
                         Object value = field.get(state);
                         if (value != null) {
