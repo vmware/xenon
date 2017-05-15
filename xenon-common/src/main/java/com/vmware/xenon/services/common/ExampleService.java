@@ -109,6 +109,7 @@ public class ExampleService extends StatefulService {
         public Set<String> tags = new HashSet<>();
         @UsageOption(option = PropertyUsageOption.ID)
         @UsageOption(option = PropertyUsageOption.REQUIRED)
+        @PropertyOptions(indexing = PropertyIndexingOption.SORT)
         public String id;
         @UsageOption(option = PropertyUsageOption.REQUIRED)
         public String required;

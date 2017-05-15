@@ -269,6 +269,7 @@ final class LuceneQueryConverter {
             break;
         default:
             sortField = new SortField(sortTerm.propertyName, type, order);
+            sortField.setMissingValue(SortField.STRING_LAST);
             break;
         }
         return sortField;

@@ -347,9 +347,7 @@ class LuceneIndexDocumentHelper {
         boolean isSortedField = false;
         boolean expandField = false;
         Object v = podo;
-        if (v == null) {
-            return;
-        }
+
 
         EnumSet<PropertyIndexingOption> opts = pd.indexingOptions;
 
@@ -362,6 +360,18 @@ class LuceneIndexDocumentHelper {
             }
             if (opts.contains(PropertyIndexingOption.EXPAND)) {
                 expandField = true;
+            }
+        }
+
+        if (v == null) {
+            if (!isSortedField) {
+                return;
+            } else {
+                if (pd.typeName.equals(TypeName.STRING)) {
+                    v = "";
+                } else {
+                    return;
+                }
             }
         }
 
