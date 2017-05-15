@@ -1494,7 +1494,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                 qs.groupByTerm.propertyType == ServiceDocumentDescription.TypeName.DOUBLE) {
             groupingSearch = new GroupingSearch(qs.groupByTerm.propertyName + GROUP_BY_PROPERTY_NAME_SUFFIX);
         } else {
-            groupingSearch = new GroupingSearch(qs.groupByTerm.propertyName);
+            groupingSearch = new GroupingSearch(
+                    LuceneIndexDocumentHelper.createSortFieldPropertyName(qs.groupByTerm.propertyName));
         }
 
         groupingSearch.setGroupSort(groupSort);

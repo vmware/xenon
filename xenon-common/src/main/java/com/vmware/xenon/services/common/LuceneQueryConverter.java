@@ -268,7 +268,9 @@ final class LuceneQueryConverter {
             sortField = new SortedNumericSortField(sortTerm.propertyName, type, order);
             break;
         default:
-            sortField = new SortField(sortTerm.propertyName, type, order);
+            sortField = new SortField(LuceneIndexDocumentHelper.createSortFieldPropertyName(sortTerm.propertyName),
+                    type,
+                    order);
             break;
         }
         return sortField;

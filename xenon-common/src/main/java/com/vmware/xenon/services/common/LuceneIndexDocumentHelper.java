@@ -46,6 +46,7 @@ import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.TaskState;
+import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.serialization.KryoSerializers;
 
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
@@ -58,7 +59,17 @@ import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
  * avoid allocations of Document and Field instances for every service state update.
  */
 class LuceneIndexDocumentHelper {
+
     public static final String GROUP_BY_PROPERTY_NAME_SUFFIX = "_groupBySuffix";
+
+    public static final String SORT_PROPERTY_NAME_SUFFIX = "_sort";
+
+    private static final String DISABLE_SORT_FIELD_NAMING_PROPERTY_NAME =
+            Utils.PROPERTY_NAME_PREFIX + "LuceneIndexDocumentHelper.DISABLE_SORT_FIELD_NAMING";
+
+    private static boolean DISABLE_SORT_FIELD_NAMING = Boolean.getBoolean(
+            DISABLE_SORT_FIELD_NAMING_PROPERTY_NAME);
+
     private Document doc = new Document();
 
     public Document getDoc() {
@@ -115,7 +126,8 @@ class LuceneIndexDocumentHelper {
         @Override
         public void initialize() {
             this.stringField = new StringField(ServiceDocument.FIELD_NAME_SELF_LINK, "", Store.YES);
-            this.sortedField = new SortedDocValuesField(ServiceDocument.FIELD_NAME_SELF_LINK,
+            this.sortedField = new SortedDocValuesField(
+                    createSortFieldPropertyName(ServiceDocument.FIELD_NAME_SELF_LINK),
                     new BytesRef(" "));
         }
     };
@@ -439,7 +451,8 @@ class LuceneIndexDocumentHelper {
         }
 
         if (isSortedField) {
-            luceneDocValuesField = getAndSetSortedStoredField(fieldName, v.toString());
+            luceneDocValuesField = getAndSetSortedStoredField(
+                    createSortFieldPropertyName(fieldName), v.toString());
         }
 
         if (luceneField != null) {
@@ -589,5 +602,9 @@ class LuceneIndexDocumentHelper {
                 });
         ndField.setLongValue(propertyValue);
         return ndField;
+    }
+
+    static String createSortFieldPropertyName(String propertyName) {
+        return DISABLE_SORT_FIELD_NAMING ? propertyName : propertyName + SORT_PROPERTY_NAME_SUFFIX;
     }
 }

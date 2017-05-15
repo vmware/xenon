@@ -2,6 +2,13 @@
 
 ## 1.5.0-SNAPSHOT
 
+* Breaking change: The Lucene index service uses a new naming scheme for sorted
+  DocValues fields in 1.5.0. This is transparent to most Xenon consumers, but
+  is breaking for products which depend on opening an existing index at upgrade
+  time instead of migration and which make use of sorted queries; such products
+  should use the new "xenon.LuceneIndexDocumentHelper.DISABLE_SORT_FIELD_NAMING"
+  flag to disable the use of the new naming scheme.
+
 * Upgrade Netty to [4.1.10](http://netty.io/news/2017/04/30/4-0-46-Final-4-1-10-Final.html) and
   netty-tcnative to [2.0.1](https://github.com/netty/netty-tcnative/releases/tag/netty-tcnative-parent-2.0.1.Final)
 
