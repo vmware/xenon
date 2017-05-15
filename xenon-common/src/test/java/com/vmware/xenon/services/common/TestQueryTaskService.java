@@ -4631,6 +4631,65 @@ public class TestQueryTaskService {
         });
     }
 
+    public static class ServiceWithConflictingFieldName extends StatefulService {
+
+        public static class State extends ServiceDocument {
+            @PropertyOptions(indexing = PropertyIndexingOption.SORT)
+            public String stringValue;
+        }
+
+        public ServiceWithConflictingFieldName() {
+            super(State.class);
+            toggleOption(ServiceOption.PERSISTENCE, true);
+        }
+    }
+
+    @Test
+    public void testServiceWithConflictingSortedFieldName() throws Throwable {
+        setUpHost();
+
+        // Issue a query for documents which don't exist.
+        Query query = Query.Builder.create()
+                .addFieldClause(QueryValidationServiceState.FIELD_NAME_STRING_VALUE,
+                        "a special string value")
+                .addKindFieldClause(ServiceWithConflictingFieldName.State.class)
+                .build();
+        QueryTask queryTask = QueryTask.Builder.createDirectTask()
+                .orderAscending(QueryValidationServiceState.FIELD_NAME_STRING_VALUE,
+                        TypeName.STRING)
+                .setQuery(query).build();
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+        assertEquals(0, (long) queryTask.results.documentCount);
+
+        // Now create some documents of the expected type, re-issue the same query once again, and
+        // verify that the newly-created documents are sorted correctly in the results
+        ServiceWithConflictingFieldName.State initialState1 = new ServiceWithConflictingFieldName.State();
+        initialState1.stringValue = "a special string value";
+        this.host.doThroughputServiceStart(this.serviceCount, ServiceWithConflictingFieldName.class,
+                initialState1, null, null);
+
+        queryTask = QueryTask.Builder.createDirectTask()
+                .orderAscending(QueryValidationServiceState.FIELD_NAME_STRING_VALUE,
+                        TypeName.STRING)
+                .setQuery(query).build();
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+        assertEquals(this.serviceCount, (long) queryTask.results.documentCount);
+
+        // Now create some documents with the expected field name but the wrong indexing type and
+        // re-issue the same query.
+        List<URI> services = createQueryTargetServices(this.serviceCount);
+        QueryValidationServiceState initialState = new QueryValidationServiceState();
+        initialState.stringValue = "a special string value";
+        putSimpleStateOnQueryTargetServices(services, initialState);
+
+        queryTask = QueryTask.Builder.createDirectTask()
+                .orderAscending(QueryValidationServiceState.FIELD_NAME_STRING_VALUE,
+                        TypeName.STRING)
+                .setQuery(query).build();
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+        assertEquals(this.serviceCount, (long) queryTask.results.documentCount);
+    }
+
     private void createUserServices(URI userFactorURI, List<URI> userServices)
             throws Throwable {
 

@@ -115,7 +115,8 @@ class LuceneIndexDocumentHelper {
         @Override
         public void initialize() {
             this.stringField = new StringField(ServiceDocument.FIELD_NAME_SELF_LINK, "", Store.YES);
-            this.sortedField = new SortedDocValuesField(ServiceDocument.FIELD_NAME_SELF_LINK,
+            this.sortedField = new SortedDocValuesField(
+                    LuceneQueryConverter.createSortFieldPropertyName(ServiceDocument.FIELD_NAME_SELF_LINK),
                     new BytesRef(" "));
         }
     };
@@ -439,7 +440,8 @@ class LuceneIndexDocumentHelper {
         }
 
         if (isSortedField) {
-            luceneDocValuesField = getAndSetSortedStoredField(fieldName, v.toString());
+            luceneDocValuesField = getAndSetSortedStoredField(
+                    LuceneQueryConverter.createSortFieldPropertyName(fieldName), v.toString());
         }
 
         if (luceneField != null) {

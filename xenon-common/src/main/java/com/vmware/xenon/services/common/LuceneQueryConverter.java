@@ -268,7 +268,8 @@ final class LuceneQueryConverter {
             sortField = new SortedNumericSortField(sortTerm.propertyName, type, order);
             break;
         default:
-            sortField = new SortField(sortTerm.propertyName, type, order);
+            sortField = new SortField(createSortFieldPropertyName(sortTerm.propertyName), type,
+                    order);
             break;
         }
         return sortField;
@@ -283,6 +284,10 @@ final class LuceneQueryConverter {
         if (term.propertyName == null) {
             throw new IllegalArgumentException("term.propertyName is required");
         }
+    }
+
+    static String createSortFieldPropertyName(String propertyName) {
+        return propertyName + ".sort";
     }
 
     private static Query createLongRangeQuery(String propertyName, QueryTask.NumericRange<?> range) {
