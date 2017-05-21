@@ -347,12 +347,17 @@ class LuceneIndexDocumentHelper {
         }
     }
 
+    private void addIndexableFieldToDocument(Object podo, PropertyDescription pd,
+            String fieldName, boolean isCollectionItem) {
+        addIndexableFieldToDocument(podo, pd, fieldName, isCollectionItem, true);
+    }
+
     /**
      * Add single indexable field to the Lucene {@link Document}.
      * This function recurses if the field value is a PODO, map, array, or collection.
      */
     private void addIndexableFieldToDocument(Object podo, PropertyDescription pd,
-            String fieldName, boolean isCollectionItem) {
+            String fieldName, boolean isCollectionItem, boolean allowSortedField) {
         Field luceneField = null;
         Field luceneDocValuesField = null;
         Field.Store fsv = Field.Store.NO;
@@ -450,7 +455,7 @@ class LuceneIndexDocumentHelper {
             luceneField = getAndSetStringField(fieldName, v.toString(), fsv, isCollectionItem);
         }
 
-        if (isSortedField) {
+        if (isSortedField && allowSortedField) {
             luceneDocValuesField = getAndSetSortedStoredField(
                     createSortFieldPropertyName(fieldName), v.toString());
         }
@@ -511,7 +516,7 @@ class LuceneIndexDocumentHelper {
                         fieldNamePrefix, true);
 
                 addIndexableFieldToDocument(entry.getValue(), pd.elementDescription,
-                        fieldNamePrefix, true);
+                        fieldNamePrefix, true, false);
             }
         }
     }

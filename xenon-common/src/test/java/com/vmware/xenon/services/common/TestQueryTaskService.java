@@ -4637,8 +4637,8 @@ public class TestQueryTaskService {
             @PropertyOptions(indexing = PropertyIndexingOption.SORT)
             public String stringValue;
 
-            @PropertyOptions(indexing = { PropertyIndexingOption.FIXED_ITEM_NAME,
-                    PropertyIndexingOption.SORT })
+            @PropertyOptions(indexing = { PropertyIndexingOption.EXPAND,
+                    PropertyIndexingOption.FIXED_ITEM_NAME, PropertyIndexingOption.SORT })
             public Map<String, String> mapValue;
         }
 
@@ -4671,6 +4671,7 @@ public class TestQueryTaskService {
         initialState1.stringValue = "a special string value";
         initialState1.mapValue = new HashMap<>();
         initialState1.mapValue.put("a special key", "a special value");
+        initialState1.mapValue.put("another special key", "another special value");
         this.host.doThroughputServiceStart(this.serviceCount, ServiceWithConflictingFieldName.class,
                 initialState1, null, null);
 
