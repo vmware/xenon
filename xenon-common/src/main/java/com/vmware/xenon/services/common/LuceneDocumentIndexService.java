@@ -1897,20 +1897,24 @@ public class LuceneDocumentIndexService extends StatelessService {
             String indexLink,
             boolean hasPage) {
 
+        String nextPageId = Utils.getNowMicrosUtc() + "";
         URI u = UriUtils.buildUri(getHost(), UriUtils.buildUriPath(ServiceUriPaths.CORE_QUERY_PAGE,
-                Utils.getNowMicrosUtc() + ""));
+                nextPageId));
 
         // the page link must point to this node, since the index searcher and results have been
-        // computed locally. Transform the link to a forwarder link, which will transparently
-        // forward requests to this node
-        URI forwarderUri = UriUtils.buildForwardToPeerUri(u, getHost().getId(),
-                ServiceUriPaths.DEFAULT_NODE_SELECTOR, EnumSet.noneOf(ServiceOption.class));
+        // computed locally. Transform the link to a query page forwarder link, which will
+        // transparently forward requests to the current node.
+
+        URI baseUri = UriUtils.buildUri(u, QueryPageForwardingService.SELF_LINK);
+        URI forwarderUri = UriUtils.extendUriWithQuery(baseUri, UriUtils.FORWARDING_URI_PARAM_NAME_PEER,
+                getHost().getId(), UriUtils.FORWARDING_URI_PARAM_NAME_PATH, nextPageId);
         String nextLink = forwarderUri.getPath() + UriUtils.URI_QUERY_CHAR
                 + forwarderUri.getQuery();
 
-        URI forwarderUriOfPrevLinkForNewPage = UriUtils.buildForwardToPeerUri(op.getReferer(),
-                getHost().getId(),
-                ServiceUriPaths.DEFAULT_NODE_SELECTOR, EnumSet.noneOf(ServiceOption.class));
+        String refererId = UriUtils.getLastPathSegment(op.getReferer());
+        URI forwarderUriOfPrevLinkForNewPage = UriUtils.extendUriWithQuery(baseUri,
+                UriUtils.FORWARDING_URI_PARAM_NAME_PEER, getHost().getId(),
+                UriUtils.FORWARDING_URI_PARAM_NAME_PATH, refererId);
         String prevLinkForNewPage = forwarderUriOfPrevLinkForNewPage.getPath()
                 + UriUtils.URI_QUERY_CHAR + forwarderUriOfPrevLinkForNewPage.getQuery();
 
