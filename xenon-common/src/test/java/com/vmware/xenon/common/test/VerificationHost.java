@@ -41,6 +41,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -55,6 +56,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
+import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -2264,7 +2266,262 @@ public class VerificationHost extends ExampleServiceHost {
         }
     }
 
-    public int calculateHealthyNodeCount(NodeGroupState r) {
+    /**
+     * Check replicated factory child services for convergence.
+     *
+     * Wait for all hosts until they all have child services
+     * with the expected URIs and have the same state and replicated
+     * to desired number of hosts.
+     *
+     * For scenarios where a new node is added or restarted, this method
+     * could be used for convergence of the service.
+     *
+     * See also waitForReplicatedFactoryServiceAvailable() which should be used
+     * in most of the cases when test wants to wait for replicated factory to be
+     * available. That method just waits for STAT_NAME_AVAILABLE stat on the
+     * owner of the factory service.
+     *
+     */
+    public <T extends ServiceDocument> Map<String, T> waitForReplicatedFactoryChildServiceConvergence(
+            Map<URI, URI> factories,
+            Map<String, T> serviceStates,
+            BiPredicate<T, T> stateChecker,
+            int expectedChildCount, long expectedVersion, long replicationFactor)
+            throws Throwable, TimeoutException {
+        // now poll all hosts until they converge: They all have a child service
+        // with the expected URI and it has the same state
+
+        Map<String, T> updatedStatesPerSelfLink = new HashMap<>();
+        Date expiration = new Date(new Date().getTime()
+                + TimeUnit.SECONDS.toMillis(this.getTimeoutSeconds()));
+        do {
+
+            URI node = factories.keySet().iterator().next();
+            AtomicInteger getFailureCount = new AtomicInteger();
+            if (expectedChildCount != 0) {
+                // issue direct GETs to the services, we do not trust the factory
+
+                for (String link : serviceStates.keySet()) {
+                    TestContext ctx = this.testCreate(1);
+                    Operation get = Operation.createGet(UriUtils.buildUri(node, link))
+                            .setReferer(this.getReferer())
+                            .setExpiration(
+                                    Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(5)))
+                            .setCompletion(
+                                    (o, e) -> {
+                                        if (e != null) {
+                                            getFailureCount.incrementAndGet();
+                                        }
+                                        ctx.completeIteration();
+                                    });
+                    this.sendRequest(get);
+                    this.testWait(ctx);
+                }
+
+            }
+
+            if (getFailureCount.get() > 0) {
+                this.log("Child services not propagated yet. Failure count: %d",
+                        getFailureCount.get());
+                Thread.sleep(500);
+                continue;
+            }
+
+            TestContext testContext = this.testCreate(factories.size());
+            Map<URI, ServiceDocumentQueryResult> childServicesPerNode = new HashMap<>();
+            for (URI remoteFactory : factories.values()) {
+                URI factoryUriWithExpand = UriUtils.extendUriWithQuery(remoteFactory,
+                        UriUtils.URI_PARAM_ODATA_EXPAND,
+                        ServiceDocumentQueryResult.FIELD_NAME_DOCUMENT_LINKS);
+                if (this.isStressTest()) {
+                    // set an arbitrary, but very high result limit on GET, to avoid query failure
+                    // during long running replication tests
+                    final int resultLimit = 10000000;
+                    factoryUriWithExpand = UriUtils.extendUriWithQuery(remoteFactory,
+                            UriUtils.URI_PARAM_ODATA_EXPAND,
+                            ServiceDocumentQueryResult.FIELD_NAME_DOCUMENT_LINKS,
+                            UriUtils.URI_PARAM_ODATA_TOP,
+                            "" + resultLimit);
+                }
+
+                Operation get = Operation.createGet(factoryUriWithExpand)
+                        .setCompletion(
+                                (o, e) -> {
+                                    if (e != null) {
+                                        testContext.complete();
+                                        return;
+                                    }
+                                    if (!o.hasBody()) {
+                                        testContext.complete();
+                                        return;
+                                    }
+                                    ServiceDocumentQueryResult r = o
+                                            .getBody(ServiceDocumentQueryResult.class);
+                                    synchronized (childServicesPerNode) {
+                                        childServicesPerNode.put(o.getUri(), r);
+                                    }
+                                    testContext.complete();
+                                });
+                this.send(get);
+            }
+            this.testWait(testContext);
+
+            long expectedNodeCountPerLinkMax = factories.size();
+            long expectedNodeCountPerLinkMin = expectedNodeCountPerLinkMax;
+            if (replicationFactor != 0) {
+                // We expect services to end up either on K nodes, or K + 1 nodes,
+                // if limited replication is enabled. The reason we might end up with services on
+                // an additional node, is because we elect an owner to synchronize an entire factory,
+                // using the factory's link, and that might end up on a node not used for any child.
+                // This will produce children on that node, giving us K+1 replication, which is acceptable
+                // given K (replication factor) << N (total nodes in group)
+                expectedNodeCountPerLinkMax = replicationFactor + 1;
+                expectedNodeCountPerLinkMin = replicationFactor;
+            }
+
+            if (expectedChildCount == 0) {
+                expectedNodeCountPerLinkMax = 0;
+                expectedNodeCountPerLinkMin = 0;
+            }
+
+            // build a service link to node map so we can tell on which node each service instance landed
+            Map<String, Set<URI>> linkToNodeMap = new HashMap<>();
+
+            boolean isConverged = true;
+            for (Entry<URI, ServiceDocumentQueryResult> entry : childServicesPerNode.entrySet()) {
+                for (String link : entry.getValue().documentLinks) {
+                    if (!serviceStates.containsKey(link)) {
+                        this.log("service %s not expected, node: %s", link, entry.getKey());
+                        isConverged = false;
+                        continue;
+                    }
+
+                    Set<URI> hostsPerLink = linkToNodeMap.get(link);
+                    if (hostsPerLink == null) {
+                        hostsPerLink = new HashSet<>();
+                    }
+                    hostsPerLink.add(entry.getKey());
+                    linkToNodeMap.put(link, hostsPerLink);
+                }
+            }
+
+            if (!isConverged) {
+                Thread.sleep(500);
+                continue;
+            }
+
+            // each link must exist on N hosts, where N is either the replication factor, or, if not used, all nodes
+            for (Entry<String, Set<URI>> e : linkToNodeMap.entrySet()) {
+                if (e.getValue() == null && replicationFactor == 0) {
+                    this.log("Service %s not found on any nodes", e.getKey());
+                    isConverged = false;
+                    continue;
+                }
+
+                if (e.getValue().size() < expectedNodeCountPerLinkMin
+                        || e.getValue().size() > expectedNodeCountPerLinkMax) {
+                    this.log("Service %s found on %d nodes, expected %d -> %d", e.getKey(), e
+                            .getValue().size(), expectedNodeCountPerLinkMin,
+                            expectedNodeCountPerLinkMax);
+                    isConverged = false;
+                }
+            }
+
+            if (!isConverged) {
+                Thread.sleep(500);
+                continue;
+            }
+
+            if (expectedChildCount == 0) {
+                // DELETE test, all children removed from all hosts, we are done
+                return updatedStatesPerSelfLink;
+            }
+
+            // verify /available reports correct results on the factory.
+            URI factoryUri = factories.values().iterator().next();
+            Class<?> stateType = serviceStates.values().iterator().next().getClass();
+            waitForReplicatedFactoryServiceAvailable(factoryUri,
+                    ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+
+            // we have the correct number of services on all hosts. Now verify
+            // the state of each service matches what we expect
+
+            isConverged = true;
+
+            for (Entry<String, Set<URI>> entry : linkToNodeMap.entrySet()) {
+                String selfLink = entry.getKey();
+                int convergedNodeCount = 0;
+                for (URI nodeUri : entry.getValue()) {
+                    ServiceDocumentQueryResult childLinksAndDocsPerHost = childServicesPerNode
+                            .get(nodeUri);
+                    Object jsonState = childLinksAndDocsPerHost.documents.get(selfLink);
+                    if (jsonState == null && replicationFactor == 0) {
+                        this.log("Service %s not present on host %s", selfLink, entry.getKey());
+                        continue;
+                    }
+
+                    if (jsonState == null) {
+                        continue;
+                    }
+
+                    T initialState = serviceStates.get(selfLink);
+
+                    if (initialState == null) {
+                        continue;
+                    }
+
+                    @SuppressWarnings("unchecked")
+                    T stateOnNode = (T) Utils.fromJson(jsonState, stateType);
+                    stateOnNode.documentUpdateTimeMicros = 0;
+                    initialState.documentUpdateTimeMicros = 0;
+                    if (!stateChecker.test(initialState, stateOnNode)) {
+                        this.log("111111 State for %s not converged on node %s. Current state: %s, Initial: %s",
+                                selfLink, nodeUri, Utils.toJsonHtml(stateOnNode),
+                                Utils.toJsonHtml(initialState));
+                        break;
+                    }
+
+                    if (stateOnNode.documentVersion < expectedVersion) {
+                        this.log("Version (%d, expected %d) not converged, state: %s",
+                                stateOnNode.documentVersion,
+                                expectedVersion,
+                                Utils.toJsonHtml(stateOnNode));
+                        break;
+                    }
+
+                    if (stateOnNode.documentEpoch == null) {
+                        this.log("Epoch is missing, state: %s",
+                                Utils.toJsonHtml(stateOnNode));
+                        break;
+                    }
+
+                    // Do not check exampleState.counter, in this validation loop.
+                    // We can not compare the counter since the replication test sends the updates
+                    // in parallel, meaning some of them will get re-ordered and ignored due to
+                    // version being out of date.
+
+                    updatedStatesPerSelfLink.put(selfLink, stateOnNode);
+                    convergedNodeCount++;
+                }
+
+                if (convergedNodeCount < expectedNodeCountPerLinkMin
+                        || convergedNodeCount > expectedNodeCountPerLinkMax) {
+                    isConverged = false;
+                    break;
+                }
+            }
+
+            if (isConverged) {
+                return updatedStatesPerSelfLink;
+            }
+
+            Thread.sleep(500);
+        } while (new Date().before(expiration));
+
+        throw new TimeoutException();
+    }
+
+    public int calculateHealthyNodet(NodeGroupState r) {
         int healthyNodeCount = 0;
         for (NodeState ns : r.nodes.values()) {
             if (ns.status == NodeStatus.AVAILABLE) {
@@ -2527,10 +2784,22 @@ public class VerificationHost extends ExampleServiceHost {
             String factoryLink) {
 
         if (!skipAvailabilityCheck) {
-            waitForServiceAvailable(ExampleService.FACTORY_LINK);
+            waitForServiceAvailable(factoryLink);
         }
 
-        // create example services
+        List<ExampleServiceState> result = createExampleServices(h, serviceCount, expiration, factoryLink);
+
+        // returns list of full url
+        return result.stream()
+                .map(state -> UriUtils.extendUri(h.getUri(), state.documentSelfLink))
+                .collect(toList());
+    }
+
+    /**
+     * @return list of full states of the created example services
+     */
+    public List<ExampleServiceState> createExampleServices(
+            ServiceHost h, long serviceCount, Long expiration, String factoryLink) {
         List<Operation> ops = new ArrayList<>();
         for (int i = 0; i < serviceCount; i++) {
             ExampleServiceState initState = new ExampleServiceState();
@@ -2542,12 +2811,7 @@ public class VerificationHost extends ExampleServiceHost {
             Operation post = Operation.createPost(UriUtils.buildUri(h, factoryLink)).setBody(initState);
             ops.add(post);
         }
-        List<ExampleServiceState> result =  this.sender.sendAndWait(ops, ExampleServiceState.class);
-
-        // returns list of full url
-        return result.stream()
-                .map(state -> UriUtils.extendUri(h.getUri(), state.documentSelfLink))
-                .collect(toList());
+        return this.sender.sendAndWait(ops, ExampleServiceState.class);
     }
 
     public Date getTestExpiration() {
