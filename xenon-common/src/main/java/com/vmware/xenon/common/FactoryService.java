@@ -23,9 +23,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.CompletionHandler;
-import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
-import com.vmware.xenon.common.UriUtils.ForwardingTarget;
 import com.vmware.xenon.services.common.NodeGroupBroadcastResponse;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
@@ -644,13 +642,9 @@ public abstract class FactoryService extends StatelessService {
     }
 
     private void handleNavigationRequest(Operation op) {
-        String path = UriUtils.buildUriPath(ServiceUriPaths.DEFAULT_NODE_SELECTOR,
-                ServiceUriPaths.SERVICE_URI_SUFFIX_FORWARDING);
-        String query = UriUtils.buildUriQuery(
-                UriUtils.FORWARDING_URI_PARAM_NAME_PATH, UriUtils.getPathParamValue(op.getUri()),
-                UriUtils.FORWARDING_URI_PARAM_NAME_PEER, UriUtils.getPeerParamValue(op.getUri()),
-                UriUtils.FORWARDING_URI_PARAM_NAME_TARGET, ForwardingTarget.PEER_ID.toString());
-        sendRequest(Operation.createGet(UriUtils.buildUri(this.getHost(), path, query))
+        URI queryPageUri = UriUtils.buildUri(getHost(), UriUtils.getPathParamValue(op.getUri()));
+        String peerId = UriUtils.getPeerParamValue(op.getUri());
+        sendRequest(Operation.createGet(UriUtils.buildForwardToQueryPageUri(queryPageUri, peerId))
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         failODataRequest(op, o, e);

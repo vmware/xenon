@@ -2,6 +2,18 @@
 
 ## 1.5.0-SNAPSHOT
 
+* Breaking change: Links to QueryPageService instances (e.g. the nextPageLink
+  and prevPageLink in ServiceDocumentQueryResult) are now provided through a
+  dedcated forwarding service rather than the default node group forwarding
+  service:
+
+    http://host:port/core/query-page-forwarding?peer={id}&path={id}
+
+  This change is transparent to most consumers -- the nextPageLink and
+  prevPageLink links can be traversed as normal -- but callers who depend on
+  the old format in some fashion can enable it using the new
+  "xenon.UriUtils.DISABLE_QUERY_PAGE_FORWARDING" flag.
+
 * Breaking change: The Lucene index service uses a new naming scheme for sorted
   DocValues fields in 1.5.0. This is transparent to most Xenon consumers, but
   is breaking for products which depend on opening an existing index at upgrade
