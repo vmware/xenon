@@ -3920,10 +3920,11 @@ public class TestQueryTaskService {
         assertNotEquals(nextPageLink, page.results.prevPageLink);
 
         if (serviceURIs.size() >= 1) {
-            URI currentPageForwardUri = UriUtils.buildForwardToPeerUri(
-                    UriUtils.buildUri(page.documentSelfLink), this.host.getId(),
-                    ServiceUriPaths.DEFAULT_NODE_SELECTOR,
-                    EnumSet.noneOf(ServiceOption.class));
+            URI currentPageForwardUri = UriUtils.extendUriWithQuery(
+                    UriUtils.buildUri(this.host, QueryPageForwardingService.SELF_LINK),
+                    UriUtils.FORWARDING_URI_PARAM_NAME_PEER, this.host.getId(),
+                    UriUtils.FORWARDING_URI_PARAM_NAME_PATH, UriUtils.getLastPathSegment(
+                            page.documentSelfLink));
 
             String currentPageLink = currentPageForwardUri.getPath()
                     + UriUtils.URI_QUERY_CHAR + currentPageForwardUri.getQuery();

@@ -108,6 +108,7 @@ import com.vmware.xenon.services.common.NodeGroupUtils;
 import com.vmware.xenon.services.common.ODataQueryService;
 import com.vmware.xenon.services.common.OperationIndexService;
 import com.vmware.xenon.services.common.QueryFilter;
+import com.vmware.xenon.services.common.QueryPageForwardingService;
 import com.vmware.xenon.services.common.QueryTaskFactoryService;
 import com.vmware.xenon.services.common.ReliableSubscriptionService;
 import com.vmware.xenon.services.common.ResourceGroupService;
@@ -1494,7 +1495,7 @@ public class ServiceHost implements ServiceRequestSender {
         // This must be done BEFORE node group starts.
         List<URI> peers = getInitialPeerHosts();
 
-        startDefaultReplicationAndNodeGroupServices();
+        NodeSelectorService defaultNodeSelectorService = startDefaultReplicationAndNodeGroupServices();
 
         // The framework supports two phase asynchronous start to avoid explicit
         // ordering of services. However, core query services must be started before anyone else
@@ -1502,15 +1503,16 @@ public class ServiceHost implements ServiceRequestSender {
         if (this.documentIndexService != null) {
             addPrivilegedService(this.documentIndexService.getClass());
             if (this.documentIndexService instanceof LuceneDocumentIndexService) {
-                LuceneDocumentIndexService luceneDocumentIndexService = (LuceneDocumentIndexService)this.documentIndexService;
-                Service[] queryServiceArray = new Service[]{
+                LuceneDocumentIndexService luceneDocumentIndexService = (LuceneDocumentIndexService) this.documentIndexService;
+                Service[] queryServiceArray = new Service[] {
                         luceneDocumentIndexService,
                         new ServiceContextIndexService(),
                         new LuceneDocumentIndexBackupService(luceneDocumentIndexService),
                         new QueryTaskFactoryService(),
                         new LocalQueryTaskFactoryService(),
                         TaskFactoryService.create(GraphQueryTaskService.class),
-                        TaskFactoryService.create(SynchronizationTaskService.class)};
+                        TaskFactoryService.create(SynchronizationTaskService.class),
+                        new QueryPageForwardingService(defaultNodeSelectorService) };
                 startCoreServicesSynchronously(queryServiceArray);
             }
         }
@@ -1719,7 +1721,7 @@ public class ServiceHost implements ServiceRequestSender {
         }
     }
 
-    private void startDefaultReplicationAndNodeGroupServices() throws Throwable {
+    private NodeSelectorService startDefaultReplicationAndNodeGroupServices() throws Throwable {
         // start the node group factory allowing for N number of independent groups
         startCoreServicesSynchronously(new NodeGroupFactoryService());
 
@@ -1735,7 +1737,8 @@ public class ServiceHost implements ServiceRequestSender {
         Operation startPost = Operation.createPost(UriUtils.buildUri(this,
                 ServiceUriPaths.DEFAULT_NODE_SELECTOR));
         startNodeSelectorPosts.add(startPost);
-        nodeSelectorServices.add(new ConsistentHashingNodeSelectorService());
+        NodeSelectorService defaultNodeSelectorService = new ConsistentHashingNodeSelectorService();
+        nodeSelectorServices.add(defaultNodeSelectorService);
 
         // we start second node selector that does 1X replication (owner only)
         createCustomNodeSelectorService(startNodeSelectorPosts,
@@ -1752,6 +1755,8 @@ public class ServiceHost implements ServiceRequestSender {
         // start node selectors before any other core service since the host APIs of forward
         // and broadcast must be ready before any I/O
         startCoreServicesSynchronously(startNodeSelectorPosts, nodeSelectorServices);
+
+        return defaultNodeSelectorService;
     }
 
     void createCustomNodeSelectorService(List<Operation> startNodeSelectorPosts,
