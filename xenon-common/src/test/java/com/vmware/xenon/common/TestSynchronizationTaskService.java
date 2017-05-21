@@ -23,11 +23,14 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.junit.After;
 import org.junit.AfterClass;
@@ -39,6 +42,7 @@ import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
+import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.InMemoryLuceneDocumentIndexService;
 import com.vmware.xenon.services.common.NodeGroupService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -82,6 +86,15 @@ public class TestSynchronizationTaskService extends BasicTestCase {
     public int updateCount = 10;
     public int serviceCount = 10;
     public int nodeCount = 3;
+
+    private BiPredicate<ExampleServiceState, ExampleServiceState> exampleStateConvergenceChecker = (
+            initial, current) -> {
+        if (current.name == null) {
+            return false;
+        }
+
+        return current.name.equals(initial.name);
+    };
 
     @BeforeClass
     public static void setUpClass() throws Exception {
@@ -305,61 +318,55 @@ public class TestSynchronizationTaskService extends BasicTestCase {
     public void synchAfterOwnerRestart() throws Throwable {
         setUpMultiNode();
         synchAfterOwnerRestartDo(ExampleService.FACTORY_LINK);
+    }
+
+    @Test
+    public void synchAfterOwnerRestartInMemoryService() throws Throwable {
+        setUpMultiNode();
         synchAfterOwnerRestartDo(InMemoryExampleService.FACTORY_LINK);
     }
 
-    public void synchAfterOwnerRestartDo(String factoryLink) throws Throwable {
+    public ExampleServiceState  synchAfterOwnerRestartDo(
+            String factoryLink) throws Throwable {
         TestRequestSender sender = new TestRequestSender(this.host);
         this.host.setNodeGroupQuorum(this.nodeCount - 1);
         this.host.waitForNodeGroupConvergence();
 
-        List<URI> exampleServices = this.host.createExampleServices(
-                this.host.getPeerHost(), this.serviceCount, null, false, factoryLink);
+        List<ExampleServiceState> exampleStates = this.host.createExampleServices(
+                this.host.getPeerHost(), this.serviceCount, null, factoryLink);
 
-        final ExampleService.ExampleServiceState state = sender.sendAndWait(Operation.createGet(exampleServices.get(0)),
-                ExampleService.ExampleServiceState.class);
+        Map<String, ExampleServiceState> exampleStatesMap =
+                exampleStates.stream().collect(Collectors.toMap(s -> s.documentSelfLink, s -> s));
+
+        ExampleServiceState state = exampleStatesMap.entrySet().iterator().next().getValue();
 
         // Find out which is the the owner node and restart it
         VerificationHost owner = this.host.getInProcessHostMap().values().stream()
                 .filter(host -> host.getId().contentEquals(state.documentOwner)).findFirst()
                 .orElseThrow(() -> new RuntimeException("couldn't find owner node"));
 
-        // Make sure initial synchronization was completed.
-        this.host.waitForReplicatedFactoryServiceAvailable(
-                (UriUtils.buildUri(owner, factoryLink)));
+        this.host.waitForReplicatedFactoryChildServiceConvergence(
+                this.host.getNodeGroupToFactoryMap(factoryLink),
+                exampleStatesMap,
+                this.exampleStateConvergenceChecker,
+                exampleStatesMap.size(),
+                0, this.nodeCount);
 
         restartHost(owner);
 
-        long membershipUpdateTimeMicros = getLatestMembershipUpdateTime(this.host.getPeerHostUri());
-
-        // Start synchronization on all nodes and verify that one node successfully synced all test services.
-        SynchronizationTaskService.State task = createSynchronizationTaskState(membershipUpdateTimeMicros, factoryLink);
-        List<Operation> ops = this.host.getInProcessHostMap().keySet().stream()
-                .map(uri -> Operation
-                        .createPost(UriUtils.buildUri(uri, SynchronizationTaskService.FACTORY_LINK))
-                        .setBody(task)
-                        .setReferer(this.host.getUri())
-                ).collect(toList());
-
-        List<SynchronizationTaskService.State> results = sender
-                .sendAndWait(ops, SynchronizationTaskService.State.class);
-
-        int finishedCount = 0;
-        for (SynchronizationTaskService.State r : results) {
-            assertTrue(r.taskInfo.stage == TaskState.TaskStage.FINISHED ||
-                    r.taskInfo.stage == TaskState.TaskStage.CANCELLED);
-            if (r.taskInfo.stage == TaskState.TaskStage.FINISHED) {
-                finishedCount++;
-                assertEquals(this.serviceCount, r.synchCompletionCount);
-
-            }
-        }
-        assertTrue(finishedCount == 1);
+        this.host.waitForReplicatedFactoryChildServiceConvergence(
+                this.host.getNodeGroupToFactoryMap(factoryLink),
+                exampleStatesMap,
+                this.exampleStateConvergenceChecker,
+                exampleStatesMap.size(),
+                0, this.nodeCount);
 
         // Verify that state was synced with restarted node.
         Operation op = Operation.createGet(owner, state.documentSelfLink);
-        ExampleService.ExampleServiceState newState = sender.sendAndWait(op, ExampleService.ExampleServiceState.class);
+        ExampleServiceState newState = sender.sendAndWait(op, ExampleServiceState.class);
+
         assertNotNull(newState);
+        return newState;
     }
 
     private VerificationHost restartHost(VerificationHost hostToRestart) throws Throwable {
