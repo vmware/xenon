@@ -37,6 +37,12 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
  */
 public final class UriUtils {
 
+    private static final String DISABLE_QUERY_PAGE_FORWARDING_PROPERTY_NAME =
+            Utils.PROPERTY_NAME_PREFIX + UriUtils.class.getSimpleName() + "DISABLE_QUERY_PAGE_FORWARDING";
+
+    private static final boolean DISABLE_QUERY_PAGE_FORWARDING = Boolean.getBoolean(
+            DISABLE_QUERY_PAGE_FORWARDING_PROPERTY_NAME);
+
     public enum ForwardingTarget {
         PEER_ID, KEY_HASH, ALL
     }
@@ -665,6 +671,23 @@ public final class UriUtils {
                 query,
                 FORWARDING_URI_PARAM_NAME_TARGET,
                 ForwardingTarget.PEER_ID.toString());
+    }
+
+    public static URI buildForwardToQueryPageUri(URI targetService, String peerId) {
+
+        // Feature flag: if query page forwarding links are disabled, then maintain the old
+        // behavior of providing links which reference the forwarding service directly.
+        if (DISABLE_QUERY_PAGE_FORWARDING) {
+            return buildForwardToPeerUri(targetService, peerId,
+                    ServiceUriPaths.DEFAULT_NODE_SELECTOR, null);
+        }
+
+        return UriUtils.extendUriWithQuery(
+                UriUtils.buildUri(targetService, ServiceUriPaths.CORE_QUERY_PAGE_FORWARDING),
+                FORWARDING_URI_PARAM_NAME_PEER,
+                peerId,
+                FORWARDING_URI_PARAM_NAME_PATH,
+                getLastPathSegment(targetService.getPath()));
     }
 
     /**
