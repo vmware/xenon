@@ -20,7 +20,6 @@ import java.net.URISyntaxException;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
-
 import javax.net.ssl.SSLSession;
 
 import io.netty.buffer.ByteBuf;
@@ -393,6 +392,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
             // Add Path qualifier, cookie applies everywhere
             buf.append("; Path=/");
+
             // Add an Max-Age qualifier if an expiration is set in the Claims object
             Long expirationTime = authorizationContext.getClaims().getExpirationTime();
             if (expirationTime != null) {
@@ -401,6 +401,14 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                 long maxAge = expirationTime - nowSeconds;
                 buf.append(maxAge > 0 ? maxAge : 0);
             }
+
+            if (this.sslHandler != null) {
+                buf.append("; secure");
+            }
+
+            // Add HttpOnly qualifier, cookie should not be exposed to Javascript
+            buf.append("; HttpOnly");
+
             response.headers().add(Operation.SET_COOKIE_HEADER, buf.toString());
         }
 
