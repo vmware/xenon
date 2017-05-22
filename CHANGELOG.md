@@ -14,6 +14,14 @@
 
 * Upgrade Gson to [2.8.0](https://github.com/google/gson/blob/master/CHANGELOG.md#version-28)
 
+* MigrationTaskService has added two new parameters: "sourceUris" and "destinationUris".
+  When those uris are specified, instead of resolving them from node-group, migration directly
+  use them as source and destination nodes.
+  When those uris are specified, migration task will NOT check the convergence of node-groups. Caller need to
+  make sure node-groups are converged before starting migration.
+  Also, migration task retrieves each document from its owner node. The "sourceUris" needs to include all node
+  uris in source node-group; Otherwise, only partial number of documents will be migrated.
+
 * In MigrationTaskService, calculation of migration target docs(available in
   "estimatedTotalServiceCount" stats) became optional and default is disabled.
   To enable getting estimate count, "ESTIMATE_COUNT" migration option needs to be

@@ -28,6 +28,7 @@ import java.util.AbstractMap;
 import java.util.AbstractMap.SimpleEntry;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -1465,6 +1466,68 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         ServiceStat statValue = stats.entries.get(MigrationTaskService.STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT);
         assertNotNull("estimatedTotalServiceCount should be populated", statValue);
         assertEquals("estimatedTotalServiceCount", this.serviceCount, (long) statValue.latestValue);
+    }
+
+    @Test
+    public void failNodeGroupReferenceValidation() throws Throwable {
+        URI sourceUri = this.host.getPeerHost().getUri();
+        URI destUri = getDestinationHost().getUri();
+
+        // both sourceNodeGroupReference and sourceReferences are specified
+        MigrationTaskService.State migrationState = validMigrationState(ExampleService.FACTORY_LINK);
+        migrationState.sourceReferences = Collections.singletonList(sourceUri);
+
+        Operation op = Operation.createPost(this.destinationFactoryUri).setBody(migrationState);
+        FailureResponse response = this.sender.sendAndWaitFailure(op);
+        assertEquals(Operation.STATUS_CODE_BAD_REQUEST, response.op.getStatusCode());
+
+        // neither sourceNodeGroupReference nor sourceReferences are specified
+        migrationState = validMigrationState(ExampleService.FACTORY_LINK);
+        migrationState.sourceNodeGroupReference = null;
+        op = Operation.createPost(this.destinationFactoryUri).setBody(migrationState);
+        response = this.sender.sendAndWaitFailure(op);
+        assertEquals(Operation.STATUS_CODE_BAD_REQUEST, response.op.getStatusCode());
+
+        // both destNodeGroupReference and destUris are specified
+        migrationState = validMigrationState(ExampleService.FACTORY_LINK);
+        migrationState.destinationReferences = Collections.singletonList(destUri);
+
+        op = Operation.createPost(this.destinationFactoryUri).setBody(migrationState);
+        response = this.sender.sendAndWaitFailure(op);
+        assertEquals(Operation.STATUS_CODE_BAD_REQUEST, response.op.getStatusCode());
+
+        // neither destNodeGroupReference nor destUris are specified
+        migrationState = validMigrationState(ExampleService.FACTORY_LINK);
+        migrationState.destinationFactoryLink = null;
+        op = Operation.createPost(this.destinationFactoryUri).setBody(migrationState);
+        response = this.sender.sendAndWaitFailure(op);
+        assertEquals(Operation.STATUS_CODE_BAD_REQUEST, response.op.getStatusCode());
+    }
+
+    @Test
+    public void successMigrateWithSourceUrisAndDestinationUris() throws Throwable {
+        // create object in host
+        List<ExampleServiceState> states = createExampleDocuments(this.exampleSourceFactory, getSourceHost(), this.serviceCount);
+
+        List<URI> sourceUris = new ArrayList<>(this.host.getNodeGroupMap().values());
+        List<URI> destUris = new ArrayList<>(destinationHost.getNodeGroupMap().values());
+
+        // start migration
+        MigrationTaskService.State migrationState = validMigrationState(ExampleService.FACTORY_LINK);
+        migrationState.sourceNodeGroupReference = null;
+        migrationState.destinationNodeGroupReference = null;
+        migrationState.sourceReferences = sourceUris;
+        migrationState.destinationReferences = destUris;
+
+        Operation op = Operation.createPost(this.destinationFactoryUri).setBody(migrationState);
+        State state = this.sender.sendAndWait(op, State.class);
+
+        State finalServiceState = waitForServiceCompletion(state.documentSelfLink, getDestinationHost());
+        assertEquals(TaskStage.FINISHED, finalServiceState.taskInfo.stage);
+
+        // check if object is in new host
+        List<URI> uris = getFullUri(getDestinationHost(), states);
+        this.sender.sendAndWait(uris.stream().map(Operation::createGet).collect(toList()));
     }
 
 }

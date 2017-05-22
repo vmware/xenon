@@ -120,6 +120,8 @@ public class MigrationTaskService extends StatefulService {
     private static final Long DEFAULT_MAINTENANCE_INTERVAL_MILLIS = TimeUnit.MINUTES.toMicros(1);
     private static final Integer DEFAULT_MAXIMUM_CONVERGENCE_CHECKS = 10;
 
+    // used for the result value of DeferredResult in order to workaround findbug warning for passing null by "defered.complete(null)".
+    private static final Object DUMMY_OBJECT = new Object();
 
     public enum MigrationOption {
         /**
@@ -179,8 +181,24 @@ public class MigrationTaskService extends StatefulService {
         /**
          * URI pointing to the source systems node group. This link takes the form of
          * {protocol}://{address}:{port}/core/node-groups/{nodegroup}.
+         *
+         * Cannot combine with {@link #sourceReferences}.
          */
         public URI sourceNodeGroupReference;
+
+        /**
+         * URIs of source nodes.
+         *
+         * <em>IMPORTANT</em>
+         * Convergence check will NOT be performed on these uri references; Therefore, caller needs to check the convergence
+         * before starting the migration.
+         * Also, migration task retrieves each document from its owner node. This sourceReferences list needs to include
+         * all node uris in source node-group; Otherwise, only partial number of documents will be migrated.
+         *
+         * Cannot combine with {@link #sourceNodeGroupReference}.
+         */
+        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
+        public List<URI> sourceReferences = new ArrayList<>();
 
         /**
          * Factory link of the source factory.
@@ -191,8 +209,21 @@ public class MigrationTaskService extends StatefulService {
         /**
          * URI pointing to the destination system node group. This link takes the form of
          * {protocol}://{address}:{port}/core/node-groups/{nodegroup}.
+         *
+         * Cannot combine with {@link #destinationReferences}.
          */
         public URI destinationNodeGroupReference;
+
+        /**
+         * URIs of destination nodes.
+         *
+         * Convergence check will NOT be performed on these uris; Therefore, caller needs to check the convergence
+         * before starting the migration.
+         *
+         * Cannot combine with {@link #destinationNodeGroupReference}.
+         */
+        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
+        public List<URI> destinationReferences = new ArrayList<>();
 
         /**
          * Factory link to post the new data to.
@@ -376,14 +407,20 @@ public class MigrationTaskService extends StatefulService {
         if (state.sourceFactoryLink == null) {
             errMsgs.add("sourceFactory cannot be null.");
         }
-        if (state.sourceNodeGroupReference == null) {
-            errMsgs.add("sourceNode cannot be null.");
+        if (state.sourceNodeGroupReference == null && state.sourceReferences.isEmpty()) {
+            errMsgs.add("sourceNode or sourceUri need to be specified.");
+        }
+        if (state.sourceNodeGroupReference != null && !state.sourceReferences.isEmpty()) {
+            errMsgs.add("cannot specify both sourceNode and sourceReferences.");
         }
         if (state.destinationFactoryLink == null) {
             errMsgs.add("destinationFactory cannot be null.");
         }
-        if (state.destinationNodeGroupReference == null) {
-            errMsgs.add("destinationNode cannot be null.");
+        if (state.destinationNodeGroupReference == null && state.destinationReferences.isEmpty()) {
+            errMsgs.add("destinationNode or destinationReferences need to be specified.");
+        }
+        if (state.destinationNodeGroupReference != null && !state.destinationReferences.isEmpty()) {
+            errMsgs.add("cannot specify both destinationNode and destinationReferences.");
         }
         if (!errMsgs.isEmpty()) {
             operation.fail(new IllegalArgumentException(String.join(" ", errMsgs)));
@@ -492,82 +529,108 @@ public class MigrationTaskService extends StatefulService {
         return null;
     }
 
+    /**
+     * Resolve source and destination nodes.
+     *
+     * When sourceReferences or destinationReferences are specified in migration request, those specified uris will be used instead
+     * of resolving from node-groups. In that case, convergence check of source/destination node-groups will not be
+     * performed. This is because specified URIs may not be resolvable from node-group service. Therefore, caller needs
+     * to make sure node-groups are currently converged.
+     * When node group reference is specified instead of uris, it will access node-group service and obtain currently
+     * AVAILABLE nodes, and perform convergence check.
+     */
     private void resolveNodeGroupReferences(State currentState) {
         logInfo("Resolving node group differences. [source=%s] [destination=%s]",
                 currentState.sourceNodeGroupReference, currentState.destinationNodeGroupReference);
-        Operation sourceGet = Operation.createGet(currentState.sourceNodeGroupReference);
-        Operation destinationGet = Operation.createGet(currentState.destinationNodeGroupReference);
 
-        OperationJoin.create(sourceGet, destinationGet)
-                .setCompletion((os, ts) -> {
-                    if (ts != null && !ts.isEmpty()) {
-                        failTask(ts.values());
-                        return;
-                    }
+        // to workaround findbug warning for passing null on complete(), make DeferredResult parameterize with Object
+        // and return dummy object. The result of DeferredResult here will not be used.
+        DeferredResult<Object> sourceDeferred = new DeferredResult<>();
+        if (currentState.sourceReferences.isEmpty()) {
 
-                    NodeGroupState sourceGroup = os.get(sourceGet.getId())
-                            .getBody(NodeGroupState.class);
-                    List<URI> sourceURIs = filterAvailableNodeUris(sourceGroup);
+            // resolve source node URIs
+            Operation.createGet(currentState.sourceNodeGroupReference)
+                    .setCompletion((os, ex) -> {
+                        if (ex != null) {
+                            sourceDeferred.fail(ex);
+                            return;
+                        }
 
-                    NodeGroupState destinationGroup = os.get(destinationGet.getId())
-                            .getBody(NodeGroupState.class);
-                    List<URI> destinationURIs = filterAvailableNodeUris(destinationGroup);
+                        NodeGroupState sourceGroup = os.getBody(NodeGroupState.class);
+                        currentState.sourceReferences = filterAvailableNodeUris(sourceGroup);
 
-                    waitUntilNodeGroupsAreStable(
-                            currentState,
-                            currentState.maximumConvergenceChecks,
-                            () -> computeFirstCurrentPageLinks(currentState, sourceURIs,
-                                    destinationURIs));
-                }).sendWith(this);
+                        // when node-group is converged, deferred result will be completed.
+                        waitUntilNodeGroupsAreStable(currentState, currentState.sourceNodeGroupReference,
+                                currentState.maximumConvergenceChecks, sourceDeferred);
+                    })
+                    .sendWith(this);
+        } else {
+            sourceDeferred.complete(DUMMY_OBJECT);
+        }
+
+        DeferredResult<Object> destDeferred = new DeferredResult<>();
+        if (currentState.destinationReferences.isEmpty()) {
+            Operation.createGet(currentState.destinationNodeGroupReference)
+                    .setCompletion((os, ex) -> {
+                        if (ex != null) {
+                            destDeferred.fail(ex);
+                            return;
+                        }
+
+                        NodeGroupState sourceGroup = os.getBody(NodeGroupState.class);
+                        currentState.destinationReferences = filterAvailableNodeUris(sourceGroup);
+
+                        waitUntilNodeGroupsAreStable(currentState, currentState.destinationNodeGroupReference,
+                                currentState.maximumConvergenceChecks, destDeferred);
+                    })
+                    .sendWith(this);
+        } else {
+            destDeferred.complete(DUMMY_OBJECT);
+        }
+
+        DeferredResult.allOf(sourceDeferred, destDeferred)
+                .thenAccept(aVoid -> {
+                    computeFirstCurrentPageLinks(currentState, currentState.sourceReferences, currentState.destinationReferences);
+                })
+                .exceptionally(throwable -> {
+                    failTask(throwable);
+                    return null;
+                });
+
     }
 
     private List<URI> filterAvailableNodeUris(NodeGroupState destinationGroup) {
         return destinationGroup.nodes.values().stream()
-                .map(e -> {
-                    if (NodeState.isUnAvailable(e)) {
-                        return null;
-                    }
-                    return extractBaseUri(e);
-                })
-                .filter(uri -> uri != null)
+                .filter(ns -> !NodeState.isUnAvailable(ns))
+                .map(this::extractBaseUri)
                 .collect(Collectors.toList());
     }
 
-    private void waitUntilNodeGroupsAreStable(State currentState, int allowedConvergenceChecks, Runnable onSuccess) {
-        Operation.CompletionHandler destinationCheckHandler = (o, t) -> {
-            if (t != null) {
-                scheduleWaitUntilNodeGroupsAreStable(currentState, allowedConvergenceChecks, onSuccess);
-                return;
-            }
-            onSuccess.run();
-        };
+    /**
+     * When node-group is converged, given DeferredResult will be marked as complete.
+     * Otherwise, it will re-schedule the convergence check until it exceeds allowed convergence check count, then fail the DeferredResult.
+     */
+    private void waitUntilNodeGroupsAreStable(State currentState, URI nodeGroupReference, int allowedConvergenceChecks, DeferredResult<Object> deferredResult) {
+        Operation callbackOp = new Operation()
+                .setCompletion((op, ex) -> {
+                    if (ex != null) {
+                        if (allowedConvergenceChecks <= 0) {
+                            String msg = "Nodegroups did not converge after " + currentState.maximumConvergenceChecks + " retries.";
+                            deferredResult.fail(new Exception(msg));
+                            return;
+                        }
 
-        Operation.CompletionHandler sourceCheckHandler = (o, t) -> {
-            if (t != null) {
-                scheduleWaitUntilNodeGroupsAreStable(currentState, allowedConvergenceChecks, onSuccess);
-                return;
-            }
-            Operation destinationOp = new Operation()
-                    .setReferer(getUri())
-                    .setCompletion(destinationCheckHandler);
-            NodeGroupUtils.checkConvergence(getHost(), currentState.sourceNodeGroupReference, destinationOp);
-        };
+                        logInfo("Nodegroups are not convereged scheduling retry.");
+                        getHost().schedule(() -> {
+                            waitUntilNodeGroupsAreStable(currentState, nodeGroupReference, allowedConvergenceChecks - 1, deferredResult);
+                        }, currentState.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
+                        return;
+                    }
 
-        Operation sourceOp = new Operation()
-                .setCompletion(sourceCheckHandler)
+                    deferredResult.complete(null);
+                })
                 .setReferer(getUri());
-        NodeGroupUtils.checkConvergence(getHost(), currentState.sourceNodeGroupReference, sourceOp);
-    }
-
-    private void scheduleWaitUntilNodeGroupsAreStable(State currentState, int allowedConvergenceChecks, Runnable onSuccess) {
-        if (allowedConvergenceChecks <= 0) {
-            failTask(new Exception("Nodegroups did not converge after " + currentState.maximumConvergenceChecks + " retries."));
-            return;
-        }
-        logInfo("Nodegroups are not convereged scheduling retry.");
-        getHost().scheduleCore(() -> {
-            waitUntilNodeGroupsAreStable(currentState, allowedConvergenceChecks - 1, onSuccess);
-        }, currentState.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
+        NodeGroupUtils.checkConvergence(getHost(), nodeGroupReference, callbackOp);
     }
 
 
