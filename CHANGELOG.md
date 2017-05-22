@@ -2,6 +2,12 @@
 
 ## 1.5.0-SNAPSHOT
 
+* Breaking change: x-xenon-auth cookies are now marked as HttpOnly and, if
+  SSL is enabled on the HTTP listener, secure. Callers who wish to disable
+  these settings can use the new
+  "xenon.NettyHttpClientRequestHandler.DISABLE_SECURE_HTTPONLY_AUTH_COOKIE"
+  flag.
+
 * Breaking change: Links to QueryPageService instances (e.g. the nextPageLink
   and prevPageLink in ServiceDocumentQueryResult) are now provided through a
   dedcated forwarding service rather than the default node group forwarding

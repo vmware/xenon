@@ -20,7 +20,6 @@ import java.net.URISyntaxException;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
-
 import javax.net.ssl.SSLSession;
 
 import io.netty.buffer.ByteBuf;
@@ -59,6 +58,13 @@ import com.vmware.xenon.services.common.authn.AuthenticationConstants;
  * processing
  */
 public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<Object> {
+
+    private static final String DISABLE_SECURE_HTTPONLY_AUTH_COOKIE_PROPERTY_NAME =
+            Utils.PROPERTY_NAME_PREFIX + NettyHttpClientRequestHandler.class.getSimpleName()
+                    + "DISABLE_SECURE_HTTPONLY_AUTH_COOKIE";
+
+    private static final boolean DISABLE_SECURE_HTTPONLY_AUTH_COOKIE = Boolean.getBoolean(
+            DISABLE_SECURE_HTTPONLY_AUTH_COOKIE_PROPERTY_NAME);
 
     private static final String ERROR_MSG_DECODING_FAILURE = "Failure decoding HTTP request";
 
@@ -393,6 +399,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
             // Add Path qualifier, cookie applies everywhere
             buf.append("; Path=/");
+
             // Add an Max-Age qualifier if an expiration is set in the Claims object
             Long expirationTime = authorizationContext.getClaims().getExpirationTime();
             if (expirationTime != null) {
@@ -401,6 +408,18 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                 long maxAge = expirationTime - nowSeconds;
                 buf.append(maxAge > 0 ? maxAge : 0);
             }
+
+            if (!DISABLE_SECURE_HTTPONLY_AUTH_COOKIE) {
+                // If SSL is enabled, append the secure qualifier; cookie should only be sent over
+                // a secure connection.
+                if (this.sslHandler != null) {
+                    buf.append("; secure");
+                }
+
+                // Add the HttpOnly qualifier; cookie should not be exposed to Javascript
+                buf.append("; HttpOnly");
+            }
+
             response.headers().add(Operation.SET_COOKIE_HEADER, buf.toString());
         }
 
