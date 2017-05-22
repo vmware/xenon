@@ -2,6 +2,15 @@
 
 ## 1.5.1-SNAPSHOT
 
+* MigrationTaskService has added two new parameters: "sourceReferences" and
+  "destinationReferences".  When specified, migration directly use them as source
+  and destination nodes without checking convergence of node-groups. Therefore,
+  Caller need should check convergence before starting migration.
+  Also, migration task retrieves each document from its owner node. The
+  "sourceReferences" needs to include all node uris in source node-group;
+  Otherwise, only partial number of documents will be migrated.
+
+
 ## 1.5.0
 
 * Breaking change: Links to QueryPageService instances (e.g. the nextPageLink
