@@ -74,6 +74,8 @@ public enum ObjectMapTypeConverter
                 result.put(key, null);
             } else if (element.isJsonPrimitive()) {
                 result.put(key, element.getAsString());
+            } else if (element.isJsonArray()) {
+                result.put(key, element.getAsJsonArray().toString());
             } else {
                 throw new JsonParseException("The json element is not valid for key:" + key
                         + " value:" + element);
