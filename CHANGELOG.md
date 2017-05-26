@@ -2,6 +2,9 @@
 
 ## 1.5.1-SNAPSHOT
 
+* Breaking change: replace usage of Set with List in NodeGroupBroadcastResult
+  to avoid edge case with equal results documents.
+
 * MigrationTaskService has added two new parameters: "sourceReferences" and
   "destinationReferences".  When specified, migration directly use them as source
   and destination nodes without checking convergence of node-groups. Therefore,
