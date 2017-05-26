@@ -345,6 +345,9 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     public void successMigrateDocuments() throws Throwable {
         // create object in host
         List<ExampleServiceState> states = createExampleDocuments(this.exampleSourceFactory, getSourceHost(), this.serviceCount);
+        for (ExampleServiceState state : states) {
+            assertFalse(state.isFromMigration);
+        }
 
         // "latest source update time" uses "documentUpdateTimeMicros" of last processed document's (max) in each host
         // and pick the smallest(min) among the hosts(documentOwner).
@@ -391,7 +394,11 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
         // check if object is in new host
         List<URI> uris = getFullUri(getDestinationHost(), states);
-        this.sender.sendAndWait(uris.stream().map(Operation::createGet).collect(toList()));
+        List<ExampleServiceState> responseStates =
+                this.sender.sendAndWait(uris.stream().map(Operation::createGet).collect(toList()), ExampleServiceState.class);
+        for (ExampleServiceState responseState : responseStates) {
+            assertTrue(responseState.isFromMigration);
+        }
     }
 
     @Test

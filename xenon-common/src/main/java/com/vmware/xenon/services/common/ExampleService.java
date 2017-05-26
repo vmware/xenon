@@ -18,6 +18,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+import com.esotericsoftware.kryo.serializers.VersionFieldSerializer.Since;
+
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.OperationProcessingChain;
@@ -28,6 +30,7 @@ import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.serialization.ReleaseConstants;
 
 /**
  * Example service
@@ -91,6 +94,7 @@ public class ExampleService extends StatefulService {
         public static final String FIELD_NAME_TAGS = "tags";
         public static final String FIELD_NAME_ID = "id";
         public static final String FIELD_NAME_REQUIRED = "required";
+        public static final String FIELD_NAME_IS_FROM_MIGRATION = "isFromMigration";
         public static final long VERSION_RETENTION_LIMIT = 100;
         public static final long VERSION_RETENTION_FLOOR = 20;
 
@@ -112,6 +116,9 @@ public class ExampleService extends StatefulService {
         public String id;
         @UsageOption(option = PropertyUsageOption.REQUIRED)
         public String required;
+        @UsageOption(option = PropertyUsageOption.SERVICE_USE)
+        @Since(ReleaseConstants.RELEASE_VERSION_1_5_1)
+        public Boolean isFromMigration;
     }
 
     public ExampleService() {
@@ -139,6 +146,8 @@ public class ExampleService extends StatefulService {
             startPost.fail(new IllegalArgumentException("name is required"));
             return;
         }
+
+        s.isFromMigration = startPost.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK);
 
         startPost.complete();
     }
