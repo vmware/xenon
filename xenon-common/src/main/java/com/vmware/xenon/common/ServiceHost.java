@@ -2447,11 +2447,21 @@ public class ServiceHost implements ServiceRequestSender {
     private void restoreActionOnChildServiceToPostOnFactory(String link, Operation op) {
         log(Level.FINE, "Changing URI for (id:%d) %s from %s to factory",
                 op.getId(), op.getAction(), link);
+
         // restart a PUT to a child service, to a POST to the factory
         op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_POST_TO_PUT);
         String factoryPath = UriUtils.getParentPath(link);
         op.setUri(UriUtils.buildUri(this, factoryPath));
         op.setAction(Action.POST);
+
+        // If this was a synchronize-owner request, we need to set the body
+        // with the documentSelfLink. Otherwise, the FactoryService will fail
+        // the request.
+        if (op.isSynchronizeOwner() && !op.hasBody()) {
+            ServiceDocument doc = new ServiceDocument();
+            doc.documentSelfLink = link;
+            op.setBody(doc);
+        }
     }
 
     private boolean checkIfServiceExistsAndAttach(Service service, String servicePath,
