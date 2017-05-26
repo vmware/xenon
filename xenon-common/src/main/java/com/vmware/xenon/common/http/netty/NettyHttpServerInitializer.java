@@ -112,14 +112,16 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
     private ServiceHost host;
     private NettyHttpListener listener;
     private int responsePayloadSizeLimit;
+    private boolean secureAuthCookie;
     private static final boolean debugLogging = false;
 
     public NettyHttpServerInitializer(NettyHttpListener listener, ServiceHost host,
-            SslContext sslContext, int responsePayloadSizeLimit) {
+            SslContext sslContext, int responsePayloadSizeLimit, boolean secureAuthCookie) {
         this.sslContext = sslContext;
         this.host = host;
         this.listener = listener;
         this.responsePayloadSizeLimit = responsePayloadSizeLimit;
+        this.secureAuthCookie = secureAuthCookie;
         NettyLoggingUtil.setupNettyLogging();
     }
 
@@ -211,7 +213,7 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
                 ServiceUriPaths.WEB_SOCKET_SERVICE_PREFIX));
         p.addLast(HTTP_REQUEST_HANDLER,
                 new NettyHttpClientRequestHandler(this.host, this.listener, sslHandler,
-                        this.responsePayloadSizeLimit));
+                        this.responsePayloadSizeLimit, this.secureAuthCookie));
     }
 
     /**

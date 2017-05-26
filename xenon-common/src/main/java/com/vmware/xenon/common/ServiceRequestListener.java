@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.net.URI;
 
 public interface ServiceRequestListener {
+
     public static final String PROPERTY_NAME_RESPONSE_PAYLOAD_SIZE =
             Utils.PROPERTY_NAME_PREFIX + "ServiceRequestListener.RESPONSE_PAYLOAD_SIZE_LIMIT";
 
@@ -47,4 +48,8 @@ public interface ServiceRequestListener {
     void setResponsePayloadSizeLimit(int responsePayloadSizeLimit);
 
     int getResponsePayloadSizeLimit();
+
+    void setSecureAuthCookie(boolean secureAuthCookie);
+
+    boolean getSecureAuthCookie();
 }
