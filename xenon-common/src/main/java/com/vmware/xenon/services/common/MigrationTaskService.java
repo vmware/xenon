@@ -1168,6 +1168,7 @@ public class MigrationTaskService extends StatefulService {
                     String factoryLink = d.getValue();
                     URI uri = UriUtils.buildUri(selectRandomUri(destinationURIs), factoryLink);
                     Operation op = Operation.createPost(uri).setBodyNoCloning(docJson);
+                    op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK);
                     return new AbstractMap.SimpleEntry<>(op, docJson);
                 })
                 .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
@@ -1200,7 +1201,8 @@ public class MigrationTaskService extends StatefulService {
         URI destinationTargetUri = UriUtils.extendUri(destinationFactoryUri, selfLink);
 
         Operation delete = Operation.createDelete(destinationTargetUri)
-                    .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER, Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL);
+                    .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER, Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL)
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK);
 
         List<Operation> createOps = createMigrateOpsWithAllVersions(destinationUri, factoryLink, selfLink, docs);
 
@@ -1224,6 +1226,7 @@ public class MigrationTaskService extends StatefulService {
         // DELETE_AFTER is enabled. Therefore, PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE is specified.
         Operation post = Operation.createPost(destinationFactoryUri)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK)
                 .setBodyNoCloning(firstDoc);
         ops.add(post);
 
@@ -1256,7 +1259,7 @@ public class MigrationTaskService extends StatefulService {
                 throw new IllegalStateException("Unsupported action type: " + action);
             }
 
-
+            operation.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK);
             ops.add(operation);
         }
 
@@ -1320,7 +1323,8 @@ public class MigrationTaskService extends StatefulService {
     private Collection<Operation> createDeleteOperations(Collection<URI> uris) {
         return uris.stream().map(u -> Operation.createDelete(u)
                 .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
-                        Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL))
+                        Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK))
                 .collect(Collectors.toList());
     }
 
@@ -1330,6 +1334,7 @@ public class MigrationTaskService extends StatefulService {
                    Object newBody = posts.get(o);
                    return Operation.createPost(o.getUri())
                            .setBodyNoCloning(newBody)
+                           .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK)
                            .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE);
 
                })

@@ -13,6 +13,9 @@
   "sourceReferences" needs to include all node uris in source node-group;
   Otherwise, only partial number of documents will be migrated.
 
+* MigrationTaskService now sets a 'xn-from-migration' Pragma header when
+  interacting with the destination cluster. Services can leverage this to alter
+  their behavior based on whether handleStart comes from a migration or not.
 
 ## 1.5.0
 
