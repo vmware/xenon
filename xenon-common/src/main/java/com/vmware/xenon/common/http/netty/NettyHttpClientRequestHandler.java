@@ -40,6 +40,9 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.QueryStringDecoder;
+import io.netty.handler.codec.http.cookie.Cookie;
+import io.netty.handler.codec.http.cookie.DefaultCookie;
+import io.netty.handler.codec.http.cookie.ServerCookieEncoder;
 import io.netty.handler.codec.http2.HttpConversionUtil;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.util.AsciiString;
@@ -60,6 +63,15 @@ import com.vmware.xenon.services.common.authn.AuthenticationConstants;
  */
 public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<Object> {
 
+    private static final String PROPERTY_NAME_PREFIX = Utils.PROPERTY_NAME_PREFIX +
+            NettyHttpClientRequestHandler.class.getSimpleName();
+
+    public static final String PROPERTY_NAME_DISABLE_HTTP_ONLY_AUTH_COOKIE = PROPERTY_NAME_PREFIX +
+            "DISABLE_HTTP_ONLY_AUTH_COOKIE";
+
+    public static final boolean DISABLE_HTTP_ONLY_AUTH_COOKIE = Boolean.getBoolean(
+            PROPERTY_NAME_DISABLE_HTTP_ONLY_AUTH_COOKIE);
+
     private static final String ERROR_MSG_DECODING_FAILURE = "Failure decoding HTTP request";
 
     private final ServiceHost host;
@@ -70,13 +82,15 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
     private NettyHttpListener listener;
 
+    private boolean secureAuthCookie;
+
     public NettyHttpClientRequestHandler(ServiceHost host, NettyHttpListener listener,
-            SslHandler sslHandler,
-            int responsePayloadSizeLimit) {
+            SslHandler sslHandler, int responsePayloadSizeLimit, boolean secureAuthCookie) {
         this.host = host;
         this.listener = listener;
         this.sslHandler = sslHandler;
         this.responsePayloadSizeLimit = responsePayloadSizeLimit;
+        this.secureAuthCookie = secureAuthCookie;
     }
 
     @Override
@@ -386,22 +400,31 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             response.headers().add(Operation.REQUEST_AUTH_TOKEN_HEADER, token);
 
             // Client can also use the cookie if they prefer
-            StringBuilder buf = new StringBuilder()
-                    .append(AuthenticationConstants.REQUEST_AUTH_TOKEN_COOKIE)
-                    .append('=')
-                    .append(token);
+            Cookie tokenCookie = new DefaultCookie(
+                    AuthenticationConstants.REQUEST_AUTH_TOKEN_COOKIE, token);
 
-            // Add Path qualifier, cookie applies everywhere
-            buf.append("; Path=/");
-            // Add an Max-Age qualifier if an expiration is set in the Claims object
+            // Add path qualifier, cookie applies everywhere
+            tokenCookie.setPath("/");
+
+            // Add a Max-Age qualifier if an expiration is set in the Claims object
             Long expirationTime = authorizationContext.getClaims().getExpirationTime();
             if (expirationTime != null) {
-                buf.append("; Max-Age=");
                 long nowSeconds = TimeUnit.MICROSECONDS.toSeconds(Utils.getSystemNowMicrosUtc());
                 long maxAge = expirationTime - nowSeconds;
-                buf.append(maxAge > 0 ? maxAge : 0);
+                tokenCookie.setMaxAge(maxAge);
             }
-            response.headers().add(Operation.SET_COOKIE_HEADER, buf.toString());
+
+            // Add an HTTP-only qualifier unless the caller has specified otherwise
+            if (!DISABLE_HTTP_ONLY_AUTH_COOKIE) {
+                tokenCookie.setHttpOnly(true);
+            }
+
+            // Toggle the secure qualifier according to the caller's specification.
+            tokenCookie.setSecure(this.secureAuthCookie);
+
+            // Encode the cookie and add the corresponding header to the HTTP response.
+            String tokenCookieString = ServerCookieEncoder.LAX.encode(tokenCookie);
+            response.headers().add(Operation.SET_COOKIE_HEADER, tokenCookieString);
         }
 
         writeResponse(ctx, request, response);
