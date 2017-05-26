@@ -13,11 +13,11 @@
 
 package com.vmware.xenon.services.common;
 
-import static java.util.stream.Collectors.toSet;
+import static java.util.stream.Collectors.toList;
 
 import java.net.URI;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 
 import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.Utils;
@@ -56,11 +56,10 @@ public class NodeGroupBroadcastResult {
     public long unavailableNodeCount;
     public long totalNodeCount;
     public long membershipQuorum;
-    public Set<PeerNodeResult> allResponses = new HashSet<>();
-    public Set<PeerNodeResult> successResponses = new HashSet<>();
-    public Set<PeerNodeResult> failureResponses = new HashSet<>();
-    public Set<ServiceErrorResponse> failureErrorResponses = new HashSet<>();
-
+    public List<PeerNodeResult> allResponses = new ArrayList<>();
+    public List<PeerNodeResult> successResponses = new ArrayList<>();
+    public List<PeerNodeResult> failureResponses = new ArrayList<>();
+    public List<ServiceErrorResponse> failureErrorResponses = new ArrayList<>();
 
     public boolean hasSuccess() {
         return !this.successResponses.isEmpty();
@@ -86,9 +85,9 @@ public class NodeGroupBroadcastResult {
         return this.successResponses.isEmpty();
     }
 
-    public <T> Set<T> getSuccessesAs(Class<T> type) {
+    public <T> List<T> getSuccessesAs(Class<T> type) {
         return this.successResponses.stream()
                 .map(singleResponse -> singleResponse.castBodyTo(type))
-                .collect(toSet());
+                .collect(toList());
     }
 }

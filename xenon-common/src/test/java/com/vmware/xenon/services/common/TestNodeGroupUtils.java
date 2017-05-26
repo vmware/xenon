@@ -22,8 +22,8 @@ import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
+import java.util.Comparator;
 import java.util.List;
-import java.util.Set;
 
 import org.junit.Test;
 
@@ -58,7 +58,6 @@ public class TestNodeGroupUtils {
         String jsonForHostSuccess3 = Utils.toJson(document);
 
         ServiceErrorResponse errorResponse = new ServiceErrorResponse();
-
 
         NodeGroupBroadcastResponse seed = new NodeGroupBroadcastResponse();
         seed.nodeCount = 5;
@@ -95,10 +94,10 @@ public class TestNodeGroupUtils {
         assertFalse(result.isAllFailure());
         assertFalse(result.isMajorityFailure());
 
-        Set<PeerNodeResult> successes = result.successResponses;
+        List<PeerNodeResult> successes = result.successResponses;
         assertEquals(3, successes.size());
         List<PeerNodeResult> sorted = successes.stream()
-                .sorted((left, right) -> left.hostId.compareTo(right.hostId))
+                .sorted(Comparator.comparing(peerNodeResult -> peerNodeResult.hostId))
                 .collect(toList());
 
         // success1
@@ -132,7 +131,7 @@ public class TestNodeGroupUtils {
         assertNull(singleResponse.errorResponse);
 
         // failure
-        Set<PeerNodeResult> failures = result.failureResponses;
+        List<PeerNodeResult> failures = result.failureResponses;
         assertEquals(1, failures.size());
         PeerNodeResult failure = failures.iterator().next();
         assertTrue(failure.isFailure());
