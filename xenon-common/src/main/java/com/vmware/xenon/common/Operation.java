@@ -600,6 +600,11 @@ public class Operation implements Cloneable {
      */
     public static final String PRAGMA_DIRECTIVE_AUTHN_INVALIDATE = "xn-authn-invalidate";
 
+    /**
+     * Set when a MigrationTaskService invokes operations against the destination cluster.
+     */
+    public static final String PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK = "xn-from-migration";
+
     public static final String TX_ENSURE_COMMIT = "ensure-commit";
     public static final String TX_COMMIT = "commit";
     public static final String TX_ABORT = "abort";

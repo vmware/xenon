@@ -112,6 +112,8 @@ public class ExampleService extends StatefulService {
         public String id;
         @UsageOption(option = PropertyUsageOption.REQUIRED)
         public String required;
+        @UsageOption(option = PropertyUsageOption.SERVICE_USE)
+        public Boolean isFromMigration;
     }
 
     public ExampleService() {
@@ -139,6 +141,8 @@ public class ExampleService extends StatefulService {
             startPost.fail(new IllegalArgumentException("name is required"));
             return;
         }
+
+        s.isFromMigration = startPost.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK);
 
         startPost.complete();
     }
