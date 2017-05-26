@@ -16,18 +16,17 @@ package com.vmware.dcp.services.samples;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import io.netty.handler.codec.http.cookie.ClientCookieDecoder;
+import io.netty.handler.codec.http.cookie.Cookie;
 import org.junit.Test;
 
 import com.vmware.xenon.common.Claims;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
-import com.vmware.xenon.common.http.netty.CookieJar;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
-import com.vmware.xenon.services.common.authn.AuthenticationConstants;
 import com.vmware.xenon.services.samples.SampleAuthenticationService;
 
 public class TestSampleAuthenticationService {
@@ -86,11 +85,9 @@ public class TestSampleAuthenticationService {
         String cookieHeader = responseOp.getResponseHeader(Operation.SET_COOKIE_HEADER);
         assertNotNull(cookieHeader);
 
-        Map<String, String> cookieElements = CookieJar.decodeCookies(cookieHeader);
-
         // assert the auth token cookie
-        assertEquals(SampleAuthenticationService.ACCESS_TOKEN,
-                cookieElements.get(AuthenticationConstants.REQUEST_AUTH_TOKEN_COOKIE));
+        Cookie tokenCookie = ClientCookieDecoder.LAX.decode(cookieHeader);
+        assertEquals(SampleAuthenticationService.ACCESS_TOKEN, tokenCookie.value());
 
         // assert the auth token header
         assertEquals(SampleAuthenticationService.ACCESS_TOKEN,

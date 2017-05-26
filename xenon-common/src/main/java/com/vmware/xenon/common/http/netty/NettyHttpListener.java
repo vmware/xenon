@@ -75,6 +75,7 @@ public class NettyHttpListener implements ServiceRequestListener {
     private NioEventLoopGroup eventLoopGroup;
     private ExecutorService nettyExecutorService;
     private SslContext sslContext;
+    private boolean secureAuthCookie;
     private ChannelHandler childChannelHandler;
     private boolean isListening;
     private int responsePayloadSizeLimit = RESPONSE_PAYLOAD_SIZE_LIMIT;
@@ -106,8 +107,7 @@ public class NettyHttpListener implements ServiceRequestListener {
         this.eventLoopGroup = new NioEventLoopGroup(EVENT_LOOP_THREAD_COUNT, this.nettyExecutorService);
         if (this.childChannelHandler == null) {
             this.childChannelHandler = new NettyHttpServerInitializer(this, this.host,
-                    this.sslContext,
-                    this.responsePayloadSizeLimit);
+                    this.sslContext, this.responsePayloadSizeLimit, this.secureAuthCookie);
         }
 
         ServerBootstrap b = new ServerBootstrap();
@@ -259,5 +259,18 @@ public class NettyHttpListener implements ServiceRequestListener {
     @Override
     public int getResponsePayloadSizeLimit() {
         return this.responsePayloadSizeLimit;
+    }
+
+    @Override
+    public boolean getSecureAuthCookie() {
+        return this.secureAuthCookie;
+    }
+
+    @Override
+    public void setSecureAuthCookie(boolean secureAuthCookie) {
+        if (isListening()) {
+            throw new IllegalStateException("Already started listening");
+        }
+        this.secureAuthCookie = secureAuthCookie;
     }
 }

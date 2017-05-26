@@ -22,14 +22,15 @@ import static com.vmware.xenon.services.common.authn.BasicAuthenticationUtils.co
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import io.netty.handler.codec.http.cookie.ClientCookieDecoder;
+import io.netty.handler.codec.http.cookie.Cookie;
 import org.junit.After;
 import org.junit.Test;
 
 import com.vmware.xenon.common.Operation.AuthorizationContext;
-import com.vmware.xenon.common.http.netty.CookieJar;
+import com.vmware.xenon.common.http.netty.NettyHttpListener;
 import com.vmware.xenon.common.test.AuthTestUtils;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestNodeGroupManager;
@@ -56,18 +57,27 @@ public class TestAuthentication {
 
     private List<VerificationHost> hostsToCleanup = new ArrayList<>();
 
-    private VerificationHost createAndStartHost(boolean enableAuth, Service authenticationService)
-            throws Throwable {
+    private VerificationHost createAndStartHost(boolean enableAuth, boolean secureAuthCookie,
+            Service authenticationService) throws Throwable {
         VerificationHost host = VerificationHost.create(0);
         host.setAuthorizationEnabled(enableAuth);
+
+        // The NettyHttpListener for the host is not allocated until host start time, so this
+        // attribute cannot be enabled without allocating a listener.
+        if (secureAuthCookie) {
+            NettyHttpListener listener = new NettyHttpListener(host);
+            listener.setSecureAuthCookie(true);
+            host.setListener(listener);
+        }
 
         // set the authentication service
         if (authenticationService != null) {
             host.setAuthenticationService(authenticationService);
         }
 
-        host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS
-                .toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
+        host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(
+                VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
+
         host.start();
 
         // add to the list for cleanup after each test run
@@ -163,7 +173,7 @@ public class TestAuthentication {
 
     @Test
     public void testSettingAuthenticationService() throws Throwable {
-        VerificationHost host = createAndStartHost(true, new TestAuthenticationService());
+        VerificationHost host = createAndStartHost(true, false, new TestAuthenticationService());
 
         host.log("Testing setAuthenticationService");
 
@@ -179,7 +189,7 @@ public class TestAuthentication {
 
     @Test
     public void testNoAuthenticationService() throws Throwable {
-        VerificationHost host = createAndStartHost(true, null);
+        VerificationHost host = createAndStartHost(true, false, null);
 
         host.log("Testing no authenticationService");
 
@@ -193,7 +203,7 @@ public class TestAuthentication {
     @Test
     public void testAuthenticationServiceRedirect() throws Throwable {
 
-        VerificationHost host = createAndStartHost(true, new TestAuthenticationService());
+        VerificationHost host = createAndStartHost(true, false, new TestAuthenticationService());
         host.log("Testing authenticationService redirect");
 
         TestRequestSender sender = new TestRequestSender(host);
@@ -215,7 +225,7 @@ public class TestAuthentication {
     @Test
     public void testAuthServiceFailure() throws Throwable {
 
-        VerificationHost host = createAndStartHost(true, new FailQueueAuthenticationService());
+        VerificationHost host = createAndStartHost(true, false, new FailQueueAuthenticationService());
 
         TestRequestSender sender = new TestRequestSender(host);
 
@@ -227,22 +237,33 @@ public class TestAuthentication {
 
     @Test
     public void testAuthenticationServiceTokenRequest() throws Throwable {
-        VerificationHost host = createAndStartHost(true, new TestAuthenticationService());
+        VerificationHost host = createAndStartHost(true, false, new TestAuthenticationService());
+        doAuthenticationServiceTokenRequest(host, false);
+    }
+
+    @Test
+    public void testAuthenticationServiceTokenRequestSecureCookie() throws Throwable {
+        VerificationHost host = createAndStartHost(true, true, new TestAuthenticationService());
+        doAuthenticationServiceTokenRequest(host, true);
+    }
+
+    private void doAuthenticationServiceTokenRequest(VerificationHost host, boolean isSecure)
+            throws Throwable {
         TestRequestSender sender = new TestRequestSender(host);
         host.log("Testing authenticationService token request");
 
         // make a request to get the accessToken for the authentication service
         Operation requestOp = Operation.createGet(host, TestAuthenticationService.SELF_LINK)
-                               .forceRemote();
+                .forceRemote();
         Operation responseOp = sender.sendAndWait(requestOp);
 
         String cookieHeader = responseOp.getResponseHeader(SET_COOKIE_HEADER);
         assertNotNull(cookieHeader);
 
-        Map<String, String> cookieElements = CookieJar.decodeCookies(cookieHeader);
         // assert the auth token cookie
-        assertEquals(TestAuthenticationService.ACCESS_TOKEN,
-                cookieElements.get(AuthenticationConstants.REQUEST_AUTH_TOKEN_COOKIE));
+        Cookie tokenCookie = ClientCookieDecoder.LAX.decode(cookieHeader);
+        assertEquals(TestAuthenticationService.ACCESS_TOKEN, tokenCookie.value());
+        assertEquals(isSecure, tokenCookie.isSecure());
 
         // assert the auth token header
         assertEquals(TestAuthenticationService.ACCESS_TOKEN,
@@ -273,7 +294,7 @@ public class TestAuthentication {
 
     @Test
     public void testWithoutAuthorizationEnabled() throws Throwable {
-        VerificationHost host = createAndStartHost(false, new TestAuthenticationService());
+        VerificationHost host = createAndStartHost(false, false, new TestAuthenticationService());
         host.log("Testing AuthenticationService when authorization is disabled");
 
         // create user foo@vmware.com
@@ -295,7 +316,7 @@ public class TestAuthentication {
 
     @Test
     public void testAuthenticatedRequestInvalidToken() throws Throwable {
-        VerificationHost host = createAndStartHost(true, new TestAuthenticationService());
+        VerificationHost host = createAndStartHost(true, false, new TestAuthenticationService());
         host.log("Testing external authentication request with invalid token");
 
         // create user foo@vmware.com
@@ -318,7 +339,7 @@ public class TestAuthentication {
 
     @Test
     public void testAuthenticatedRequestValidToken() throws Throwable {
-        VerificationHost host = createAndStartHost(true, new TestAuthenticationService());
+        VerificationHost host = createAndStartHost(true, false, new TestAuthenticationService());
         host.log("Testing external authentication request with valid token");
 
         // create user foo@vmware.com
@@ -341,7 +362,7 @@ public class TestAuthentication {
 
     @Test
     public void testAuthenticationViaBasicAuth() throws Throwable {
-        VerificationHost host = createAndStartHost(true, new TestAuthenticationService());
+        VerificationHost host = createAndStartHost(true, false, new TestAuthenticationService());
 
         // create user foo@vmware.com
         createTestUsers(host);
@@ -366,7 +387,7 @@ public class TestAuthentication {
 
     @Test
     public void testVerificationValidBasicAuthAccessToken() throws Throwable {
-        VerificationHost host = createAndStartHost(true, null);
+        VerificationHost host = createAndStartHost(true, false, null);
         host.log("Testing verification of valid token for Basic auth");
 
         // create a user so we are able to get valid accessToken to verify
@@ -406,7 +427,7 @@ public class TestAuthentication {
 
     @Test
     public void testVerificationInvalidBasicAuthAccessToken() throws Throwable {
-        VerificationHost host = createAndStartHost(true, null);
+        VerificationHost host = createAndStartHost(true, false, null);
         host.log("Testing verification of invalid token for Basic auth");
 
         // invalid accesstoken
@@ -427,7 +448,7 @@ public class TestAuthentication {
 
     @Test
     public void testVerificationValidAuthServiceToken() throws Throwable {
-        VerificationHost host = createAndStartHost(true, new TestAuthenticationService());
+        VerificationHost host = createAndStartHost(true, false, new TestAuthenticationService());
         host.log("Testing verification of valid token for external auth");
 
         TestRequestSender sender = new TestRequestSender(host);
@@ -447,7 +468,7 @@ public class TestAuthentication {
 
     @Test
     public void testVerificationInvalidAuthServiceToken() throws Throwable {
-        VerificationHost host = createAndStartHost(true, new TestAuthenticationService());
+        VerificationHost host = createAndStartHost(true, false, new TestAuthenticationService());
         host.log("Testing verification of invalid token for external auth");
 
         // invalid accesstoken
@@ -468,9 +489,9 @@ public class TestAuthentication {
 
     @Test
     public void testExternalAuthenticationMultinode() throws Throwable {
-        VerificationHost host1 = createAndStartHost(true, new TestAuthenticationService());
-        VerificationHost host2 = createAndStartHost(true, new TestAuthenticationService());
-        VerificationHost host3 = createAndStartHost(true, new TestAuthenticationService());
+        VerificationHost host1 = createAndStartHost(true, false, new TestAuthenticationService());
+        VerificationHost host2 = createAndStartHost(true, false, new TestAuthenticationService());
+        VerificationHost host3 = createAndStartHost(true, false, new TestAuthenticationService());
 
         TestNodeGroupManager nodeGroup = new TestNodeGroupManager();
         nodeGroup.addHost(host1);
@@ -502,7 +523,6 @@ public class TestAuthentication {
         host1.log("Replication with external auth in multi-node is working");
     }
 
-
     private void testExternalAuthRedirectMultinode(ServiceHost host) {
         TestRequestSender sender = new TestRequestSender(host);
 
@@ -523,16 +543,15 @@ public class TestAuthentication {
 
         // make a request to get the accessToken for the authentication service
         Operation requestOp = Operation.createGet(host, TestAuthenticationService.SELF_LINK)
-                               .forceRemote();
+                .forceRemote();
         Operation responseOp = sender.sendAndWait(requestOp);
 
         String cookieHeader = responseOp.getResponseHeader(SET_COOKIE_HEADER);
         assertNotNull(cookieHeader);
 
-        Map<String, String> cookieElements = CookieJar.decodeCookies(cookieHeader);
         // assert the auth token cookie
-        assertEquals(TestAuthenticationService.ACCESS_TOKEN,
-                cookieElements.get(AuthenticationConstants.REQUEST_AUTH_TOKEN_COOKIE));
+        Cookie tokenCookie = ClientCookieDecoder.LAX.decode(cookieHeader);
+        assertEquals(TestAuthenticationService.ACCESS_TOKEN, tokenCookie.value());
 
         // assert the auth token header
         assertEquals(TestAuthenticationService.ACCESS_TOKEN,
