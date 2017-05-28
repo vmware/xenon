@@ -2,6 +2,10 @@
 
 ## 1.4.2-CR3-SNAPSHOT
 
+* Bug fix related to factory availability being set when node group
+  membership quorum is not met. For details, see
+  https://www.pivotaltracker.com/story/show/132859825
+
 ## 1.4.2-CR2
 
 * Bug fix related to null pointer exceptions during synchronization. For
