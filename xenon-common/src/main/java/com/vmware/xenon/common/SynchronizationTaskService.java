@@ -60,7 +60,7 @@ public class SynchronizationTaskService
     }
 
     public enum SubStage {
-        QUERY, SYNCHRONIZE, RESTART
+        QUERY, SYNCHRONIZE, RESTART, CHECK_NG_AVAILABILITY
     }
 
     public static class State extends TaskService.TaskServiceState {
@@ -343,16 +343,7 @@ public class SynchronizationTaskService
             ServiceErrorResponse rsp = Utils.toServiceErrorResponse(e);
             rsp.setInternalErrorCode(ServiceErrorResponse.ERROR_CODE_OUTDATED_SYNCH_REQUEST);
 
-            // Another corner case, if this was an outdated synch request and the task
-            // is not running anymore, we set the factory as Available. If the task
-            // was already running then the factory would become Available as soon
-            // as the task reached the FINISHED stage.
-            if (!TaskState.isInProgress(currentTask.taskInfo)) {
-                setFactoryAvailability(currentTask, true,
-                        (o) -> put.fail(Operation.STATUS_CODE_BAD_REQUEST, e, rsp), null);
-            } else {
-                put.fail(Operation.STATUS_CODE_BAD_REQUEST, e, rsp);
-            }
+            put.fail(Operation.STATUS_CODE_BAD_REQUEST, e, rsp);
             return null;
         }
         return putTask;
@@ -446,6 +437,9 @@ public class SynchronizationTaskService
             break;
         case SYNCHRONIZE:
             handleSynchronizeStage(task, true);
+            break;
+        case CHECK_NG_AVAILABILITY:
+            handleCheckNodeGroupAvailabilityStage(task);
             break;
         default:
             logWarning("Unexpected sub stage: %s", task.subStage);
@@ -566,7 +560,7 @@ public class SynchronizationTaskService
 
             ServiceDocumentQueryResult rsp = o.getBody(QueryTask.class).results;
             if (rsp.documentCount == 0 || rsp.documentLinks.isEmpty()) {
-                sendSelfFinishedPatch(task);
+                sendSelfPatch(task, TaskState.TaskStage.STARTED, subStageSetter(SubStage.CHECK_NG_AVAILABILITY));
                 return;
             }
             List<String> list = new ArrayList<>(rsp.documentLinks);
@@ -664,7 +658,7 @@ public class SynchronizationTaskService
             task.synchCompletionCount = task.synchCompletionCount + totalServiceCount;
 
             if (task.queryPageReference == null) {
-                sendSelfFinishedPatch(task);
+                sendSelfPatch(task, TaskState.TaskStage.STARTED, subStageSetter(SubStage.CHECK_NG_AVAILABILITY));
                 return;
             }
             sendSelfPatch(task, TaskState.TaskStage.STARTED, subStageSetter(SubStage.SYNCHRONIZE));
@@ -787,6 +781,31 @@ public class SynchronizationTaskService
             logSevere(e);
             synchRequest.fail(e);
         }
+    }
+
+    private void handleCheckNodeGroupAvailabilityStage(State task) {
+        // get node selector state
+        Operation getNodeSelectorStateOp = Operation
+                .createGet(getHost(), task.nodeSelectorLink)
+                .setCompletion((o, e) -> {
+                    if (e != null || !o.hasBody()) {
+                        sendSelfFailurePatch(task, "failed to get node selector state");
+                        return;
+                    }
+
+                    NodeSelectorState nsState = o.getBody(NodeSelectorState.class);
+
+                    // check for node group availability
+                    if (!NodeSelectorState.isAvailable(nsState)) {
+                        // node group is not available - failing the task to
+                        // prevent factory from being marked available
+                        sendSelfFailurePatch(task, "node group is not available");
+                        return;
+                    }
+
+                    sendSelfFinishedPatch(task);
+                });
+        sendRequest(getNodeSelectorStateOp);
     }
 
     private void setFactoryAvailability(
