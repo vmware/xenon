@@ -24,15 +24,17 @@ import java.util.function.Supplier;
 
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.services.common.NodeGroupService;
+import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
+import com.vmware.xenon.services.common.NodeGroupUtils;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.TaskService;
 
 /**
- * A Task service used to synchronize child Services for a specific FactoryService.
+ * A Task service used to synchronize child Services for a specific
+ * FactoryService.
  */
-public class SynchronizationTaskService
-        extends TaskService<SynchronizationTaskService.State> {
+public class SynchronizationTaskService extends TaskService<SynchronizationTaskService.State> {
 
     public static final String FACTORY_LINK = ServiceUriPaths.SYNCHRONIZATION_TASKS;
     public static final String PROPERTY_NAME_SYNCHRONIZATION_LOGGING = Utils.PROPERTY_NAME_PREFIX
@@ -41,18 +43,19 @@ public class SynchronizationTaskService
     public static final String STAT_NAME_CHILD_SYNCH_RETRY_COUNT = "childSynchRetryCount";
     public static final String STAT_NAME_SYNCH_RETRY_COUNT = "synchRetryCount";
 
-    public static final String PROPERTY_NAME_MAX_CHILD_SYNCH_RETRY_COUNT =
-            Utils.PROPERTY_NAME_PREFIX + "SynchronizationTaskService.MAX_CHILD_SYNCH_RETRY_COUNT";
+    public static final String PROPERTY_NAME_MAX_CHILD_SYNCH_RETRY_COUNT = Utils.PROPERTY_NAME_PREFIX
+            + "SynchronizationTaskService.MAX_CHILD_SYNCH_RETRY_COUNT";
 
     // Maximum synch-task retry limit.
     // We are using exponential backoff for synchronization retry.
     public static final int MAX_CHILD_SYNCH_RETRY_COUNT = Integer.getInteger(
-            PROPERTY_NAME_MAX_CHILD_SYNCH_RETRY_COUNT, 3);
-
+            PROPERTY_NAME_MAX_CHILD_SYNCH_RETRY_COUNT,
+            3);
 
     public static SynchronizationTaskService create(Supplier<Service> childServiceInstantiator) {
         if (childServiceInstantiator.get() == null) {
-            throw new IllegalArgumentException("childServiceInstantiator created null child service");
+            throw new IllegalArgumentException(
+                    "childServiceInstantiator created null child service");
         }
         SynchronizationTaskService taskService = new SynchronizationTaskService();
         taskService.childServiceInstantiator = childServiceInstantiator;
@@ -60,34 +63,33 @@ public class SynchronizationTaskService
     }
 
     public enum SubStage {
-        QUERY, SYNCHRONIZE, RESTART
+        QUERY, SYNCHRONIZE, RESTART, CHECK_NG_AVAILABILITY
     }
 
     public static class State extends TaskService.TaskServiceState {
         /**
-         * SelfLink of the FactoryService that will be synchronized by this task.
-         * This value is immutable and gets set once in handleStart.
+         * SelfLink of the FactoryService that will be synchronized by this
+         * task. This value is immutable and gets set once in handleStart.
          */
         public String factorySelfLink;
 
         /**
-         * documentKind of childServices created by the FactoryService.
-         * This value is immutable and gets set once in handleStart.
+         * documentKind of childServices created by the FactoryService. This
+         * value is immutable and gets set once in handleStart.
          */
         public String factoryStateKind;
 
         /**
-         * The node-selector used linked to the FactoryService.
-         * This value is immutable and gets set once in handleStart.
+         * The node-selector used linked to the FactoryService. This value is
+         * immutable and gets set once in handleStart.
          */
         public String nodeSelectorLink;
 
         /**
-         * ServiceOptions supported by the child service.
-         * This value is immutable and gets set once in handleStart.
+         * ServiceOptions supported by the child service. This value is
+         * immutable and gets set once in handleStart.
          */
         public EnumSet<ServiceOption> childOptions;
-
 
         /**
          * Document index link used by the child service
@@ -95,7 +97,8 @@ public class SynchronizationTaskService
         public String childDocumentIndexLink;
 
         /**
-         * Upper limit to the number of results per page of the broadcast query task.
+         * Upper limit to the number of results per page of the broadcast query
+         * task.
          */
         public int queryResultLimit;
 
@@ -136,13 +139,13 @@ public class SynchronizationTaskService
     }
 
     /**
-     * Each synchronization-task gets created once when the FactoryService starts.
-     * The FactoryService starts the task through startService since it has to
-     * set the instantiator lambda. Because of these details, handleStart only performs
-     * some validation and creates a placeholder task without kicking-off the state
-     * machine.
-     * The state-machine of the synchronization-task actually gets started
-     * on following POST requests that are served by handlePut.
+     * Each synchronization-task gets created once when the FactoryService
+     * starts. The FactoryService starts the task through startService since it
+     * has to set the instantiator lambda. Because of these details, handleStart
+     * only performs some validation and creates a placeholder task without
+     * kicking-off the state machine. The state-machine of the
+     * synchronization-task actually gets started on following POST requests
+     * that are served by handlePut.
      */
     @Override
     public void handleStart(Operation post) {
@@ -154,21 +157,18 @@ public class SynchronizationTaskService
         initializeState(initialState, post);
 
         if (this.isDetailedLoggingEnabled) {
-            logInfo("Creating synchronization-task for factory %s",
-                    initialState.factorySelfLink);
+            logInfo("Creating synchronization-task for factory %s", initialState.factorySelfLink);
         }
 
-        post.setBody(initialState)
-                .setStatusCode(Operation.STATUS_CODE_ACCEPTED)
-                .complete();
+        post.setBody(initialState).setStatusCode(Operation.STATUS_CODE_ACCEPTED).complete();
     }
 
     @Override
     protected void initializeState(State initialState, Operation post) {
-        // Initializing internal fields only. Note that the task is initially created
-        // in the CREATED stage. This is because, handleStart only creates a
-        // place-holder task per factoryService without actually kicking-off
-        // the state-machine.
+        // Initializing internal fields only. Note that the task is initially
+        // create in the CREATED stage. This is because, handleStart only
+        // creates a place-holder task per factoryService without actually
+        // kicking-off the state-machine.
         Service childTemplate = this.childServiceInstantiator.get();
         initialState.taskInfo = new TaskState();
         initialState.taskInfo.stage = TaskState.TaskStage.CREATED;
@@ -227,17 +227,17 @@ public class SynchronizationTaskService
     }
 
     /**
-     * Synchronization-Task uses IDEMPOTENT_POST serviceOption. Once the place-holder
-     * task is created through handleStart all POST requests get converted to PUT
-     * operations and are served by handlePut. handlePut verifies the current state
-     * of the task and if appropriate kicks-off the task state-machine.
+     * Synchronization-Task uses IDEMPOTENT_POST serviceOption. Once the
+     * place-holder task is created through handleStart all POST requests get
+     * converted to PUT operations and are served by handlePut. handlePut
+     * verifies the current state of the task and if appropriate kicks-off the
+     * task state-machine.
      */
     @Override
     public void handlePut(Operation put) {
         // Fail the request if this was not a POST converted to PUT.
         if (!put.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_POST_TO_PUT)) {
-            put.fail(new IllegalStateException(
-                    "PUT not supported for SynchronizationTaskService"));
+            put.fail(new IllegalStateException("PUT not supported for SynchronizationTaskService"));
             return;
         }
 
@@ -288,9 +288,9 @@ public class SynchronizationTaskService
         }
 
         if (this.isDetailedLoggingEnabled) {
-            logInfo("Transitioning task from %s-%s to %s-%s. Time %d",
-                    currentStage, currentSubStage, task.taskInfo.stage,
-                    task.subStage, task.membershipUpdateTimeMicros);
+            logInfo("Transitioning task from %s-%s to %s-%s. Time %d", currentStage,
+                    currentSubStage,
+                    task.taskInfo.stage, task.subStage, task.membershipUpdateTimeMicros);
         }
 
         if (startStateMachine) {
@@ -322,18 +322,22 @@ public class SynchronizationTaskService
         }
         boolean isMembershipTimeSet = (putTask.membershipUpdateTimeMicros != null);
         boolean hasReplicationOption = currentTask.childOptions.contains(ServiceOption.REPLICATION);
-        if (!isMembershipTimeSet && hasReplicationOption || isMembershipTimeSet && !hasReplicationOption) {
-            put.fail(new IllegalArgumentException("membershipUpdateTimeMicros not set correctly: "
-                    + putTask.membershipUpdateTimeMicros));
+        if (!isMembershipTimeSet && hasReplicationOption
+                || isMembershipTimeSet && !hasReplicationOption) {
+            put.fail(new IllegalArgumentException(
+                    "membershipUpdateTimeMicros not set correctly: "
+                            + putTask.membershipUpdateTimeMicros));
             return null;
         }
         if (currentTask.childOptions.contains(ServiceOption.ON_DEMAND_LOAD)) {
-            put.fail(new IllegalArgumentException("ON_DEMAND_LOAD services must synchronize on-demand."));
+            put.fail(new IllegalArgumentException(
+                    "ON_DEMAND_LOAD services must synchronize on-demand."));
             return null;
         }
-        if (currentTask.membershipUpdateTimeMicros != null &&
-                currentTask.membershipUpdateTimeMicros > putTask.membershipUpdateTimeMicros) {
-            // This request could be for an older node-group change notification.
+        if (currentTask.membershipUpdateTimeMicros != null
+                && currentTask.membershipUpdateTimeMicros > putTask.membershipUpdateTimeMicros) {
+            // This request could be for an older node-group change
+            // notification.
             // If so, don't bother restarting synchronization.
             String msg = String.format(
                     "Passed membershipUpdateTimeMicros is outdated. Passed %d, Current %d",
@@ -343,16 +347,7 @@ public class SynchronizationTaskService
             ServiceErrorResponse rsp = Utils.toServiceErrorResponse(e);
             rsp.setInternalErrorCode(ServiceErrorResponse.ERROR_CODE_OUTDATED_SYNCH_REQUEST);
 
-            // Another corner case, if this was an outdated synch request and the task
-            // is not running anymore, we set the factory as Available. If the task
-            // was already running then the factory would become Available as soon
-            // as the task reached the FINISHED stage.
-            if (!TaskState.isInProgress(currentTask.taskInfo)) {
-                setFactoryAvailability(currentTask, true,
-                        (o) -> put.fail(Operation.STATUS_CODE_BAD_REQUEST, e, rsp), null);
-            } else {
-                put.fail(Operation.STATUS_CODE_BAD_REQUEST, e, rsp);
-            }
+            put.fail(Operation.STATUS_CODE_BAD_REQUEST, e, rsp);
             return null;
         }
         return putTask;
@@ -362,15 +357,18 @@ public class SynchronizationTaskService
      * Validate that the PATCH we got requests reasonable changes to our state.
      */
     @Override
-    protected boolean validateTransition(
-            Operation patch, SynchronizationTaskService.State currentTask, SynchronizationTaskService.State patchBody) {
+    protected boolean validateTransition(Operation patch,
+            SynchronizationTaskService.State currentTask,
+            SynchronizationTaskService.State patchBody) {
         boolean validTransition = super.validateTransition(patch, currentTask, patchBody);
         if (!validTransition) {
             return false;
         }
 
-        if (!TaskState.isInProgress(currentTask.taskInfo) && !TaskState.isInProgress(patchBody.taskInfo)) {
-            patch.fail(new IllegalArgumentException("Task stage cannot transitioned to same stopped state"));
+        if (!TaskState.isInProgress(currentTask.taskInfo)
+                && !TaskState.isInProgress(patchBody.taskInfo)) {
+            patch.fail(new IllegalArgumentException(
+                    "Task stage cannot transitioned to same stopped state"));
             return false;
         }
 
@@ -379,8 +377,8 @@ public class SynchronizationTaskService
 
     /**
      * Synchronization-Task self-patches as it progress through the
-     * state-machine. handlePatch checks for state transitions and
-     * invokes the correct behavior given the task's next stage.
+     * state-machine. handlePatch checks for state transitions and invokes the
+     * correct behavior given the task's next stage.
      */
     @Override
     public void handlePatch(Operation patch) {
@@ -407,13 +405,14 @@ public class SynchronizationTaskService
 
         if (this.isDetailedLoggingEnabled) {
             logInfo("Transitioning task from %s-%s to %s-%s, Synch completed services: %d",
-                    currentStage, currentSubStage, task.taskInfo.stage, task.subStage, task.synchCompletionCount);
+                    currentStage,
+                    currentSubStage, task.taskInfo.stage, task.subStage, task.synchCompletionCount);
         }
 
-        boolean isTaskFinished = !TaskState.isInProgress(task.taskInfo);
+        boolean isTaskFinished = TaskState.isFinished(task.taskInfo);
         if (isTaskFinished) {
-            // Since the synch-task finished (regardless of failure), we will
-            // mark the factory as available here. Complete the patch *after* we set availability
+            // Since the synch-task finished, we will mark the factory as
+            // available here. Complete the patch *after* we set availability
             // to avoid races with other self patches
             setFactoryAvailability(task, true, null, patch);
         } else {
@@ -447,6 +446,9 @@ public class SynchronizationTaskService
         case SYNCHRONIZE:
             handleSynchronizeStage(task, true);
             break;
+        case CHECK_NG_AVAILABILITY:
+            handleCheckNodeGroupAvailabilityStage(task);
+            break;
         default:
             logWarning("Unexpected sub stage: %s", task.subStage);
             break;
@@ -455,12 +457,10 @@ public class SynchronizationTaskService
 
     private void handleQueryStage(State task) {
         QueryTask queryTask = buildChildQueryTask(task);
-        Operation queryPost = Operation
-                .createPost(this, ServiceUriPaths.CORE_QUERY_TASKS)
+        Operation queryPost = Operation.createPost(this, ServiceUriPaths.CORE_QUERY_TASKS)
                 .setBody(queryTask)
                 .setConnectionSharing(true)
-                .setExpiration(
-                        Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
+                .setExpiration(Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
                 .setCompletion((o, e) -> {
                     if (getHost().isStopping()) {
                         sendSelfCancellationPatch(task, "host is stopping");
@@ -484,7 +484,8 @@ public class SynchronizationTaskService
                         return;
                     }
 
-                    URI queryTaskUri = UriUtils.buildUri(this.getHost(), ServiceUriPaths.CORE_QUERY_TASKS);
+                    URI queryTaskUri = UriUtils.buildUri(this.getHost(),
+                            ServiceUriPaths.CORE_QUERY_TASKS);
                     task.queryPageReference = UriUtils.buildUri(queryTaskUri, rsp.nextPageLink);
 
                     sendSelfPatch(task, TaskState.TaskStage.STARTED,
@@ -505,9 +506,7 @@ public class SynchronizationTaskService
                 .setTermPropertyName(ServiceDocument.FIELD_NAME_SELF_LINK)
                 .setTermMatchType(QueryTask.QueryTerm.MatchType.WILDCARD)
                 .setTermMatchValue(
-                        task.factorySelfLink +
-                                UriUtils.URI_PATH_CHAR +
-                                UriUtils.URI_WILDCARD_CHAR);
+                        task.factorySelfLink + UriUtils.URI_PATH_CHAR + UriUtils.URI_WILDCARD_CHAR);
         queryTask.querySpec.query.addBooleanClause(uriPrefixClause);
 
         // Add clause for documentKind = Factory state kind
@@ -517,14 +516,15 @@ public class SynchronizationTaskService
         queryTask.querySpec.query.addBooleanClause(kindClause);
 
         // set timeout based on peer synchronization upper limit
-        long timeoutMicros = TimeUnit.SECONDS.toMicros(
-                getHost().getPeerSynchronizationTimeLimitSeconds());
+        long timeoutMicros = TimeUnit.SECONDS
+                .toMicros(getHost().getPeerSynchronizationTimeLimitSeconds());
         timeoutMicros = Math.max(timeoutMicros, getHost().getOperationTimeoutMicros());
         queryTask.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(timeoutMicros);
 
-        // Make this a broadcast query so that we get child services from all peer nodes.
-        queryTask.querySpec.options = EnumSet.of(
-                QueryTask.QuerySpecification.QueryOption.BROADCAST);
+        // Make this a broadcast query so that we get child services from all
+        // peer nodes.
+        queryTask.querySpec.options = EnumSet
+                .of(QueryTask.QuerySpecification.QueryOption.BROADCAST);
 
         // Set the node-selector link.
         queryTask.nodeSelectorLink = task.nodeSelectorLink;
@@ -537,7 +537,8 @@ public class SynchronizationTaskService
 
     private void handleSynchronizeStage(State task, boolean verifyOwnership) {
         if (task.queryPageReference == null) {
-            sendSelfFinishedPatch(task);
+            sendSelfPatch(task, TaskState.TaskStage.STARTED,
+                    subStageSetter(SubStage.CHECK_NG_AVAILABILITY));
             return;
         }
 
@@ -556,32 +557,31 @@ public class SynchronizationTaskService
             if (e != null) {
                 if (!getHost().isStopping()) {
                     logWarning("Failure retrieving query results from %s: %s",
-                            task.queryPageReference,
-                            e.toString());
+                            task.queryPageReference, e.toString());
                 }
-                sendSelfFailurePatch(task,
-                        "failure retrieving query page results");
+                sendSelfFailurePatch(task, "failure retrieving query page results");
                 return;
             }
 
             ServiceDocumentQueryResult rsp = o.getBody(QueryTask.class).results;
             if (rsp.documentCount == 0 || rsp.documentLinks.isEmpty()) {
-                sendSelfFinishedPatch(task);
+                sendSelfPatch(task, TaskState.TaskStage.STARTED,
+                        subStageSetter(SubStage.CHECK_NG_AVAILABILITY));
                 return;
             }
             List<String> list = new ArrayList<>(rsp.documentLinks);
             synchronizeChildrenInQueryPage(task, rsp, list, 0, list.size());
         };
 
-        sendRequest(Operation.createGet(task.queryPageReference)
-                .setConnectionSharing(true)
+        sendRequest(Operation.createGet(task.queryPageReference).setConnectionSharing(true)
                 .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION)
-                .setExpiration(
-                        Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
+                .setExpiration(Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
                 .setCompletion(c));
     }
 
-    private void synchronizeChildrenInQueryPage(State task, ServiceDocumentQueryResult rsp, List<String> documentLinks, int retryCount, int totalServiceCount) {
+    private void synchronizeChildrenInQueryPage(State task, ServiceDocumentQueryResult rsp,
+            List<String> documentLinks,
+            int retryCount, int totalServiceCount) {
         if (getHost().isStopping()) {
             sendSelfCancellationPatch(task, "host is stopping");
             return;
@@ -590,23 +590,26 @@ public class SynchronizationTaskService
         // Keep track of failed services.
         List<String> failedServices = new ArrayList<>();
 
-        // Track child service request in parallel, passing a single parent operation
+        // Track child service request in parallel, passing a single parent
+        // operation
         AtomicInteger pendingStarts = new AtomicInteger(documentLinks.size());
 
         Operation.CompletionHandler c = (o, e) -> {
             if (e != null && !getHost().isStopping()) {
                 logWarning("Synchronization failed for service %s with status code %d, message %s",
                         o.getUri().getPath(), o.getStatusCode(), e.getMessage());
-                if (o.getStatusCode() >= Operation.STATUS_CODE_SERVER_FAILURE_THRESHOLD ||
-                        o.getStatusCode() == Operation.STATUS_CODE_TIMEOUT) {
+                if (o.getStatusCode() >= Operation.STATUS_CODE_SERVER_FAILURE_THRESHOLD
+                        || o.getStatusCode() == Operation.STATUS_CODE_TIMEOUT) {
                     synchronized (this) {
                         failedServices.add(o.getUri().getPath());
                     }
                 }
             }
 
-            // Wait for failedServices to be updated for all failed services before proceeding further.
-            // Keeping this decrement statement here makes sure that we do not have race condition with failedServices.
+            // Wait for failedServices to be updated for all failed services
+            // before proceeding further.
+            // Keeping this decrement statement here makes sure that we do not
+            // have race condition with failedServices.
             int r = pendingStarts.decrementAndGet();
 
             if (getHost().isStopping()) {
@@ -619,7 +622,8 @@ public class SynchronizationTaskService
             }
 
             // Retry synchronization for services failed to synch last time.
-            // Only retry if failed services are less than the half of the total services and
+            // Only retry if failed services are less than the half of the total
+            // services and
             // maximum retry count is not reached.
 
             if (!failedServices.isEmpty()) {
@@ -627,15 +631,12 @@ public class SynchronizationTaskService
                     if (retryCount < MAX_CHILD_SYNCH_RETRY_COUNT) {
                         synchronized (this) {
                             if (!getHost().isStopping()) {
-                                logWarning("Retrying synchronization for %d failed services", failedServices.size());
+                                logWarning("Retrying synchronization for %d failed services",
+                                        failedServices.size());
 
-                                scheduleRetry(
-                                        () -> synchronizeChildrenInQueryPage(
-                                                task,
-                                                rsp,
-                                                failedServices,
-                                                retryCount + 1,
-                                                totalServiceCount),
+                                scheduleRetry(() -> synchronizeChildrenInQueryPage(task, rsp,
+                                        failedServices,
+                                        retryCount + 1, totalServiceCount),
                                         STAT_NAME_CHILD_SYNCH_RETRY_COUNT);
                                 adjustStat(STAT_NAME_SYNCH_RETRY_COUNT, 1);
                             }
@@ -644,7 +645,8 @@ public class SynchronizationTaskService
                         }
                     } else {
                         if (!getHost().isStopping()) {
-                            logSevere("Synchronization failed for %d services", failedServices.size());
+                            logSevere("Synchronization failed for %d services",
+                                    failedServices.size());
                         }
                         adjustStat(STAT_NAME_CHILD_SYNCH_FAILURE_COUNT, failedServices.size());
                     }
@@ -658,13 +660,13 @@ public class SynchronizationTaskService
 
             setStat(STAT_NAME_CHILD_SYNCH_RETRY_COUNT, 0);
             task.queryPageReference = rsp.nextPageLink != null
-                    ? UriUtils.buildUri(task.queryPageReference, rsp.nextPageLink)
-                    : null;
+                    ? UriUtils.buildUri(task.queryPageReference, rsp.nextPageLink) : null;
 
             task.synchCompletionCount = task.synchCompletionCount + totalServiceCount;
 
             if (task.queryPageReference == null) {
-                sendSelfFinishedPatch(task);
+                sendSelfPatch(task, TaskState.TaskStage.STARTED,
+                        subStageSetter(SubStage.CHECK_NG_AVAILABILITY));
                 return;
             }
             sendSelfPatch(task, TaskState.TaskStage.STARTED, subStageSetter(SubStage.SYNCHRONIZE));
@@ -689,33 +691,32 @@ public class SynchronizationTaskService
             retryCounter = (long) stat.latestValue;
         }
 
-        // Use exponential backoff algorithm in retry logic. The idea is to exponentially
-        // increase the delay for each retry based on the number of previous retries.
-        // This is done to reduce the load of retries on the system by all the tasks
-        // at same time, and giving system more time to stabilize
-        // in next retry then the previous retry.
+        // Use exponential backoff algorithm in retry logic. The idea is to
+        // exponentially increase the delay for each retry based on the number
+        // of previous retries. This is done to reduce the load of retries on
+        // the system by all the tasks at same time, and giving system more
+        // time to stabilize in next retry then the previous retry.
         long delay = getExponentialDelay(statNameRetryCount);
 
         logWarning("%s: Scheduling retry #%d of task (counter:%s) in %d microseconds",
-                getSelfLink(),
-                retryCounter,
-                statNameRetryCount,
-                delay);
+                getSelfLink(), retryCounter,
+                statNameRetryCount, delay);
 
         getHost().schedule(task, delay, TimeUnit.MICROSECONDS);
     }
 
     /**
-     * Exponential backoff rely on retry count stat. If this stat is not available
-     * then we will fall back to constant delay for each retry.
-     * To get exponential delay, multiply retry count's power of 2 with constant delay.
+     * Exponential backoff rely on retry count stat. If this stat is not
+     * available then we will fall back to constant delay for each retry. To get
+     * exponential delay, multiply retry count's power of 2 with constant delay.
+     *
      * @param statNameRetryCount
      */
     private long getExponentialDelay(String statNameRetryCount) {
         long delay = getHost().getMaintenanceIntervalMicros();
         ServiceStats.ServiceStat stat = getStat(statNameRetryCount);
         if (stat != null && stat.latestValue > 0) {
-            return (1 << ((long)stat.latestValue)) * delay;
+            return (1 << ((long) stat.latestValue)) * delay;
         }
 
         return delay;
@@ -728,8 +729,7 @@ public class SynchronizationTaskService
             return false;
         }
 
-        Operation selectOp = Operation
-                .createPost(null)
+        Operation selectOp = Operation.createPost(null)
                 .setExpiration(task.documentExpirationTimeMicros)
                 .setCompletion((o, e) -> {
                     if (e != null) {
@@ -737,14 +737,16 @@ public class SynchronizationTaskService
                         return;
                     }
 
-                    NodeSelectorService.SelectOwnerResponse rsp = o.getBody(
-                            NodeSelectorService.SelectOwnerResponse.class);
+                    NodeSelectorService.SelectOwnerResponse rsp = o
+                            .getBody(NodeSelectorService.SelectOwnerResponse.class);
 
                     if (!rsp.isLocalHostOwner) {
-                        logWarning("Current node %s is no longer owner for the factory %s. Cancelling synchronization",
+                        logWarning(
+                                "Current node %s is no longer owner for the factory %s. Cancelling synchronization",
                                 this.getHost().getId(), task.factorySelfLink);
 
-                        sendSelfCancellationPatch(task, "Local node is no longer owner for this factory.");
+                        sendSelfCancellationPatch(task,
+                                "Local node is no longer owner for this factory.");
                         return;
                     }
 
@@ -771,15 +773,12 @@ public class SynchronizationTaskService
         // retryCount to 0, to avoid retrying on a node that is actually
         // down. Not doing so will cause un-necessary operation-tracking
         // that gets worse in conditions under heavy load.
-        Operation synchRequest = Operation.createPost(this, task.factorySelfLink)
-                .setBody(d)
+        Operation synchRequest = Operation.createPost(this, task.factorySelfLink).setBody(d)
                 .setCompletion(c)
-                .setReferer(getUri())
-                .setConnectionSharing(true)
+                .setReferer(getUri()).setConnectionSharing(true)
                 .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
-                .setExpiration(
-                        Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
+                .setExpiration(Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
                 .setRetryCount(0);
         try {
             sendRequest(synchRequest);
@@ -789,23 +788,42 @@ public class SynchronizationTaskService
         }
     }
 
-    private void setFactoryAvailability(
-            State task, boolean isAvailable, Consumer<Operation> action, Operation parentOp) {
+    private void handleCheckNodeGroupAvailabilityStage(State task) {
+        Operation get = Operation.createGet(getHost(), ServiceUriPaths.DEFAULT_NODE_GROUP)
+                .setCompletion((o, e) -> {
+                    if (e != null || !o.hasBody()) {
+                        sendSelfFailurePatch(task, "failed to get node group state");
+                        return;
+                    }
+
+                    NodeGroupState ngState = o.getBody(NodeGroupState.class);
+                    if (!NodeGroupUtils.isNodeGroupAvailable(getHost(), ngState)) {
+                        sendSelfFailurePatch(task, "node group is not available");
+                        return;
+                    }
+
+                    sendSelfFinishedPatch(task);
+                });
+        sendRequest(get);
+    }
+
+    private void setFactoryAvailability(State task, boolean isAvailable, Consumer<Operation> action,
+            Operation parentOp) {
         ServiceStats.ServiceStat body = new ServiceStats.ServiceStat();
         body.name = Service.STAT_NAME_AVAILABLE;
         body.latestValue = isAvailable ? STAT_VALUE_TRUE : STAT_VALUE_FALSE;
 
-        Operation put = Operation.createPut(
-                UriUtils.buildAvailableUri(this.getHost(), task.factorySelfLink))
-                .setBody(body)
-                .setConnectionSharing(true)
+        Operation put = Operation
+                .createPut(UriUtils.buildAvailableUri(this.getHost(), task.factorySelfLink))
+                .setBody(body).setConnectionSharing(true)
                 .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION)
                 .setCompletion((o, e) -> {
                     if (parentOp != null) {
                         parentOp.complete();
                     }
                     if (e != null) {
-                        logSevere("Setting factory availability failed with error %s", e.getMessage());
+                        logSevere("Setting factory availability failed with error %s",
+                                e.getMessage());
                         sendSelfFailurePatch(task, "Failed to set Factory Availability");
                         return;
                     }
@@ -819,4 +837,5 @@ public class SynchronizationTaskService
     private Consumer<State> subStageSetter(SubStage subStage) {
         return taskState -> taskState.subStage = subStage;
     }
+
 }
