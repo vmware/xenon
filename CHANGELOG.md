@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## 1.4.2-CR2-SNAPSHOT
+## 1.4.2-CR2
 
 ## 1.4.2-CR1
 
