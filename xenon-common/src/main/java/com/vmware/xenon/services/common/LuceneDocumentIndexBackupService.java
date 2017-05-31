@@ -155,14 +155,17 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
 
         // take snapshot
         boolean isZipBackup = EnumSet.of(ZIP, STREAM).contains(backupRequest.backupType);
+
+        LuceneDocumentIndexService.IndexStats indexStats;
         try {
-            takeSnapshot(localDestinationPath, isZipBackup);
+            indexStats = takeSnapshot(localDestinationPath, isZipBackup);
         } catch (IOException e) {
             logSevere(e);
             Files.deleteIfExists(localDestinationPath);
             throw e;
         }
 
+        originalOp.setBodyNoCloning(indexStats);
 
         if (isStreamBackup) {
             // upload the result.
@@ -192,13 +195,17 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
     }
 
 
-    private void takeSnapshot(Path destinationPath, boolean isZipBackup) throws IOException {
+    // IndexStats only supported ATM for ZIP files
+    private LuceneDocumentIndexService.IndexStats takeSnapshot(Path destinationPath, boolean isZipBackup) throws IOException {
 
         IndexWriter writer = this.indexService.writer;
         boolean isInMemoryIndex = isInMemoryIndex();
 
         SnapshotDeletionPolicy snapshotter = null;
         IndexCommit commit = null;
+
+        LuceneDocumentIndexService.IndexStats indexStats = new LuceneDocumentIndexService.IndexStats();
+
         try {
             // Create a snapshot so the index files won't be deleted.
             snapshotter = (SnapshotDeletionPolicy) writer.getConfig().getIndexDeletionPolicy();
@@ -215,7 +222,11 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                         fileList.addAll(files);
                     } else {
 
+                        // Get the reader
                         Path indexDirectoryPath = getIndexDirectoryPath();
+
+                        indexStats = this.indexService.getIndexStats(commit.getDirectory());
+
                         List<URI> files = commit.getFileNames().stream()
                                 .map(indexDirectoryPath::resolve)
                                 .map(Path::toUri)
@@ -288,6 +299,8 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
             }
             writer.deleteUnusedFiles();
         }
+
+        return indexStats;
     }
 
     private Path getIndexDirectoryPath() {
@@ -426,6 +439,11 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                         FileUtils.md5sum(restoreFrom.toFile()));
                 FileUtils.extractZipArchive(restoreFrom.toFile(), restoreTo);
                 newWriter = this.indexService.createWriter(restoreTo.toFile(), true);
+
+                // only supported on zip file for the moment
+                LuceneDocumentIndexService.IndexStats indexStats =
+                        this.indexService.getIndexStats(newWriter.getDirectory());
+                op.setBodyNoCloning(indexStats);
             } else {
                 // perform restore from directory
 
@@ -440,6 +458,7 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                     }
 
                     newWriter = this.indexService.createWriterWithLuceneDirectory(to, true);
+
 
                 } else {
                     logInfo("restoring index %s from directory %s", restoreTo, restoreFrom);

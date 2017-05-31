@@ -53,6 +53,7 @@ import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexUpgrader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -393,8 +394,18 @@ public class LuceneDocumentIndexService extends StatelessService {
         static final String KIND = Utils.buildKind(BackupRequest.class);
     }
 
+    /**
+     * This class will contain meaningful data on a zip file backup operation
+     */
+    public static class IndexStats {
+        public Integer numDocs = 0; // the number of documents in the lucene snapshot index
+        public Integer numDeletedDocs = 0; // the number of deleted documents in the lucene snapshot index
+        static final String KIND = Utils.buildKind(IndexStats.class);
+    }
+
     public static class BackupResponse extends ServiceDocument {
         public URI backupFile;
+        public IndexStats indexStats;
         static final String KIND = Utils.buildKind(BackupResponse.class);
     }
 
@@ -405,6 +416,11 @@ public class LuceneDocumentIndexService extends StatelessService {
         public URI backupFile;
         public Long timeSnapshotBoundaryMicros;
         static final String KIND = Utils.buildKind(RestoreRequest.class);
+    }
+
+    public static class RestoreResponse extends ServiceDocument {
+        public IndexStats indexStats;
+        static final String KIND = Utils.buildKind(RestoreResponse.class);
     }
 
     public static class MaintenanceRequest {
@@ -587,6 +603,22 @@ public class LuceneDocumentIndexService extends StatelessService {
         return createWriterWithLuceneDirectory(luceneDirectory, doUpgrade);
     }
 
+    /**
+     * Populates basic stats for a given index
+     * @param indexDirectory - The lucene index directory
+     * @return - Basic stats object for the index
+     * @throws IOException
+     */
+    public IndexStats getIndexStats(Directory indexDirectory) throws IOException {
+        IndexStats indexStats = new IndexStats();
+        try (IndexReader reader = DirectoryReader.open(indexDirectory)) {
+            indexStats.numDocs = reader.numDocs();
+            indexStats.numDeletedDocs = reader.numDeletedDocs();
+        }
+
+        return indexStats;
+    }
+
     IndexWriter createWriterWithLuceneDirectory(Directory dir, boolean doUpgrade) throws Exception {
         Analyzer analyzer = new SimpleAnalyzer();
         IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
@@ -767,8 +799,11 @@ public class LuceneDocumentIndexService extends StatelessService {
                         return;
                     }
 
+                    // Only a Zip file backup will provide meaningful stats at the moment
+                    IndexStats indexStats = o.getBody(IndexStats.class);
                     BackupResponse response = new BackupResponse();
                     response.backupFile = backupRequest.destination;
+                    response.indexStats = indexStats;
 
                     op.transferResponseHeadersFrom(o);
                     op.setBodyNoCloning(response);
@@ -804,7 +839,14 @@ public class LuceneDocumentIndexService extends StatelessService {
                         op.fail(e);
                         return;
                     }
+
+                    // Only a Zip file backup will provide meaningful stats at the moment
+                    IndexStats indexStats = o.getBody(IndexStats.class);
+                    RestoreResponse response = new RestoreResponse();
+                    response.indexStats = indexStats;
+
                     op.transferResponseHeadersFrom(o);
+                    op.setBodyNoCloning(response);
                     op.complete();
                 });
 

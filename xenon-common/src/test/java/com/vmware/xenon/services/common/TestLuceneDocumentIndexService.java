@@ -91,6 +91,7 @@ import com.vmware.xenon.services.common.ExampleService.ExampleODLService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService.BackupResponse;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService.PaginatedSearcherInfo;
+import com.vmware.xenon.services.common.LuceneDocumentIndexService.RestoreResponse;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
@@ -3135,6 +3136,11 @@ public class TestLuceneDocumentIndexService {
 
         TestRequestSender sender = new TestRequestSender(this.host);
         BackupResponse backupResponse = sender.sendAndWait(backupOp, BackupResponse.class);
+        LuceneDocumentIndexService.IndexStats indexStats = backupResponse.indexStats;
+
+        assertNotNull(indexStats);
+        assertTrue(indexStats.numDocs == count);
+        assertTrue(indexStats.numDeletedDocs == 0);
 
         // destroy and spin up new host
         this.host.tearDown();
@@ -3148,7 +3154,11 @@ public class TestLuceneDocumentIndexService {
 
         Operation restoreOp = Operation.createPatch(UriUtils.buildUri(this.host, ServiceUriPaths.CORE_DOCUMENT_INDEX))
                 .setBody(r);
-        sender.sendAndWait(restoreOp);
+        RestoreResponse restoreResponse = sender.sendAndWait(restoreOp, RestoreResponse.class);
+        indexStats = restoreResponse.indexStats;
+        assertNotNull(restoreResponse);
+        assertTrue(indexStats.numDocs == count);
+        assertTrue(indexStats.numDeletedDocs == 0);
 
         // Check our documents are still there
         ServiceDocumentQueryResult queryResult = this.host

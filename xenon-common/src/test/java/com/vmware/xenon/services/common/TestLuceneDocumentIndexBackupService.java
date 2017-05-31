@@ -102,7 +102,6 @@ public class TestLuceneDocumentIndexBackupService {
 
         Operation backupOp = Operation.createPatch(this.host, ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP).setBody(b);
         this.host.getTestRequestSender().sendAndWait(backupOp, BackupResponse.class);
-
         // destroy and spin up new host
         this.host.tearDown();
         this.host = createVerificationHost();
