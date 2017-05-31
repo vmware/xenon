@@ -201,6 +201,7 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
         IndexCommit commit = null;
         try {
             // Create a snapshot so the index files won't be deleted.
+            writer.commit();
             snapshotter = (SnapshotDeletionPolicy) writer.getConfig().getIndexDeletionPolicy();
             commit = snapshotter.snapshot();
 
