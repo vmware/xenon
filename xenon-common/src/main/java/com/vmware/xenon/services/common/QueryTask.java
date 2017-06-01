@@ -278,6 +278,13 @@ public class QueryTask extends ServiceDocument {
         public Integer groupResultLimit;
 
         /**
+         * Skip number of documents.
+         * It is expected to be used with TOP_RESULTS and SINGLE_USE options with sorting term specified, but not limited to.
+         * When used with resultLimit, documents on the first result page start from the one after skipping N offset documents.
+         */
+        public int offset;
+
+        /**
          * The query is retried until the result count matches the
          * specified value or the query expires.
          */
@@ -384,6 +391,7 @@ public class QueryTask extends ServiceDocument {
             clonedSpec.groupSortTerm = this.groupSortTerm;
             clonedSpec.groupSortOrder = this.groupSortOrder;
             clonedSpec.timeSnapshotBoundaryMicros = this.timeSnapshotBoundaryMicros;
+            clonedSpec.offset = this.offset;
         }
     }
 
@@ -1063,6 +1071,11 @@ public class QueryTask extends ServiceDocument {
          */
         public Builder setGroupResultLimit(int resultLimit) {
             this.querySpec.groupResultLimit = resultLimit;
+            return this;
+        }
+
+        public Builder setOffset(int offset) {
+            this.querySpec.offset = offset;
             return this;
         }
 

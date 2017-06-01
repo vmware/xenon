@@ -39,6 +39,12 @@
 * Breaking change: Changed signature of Utils.encodeBody() (both overloaded methods)
   to take an additional 'isRequest' parameter.
 
+* "offset" parameter is added to QueryTask. This enables pagination logic to be
+  executed in QueryTaskService rather than caller visits next pages.
+  Major usecase is for providing data for list style pages, and it is expected to be used with 
+  TOP_RESULTS and SINGLE_USE QueryOption with sorting term specified but not limited to.
+
+
 ## 1.5.0
 
 * Breaking change: Links to QueryPageService instances (e.g. the nextPageLink
