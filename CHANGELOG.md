@@ -1,5 +1,7 @@
 # CHANGELOG
 
+## 1.4.2-CR3-SNAPSHOT
+
 ## 1.4.2-CR2
 
 * Bug fix related to null pointer exceptions during synchronization. For
