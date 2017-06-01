@@ -1572,7 +1572,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             // for each group generate a query page link
             String pageLink = createNextPage(op, s, qs, lucenePerGroupQuery, sort,
-                    null, null,
+                    null, 0, null,
                     task.documentExpirationTimeMicros, task.indexLink, false);
 
             rsp.nextPageLinksPerGroup.put(groupValue, pageLink);
@@ -1583,7 +1583,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             groups = groupingSearch.search(s, tq, groupLimit + groupOffset, groupLimit);
             if (groups.totalGroupedHitCount > 0) {
                 rsp.nextPageLink = createNextPage(op, s, qs, tq, sort,
-                        null, groupLimit + groupOffset,
+                        null, 0, groupLimit + groupOffset,
                         task.documentExpirationTimeMicros, task.indexLink, page != null);
             }
         }
@@ -1724,6 +1724,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         int queryCount = 0;
         rsp.queryTimeMicros = 0L;
         long start = queryStartTimeMicros;
+        int offset = (qs == null || qs.offset == null) ? 0 : qs.offset;
 
         do {
             // Special-case handling of single-version documents to use search() instead of
@@ -1769,6 +1770,25 @@ public class LuceneDocumentIndexService extends StatelessService {
                         queryStartTimeMicros);
                 end = Utils.getNowMicrosUtc();
 
+                // remove docs for offset
+                int size = rsp.documentLinks.size();
+                if (size < offset) {
+                    rsp.documentLinks.clear();
+                    rsp.documentCount = 0L;
+                    if (rsp.documents != null) {
+                        rsp.documents.clear();
+                    }
+                    offset -= size;
+                } else {
+                    List<String> links = rsp.documentLinks.subList(0, offset);
+                    if (rsp.documents != null) {
+                        links.forEach(rsp.documents::remove);
+                    }
+                    rsp.documentCount -= links.size();
+                    links.clear();
+                    offset = 0;
+                }
+
                 if (hasOption(ServiceOption.INSTRUMENTATION)) {
                     String statName = options.contains(QueryOption.INCLUDE_ALL_VERSIONS)
                             ? STAT_NAME_QUERY_ALL_VERSIONS_DURATION_MICROS
@@ -1799,13 +1819,14 @@ public class LuceneDocumentIndexService extends StatelessService {
 
                     boolean createNextPageLink = true;
                     if (hasPage) {
+                        int numOfHits = hitCount + offset;
                         createNextPageLink = checkNextPageHasEntry(bottom, options, s,
-                                tq, sort, hitCount, qs, queryStartTimeMicros);
+                                tq, sort, numOfHits, qs, queryStartTimeMicros);
                     }
 
                     if (createNextPageLink) {
                         rsp.nextPageLink = createNextPage(op, s, qs, tq, sort, bottom,
-                                null, expiration, indexLink, hasPage);
+                                offset, null, expiration, indexLink, hasPage);
                     }
                     break;
                 }
@@ -1892,6 +1913,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             Query tq,
             Sort sort,
             ScoreDoc after,
+            int offset,
             Integer groupOffset,
             long expiration,
             String indexLink,
@@ -1935,6 +1957,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             spec.options.remove(QueryOption.GROUP_BY);
         }
 
+        spec.offset = offset;
         spec.context.nativeQuery = tq;
         spec.context.nativePage = page;
         spec.context.nativeSearcher = s;

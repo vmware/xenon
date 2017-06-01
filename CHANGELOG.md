@@ -2,6 +2,13 @@
 
 ## 1.5.2-SNAPSHOT
 
+* "offset" parameter is added to QueryTask. This enables pagination logic to
+  be executed in QueryTaskService rather than caller visits next pages.
+  Major usecase is to provide data for list style pages, and it is expected to
+  be used with TOP_RESULTS query option and sorting term specified but not
+  limited to.
+
+
 ## 1.5.1
 
 * Providing an override for the method ServiceHost.startDefaultCoreServicesSynchronously
@@ -40,6 +47,7 @@
 
 * Breaking change: Changed signature of Utils.encodeBody() (both overloaded methods)
   to take an additional 'isRequest' parameter.
+
 
 ## 1.5.0
 

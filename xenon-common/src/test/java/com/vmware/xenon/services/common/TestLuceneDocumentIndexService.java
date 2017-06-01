@@ -18,6 +18,7 @@ import static javax.xml.bind.DatatypeConverter.printBase64Binary;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.io.File;
@@ -70,6 +71,7 @@ import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceConfigUpdateRequest;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
+import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost;
@@ -3541,6 +3543,223 @@ public class TestLuceneDocumentIndexService {
             assertEquals(r.counter, testState.counter);
         }
     }
+
+    @Test
+    public void offset() throws Throwable {
+        setUpHost(false);
+
+        TestRequestSender sender = this.host.getTestRequestSender();
+        List<Operation> ops = new ArrayList<>();
+        int count = 5;
+        for (int i = 0; i < count; i++) {
+            ExampleServiceState state = new ExampleServiceState();
+            state.name = "foo-" + i;
+            state.documentSelfLink = state.name;
+            ops.add(Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(state));
+        }
+        sender.sendAndWait(ops);
+
+        QueryTask.Query query = QueryTask.Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+
+        QueryTask task = QueryTask.Builder.createDirectTask()
+                .setOffset(3)
+                .orderAscending(ExampleServiceState.FIELD_NAME_NAME, TypeName.STRING)
+                .setQuery(query)
+                .build();
+
+        Operation post = Operation.createPost(this.host, LocalQueryTaskFactoryService.SELF_LINK).setBody(task);
+        QueryTask result = sender.sendAndWait(post, QueryTask.class);
+
+        assertNotNull(result.results.documentLinks);
+        assertEquals(Long.valueOf(2), result.results.documentCount);
+        assertEquals(2, result.results.documentLinks.size());
+        assertEquals("/core/examples/foo-3", result.results.documentLinks.get(0));
+        assertEquals("/core/examples/foo-4", result.results.documentLinks.get(1));
+
+        // with offset=5 (same as number of documents)
+        task = QueryTask.Builder.createDirectTask()
+                .setOffset(5)
+                .orderAscending(ExampleServiceState.FIELD_NAME_NAME, TypeName.STRING)
+                .setQuery(query)
+                .build();
+
+        post = Operation.createPost(this.host, LocalQueryTaskFactoryService.SELF_LINK).setBody(task);
+        result = sender.sendAndWait(post, QueryTask.class);
+
+        assertEquals(Long.valueOf(0), result.results.documentCount);
+        assertNotNull(result.results.documentLinks);
+        assertEquals(result.results.documentLinks.size(), 0);
+
+        // with offset=7 (greater than actual document)
+        task = QueryTask.Builder.createDirectTask()
+                .setOffset(7)
+                .orderAscending(ExampleServiceState.FIELD_NAME_NAME, TypeName.STRING)
+                .setQuery(query)
+                .build();
+
+        post = Operation.createPost(this.host, LocalQueryTaskFactoryService.SELF_LINK).setBody(task);
+        result = sender.sendAndWait(post, QueryTask.class);
+
+        assertEquals(Long.valueOf(0), result.results.documentCount);
+        assertNotNull(result.results.documentLinks);
+        assertEquals(result.results.documentLinks.size(), 0);
+
+        // with TOP_RESULT
+        task = QueryTask.Builder.createDirectTask()
+                .setOffset(3)
+                .setResultLimit(10)
+                .addOption(QueryOption.TOP_RESULTS)
+                .orderAscending(ExampleServiceState.FIELD_NAME_NAME, TypeName.STRING)
+                .setQuery(query)
+                .build();
+
+        post = Operation.createPost(this.host, LocalQueryTaskFactoryService.SELF_LINK).setBody(task);
+        result = sender.sendAndWait(post, QueryTask.class);
+
+        assertEquals(Long.valueOf(2), result.results.documentCount);
+        assertEquals(2, result.results.documentLinks.size());
+        assertEquals("/core/examples/foo-3", result.results.documentLinks.get(0));
+        assertEquals("/core/examples/foo-4", result.results.documentLinks.get(1));
+
+
+        // with EXPAND_CONTENT
+        task = QueryTask.Builder.createDirectTask()
+                .setOffset(3)
+                .addOption(QueryOption.EXPAND_CONTENT)
+                .orderAscending(ExampleServiceState.FIELD_NAME_NAME, TypeName.STRING)
+                .setQuery(query)
+                .build();
+
+        post = Operation.createPost(this.host, LocalQueryTaskFactoryService.SELF_LINK).setBody(task);
+        result = sender.sendAndWait(post, QueryTask.class);
+
+        assertEquals(Long.valueOf(2), result.results.documentCount);
+        assertEquals(2, result.results.documentLinks.size());
+        assertEquals("/core/examples/foo-3", result.results.documentLinks.get(0));
+        assertEquals("/core/examples/foo-4", result.results.documentLinks.get(1));
+
+        assertNotNull(result.results.documents);
+        assertEquals(2, result.results.documents.size());
+        assertTrue(result.results.documents.containsKey("/core/examples/foo-3"));
+        assertTrue(result.results.documents.containsKey("/core/examples/foo-4"));
+    }
+
+    @Test
+    public void offsetWithResultLimit() throws Throwable {
+        setUpHost(false);
+
+        TestRequestSender sender = this.host.getTestRequestSender();
+        List<Operation> ops = new ArrayList<>();
+        int count = 5;
+        for (int i = 0; i < count; i++) {
+            ExampleServiceState state = new ExampleServiceState();
+            state.name = "foo-" + i;
+            state.documentSelfLink = state.name;
+            ops.add(Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(state));
+        }
+        sender.sendAndWait(ops);
+
+        QueryTask.Query query = QueryTask.Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+
+        // with resultLimit
+        QueryTask task = QueryTask.Builder.createDirectTask()
+                .setOffset(1)
+                .setResultLimit(2)
+                .orderAscending(ExampleServiceState.FIELD_NAME_NAME, TypeName.STRING)
+                .setQuery(query)
+                .build();
+
+        Operation post = Operation.createPost(this.host, LocalQueryTaskFactoryService.SELF_LINK).setBody(task);
+        QueryTask result = sender.sendAndWait(post, QueryTask.class);
+
+        assertNotNull(result.results.nextPageLink);
+        QueryTask p1 = sender.sendAndWait(Operation.createGet(this.host, result.results.nextPageLink), QueryTask.class);
+
+        assertEquals(Long.valueOf(2), p1.results.documentCount);
+        assertEquals(2, p1.results.documentLinks.size());
+        assertEquals("/core/examples/foo-1", p1.results.documentLinks.get(0));
+        assertEquals("/core/examples/foo-2", p1.results.documentLinks.get(1));
+
+        assertNotNull(p1.results.nextPageLink);
+        QueryTask p2 = sender.sendAndWait(Operation.createGet(this.host, p1.results.nextPageLink), QueryTask.class);
+
+        assertEquals(Long.valueOf(2), p2.results.documentCount);
+        assertEquals(2, p2.results.documentLinks.size());
+        assertEquals("/core/examples/foo-3", p2.results.documentLinks.get(0));
+        assertEquals("/core/examples/foo-4", p2.results.documentLinks.get(1));
+
+        assertNull(p2.results.nextPageLink);
+
+        // offset is greater than the num of result
+        task = QueryTask.Builder.createDirectTask()
+                .setOffset(10)
+                .setResultLimit(2)
+                .orderAscending(ExampleServiceState.FIELD_NAME_NAME, TypeName.STRING)
+                .setQuery(query)
+                .build();
+
+        post = Operation.createPost(this.host, LocalQueryTaskFactoryService.SELF_LINK).setBody(task);
+        result = sender.sendAndWait(post, QueryTask.class);
+
+        assertNotNull(result.results.nextPageLink);
+        p1 = sender.sendAndWait(Operation.createGet(this.host, result.results.nextPageLink), QueryTask.class);
+
+        assertEquals(Long.valueOf(0), p1.results.documentCount);
+        assertNotNull(p1.results.documentLinks);
+        assertEquals(0, p1.results.documentLinks.size());
+
+        // first page docs are less than resultLimit
+        task = QueryTask.Builder.createDirectTask()
+                .setOffset(4)
+                .setResultLimit(2)
+                .orderAscending(ExampleServiceState.FIELD_NAME_NAME, TypeName.STRING)
+                .setQuery(query)
+                .build();
+
+        post = Operation.createPost(this.host, LocalQueryTaskFactoryService.SELF_LINK).setBody(task);
+        result = sender.sendAndWait(post, QueryTask.class);
+
+        assertNotNull(result.results.nextPageLink);
+        p1 = sender.sendAndWait(Operation.createGet(this.host, result.results.nextPageLink), QueryTask.class);
+
+        assertEquals(Long.valueOf(1), p1.results.documentCount);
+        assertEquals(1, p1.results.documentLinks.size());
+        assertEquals("/core/examples/foo-4", p1.results.documentLinks.get(0));
+        assertNull(p1.results.nextPageLink);
+
+        // second page docs are less than resultLimit
+        task = QueryTask.Builder.createDirectTask()
+                .setOffset(2)
+                .setResultLimit(2)
+                .orderAscending(ExampleServiceState.FIELD_NAME_NAME, TypeName.STRING)
+                .setQuery(query)
+                .build();
+
+        post = Operation.createPost(this.host, LocalQueryTaskFactoryService.SELF_LINK).setBody(task);
+        result = sender.sendAndWait(post, QueryTask.class);
+
+        assertNotNull(result.results.nextPageLink);
+        p1 = sender.sendAndWait(Operation.createGet(this.host, result.results.nextPageLink), QueryTask.class);
+
+        assertEquals(Long.valueOf(2), p1.results.documentCount);
+        assertEquals(2, p1.results.documentLinks.size());
+        assertEquals("/core/examples/foo-2", p1.results.documentLinks.get(0));
+        assertEquals("/core/examples/foo-3", p1.results.documentLinks.get(1));
+
+        assertNotNull(p1.results.nextPageLink);
+        p2 = sender.sendAndWait(Operation.createGet(this.host, p1.results.nextPageLink), QueryTask.class);
+
+        assertEquals(Long.valueOf(1), p2.results.documentCount);
+        assertEquals(1, p2.results.documentLinks.size());
+        assertEquals("/core/examples/foo-4", p2.results.documentLinks.get(0));
+
+        assertNull(p2.results.nextPageLink);
+    }
+
 
     private HashMap<String, ExampleServiceState> loadState(URL exampleBodies) throws Throwable {
         File exampleServiceBodiesFile = new File(exampleBodies.toURI());
