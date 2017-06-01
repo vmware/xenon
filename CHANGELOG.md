@@ -21,6 +21,12 @@
   interacting with the destination cluster. Services can leverage this to alter
   their behavior based on whether handleStart comes from a migration or not.
 
+* "offset" parameter is added to QueryTask. This enables pagination logic to be
+  executed in QueryTaskService rather than caller visits next pages.
+  It is expected to be used with TOP_RESULTS and SINGLE_USE QueryOption with sorting
+  term specified but not limited to.
+
+
 ## 1.5.0
 
 * Breaking change: Links to QueryPageService instances (e.g. the nextPageLink
