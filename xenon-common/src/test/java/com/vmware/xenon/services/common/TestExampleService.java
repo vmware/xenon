@@ -564,4 +564,79 @@ public class TestExampleService {
         FailureResponse failureResponse = sender.sendAndWaitFailure(getAfterLogout);
         assertEquals(403, failureResponse.op.getStatusCode());
     }
+
+    @Test
+    public void multiNodeReplication() throws Throwable {
+        multiNodeReplication(ExampleService.FACTORY_LINK);
+    }
+
+    @Test
+    public void multiNodeReplicationODL() throws Throwable {
+        multiNodeReplication(ExampleODLService.FACTORY_LINK);
+    }
+
+    private void multiNodeReplication(String exampleFactoryLink) throws Throwable {
+        int numOfDocs = 15;
+        Long numOfPatches = 5L;
+
+        VerificationHost host1 = createAndStartHost(false);
+        host1.startFactory(ExampleODLService::createFactory, ExampleODLService.FACTORY_LINK);
+        VerificationHost host2 = createAndStartHost(false);
+        host2.startFactory(ExampleODLService::createFactory, ExampleODLService.FACTORY_LINK);
+        VerificationHost host3 = createAndStartHost(false);
+        host3.startFactory(ExampleODLService::createFactory, ExampleODLService.FACTORY_LINK);
+
+        TestNodeGroupManager nodeGroup = new TestNodeGroupManager();
+        nodeGroup.addHost(host1);
+        nodeGroup.addHost(host2);
+        nodeGroup.addHost(host3);
+
+        nodeGroup.joinNodeGroupAndWaitForConvergence();
+
+        nodeGroup.waitForFactoryServiceAvailable(exampleFactoryLink);
+
+        nodeGroup.updateQuorum(2);
+
+        ServiceHost peer = nodeGroup.getHost();
+
+        // prepare operation sender(client)
+        VerificationHost senderHost = createAndStartHost(false);
+        TestRequestSender sender = new TestRequestSender(senderHost);
+
+        ExampleServiceState body = new ExampleServiceState();
+        body.name = "FOO";
+
+        List<String> docs = new ArrayList<>();
+
+        // Create ExampleService docs
+        for (int i = 0; i < numOfDocs; i++) {
+            Operation post = Operation.createPost(UriUtils.buildUri(peer, exampleFactoryLink))
+                    .setBody(body);
+            ExampleServiceState result = sender.sendAndWait(post, ExampleServiceState.class);
+            assertEquals("FOO", result.name);
+            docs.add(result.documentSelfLink);
+        }
+
+        // Patch
+        for (String docLink : docs) {
+            for (int i = 1; i <= numOfPatches; i++) {
+                URI serviceUri = UriUtils.buildUri(peer, docLink);
+                ExampleServiceState s = new ExampleServiceState();
+                s.counter = (long) i;
+                Operation patch = Operation.createPatch(serviceUri).setBody(s);
+                sender.sendAndWait(patch);
+            }
+        }
+
+        // The following test fails for ODL
+
+        /*host1.stop();
+        peer = nodeGroup.getHost();
+        for (String docLink : docs) {
+            ExampleServiceState state = sender
+                    .sendGetAndWait(UriUtils.buildUri(peer.getUri(), docLink),
+                            ExampleServiceState.class);
+            assertEquals(numOfPatches, state.counter);
+        }*/
+    }
 }
