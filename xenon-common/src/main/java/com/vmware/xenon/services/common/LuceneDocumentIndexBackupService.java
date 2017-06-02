@@ -133,7 +133,7 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                     // perform backup
                     try {
                         handleBackupInternal(op, backupRequest);
-                    } catch (IOException e) {
+                    } catch (Exception e) {
                         op.fail(e);
                         return;
                     }
@@ -283,6 +283,9 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                     }
                 }
             }
+        } catch(Exception e) {
+            logSevere("Failed to take snapshot: %s", Utils.toString(e));
+            throw e;
         } finally {
             if (snapshotter != null && commit != null) {
                 snapshotter.release(commit);
