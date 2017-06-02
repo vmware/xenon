@@ -133,7 +133,8 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                     // perform backup
                     try {
                         handleBackupInternal(op, backupRequest);
-                    } catch (IOException e) {
+                    } catch (Exception e) {
+                        logSevere("Failed to handle backup request. %s", Utils.toString(e));
                         op.fail(e);
                         return;
                     }
