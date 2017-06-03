@@ -483,7 +483,8 @@ public class SynchronizationTaskService
                     // Query returned zero results.Self-patch the task
                     // to FINISHED state.
                     if (rsp == null || rsp.nextPageLink == null) {
-                        sendSelfFinishedPatch(task);
+                        sendSelfPatch(task, TaskState.TaskStage.STARTED,
+                                subStageSetter(SubStage.CHECK_NG_AVAILABILITY));
                         return;
                     }
 
@@ -540,7 +541,7 @@ public class SynchronizationTaskService
 
     private void handleSynchronizeStage(State task, boolean verifyOwnership) {
         if (task.queryPageReference == null) {
-            sendSelfFinishedPatch(task);
+            sendSelfPatch(task, TaskState.TaskStage.STARTED, subStageSetter(SubStage.CHECK_NG_AVAILABILITY));
             return;
         }
 
@@ -650,10 +651,14 @@ public class SynchronizationTaskService
                             logSevere("Synchronization failed for %d services", failedServices.size());
                         }
                         adjustStat(STAT_NAME_CHILD_SYNCH_FAILURE_COUNT, failedServices.size());
+                        task.synchCompletionCount += (totalServiceCount - failedServices.size());
+                        sendSelfFailurePatch(task, "Too many retries in synchronizing child services");
+                        return;
                     }
                 } else {
                     // Just fail the synch-task since we go so many failures
                     adjustStat(STAT_NAME_CHILD_SYNCH_FAILURE_COUNT, failedServices.size());
+                    task.synchCompletionCount += (totalServiceCount - failedServices.size());
                     sendSelfFailurePatch(task, "Too many failures in synchronizing child services");
                     return;
                 }
@@ -664,7 +669,7 @@ public class SynchronizationTaskService
                     ? UriUtils.buildUri(task.queryPageReference, rsp.nextPageLink)
                     : null;
 
-            task.synchCompletionCount = task.synchCompletionCount + totalServiceCount;
+            task.synchCompletionCount += totalServiceCount;
 
             if (task.queryPageReference == null) {
                 sendSelfPatch(task, TaskState.TaskStage.STARTED, subStageSetter(SubStage.CHECK_NG_AVAILABILITY));

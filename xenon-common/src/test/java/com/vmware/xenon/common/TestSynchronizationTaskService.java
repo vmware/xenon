@@ -227,20 +227,20 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         waitForSynchRetries(result, SynchronizationTaskService.STAT_NAME_CHILD_SYNCH_FAILURE_COUNT,
                 (synchRetryCount) -> synchRetryCount.latestValue == task.queryResultLimit);
 
-        // Test after all retries the task will be in passed state with at-least half
+        // Test after all retries the task will be in failed state with at-least half
         // successful synched services in each page.
         createExampleServices(sender, this.host, this.serviceCount * 3, "pass", SynchRetryExampleService.FACTORY_LINK);
-        task.queryResultLimit = this.serviceCount * 2;
+        task.queryResultLimit = this.serviceCount * 4;
         op = Operation
                 .createPost(UriUtils.buildUri(this.host, SynchronizationTaskService.FACTORY_LINK))
                 .setBody(task);
 
         result = sender.sendAndWait(op, SynchronizationTaskService.State.class);
 
-        assertEquals(TaskState.TaskStage.FINISHED, result.taskInfo.stage);
-        assertEquals(this.serviceCount * 4, result.synchCompletionCount);
+        assertEquals(TaskState.TaskStage.FAILED, result.taskInfo.stage);
+        assertEquals(this.serviceCount * 3, result.synchCompletionCount);
 
-        // Verify that half of the child services were failed.
+        // Verify that this.serviceCount of the child services were failed.
         waitForSynchRetries(result, SynchronizationTaskService.STAT_NAME_CHILD_SYNCH_FAILURE_COUNT,
                 (synchRetryCount) -> synchRetryCount.latestValue == this.serviceCount);
 
