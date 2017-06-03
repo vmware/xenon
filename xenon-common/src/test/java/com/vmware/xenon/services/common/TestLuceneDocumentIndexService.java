@@ -3475,7 +3475,7 @@ public class TestLuceneDocumentIndexService {
         int pageSize = LuceneDocumentIndexService.getImplicitQueryProcessingPageSize();
         try {
             // Without an implicit processing limit, we should see n passes per query
-            verifyImplicitQueryPageSize(querySpec, 1, (1 + this.updateCount));
+            verifyImplicitQueryPageSize(querySpec, 1, this.updateCount);
             // With an implicit processing limit, we should see one pass per query
             int size = (int) (1 + this.serviceCount) * this.updateCount;
             verifyImplicitQueryPageSize(querySpec, size, 1.0);
