@@ -13,10 +13,13 @@
 
 package com.vmware.xenon.services.common;
 
+import java.util.function.Consumer;
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.AuthorizationSetupHelper;
+import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceHost;
+import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 
@@ -113,6 +116,19 @@ public class ExampleServiceHost extends ServiceHost {
         }
 
         setAuthorizationContext(null);
+
+        // subscription callback
+        Consumer<Operation> target = (notifyOp) -> {
+            System.out.println("notification: " + notifyOp);
+            notifyOp.complete();
+        };
+
+        Operation createSub = Operation.createPost(
+                UriUtils.buildUri(this, ServiceUriPaths.CORE_DOCUMENT_INDEX))
+                .setReferer(this.getUri());
+
+        this.startSubscriptionService(createSub, target);
+
 
         return this;
     }

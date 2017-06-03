@@ -411,6 +411,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         static final String KIND = Utils.buildKind(MaintenanceRequest.class);
     }
 
+    public static class CommitNotification {
+        static final String KIND = Utils.buildKind(CommitNotification.class);
+    }
+
     public LuceneDocumentIndexService() {
         this(FILE_PATH_LUCENE);
     }
@@ -2854,6 +2858,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             setTimeSeriesHistogramStat(STAT_NAME_COMMIT_DURATION_MICROS,
                     AGGREGATION_TYPE_AVG_MAX,
                     TimeUnit.NANOSECONDS.toMicros(endNanos - startNanos));
+
+            Operation commitNotification = Operation.createPatch(null).setBody(new CommitNotification());
+            publish(commitNotification);
 
             startNanos = endNanos;
             applyFileLimitRefreshWriter(false);
