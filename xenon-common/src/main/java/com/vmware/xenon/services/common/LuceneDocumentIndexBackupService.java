@@ -35,10 +35,21 @@ import java.util.Set;
 import java.util.concurrent.CancellationException;
 
 import org.apache.lucene.document.LongPoint;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexCommit;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.SnapshotDeletionPolicy;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.Sort;
+import org.apache.lucene.search.SortField;
+import org.apache.lucene.search.SortedNumericSortField;
+import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.MMapDirectory;
@@ -103,7 +114,6 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
         Operation.failActionNotSupported(patch);
     }
 
-
     private void handleBackup(Operation op) {
 
         BackupRequest backupRequest = op.getBody(BackupRequest.class);
@@ -163,7 +173,6 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
             throw e;
         }
 
-
         if (isStreamBackup) {
             // upload the result.
             Operation uploadOp = Operation.createPost(backupRequest.destination)
@@ -174,7 +183,8 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                         try {
                             Files.deleteIfExists(localDestinationPath);
                         } catch (IOException e) {
-                            logWarning("Failed to delete temporary backup file %s: %s", localDestinationPath, Utils.toString(e));
+                            logWarning("Failed to delete temporary backup file %s: %s", localDestinationPath,
+                                    Utils.toString(e));
                         }
 
                         if (oox != null) {
@@ -190,7 +200,6 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
             originalOp.complete();
         }
     }
-
 
     private void takeSnapshot(Path destinationPath, boolean isZipBackup) throws IOException {
 
@@ -320,14 +329,14 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
         } else if (backupRequest.backupType == DIRECTORY) {
             Path destinationPath = Paths.get(destinationUri);
             if (Files.isRegularFile(destinationPath)) {
-                String message = String.format("destination %s must be a local directory for incremental backup.", destinationPath);
+                String message = String
+                        .format("destination %s must be a local directory for incremental backup.", destinationPath);
                 return new IllegalStateException(message);
             }
         }
 
         return null;
     }
-
 
     private void handleRestore(Operation op) throws IOException {
         ServiceHostManagementService.RestoreRequest restoreRequest = op.getBody(RestoreRequest.class);
@@ -340,7 +349,6 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
 
         String scheme = restoreRequest.destination.getScheme();
         boolean isFromRemote = UriUtils.HTTP_SCHEME.equals(scheme) || UriUtils.HTTPS_SCHEME.equals(scheme);
-
 
         Path backupFilePath;
         if (isFromRemote) {
@@ -370,7 +378,6 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                     }
                 });
 
-
         // perform download
         if (isFromRemote) {
             FileUtils.getFile(getHost().getClient(), downloadFileOp, backupFilePath.toFile());
@@ -379,7 +386,6 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
             downloadFileOp.complete();
         }
     }
-
 
     private void restoreFromLocal(Operation op, Path restoreFrom, Long timeSnapshotBoundaryMicros) {
 
@@ -406,7 +412,7 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
             this.indexService.writerSync.acquire(semaphoreCount);
             this.indexService.close(w);
 
-           // extract zip file to temp directory
+            // extract zip file to temp directory
             if (restoreFromZipFile && isInMemoryIndex) {
                 Path tempDir = Files.createTempDirectory("restore-" + Utils.getSystemNowMicrosUtc());
                 pathToDeleteAtFinally.add(tempDir);
@@ -456,8 +462,70 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                 }
             }
 
-            // perform time snapshot recovery which means deleting all docs updated after given time
+            // perform time snapshot recovery
             if (timeSnapshotBoundaryMicros != null) {
+                IndexSearcher s = new IndexSearcher(DirectoryReader.open(newWriter, true, true));
+                Set<String> updated = new HashSet<>();
+
+                Query query = LongPoint.newRangeQuery(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS,
+                        timeSnapshotBoundaryMicros + 1, Long.MAX_VALUE);
+                Sort versionSort = new Sort(new SortedNumericSortField(
+                        ServiceDocument.FIELD_NAME_VERSION, SortField.Type.LONG, true));
+
+                Set<String> fieldsToLoadSelfLink = new HashSet<>();
+                fieldsToLoadSelfLink.add(ServiceDocument.FIELD_NAME_SELF_LINK);
+                Set<String> fieldsToLoadUniqueId = new HashSet<>();
+                fieldsToLoadUniqueId.add(LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ATTRIBUTE_UNIQUE_ID);
+
+                ScoreDoc after = null;
+                do {
+                    TopDocs results = s.searchAfter(after, query, 1000);
+                    if (results == null || results.scoreDocs == null || results.scoreDocs.length == 0) {
+                        break;
+                    }
+
+                    DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor();
+                    for (ScoreDoc sd : results.scoreDocs) {
+                        loadDoc(s, visitor, sd.doc, fieldsToLoadSelfLink);
+                        String selfLink = visitor.documentSelfLink;
+                        if (updated.contains(selfLink)) {
+                            continue;
+                        }
+
+                        updated.add(selfLink);
+
+                        Query documentClause = new TermQuery(
+                                new Term(ServiceDocument.FIELD_NAME_SELF_LINK, selfLink));
+                        Query boundaryClause = LongPoint.newRangeQuery(
+                                ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS, 0,
+                                timeSnapshotBoundaryMicros);
+                        Query booleanQuery = new BooleanQuery.Builder()
+                                .add(documentClause, BooleanClause.Occur.MUST)
+                                .add(boundaryClause, BooleanClause.Occur.MUST)
+                                .build();
+
+                        TopDocs hit = s.search(booleanQuery, 1, versionSort, false, false);
+                        if (hit == null || hit.scoreDocs == null || hit.scoreDocs.length == 0) {
+                            continue;
+                        }
+
+                        loadDoc(s, visitor, hit.scoreDocs[0].doc, fieldsToLoadUniqueId);
+                        Term uniqueIdTerm = new Term(
+                                LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ATTRIBUTE_UNIQUE_ID,
+                                visitor.documentUniqueId);
+                        newWriter.updateNumericDocValue(uniqueIdTerm,
+                                LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ATTRIBUTE_NOT_CURRENT,
+                                0);
+                    }
+
+                    if (results.scoreDocs.length < 1000) {
+                        break;
+                    }
+
+                    after = results.scoreDocs[results.scoreDocs.length - 1];
+                } while (true);
+
+                // Poor man's solution for now -- delete all the documents we just processed
                 Query luceneQuery = LongPoint.newRangeQuery(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS,
                         timeSnapshotBoundaryMicros + 1, Long.MAX_VALUE);
                 newWriter.deleteDocuments(luceneQuery);
@@ -482,8 +550,13 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
         }
     }
 
+    private void loadDoc(IndexSearcher searcher, DocumentStoredFieldVisitor visitor, int docId,
+            Set<String> fields) throws IOException {
+        visitor.reset(fields);
+        searcher.doc(docId, visitor);
+    }
+
     private boolean isInMemoryIndex() {
         return this.indexService.indexDirectory == null;
     }
-
 }
