@@ -64,6 +64,18 @@ class LuceneIndexDocumentHelper {
 
     public static final String SORT_PROPERTY_NAME_SUFFIX = "_sort";
 
+    private static final String FIELD_NAME_INDEXING_ATTRIBUTE_PREFIX =
+            "xenon.documentIndexingAttribute";
+
+    public static final String FIELD_NAME_INDEXING_ATTRIBUTE_UNIQUE_ID =
+            FIELD_NAME_INDEXING_ATTRIBUTE_PREFIX + ".uniqueId";
+
+    public static final String FIELD_NAME_INDEXING_ATTRIBUTE_NOT_CURRENT =
+            FIELD_NAME_INDEXING_ATTRIBUTE_PREFIX + ".notCurrent";
+
+    public static final String FIELD_NAME_INDEXING_ATTRIBUTE_DELETED =
+            FIELD_NAME_INDEXING_ATTRIBUTE_PREFIX + ".deleted";
+
     private static final String DISABLE_SORT_FIELD_NAMING_PROPERTY_NAME =
             Utils.PROPERTY_NAME_PREFIX + "LuceneIndexDocumentHelper.DISABLE_SORT_FIELD_NAMING";
 
@@ -163,6 +175,30 @@ class LuceneIndexDocumentHelper {
         }
     };
 
+    private final StringFieldContext uniqueIdField = new StringFieldContext() {
+        @Override
+        public void initialize() {
+            this.stringField = new StringField(FIELD_NAME_INDEXING_ATTRIBUTE_UNIQUE_ID, "",
+                    Store.YES);
+        }
+    };
+
+    private final LongFieldContext notCurrentField = new LongFieldContext() {
+        @Override
+        public void initialize() {
+            this.numericDocField = new NumericDocValuesField(
+                    FIELD_NAME_INDEXING_ATTRIBUTE_NOT_CURRENT, 0L);
+        }
+    };
+
+    private final LongFieldContext deletedField = new LongFieldContext() {
+        @Override
+        public void initialize() {
+            this.numericDocField = new NumericDocValuesField(
+                    FIELD_NAME_INDEXING_ATTRIBUTE_DELETED, 0L);
+        }
+    };
+
     private final Map<String, StoredField> storedFields = new HashMap<>();
 
     private final Map<String, StringField> stringFields = new HashMap<>();
@@ -186,6 +222,9 @@ class LuceneIndexDocumentHelper {
         this.updateActionField.initialize();
         this.updateTimeField.initialize();
         this.versionField.initialize();
+        this.notCurrentField.initialize();
+        this.deletedField.initialize();
+        this.uniqueIdField.initialize();
     }
 
     void addSelfLinkField(String selfLink) {
@@ -226,6 +265,23 @@ class LuceneIndexDocumentHelper {
 
     void addExpirationTimeField(long exp) {
         updateLongFieldContext(exp, this.expirationTimeField);
+    }
+
+    void addUniqueIdField(String selfLink, Long epoch, long version) {
+        String uniqueId = (epoch != null) ? selfLink + ":" + epoch + ":" + version
+                : selfLink + ":" + version;
+        this.uniqueIdField.stringField.setStringValue(uniqueId);
+        this.doc.add(this.uniqueIdField.stringField);
+    }
+
+    void addNotCurrentField(boolean notCurrent) {
+        this.notCurrentField.numericDocField.setLongValue(notCurrent ? 1L : 0L);
+        this.doc.add(this.notCurrentField.numericDocField);
+    }
+
+    void addDeletedField(boolean deleted) {
+        this.deletedField.numericDocField.setLongValue(deleted ? 1L : 0L);
+        this.doc.add(this.deletedField.numericDocField);
     }
 
     private void updateLongFieldContext(long value, LongFieldContext ctx) {

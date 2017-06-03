@@ -44,6 +44,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import com.google.gson.JsonElement;
@@ -52,6 +53,7 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.LongPoint;
+import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexUpgrader;
 import org.apache.lucene.index.IndexWriter;
@@ -360,6 +362,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private ExecutorService privateQueryExecutor;
 
+    private Set<String> fieldToLoadUniqueIdLookup;
     private Set<String> fieldToLoadVersionLookup;
     private Set<String> fieldsToLoadNoExpand;
     private Set<String> fieldsToLoadWithExpand;
@@ -491,6 +494,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         this.paginatedSearchersByExpirationTime.clear();
         this.versionSort = new Sort(new SortedNumericSortField(ServiceDocument.FIELD_NAME_VERSION,
                 SortField.Type.LONG, true));
+
+        this.fieldToLoadUniqueIdLookup = new HashSet<>();
+        this.fieldToLoadUniqueIdLookup.add(
+                LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ATTRIBUTE_UNIQUE_ID);
 
         this.fieldToLoadVersionLookup = new HashSet<>();
         this.fieldToLoadVersionLookup.add(ServiceDocument.FIELD_NAME_VERSION);
@@ -1300,7 +1307,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         long queryStartTimeMicros = Utils.getNowMicrosUtc();
-        tq = updateQuery(op, tq, queryStartTimeMicros);
+        tq = updateQuery(op, tq, queryStartTimeMicros, options);
         if (tq == null) {
             return false;
         }
@@ -1438,12 +1445,22 @@ public class LuceneDocumentIndexService extends StatelessService {
      *
      * @return Augmented query.
      */
-    private Query updateQuery(Operation op, Query tq, long now) {
+    private Query updateQuery(Operation op, Query tq, long now, EnumSet<QueryOption> queryOptions) {
         Query expirationClause = LongPoint.newRangeQuery(
                 ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS, 1, now);
         BooleanQuery.Builder builder = new BooleanQuery.Builder()
                 .add(expirationClause, Occur.MUST_NOT)
                 .add(tq, Occur.FILTER);
+        if (!queryOptions.contains(QueryOption.INCLUDE_DELETED)
+                && !queryOptions.contains(QueryOption.INCLUDE_ALL_VERSIONS)
+                && !queryOptions.contains(QueryOption.TIME_SNAPSHOT)) {
+            builder.add(
+                    NumericDocValuesField.newExactQuery(
+                            LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ATTRIBUTE_NOT_CURRENT,
+                            1),
+                    Occur.MUST_NOT);
+        }
+
         if (!getHost().isAuthorizationEnabled()) {
             return builder.build();
         }
@@ -2433,22 +2450,36 @@ public class LuceneDocumentIndexService extends StatelessService {
         LuceneIndexDocumentHelper indexDocHelper = this.indexDocumentHelper.get();
 
         indexDocHelper.addSelfLinkField(link);
+
         if (s.documentKind != null) {
             indexDocHelper.addKindField(s.documentKind);
         }
+
         indexDocHelper.addUpdateActionField(s.documentUpdateAction);
+
         indexDocHelper.addBinaryStateFieldToDocument(s, r.serializedDocument, desc);
+
         if (s.documentAuthPrincipalLink != null) {
             indexDocHelper.addAuthPrincipalLinkField(s.documentAuthPrincipalLink);
         }
+
         if (s.documentTransactionId != null) {
             indexDocHelper.addTxIdField(s.documentTransactionId);
         }
+
         indexDocHelper.addUpdateTimeField(s.documentUpdateTimeMicros);
+
         if (s.documentExpirationTimeMicros > 0) {
             indexDocHelper.addExpirationTimeField(s.documentExpirationTimeMicros);
         }
+
         indexDocHelper.addVersionField(s.documentVersion);
+
+        indexDocHelper.addUniqueIdField(link, s.documentEpoch, s.documentVersion);
+
+        indexDocHelper.addNotCurrentField(false);
+
+        indexDocHelper.addDeletedField(false);
 
         Document threadLocalDoc = indexDocHelper.getDoc();
         try {
@@ -2638,6 +2669,55 @@ public class LuceneDocumentIndexService extends StatelessService {
         op.setBody(null).complete();
         checkDocumentRetentionLimit(sd, desc);
         applyActiveQueries(op, sd, desc);
+        updateIndexingAttributes(wr, sd);
+    }
+
+    private void updateIndexingAttributes(IndexWriter wr, ServiceDocument sd) throws IOException {
+        // There are no documents to update if the current documentVersion is 0.
+        if (sd.documentVersion == 0) {
+            return;
+        }
+
+        Set<String> kindSet = Stream.of(sd.documentKind).collect(Collectors.toSet());
+        IndexSearcher searcher = createOrRefreshSearcher(sd.documentSelfLink, kindSet, 1, wr,
+                true);
+
+        Query selfLinkClause = new TermQuery(new Term(
+                ServiceDocument.FIELD_NAME_SELF_LINK, sd.documentSelfLink));
+        Query versionClause = LongPoint.newRangeQuery(
+                ServiceDocument.FIELD_NAME_VERSION, 0, sd.documentVersion - 1);
+        Query currentClause = NumericDocValuesField.newExactQuery(
+                LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ATTRIBUTE_NOT_CURRENT, 0);
+
+        BooleanQuery booleanQuery = new BooleanQuery.Builder()
+                .add(selfLinkClause, Occur.MUST)
+                .add(versionClause, Occur.MUST)
+                .add(currentClause, Occur.MUST)
+                .build();
+
+        ScoreDoc after = null;
+        while (true) {
+            TopDocs results = searcher.searchAfter(after, booleanQuery, 1000);
+            if (results == null || results.scoreDocs == null || results.scoreDocs.length == 0) {
+                break;
+            }
+
+            DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor();
+            for (ScoreDoc scoreDoc : results.scoreDocs) {
+                loadDoc(searcher, visitor, scoreDoc.doc, this.fieldToLoadUniqueIdLookup);
+                String uniqueId = visitor.documentUniqueId;
+                Term uniqueIdTerm = new Term(
+                        LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ATTRIBUTE_UNIQUE_ID, uniqueId);
+                wr.updateNumericDocValue(uniqueIdTerm,
+                        LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ATTRIBUTE_NOT_CURRENT, 1);
+            }
+
+            if (results.scoreDocs.length < 1000) {
+                break;
+            }
+
+            after = results.scoreDocs[results.scoreDocs.length - 1];
+        }
     }
 
     private void updateLinkInfoCache(ServiceDocumentDescription desc,
