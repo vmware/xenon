@@ -17,6 +17,7 @@ import static java.util.stream.Collectors.toList;
 import static javax.xml.bind.DatatypeConverter.printBase64Binary;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -44,6 +45,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -90,6 +92,7 @@ import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleODLService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService.BackupResponse;
+import com.vmware.xenon.services.common.LuceneDocumentIndexService.CommitInfo;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService.PaginatedSearcherInfo;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
@@ -3607,6 +3610,50 @@ public class TestLuceneDocumentIndexService {
 
         FileUtils.copyFiles(new File(pathToOldLuceneDir.toURI()), curLuceneIndexPath.toFile());
     }
+
+    @Test
+    public void commitNotification() throws Throwable {
+
+        // To test commit callback, first, start up the host. This will generate some initial data in index.
+        setUpHost(false);
+
+        // Then, restart the host with same port to reuse the sandbox.
+        // Since it reuses previous sandbox, there will be nothing to commit in lucene.
+        // Therefore, until test populates data, commit callback will NOT be called.
+        this.host.stop();
+        this.host.start();
+        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
+
+        AtomicBoolean isNotified = new AtomicBoolean(false);
+        AtomicLong sequenceNumber = new AtomicLong();
+
+        Operation subscribe = Operation.createPost(UriUtils.buildUri(this.host, ServiceUriPaths.CORE_DOCUMENT_INDEX))
+                .setReferer(this.host.getUri());
+
+        this.host.startSubscriptionService(subscribe, notifyOp -> {
+            isNotified.set(true);
+            sequenceNumber.set(notifyOp.getBody(CommitInfo.class).sequenceNumber);
+            notifyOp.complete();
+        });
+
+        assertFalse("callback should not be called before populating data.(nothing to commit)", isNotified.get());
+
+        // populate data
+        TestRequestSender sender = this.host.getTestRequestSender();
+        List<Operation> posts = new ArrayList<>();
+        for (int i = 0; i < 30; i++) {
+            ExampleServiceState state = new ExampleServiceState();
+            state.name = "foo-" + i;
+            posts.add(Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(state));
+        }
+        sender.sendAndWait(posts, ExampleServiceState.class);
+
+
+        // verify commit has performed
+        this.host.waitFor("commit callback should be called", isNotified::get);
+        assertTrue("Something should be committed", sequenceNumber.get() > -1);
+    }
+
 
     private void logQuerySingleStat() {
         Map<String, ServiceStat> stats = this.host

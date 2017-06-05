@@ -411,6 +411,31 @@ public class LuceneDocumentIndexService extends StatelessService {
         static final String KIND = Utils.buildKind(MaintenanceRequest.class);
     }
 
+    /**
+     * Used for lucene commit notification.
+     */
+    public static class CommitInfo {
+        public static final String KIND = Utils.buildKind(CommitInfo.class);
+        public String kind = CommitInfo.KIND;
+
+        /**
+         * Result of lucene commit.
+         *
+         * From {@link IndexWriter#commit()}:
+         *
+         * <p> If nothing was committed, because there were no
+         * pending changes, this returns -1.  Otherwise, it returns
+         * the sequence number such that all indexing operations
+         * prior to this sequence will be included in the commit
+         * point, and all other operations will not. </p>
+         *
+         * The <a href="#sequence_number">sequence number</a>
+         * of the last operation in the commit.  All sequence numbers &lt;= this value
+         * will be reflected in the commit, and all others will not.
+         */
+        public long sequenceNumber;
+    }
+
     public LuceneDocumentIndexService() {
         this(FILE_PATH_LUCENE);
     }
@@ -2848,12 +2873,20 @@ public class LuceneDocumentIndexService extends StatelessService {
                     TimeUnit.NANOSECONDS.toMicros(endNanos - startNanos));
 
             startNanos = endNanos;
-            w.commit();
+            long sequenceNumber = w.commit();
             endNanos = System.nanoTime();
             adjustTimeSeriesStat(STAT_NAME_COMMIT_COUNT, AGGREGATION_TYPE_SUM, 1);
             setTimeSeriesHistogramStat(STAT_NAME_COMMIT_DURATION_MICROS,
                     AGGREGATION_TYPE_AVG_MAX,
                     TimeUnit.NANOSECONDS.toMicros(endNanos - startNanos));
+
+            // Only send notification when something has committed.
+            // When there was nothing to commit, sequence number is -1.
+            if (sequenceNumber > -1) {
+                CommitInfo commitInfo = new CommitInfo();
+                commitInfo.sequenceNumber = sequenceNumber;
+                publish(Operation.createPatch(null).setBody(commitInfo));
+            }
 
             startNanos = endNanos;
             applyFileLimitRefreshWriter(false);
