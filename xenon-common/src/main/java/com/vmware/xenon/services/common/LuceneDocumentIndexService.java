@@ -1708,7 +1708,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             rsp.prevPageLink = page.previousPageLink;
         }
 
-        Sort sort = this.versionSort;
+        Sort sort = null;
         if (qs != null && qs.sortTerm != null) {
             // see if query is part of a task and already has a cached sort
             if (qs.context != null) {
