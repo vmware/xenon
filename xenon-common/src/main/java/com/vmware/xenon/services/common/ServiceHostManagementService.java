@@ -202,6 +202,17 @@ public class ServiceHostManagementService extends StatefulService {
         public String backupServiceLink = ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP;
     }
 
+    public static class AutoBackupConfiguration {
+        public static final String KIND = Utils.buildKind(AutoBackupConfiguration.class);
+
+        public String kind = AutoBackupConfiguration.KIND;
+
+        /**
+         * Enable/Disable auto backup.
+         */
+        public boolean enable;
+    }
+
     @Override
     public void handleGet(Operation get) {
         getHost().updateSystemInfo(false);

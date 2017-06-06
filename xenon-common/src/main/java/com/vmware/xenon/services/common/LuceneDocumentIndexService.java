@@ -105,6 +105,7 @@ import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.serialization.GsonSerializers;
 import com.vmware.xenon.common.serialization.KryoSerializers;
+import com.vmware.xenon.services.common.LuceneDocumentIndexBackupService.AutoBackupRequest;
 import com.vmware.xenon.services.common.QueryFilter.QueryFilterException;
 import com.vmware.xenon.services.common.QueryPageService.LuceneQueryPage;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
@@ -2848,12 +2849,18 @@ public class LuceneDocumentIndexService extends StatelessService {
                     TimeUnit.NANOSECONDS.toMicros(endNanos - startNanos));
 
             startNanos = endNanos;
-            w.commit();
+            long sequenceNumber = w.commit();
             endNanos = System.nanoTime();
             adjustTimeSeriesStat(STAT_NAME_COMMIT_COUNT, AGGREGATION_TYPE_SUM, 1);
             setTimeSeriesHistogramStat(STAT_NAME_COMMIT_DURATION_MICROS,
                     AGGREGATION_TYPE_AVG_MAX,
                     TimeUnit.NANOSECONDS.toMicros(endNanos - startNanos));
+
+            // Send notification to backup service only when something has committed.
+            // When there was nothing to commit, sequence number is -1.
+            if (sequenceNumber > -1) {
+                sendRequest(Operation.createPatch(this, ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP).setBody(new AutoBackupRequest()));
+            }
 
             startNanos = endNanos;
             applyFileLimitRefreshWriter(false);

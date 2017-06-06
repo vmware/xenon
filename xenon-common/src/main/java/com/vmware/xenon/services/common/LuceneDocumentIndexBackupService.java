@@ -33,6 +33,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.index.IndexCommit;
@@ -52,6 +53,7 @@ import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService.MaintenanceRequest;
+import com.vmware.xenon.services.common.ServiceHostManagementService.AutoBackupConfiguration;
 import com.vmware.xenon.services.common.ServiceHostManagementService.BackupRequest;
 import com.vmware.xenon.services.common.ServiceHostManagementService.RestoreRequest;
 
@@ -73,6 +75,18 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
     public static final String SELF_LINK = ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP;
 
     private LuceneDocumentIndexService indexService;
+
+    // TODO: set default false
+    private boolean isAutoBackupEnabled = true;
+
+    private boolean isAutoBackupInProgress;
+
+    // package scope
+    static class AutoBackupRequest {
+        public static final String KIND = Utils.buildKind(AutoBackupRequest.class);
+        public String kind = AutoBackupRequest.KIND;
+    }
+
 
     public LuceneDocumentIndexBackupService(LuceneDocumentIndexService indexService) {
         this.indexService = indexService;
@@ -97,6 +111,24 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
             } catch (IOException e) {
                 patch.fail(e);
             }
+            return;
+        } else if (request instanceof AutoBackupRequest) {
+            try {
+                handleAutoBackup();
+            } catch (Exception e) {
+                patch.fail(e);
+                return;
+            }
+            patch.complete();
+            return;
+        } else if (request instanceof AutoBackupConfiguration) {
+            try {
+                handleAutoBackupConfig((AutoBackupConfiguration) request);
+            } catch (Exception e) {
+                patch.fail(e);
+                return;
+            }
+            patch.complete();
             return;
         }
 
@@ -486,4 +518,46 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
         return this.indexService.indexDirectory == null;
     }
 
+
+    private void handleAutoBackup() throws Exception {
+        URI autoBackupDirPath = getHost().getState().autoBackupDirectoryReference;
+
+        if (!this.isAutoBackupEnabled || this.isAutoBackupInProgress) {
+            return;
+        }
+
+        // perform incremental backup
+        try {
+            this.isAutoBackupInProgress = true;
+            takeSnapshot(Paths.get(autoBackupDirPath), false);
+        } finally {
+            this.isAutoBackupInProgress = false;
+        }
+    }
+
+    private void handleAutoBackupConfig(AutoBackupConfiguration config) throws Exception {
+        if (config.enable) {
+            if (!this.isAutoBackupEnabled) {
+                logInfo("Auto Backup is enabled");
+                this.isAutoBackupEnabled = true;
+                // perform initial auto backup
+                handleAutoBackup();
+            }
+        } else {
+            logInfo("Auto Backup is disabled");
+            this.isAutoBackupEnabled = false;
+        }
+    }
+
+    @Override
+    protected void handleStopCompletion(Operation op) {
+        // for stopping this service(or host)
+        if (this.isAutoBackupEnabled && this.isAutoBackupInProgress) {
+            getHost().scheduleCore(() -> {
+                handleStopCompletion(op);
+            }, getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
+        } else {
+            super.handleStopCompletion(op);
+        }
+    }
 }

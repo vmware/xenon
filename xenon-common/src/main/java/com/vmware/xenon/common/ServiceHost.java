@@ -437,6 +437,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         public URI storageSandboxFileReference;
         public URI resourceSandboxFileReference;
+        public URI autoBackupDirectoryReference;
         public URI privateKeyFileReference;
         public String privateKeyPassphrase;
         public URI certificateFileReference;
@@ -687,6 +688,9 @@ public class ServiceHost implements ServiceRequestSender {
         // load configuration from disk
         this.state.storageSandboxFileReference = storageSandbox;
         loadState(storageSandbox, s);
+
+        // TODO: make it configurable
+        this.state.autoBackupDirectoryReference = sandbox.resolve("auto-backup").toUri();
 
         // apply command line arguments, potentially overriding file configuration
         initializeStateFromArguments(s, args);
