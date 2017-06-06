@@ -1708,7 +1708,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             rsp.prevPageLink = page.previousPageLink;
         }
 
-        Sort sort = this.versionSort;
+        Sort sort = new Sort();
         if (qs != null && qs.sortTerm != null) {
             // see if query is part of a task and already has a cached sort
             if (qs.context != null) {
@@ -1729,17 +1729,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             // Special-case handling of single-version documents to use search() instead of
             // searchAfter(). This will prevent Lucene from holding the full result set in memory.
             if (useDirectSearch) {
-                if (sort == null) {
-                    results = s.search(tq, hitCount);
-                } else {
-                    results = s.search(tq, hitCount, sort, false, false);
-                }
+                results = s.search(tq, hitCount, sort, false, false);
             } else {
-                if (sort == null) {
-                    results = s.searchAfter(after, tq, hitCount);
-                } else {
-                    results = s.searchAfter(after, tq, hitCount, sort, false, false);
-                }
+                results = s.searchAfter(after, tq, hitCount, sort, false, false);
             }
 
             if (results == null) {
