@@ -2624,7 +2624,11 @@ public class ServiceHost implements ServiceRequestSender {
                 if (post.hasBody()) {
                     // make sure body is in native form and has creation time
                     ServiceDocument d = post.getBody(s.getStateType());
-                    d.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+
+                    // preserve original update time for migration task
+                    if (!post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK)) {
+                        d.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+                    }
                 }
 
                 // Populate authorization context if necessary

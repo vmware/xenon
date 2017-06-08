@@ -346,7 +346,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         // create object in host
         List<ExampleServiceState> states = createExampleDocuments(this.exampleSourceFactory, getSourceHost(), this.serviceCount);
         for (ExampleServiceState state : states) {
-            assertFalse(state.isFromMigration);
+            assertFalse("source doc should have isFromMigration=false", state.isFromMigration);
         }
 
         // "latest source update time" uses "documentUpdateTimeMicros" of last processed document's (max) in each host
@@ -396,9 +396,15 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         List<URI> uris = getFullUri(getDestinationHost(), states);
         List<ExampleServiceState> responseStates =
                 this.sender.sendAndWait(uris.stream().map(Operation::createGet).collect(toList()), ExampleServiceState.class);
-        for (ExampleServiceState responseState : responseStates) {
-            assertTrue(responseState.isFromMigration);
+
+        for (int i = 0; i < responseStates.size(); i++) {
+            ExampleServiceState sourceState = states.get(i);
+            ExampleServiceState destState = responseStates.get(i);
+
+            assertTrue("destination doc should have isFromMigration=false", destState.isFromMigration);
+            assertEquals(sourceState.documentUpdateTimeMicros, destState.documentUpdateTimeMicros);
         }
+
     }
 
     @Test
