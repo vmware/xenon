@@ -174,6 +174,15 @@ public class ExampleService extends StatefulService {
 
     @Override
     public void handlePatch(Operation patch) {
+
+        // need alternative logic for patch request from migration(all-version-migration)
+        if (patch.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK)) {
+            // patch request from migration contains full body of the document; therefore, simply set it to the new state.
+            setState(patch, getBody(patch));
+            patch.complete();
+            return;
+        }
+
         updateState(patch);
         // updateState method already set the response body with the merged state
         patch.complete();

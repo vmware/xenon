@@ -1330,7 +1330,16 @@ public class StatefulService implements Service {
         }
 
         if (!op.isFromReplication()) {
-            long time = Utils.getNowMicrosUtc();
+
+            long time;
+            if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK)) {
+                // At this point, op.body is already updated to the user response, and linked state(cachedState) reflects
+                // new values that user intend to store. Thus, use cachedState to retrieve the update time
+                time = cachedState.documentUpdateTimeMicros;
+            } else {
+                time = Utils.getNowMicrosUtc();
+            }
+
             if (hasOption(ServiceOption.OWNER_SELECTION)) {
                 cachedState.documentEpoch = this.context.epoch;
             }

@@ -132,7 +132,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
             this.host.setUpPeerHosts(this.nodeCount);
             getSourceHost().setNodeGroupQuorum(this.nodeCount);
             this.host.joinNodesAndVerifyConvergence(this.nodeCount, true);
-            this.host.setNodeGroupQuorum(this.nodeCount);;
+            this.host.setNodeGroupQuorum(this.nodeCount);
 
             for (VerificationHost host : this.host.getInProcessHostMap().values()) {
                 host.startFactory(new MigrationTaskService());
@@ -311,6 +311,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         state.sourceNodeGroupReference
             = UriUtils.buildUri(getSourceHost().getPublicUri(), ServiceUriPaths.DEFAULT_NODE_GROUP);
         state.maintenanceIntervalMicros = TimeUnit.MILLISECONDS.toMicros(100);
+        state.migrationOptions = EnumSet.noneOf(MigrationOption.class);
         return state;
     }
 
@@ -1385,7 +1386,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
         // create same doc in source and dest hosts
         ExampleServiceState doc = new ExampleService.ExampleServiceState();
-        doc.name = "foo" ;
+        doc.name = "foo";
         doc.documentSelfLink = "foo";
         this.sender.sendAndWait(Operation.createPost(this.exampleSourceFactory).setBody(doc));
         this.sender.sendAndWait(Operation.createPost(this.exampleDestinationFactory).setBody(doc));
@@ -1541,6 +1542,62 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         // check if object is in new host
         List<URI> uris = getFullUri(getDestinationHost(), states);
         this.sender.sendAndWait(uris.stream().map(Operation::createGet).collect(toList()));
+    }
+
+    @Test
+    public void reserveUpdateTimeForAllVersionMigration() throws Throwable {
+        String selfLink = UriUtils.buildUriPath(ExampleService.FACTORY_LINK, "foo");
+        VerificationHost sourceHost = getSourceHost();
+
+        ExampleServiceState state = new ExampleService.ExampleServiceState();
+        state.name = "foo";
+        state.documentSelfLink = selfLink;
+
+        Operation post = Operation.createPost(sourceHost, ExampleService.FACTORY_LINK).setBody(state);
+        ExampleServiceState postResult = this.sender.sendAndWait(post, ExampleServiceState.class);
+
+        postResult.name += "-patch";
+        Operation patch = Operation.createPatch(sourceHost, selfLink).setBody(postResult);
+        ExampleServiceState patchResult = this.sender.sendAndWait(patch, ExampleServiceState.class);
+
+        postResult.name += "-put";
+        Operation put = Operation.createPut(sourceHost, selfLink).setBody(postResult);
+        ExampleServiceState putResult = this.sender.sendAndWait(put, ExampleServiceState.class);
+
+        // trigger migration
+        State migrationState = validMigrationState(ExampleService.FACTORY_LINK);
+        migrationState.migrationOptions.add(MigrationOption.ALL_VERSIONS);
+        Operation migrationPost = Operation.createPost(this.destinationFactoryUri).setBody(migrationState);
+        ServiceDocument taskState = this.sender.sendAndWait(migrationPost, ServiceDocument.class);
+        State finalState = waitForServiceCompletion(taskState.documentSelfLink, getDestinationHost());
+        assertEquals(TaskStage.FINISHED, finalState.taskInfo.stage);
+
+
+        // make a query on destination host to retrieve docs with all versions
+        Query qs = Builder.create()
+                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, selfLink)
+                .build();
+
+        QueryTask q = QueryTask.Builder.createDirectTask()
+                .addOption(QueryOption.INCLUDE_ALL_VERSIONS)
+                .addOption(QueryOption.EXPAND_CONTENT)
+                .setQuery(qs)
+                .orderAscending(ServiceDocument.FIELD_NAME_VERSION, TypeName.LONG)
+                .build();
+
+        Operation queryOp = Operation.createPost(getDestinationHost(), ServiceUriPaths.CORE_QUERY_TASKS).setBody(q);
+        QueryTask queryResult = this.sender.sendAndWait(queryOp, QueryTask.class);
+
+
+        List<String> links = queryResult.results.documentLinks;
+        assertEquals(3, links.size());
+        ServiceDocument doc1 = Utils.fromJson(queryResult.results.documents.get(links.get(0)), ServiceDocument.class);
+        ServiceDocument doc2 = Utils.fromJson(queryResult.results.documents.get(links.get(1)), ServiceDocument.class);
+        ServiceDocument doc3 = Utils.fromJson(queryResult.results.documents.get(links.get(2)), ServiceDocument.class);
+
+        assertEquals(postResult.documentUpdateTimeMicros, doc1.documentUpdateTimeMicros);
+        assertEquals(patchResult.documentUpdateTimeMicros, doc2.documentUpdateTimeMicros);
+        assertEquals(putResult.documentUpdateTimeMicros, doc3.documentUpdateTimeMicros);
     }
 
 }
