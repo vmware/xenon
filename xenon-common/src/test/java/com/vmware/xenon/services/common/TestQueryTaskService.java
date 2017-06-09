@@ -103,6 +103,7 @@ public class TestQueryTaskService {
     public int iterationCount = 2;
     public int serviceCount = 50;
     public int queryCount = 10;
+    public int updateCount = 10;
 
     private VerificationHost host;
 
@@ -929,6 +930,34 @@ public class TestQueryTaskService {
     }
 
     @Test
+    public void throughputCountQuery() throws Throwable {
+        setUpHost();
+        List<URI> services = createQueryTargetServices(this.serviceCount);
+        QueryValidationServiceState newState = new QueryValidationServiceState();
+        for (int i = 0; i < this.updateCount; i++) {
+            newState.textValue = i + "";
+            putSimpleStateOnQueryTargetServices(services, newState, true);
+        }
+
+        Query q = Query.Builder.create()
+                .addKindFieldClause(QueryValidationServiceState.class)
+                .build();
+
+        // first do the test with no concurrent updates to the index while queries occur
+        for (int i = 0; i < this.iterationCount; i++) {
+            doThroughputQuery(services, q, EnumSet.of(QueryOption.COUNT), null,
+                    newState, false);
+        }
+
+        // now update the index once for every N queries. This will have a significant impact on
+        // performance.
+        for (int i = 0; i < this.iterationCount; i++) {
+            doThroughputQuery(services, q, EnumSet.of(QueryOption.COUNT), null,
+                    newState, true);
+        }
+    }
+
+    @Test
     public void documentKindQueryStats() throws Throwable {
         setUpHost();
         Query q = Query.Builder.create()
@@ -973,15 +1002,27 @@ public class TestQueryTaskService {
         assertEquals(this.queryCount, nonKindQueryStat.latestValue, 0);
     }
 
-    public void doThroughputQuery(List<URI> services, Query q, int expectedResults,
-            QueryValidationServiceState template, boolean interleaveWrites)
-            throws Throwable {
+    private void doThroughputQuery(List<URI> services, Query q, Integer expectedResultCount,
+            QueryValidationServiceState template, boolean interleaveWrites) throws Throwable {
+        doThroughputQuery(services, q, EnumSet.noneOf(QueryOption.class), expectedResultCount,
+                template, interleaveWrites);
+    }
+
+    private void doThroughputQuery(List<URI> services, Query q, EnumSet<QueryOption> queryOptions,
+            Integer expectedResultCount, QueryValidationServiceState template,
+            boolean interleaveWrites) throws Throwable {
 
         int interleaveFactor = 10;
         this.host.log(
                 "Starting QPS test, service count: %d, query count: %d, interleave writes: %s",
                 this.serviceCount, this.queryCount, interleaveWrites);
-        QueryTask qt = QueryTask.Builder.createDirectTask().setQuery(q).build();
+
+        QueryTask.Builder builder = QueryTask.Builder.createDirectTask().setQuery(q);
+        if (queryOptions != null && !queryOptions.isEmpty()) {
+            builder.addOptions(queryOptions);
+        }
+        QueryTask qt = builder.build();
+
         Random r = new Random();
         double s = System.nanoTime();
         TestContext ctx = this.host.testCreate(this.queryCount);
@@ -995,9 +1036,10 @@ public class TestQueryTaskService {
                             ctx.fail(e);
                             return;
                         }
-                        QueryTask rsp = o
-                                .getBody(QueryTask.class);
-                        if (rsp.results.documentLinks.size() != expectedResults) {
+
+                        QueryTask rsp = o.getBody(QueryTask.class);
+                        if (expectedResultCount != null
+                                && rsp.results.documentLinks.size() != expectedResultCount) {
                             ctx.fail(new IllegalStateException("Unexpected result count"));
                             return;
                         }
@@ -1015,7 +1057,6 @@ public class TestQueryTaskService {
 
                     });
             this.host.send(post);
-
         }
         this.host.testWait(ctx);
         double e = System.nanoTime();
@@ -4219,8 +4260,13 @@ public class TestQueryTaskService {
     }
 
     private QueryValidationServiceState putSimpleStateOnQueryTargetServices(
-            List<URI> services,
-            QueryValidationServiceState templateState) throws Throwable {
+            List<URI> services, QueryValidationServiceState templateState) throws Throwable {
+        return putSimpleStateOnQueryTargetServices(services, templateState, false);
+    }
+
+    private QueryValidationServiceState putSimpleStateOnQueryTargetServices(
+            List<URI> services, QueryValidationServiceState templateState, boolean commitAfter)
+            throws Throwable {
 
         this.host.testStart(services.size());
         for (URI u : services) {
@@ -4229,8 +4275,17 @@ public class TestQueryTaskService {
                     .setCompletion(this.host.getCompletion());
             this.host.send(put);
         }
-
         this.host.testWait();
+
+        if (commitAfter) {
+            TestContext ctx = this.host.testCreate(1);
+            Operation post = Operation.createPost(this.host.getDocumentIndexServiceUri())
+                    .setBody(new LuceneDocumentIndexService.MaintenanceRequest())
+                    .setCompletion(ctx.getCompletion());
+            this.host.send(post);
+            this.host.testWait(ctx);
+        }
+
         this.host.logThroughput();
         return templateState;
     }

@@ -2817,14 +2817,14 @@ public class LuceneDocumentIndexService extends StatelessService {
                 return;
             }
 
-            long deadline = Utils.getSystemNowMicrosUtc() + getMaintenanceIntervalMicros();
-
             long startNanos = System.nanoTime();
             IndexSearcher s = createOrRefreshSearcher(null, null, Integer.MAX_VALUE, w, false);
             long endNanos = System.nanoTime();
             setTimeSeriesHistogramStat(STAT_NAME_MAINTENANCE_SEARCHER_REFRESH_DURATION_MICROS,
                     AGGREGATION_TYPE_AVG_MAX,
                     TimeUnit.NANOSECONDS.toMicros(endNanos - startNanos));
+
+            long deadline = Utils.getSystemNowMicrosUtc() + getMaintenanceIntervalMicros();
 
             startNanos = endNanos;
             applyDocumentExpirationPolicy(s, deadline);
