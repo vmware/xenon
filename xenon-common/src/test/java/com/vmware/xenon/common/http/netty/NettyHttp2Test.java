@@ -378,6 +378,7 @@ public class NettyHttp2Test {
         this.host.log("Largest stream ID: %d", context.getLargestStreamId());
         assertTrue(context.getLargestStreamId() >
                 2 * (1 + this.iterationCount * this.requestCount));
+        assertTrue(!context.hasActiveStreams());
     }
 
     /**

@@ -15,6 +15,7 @@ package com.vmware.xenon.common.http.netty;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
@@ -192,6 +193,32 @@ public class NettyChannelContext extends SocketContext {
         }
         synchronized (this.streamIdMap) {
             this.streamIdMap.remove(streamId);
+        }
+    }
+
+    /**
+     * This method removes the stream ID mapping for the specified {@link Operation}, if one
+     * exists.
+     *
+     * Note this method is O(n) on the number of pending operations; operation cancellation must
+     * be correct, but for architectural reasons there's no good way to track the stream ID for a
+     * given {@link Operation} object, so this approach will have to suffice.
+     *
+     * @param op Supplies an {@link Operation} object.
+     */
+    public void removeStreamForOperation(Operation op) {
+        if (this.streamIdMap == null) {
+            return;
+        }
+        synchronized (this.streamIdMap) {
+            Iterator<Map.Entry<Integer, Operation>> it = this.streamIdMap.entrySet().iterator();
+            while (it.hasNext()) {
+                Map.Entry<Integer, Operation> entry = it.next();
+                if (entry.getValue().equals(op)) {
+                    it.remove();
+                    return;
+                }
+            }
         }
     }
 

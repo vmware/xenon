@@ -659,6 +659,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             NettyChannelPool pool;
             Runnable r = null;
             if (nettyCtx.getProtocol() == NettyChannelContext.Protocol.HTTP2) {
+                nettyCtx.removeStreamForOperation(op);
                 if (this.http2SslChannelPool != null
                         && this.http2SslChannelPool.isContextInUse(nettyCtx)) {
                     pool = this.http2SslChannelPool;
