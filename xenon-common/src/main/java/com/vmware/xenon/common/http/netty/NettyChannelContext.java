@@ -101,6 +101,7 @@ public class NettyChannelContext extends SocketContext {
     // An HTTP/2 connection may have multiple simultaneous operations. This map
     // Will associate each stream with the operation happening on the stream
     private final Map<Integer, Operation> streamIdMap;
+    private final Map<Long, Integer> operationIdMap;
 
     // We need to know if an HTTP/2 connection is being opened so that we can queue
     // pending operations instead of adding a new HTTP/2 connection
@@ -116,8 +117,10 @@ public class NettyChannelContext extends SocketContext {
         this.protocol = protocol;
         if (protocol == Protocol.HTTP2) {
             this.streamIdMap = new HashMap<>();
+            this.operationIdMap = new HashMap<>();
         } else {
             this.streamIdMap = null;
+            this.operationIdMap = null;
         }
     }
 
@@ -180,6 +183,7 @@ public class NettyChannelContext extends SocketContext {
         }
         synchronized (this.streamIdMap) {
             this.streamIdMap.put(streamId, operation);
+            this.operationIdMap.put(operation.getId(), streamId);
             if (streamId > this.largestStreamId) {
                 this.largestStreamId = streamId;
             }
@@ -191,7 +195,22 @@ public class NettyChannelContext extends SocketContext {
             return;
         }
         synchronized (this.streamIdMap) {
-            this.streamIdMap.remove(streamId);
+            if (this.streamIdMap.containsKey(streamId)) {
+                Operation op = this.streamIdMap.remove(streamId);
+                this.operationIdMap.remove(op.getId());
+            }
+        }
+    }
+
+    public void removeStreamForOperation(long operationId) {
+        if (this.streamIdMap == null) {
+            return;
+        }
+        synchronized (this.streamIdMap) {
+            if (this.operationIdMap.containsKey(operationId)) {
+                int streamId = this.operationIdMap.remove(operationId);
+                this.streamIdMap.remove(streamId);
+            }
         }
     }
 
