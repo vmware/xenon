@@ -234,6 +234,36 @@ class ExampleVersionRetentionService extends StatefulService {
     }
 }
 
+/**
+ * Example service that is used for document indexing options.
+ */
+class ExampleDocumentIndexingOptionsService extends StatefulService {
+
+    public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/tests/example-document-indexing-options";
+
+    public static class State extends ServiceDocument {
+        public String name;
+    }
+
+    public ExampleDocumentIndexingOptionsService() {
+        super(State.class);
+        toggleOption(ServiceOption.PERSISTENCE, true);
+        toggleOption(ServiceOption.REPLICATION, true);
+        toggleOption(ServiceOption.OWNER_SELECTION, true);
+    }
+
+    @Override
+    public ServiceDocument getDocumentTemplate() {
+        ServiceDocument template = super.getDocumentTemplate();
+
+        // enable metadata indexing
+        template.documentDescription.documentIndexingOptions =
+                EnumSet.of(ServiceDocumentDescription.DocumentIndexingOption.INDEX_METADATA);
+
+        return template;
+    }
+}
+
 public class TestStatefulService extends BasicReusableHostTestCase {
 
     @Rule
@@ -955,6 +985,23 @@ public class TestStatefulService extends BasicReusableHostTestCase {
             return qt.results.documentCount >= versionRetentionFloor && qt.results.documentCount
                     <= versionRetentionLimit;
         });
+    }
+
+    @Test
+    public void testDocumentIndexingOptionUpdate() throws Throwable {
+        host.startFactory(new ExampleDocumentIndexingOptionsService());
+
+        URI uri = UriUtils.buildUri(this.host, ExampleDocumentIndexingOptionsService.FACTORY_LINK);
+        ExampleDocumentIndexingOptionsService.State initialState =
+                new ExampleDocumentIndexingOptionsService.State();
+        initialState.name = "example1";
+
+        ExampleDocumentIndexingOptionsService.State serviceState =
+                this.host.getTestRequestSender().sendAndWait(
+                        Operation.createPost(uri).setBody(initialState),
+                        ExampleDocumentIndexingOptionsService.State.class);
+
+        assertEquals("example1", serviceState.name);
     }
 }
 
