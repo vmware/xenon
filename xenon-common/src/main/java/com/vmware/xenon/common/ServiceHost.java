@@ -3533,17 +3533,17 @@ public class ServiceHost implements ServiceRequestSender {
             if (ctx == null) {
                 // Delegate token verification to the authentication service for handling
                 // cases like token refresh, etc.
-                verifyToken(token, op, authorizationContextHandler);
+                verifyToken(op, authorizationContextHandler);
                 return;
             }
             authorizationContextHandler.accept(ctx);
             return;
         }
 
-        verifyToken(token, op, authorizationContextHandler);
+        verifyToken(op, authorizationContextHandler);
     }
 
-    private void verifyToken(String token, Operation op,
+    private void verifyToken(Operation op,
             Consumer<AuthorizationContext> authorizationContextHandler) {
         boolean shoudRetry = true;
         URI tokenVerificationUri = getAuthenticationServiceUri();
@@ -3561,32 +3561,33 @@ public class ServiceHost implements ServiceRequestSender {
             shoudRetry = false;
         }
 
-        verifyTokenInternal(token, op, tokenVerificationUri, authorizationContextHandler, shoudRetry);
+        verifyTokenInternal(op, tokenVerificationUri, authorizationContextHandler, shoudRetry);
     }
 
-    private void verifyTokenInternal(String token, Operation parentOp, URI tokenVerificationUri,
+    private void verifyTokenInternal(Operation parentOp, URI tokenVerificationUri,
             Consumer<AuthorizationContext> authorizationContextHandler, boolean shouldRetry) {
         Operation verifyOp = Operation
                 .createPost(tokenVerificationUri)
                 .setReferer(parentOp.getUri())
+                .addRequestHeaders(parentOp.getRequestHeaders())
+                .setCookies(parentOp.getCookies())
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERIFY_TOKEN)
-                .addRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER, token)
                 .setCompletion(
                         (resultOp, ex) -> {
                             if (ex != null) {
                                 log(Level.WARNING, "Error verifying token: %s", ex);
                                 if (shouldRetry) {
                                     log(Level.INFO, "Retrying token verification with basic auth.");
-                                    verifyTokenInternal(token, parentOp, getBasicAuthenticationServiceUri(),
+                                    verifyTokenInternal(parentOp, getBasicAuthenticationServiceUri(),
                                             authorizationContextHandler, false);
                                 } else {
                                     authorizationContextHandler.accept(null);
                                 }
                             } else {
-                                Claims claims = resultOp.getBody(Claims.class);
+                                AuthorizationContext ctx = resultOp.getBody(AuthorizationContext.class);
                                 // check to see if the subject is valid
                                 Operation getUserOp = Operation.createGet(
-                                        AuthUtils.buildUserUriFromClaims(this, claims))
+                                        AuthUtils.buildUserUriFromClaims(this, ctx.getClaims()))
                                         .setReferer(parentOp.getUri())
                                         .setCompletion((getOp, getEx) -> {
                                             if (getEx != null) {
@@ -3597,7 +3598,7 @@ public class ServiceHost implements ServiceRequestSender {
                                                 return;
                                             }
                                             AuthorizationContext authCtx = checkAndGetAuthorizationContext(
-                                                    null, claims, token, parentOp);
+                                                    null, ctx.getClaims(), ctx.getToken(), parentOp);
                                             authorizationContextHandler.accept(authCtx);
                                         });
                                 getUserOp.setAuthorizationContext(getSystemAuthorizationContext());

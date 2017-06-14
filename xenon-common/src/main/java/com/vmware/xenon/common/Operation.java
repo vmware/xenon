@@ -20,6 +20,7 @@ import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeoutException;
@@ -1035,9 +1036,10 @@ public class Operation implements Cloneable {
         return this;
     }
 
-    public void setCookies(Map<String, String> cookies) {
+    public Operation setCookies(Map<String, String> cookies) {
         allocateRemoteContext();
         this.remoteCtx.cookies = cookies;
+        return this;
     }
 
     public Map<String, String> getCookies() {
@@ -1408,6 +1410,13 @@ public class Operation implements Cloneable {
             addResponseHeader(name, value);
         } else {
             addRequestHeader(name, value);
+        }
+        return this;
+    }
+
+    public Operation addRequestHeaders(Map<String, String> headers) {
+        for (Entry<String, String> header : headers.entrySet()) {
+            addRequestHeader(header.getKey(), header.getValue());
         }
         return this;
     }
