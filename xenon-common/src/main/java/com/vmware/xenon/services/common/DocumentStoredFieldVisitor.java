@@ -35,6 +35,7 @@ final class DocumentStoredFieldVisitor extends StoredFieldVisitor {
 
     public String documentUpdateAction;
     public String documentSelfLink;
+    public String documentIndexingId;
     public long documentVersion;
     public long documentUpdateTimeMicros;
     public Long documentExpirationTimeMicros;
@@ -69,6 +70,9 @@ final class DocumentStoredFieldVisitor extends StoredFieldVisitor {
             break;
         case LuceneDocumentIndexService.LUCENE_FIELD_NAME_JSON_SERIALIZED_STATE:
             this.jsonSerializedState = stringValue;
+            break;
+        case LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ID:
+            this.documentIndexingId = stringValue;
             break;
         default:
             if (this.links == null) {
@@ -130,6 +134,7 @@ final class DocumentStoredFieldVisitor extends StoredFieldVisitor {
         this.documentUpdateTimeMicros = 0;
         this.documentExpirationTimeMicros = null;
         this.documentSelfLink = null;
+        this.documentIndexingId = null;
         this.documentVersion = 0;
         this.binarySerializedState = null;
         this.jsonSerializedState = null;

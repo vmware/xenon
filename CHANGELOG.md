@@ -2,6 +2,25 @@
 
 ## 1.5.3-SNAPSHOT
 
+* Addition of new "indexed metadata" document indexing and query options.
+
+  When a standard Xenon query is executed, the user-specified query parameters
+  are translated to a Lucene query and executed against the index; documents are
+  then removed from the result set in a post-filtering step if they are e.g. not
+  "current" (don't represent the latest version of the corresponding service at
+  query time) or are documents associated with deleted services.
+
+  The "indexed metadata" feature uses Lucene DocValues fields to track these
+  attributes directly in the index, dynamically updating fields directly in the
+  documents as they are e.g. superseded by newer documents for the same service.
+  This can result in additional indexing overhead (testing showed a decrease of
+  between 20% and 25% in indexing throughput under load), but can also result in
+  significant improvements in query throughput (between 350% and 750% increase
+  in query throughput under similar load).
+
+  https://www.pivotaltracker.com/story/show/148514843
+  https://www.pivotaltracker.com/story/show/148514887
+
 * Deterministic document signature calculation for documents that contain
   `Map`s. This eliminates false conflicts when reconsiling state caused by a
   map unorderedness.
