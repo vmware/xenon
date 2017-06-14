@@ -35,7 +35,6 @@ import com.vmware.xenon.common.ServiceMaintenanceRequest.MaintenanceReason;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.services.common.NodeGroupService;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
-import com.vmware.xenon.services.common.NodeGroupUtils;
 import com.vmware.xenon.services.common.NodeSelectorSynchronizationService.SynchronizePeersRequest;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
@@ -151,67 +150,50 @@ class ServiceSynchronizationTracker {
     }
 
     void failWithNotFoundOrSynchronize(Service parent, String path, Operation op) {
-        CompletionHandler ch = (completedOp, ex) -> {
-            if (ex != null) {
-                this.host.log(Level.INFO,
-                        "Service %s not found on owner. On-demand synchronizing.", op.getUri());
-                // Factory service is not available. This indicates that the node-group
-                // hasn't reached steady state for this factory. We kick-off on-demand
-                // synchronization.
-                String documentSelfLink;
+        this.host.log(Level.INFO,
+                "Service %s not found on owner. On-demand synchronizing.", op.getUri());
 
-                if (ServiceHost.isHelperServicePath(op.getUri().getPath())) {
-                    documentSelfLink = UriUtils.getLastPathSegment(UriUtils.getParentPath(op.getUri().getPath()));
-                } else {
-                    documentSelfLink = UriUtils.getLastPathSegment(op.getUri().getPath());
+        String documentSelfLink;
+        if (ServiceHost.isHelperServicePath(op.getUri().getPath())) {
+            documentSelfLink = UriUtils.getLastPathSegment(UriUtils.getParentPath(op.getUri().getPath()));
+        } else {
+            documentSelfLink = UriUtils.getLastPathSegment(op.getUri().getPath());
+        }
+
+        sendSynchRequest(parent.getUri(), documentSelfLink, (o, e) -> {
+            if (e == null) {
+                // Service was found on a remote peer and has been
+                // synchronized successfully. We go ahead and retry
+                // the original request now.
+                this.host.handleRequest(null, op);
+                return;
+            }
+
+            boolean markedDeleted = false;
+            boolean notFound = o.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND;
+
+            if (o.getStatusCode() == Operation.STATUS_CODE_CONFLICT) {
+                if (o.hasBody()) {
+                    ServiceErrorResponse error = o.getBody(ServiceErrorResponse.class);
+                    markedDeleted = error.getErrorCode() ==
+                            ServiceErrorResponse.ERROR_CODE_STATE_MARKED_DELETED;
                 }
+            }
 
-                sendSynchRequest(parent.getUri(), documentSelfLink, (o, e) -> {
-                    if (e == null) {
-                        // Service was found on a remote peer and has been
-                        // synchronized successfully. We go ahead and retry
-                        // the original request now.
-                        this.host.handleRequest(null, op);
-                        return;
-                    }
-
-                    boolean markedDeleted = false;
-                    boolean notFound = o.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND;
-
-                    if (o.getStatusCode() == Operation.STATUS_CODE_CONFLICT) {
-                        if (o.hasBody()) {
-                            ServiceErrorResponse error = o.getBody(ServiceErrorResponse.class);
-                            markedDeleted = error.getErrorCode() ==
-                                    ServiceErrorResponse.ERROR_CODE_STATE_MARKED_DELETED;
-                        }
-                    }
-
-                    if (notFound || markedDeleted) {
-                        if (op.getAction() == Action.DELETE) {
-                            // do not queue DELETE actions for services not present, complete with success
-                            op.complete();
-                            return;
-                        }
-                        Operation.failServiceNotFound(op);
-                        return;
-                    }
-
-                    this.host.log(Level.SEVERE, "Failed to synch service not found on owner. Failure: %s", e);
-                    op.fail(e);
-                });
+            if (notFound || markedDeleted) {
+                if (op.getAction() == Action.DELETE) {
+                    // do not queue DELETE actions for services not present, complete with success
+                    op.complete();
+                    return;
+                }
+                Operation.failServiceNotFound(op);
                 return;
             }
 
-            if (op.getAction() == Action.DELETE) {
-                op.complete();
-                return;
-            }
-            // Since the factory is marked available, we assume steady state for the node-group
-            // and fail the request with NOT-FOUND.
-            Operation.failServiceNotFound(op);
-        };
-
-        NodeGroupUtils.checkServiceAvailability(ch, parent);
+            this.host.log(Level.SEVERE, "Failed to synch service not found on owner. Failure: %s", e);
+            op.fail(e);
+        });
+        return;
     }
 
     private void sendSynchRequest(URI parentUri, String documentSelfLink, CompletionHandler ch) {

@@ -458,22 +458,6 @@ public class TestNodeGroupService {
         this.host.setNodeGroupQuorum(this.nodeCount + 1);
         this.host.waitForNodeGroupConvergence(this.nodeCount + 1);
 
-        // Determine the host who is the factory owner.
-        VerificationHost factoryOwner = null;
-        for (VerificationHost peerHost : this.host.getInProcessHostMap().values()) {
-            if (peerHost.isOwner(ExampleService.FACTORY_LINK, this.replicationNodeSelector)) {
-                factoryOwner = peerHost;
-                break;
-            }
-        }
-
-        // Since we have disabled synchronization, none of the factories
-        // should be marked available.
-        Map<String, ServiceStat> stats = factoryOwner
-                .getServiceStats(UriUtils.buildUri(factoryOwner, ExampleService.FACTORY_LINK));
-        ServiceStat stat = stats.get(Service.STAT_NAME_AVAILABLE);
-        assertTrue(stat == null || stat.latestValue == FactoryService.STAT_VALUE_FALSE);
-
         // Find the services that should be owned by the new host we added.
         List<URI> filteredUris = exampleUris.stream()
                 .filter(u -> newHost.isOwner(u.getPath(), this.replicationNodeSelector))
@@ -493,9 +477,7 @@ public class TestNodeGroupService {
         if (filteredUris.size() > 1) {
             TestContext ctx = this.host.testCreate(filteredUris.size() - 1);
 
-            // Service at the 0th index will be used test the negative case.
-            // Using half of the services for PATCH testing and other half for GET on utility service.
-            int i = 1;
+            int i = 0;
             for (; i < filteredUris.size() / 2; i++) {
                 URI exampleUri = filteredUris.get(i);
                 ExampleServiceState state = new ExampleServiceState();
@@ -523,58 +505,6 @@ public class TestNodeGroupService {
 
             ctx.await();
         }
-
-        // We have verified on-demand synch. Now mark the factory service
-        // available. This should not trigger on-demand synch.
-        ServiceStats.ServiceStat body = new ServiceStats.ServiceStat();
-        body.name = Service.STAT_NAME_AVAILABLE;
-        body.latestValue = FactoryService.STAT_VALUE_TRUE;
-
-        TestContext factoryCtx = this.host.testCreate(1);
-        Operation put = Operation.createPut(
-                UriUtils.buildAvailableUri(factoryOwner, ExampleService.FACTORY_LINK))
-                .setBody(body)
-                .setCompletion(factoryCtx.getCompletion());
-        this.host.send(put);
-        factoryCtx.await();
-
-        // Patch the service at 0th index. This PATCH request on service
-        // and GET request on utility endpoint of that service should fail
-        // with 404 - not found error because on-demand synchronization
-        // will check the factory availability and determine that node-group
-        // is in steady state.
-        TestContext patchCtx = this.host.testCreate(2);
-        URI exampleUri = filteredUris.get(0);
-        ExampleServiceState state = new ExampleServiceState();
-        state.name = UUID.randomUUID().toString();
-        state.counter = 100L;
-        Operation patchOp = Operation
-                .createPatch(exampleUri)
-                .setBody(state)
-                .setReferer(this.host.getUri())
-                .setCompletion((o, e) -> {
-                    if (e != null && o.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
-                        patchCtx.completeIteration();
-                        return;
-                    }
-                    patchCtx.failIteration(
-                            new IllegalStateException("Operation was expected to fail with 404"));
-                });
-        exampleUri = UriUtils.buildStatsUri(exampleUri);
-        this.host.send(patchOp);
-        patchOp = Operation
-                .createGet(exampleUri)
-                .setReferer(this.host.getUri())
-                .setCompletion((o, e) -> {
-                    if (e != null && o.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
-                        patchCtx.completeIteration();
-                        return;
-                    }
-                    patchCtx.failIteration(
-                            new IllegalStateException("Operation was expected to fail with 404"));
-                });
-        this.host.send(patchOp);
-        patchCtx.await();
     }
 
     @Test
