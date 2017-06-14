@@ -33,6 +33,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.index.IndexCommit;
@@ -52,6 +53,7 @@ import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService.MaintenanceRequest;
+import com.vmware.xenon.services.common.ServiceHostManagementService.AutoBackupConfiguration;
 import com.vmware.xenon.services.common.ServiceHostManagementService.BackupRequest;
 import com.vmware.xenon.services.common.ServiceHostManagementService.RestoreRequest;
 
@@ -73,6 +75,15 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
     public static final String SELF_LINK = ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP;
 
     private LuceneDocumentIndexService indexService;
+
+    private boolean isAutoBackupInProgress;
+
+    // package scope
+    static class AutoBackupRequest {
+        public static final String KIND = Utils.buildKind(AutoBackupRequest.class);
+        public String kind = AutoBackupRequest.KIND;
+    }
+
 
     public LuceneDocumentIndexBackupService(LuceneDocumentIndexService indexService) {
         this.indexService = indexService;
@@ -97,6 +108,24 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
             } catch (IOException e) {
                 patch.fail(e);
             }
+            return;
+        } else if (request instanceof AutoBackupRequest) {
+            try {
+                handleAutoBackup();
+            } catch (Exception e) {
+                patch.fail(e);
+                return;
+            }
+            patch.complete();
+            return;
+        } else if (request instanceof AutoBackupConfiguration) {
+            try {
+                handleAutoBackupConfig((AutoBackupConfiguration) request);
+            } catch (Exception e) {
+                patch.fail(e);
+                return;
+            }
+            patch.complete();
             return;
         }
 
@@ -199,6 +228,7 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
 
         SnapshotDeletionPolicy snapshotter = null;
         IndexCommit commit = null;
+        long backupStartTime = System.currentTimeMillis();
         try {
             // Create a snapshot so the index files won't be deleted.
             writer.commit();
@@ -275,8 +305,9 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                         Files.delete(path);
                     }
 
-                    logInfo("Incremental backup performed. dir=%s, added=%d, deleted=%d",
-                            destinationPath, toAdd.size(), toDelete.size());
+                    long backupEndTime = System.currentTimeMillis();
+                    logInfo("Incremental backup performed. dir=%s, added=%d, deleted=%d, took=%dms",
+                            destinationPath, toAdd.size(), toDelete.size(), backupEndTime - backupStartTime);
                 } finally {
                     if (tempDir != null) {
                         FileUtils.deleteFiles(tempDir.toFile());
@@ -486,4 +517,47 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
         return this.indexService.indexDirectory == null;
     }
 
+
+    private void handleAutoBackup() throws Exception {
+        if (!getHost().isAutoBackupEnabled() || this.isAutoBackupInProgress) {
+            return;
+        }
+
+        // perform incremental backup
+        URI autoBackupDirPath = getHost().getState().autoBackupDirectoryReference;
+        try {
+            this.isAutoBackupInProgress = true;
+            takeSnapshot(Paths.get(autoBackupDirPath), false);
+        } finally {
+            this.isAutoBackupInProgress = false;
+        }
+    }
+
+    private void handleAutoBackupConfig(AutoBackupConfiguration config) throws Exception {
+        boolean wasEnabled = getHost().isAutoBackupEnabled();
+        // update host state
+        getHost().setAutoBackupEnabled(config.enable);
+
+        if (config.enable) {
+            logInfo("Auto Backup is enabled");
+            if (!wasEnabled) {
+                // perform initial auto backup
+                handleAutoBackup();
+            }
+        } else {
+            logInfo("Auto Backup is disabled");
+        }
+    }
+
+    @Override
+    protected void handleStopCompletion(Operation op) {
+        // for stopping this service(or host)
+        if (this.isAutoBackupInProgress) {
+            getHost().scheduleCore(() -> {
+                handleStopCompletion(op);
+            }, getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
+        } else {
+            super.handleStopCompletion(op);
+        }
+    }
 }

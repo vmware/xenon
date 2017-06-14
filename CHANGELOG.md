@@ -9,6 +9,15 @@
   particular, `getSuccessesAs` is vulnerable to this bug. For more details, see
   https://www.pivotaltracker.com/story/show/132633309
 
+* Add Auto backup
+  When auto-backup is enabled, host performs incremental backup when underlying
+  document-index service persists document changes.
+  (for default `LuceneDocumentIndexService` service, it performs commit periodically)
+  The location is configurable by `autoBackup` host argument parameter.
+  To enable auto-backup, `isAutoBackupEnabled` argument is added for host start up.
+  Also, `/core/management` takes `AutoBackupConfiguration` patch request to toggle the
+  feature at run time.
+
 * MigrationTaskService has added two new parameters: "sourceReferences" and
   "destinationReferences".  When specified, migration directly use them as source
   and destination nodes without checking convergence of node-groups. Therefore,
