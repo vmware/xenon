@@ -307,7 +307,10 @@ public final class BasicAuthenticationUtils {
                     claims = guestCtx.getClaims();
                 }
             }
-            op.setBody(claims);
+            AuthorizationContext.Builder ab = AuthorizationContext.Builder.create();
+            ab.setClaims(claims);
+            ab.setToken(token);
+            op.setBody(ab.getResult());
             op.complete();
         } catch (TokenException | GeneralSecurityException e) {
             service.logWarning("Error verifying token: %s", e.getMessage());

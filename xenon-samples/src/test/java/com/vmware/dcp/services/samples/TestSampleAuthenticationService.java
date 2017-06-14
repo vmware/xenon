@@ -101,8 +101,8 @@ public class TestSampleAuthenticationService {
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERIFY_TOKEN);
 
         Operation responseOp = host.getTestRequestSender().sendAndWait(requestOp);
-        Claims claims = responseOp.getBody(Claims.class);
-        assertNotNull(claims);
+        AuthorizationContext ctx = responseOp.getBody(AuthorizationContext.class);
+        assertNotNull(ctx);
 
         TestRequestSender.clearAuthToken();
     }
