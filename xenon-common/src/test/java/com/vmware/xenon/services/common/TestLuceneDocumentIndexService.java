@@ -18,6 +18,7 @@ import static javax.xml.bind.DatatypeConverter.printBase64Binary;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.io.File;
@@ -181,6 +182,22 @@ public class TestLuceneDocumentIndexService {
 
         public static FactoryService createFactory() {
             return FactoryService.create(InMemoryExampleService.class);
+        }
+    }
+
+    public static class IndexedMetadataExampleService extends ExampleService {
+        public static final String FACTORY_LINK = "/test/indexed-metadata-examples";
+
+        public static FactoryService createFactory() {
+            return FactoryService.create(IndexedMetadataExampleService.class);
+        }
+
+        @Override
+        public ServiceDocument getDocumentTemplate() {
+            ServiceDocument template = super.getDocumentTemplate();
+            template.documentDescription.documentIndexingOptions = EnumSet.of(
+                    ServiceDocumentDescription.DocumentIndexingOption.INDEX_METADATA);
+            return template;
         }
     }
 
@@ -1006,6 +1023,11 @@ public class TestLuceneDocumentIndexService {
         doPostOrUpdates = false;
         interleaveUpdate = true;
         doThroughputSelfLinkQuery(immutableFactoryUri, null, doPostOrUpdates, interleaveUpdate);
+
+        // Indexed metadata factory
+        URI indexedMetadataFactoryUri = createIndexedMetadataFactoryService(this.host);
+        doThroughputSelfLinkQuery(indexedMetadataFactoryUri, this.updateCount, true, false);
+        doThroughputSelfLinkQuery(indexedMetadataFactoryUri, this.updateCount, false, true);
 
         // repeat for example factory (mutable)
         doPostOrUpdates = true;
@@ -2199,6 +2221,13 @@ public class TestLuceneDocumentIndexService {
 
         URI factoryUri = immutableFactory.getUri();
         return factoryUri;
+    }
+
+    URI createIndexedMetadataFactoryService(VerificationHost h) throws Throwable {
+        Service indexedMetadataFactory = IndexedMetadataExampleService.createFactory();
+        indexedMetadataFactory = h.startServiceAndWait(indexedMetadataFactory,
+                IndexedMetadataExampleService.FACTORY_LINK, null);
+        return indexedMetadataFactory.getUri();
     }
 
     URI createInMemoryExampleServiceFactory(VerificationHost h) throws Throwable {
@@ -3626,5 +3655,61 @@ public class TestLuceneDocumentIndexService {
             state.put(k, Utils.fromJson(r.documents.get(k), ExampleServiceState.class));
         }
         return state;
+    }
+
+    @Test
+    public void testDocumentMetadataIndexing() throws Throwable {
+        setUpHost(false);
+        URI indexedMetadataFactoryUri = createIndexedMetadataFactoryService(this.host);
+
+        ExampleServiceState serviceState = new ExampleServiceState();
+        serviceState.name = "name";
+
+        Map<URI, ExampleServiceState> services = this.host.doFactoryChildServiceStart(null,
+                this.serviceCount, ExampleServiceState.class,
+                (o) -> o.setBody(serviceState),
+                indexedMetadataFactoryUri);
+
+        for (int i = 0; i < this.updateCount; i++) {
+            serviceState.counter = (long) i;
+            for (URI serviceUri : services.keySet()) {
+                Operation patch = Operation.createPatch(serviceUri).setBody(serviceState);
+                this.host.send(patch);
+            }
+        }
+
+        this.host.waitFor("Metadata indexing failed to occur", () -> {
+            Map<String, ServiceStat> indexStats = this.host.getServiceStats(
+                    this.host.getDocumentIndexServiceUri());
+            ServiceStat stat = indexStats.get(
+                    LuceneDocumentIndexService.STAT_NAME_METADATA_INDEXING_UPDATE_COUNT
+                            + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+            if (stat == null) {
+                return false;
+            }
+
+            return (stat.latestValue == this.updateCount * this.serviceCount);
+        });
+
+        QueryTask queryTask = QueryTask.Builder.create()
+                .setQuery(QueryTask.Query.Builder.create()
+                        .addKindFieldClause(ExampleServiceState.class)
+                        .build())
+                .setResultLimit((int) this.serviceCount)
+                .build();
+
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+        assertNotNull(queryTask.results.nextPageLink);
+
+        QueryTask result = this.host.getServiceState(null, QueryTask.class,
+                UriUtils.buildUri(this.host, queryTask.results.nextPageLink));
+        assertEquals(this.serviceCount, (long) result.results.documentCount);
+        assertNull(result.results.nextPageLink);
+
+        Map<String, ServiceStat> indexStats = this.host.getServiceStats(
+                this.host.getDocumentIndexServiceUri());
+        ServiceStat iterationCountStat = indexStats.get(
+                LuceneDocumentIndexService.STAT_NAME_ITERATIONS_PER_QUERY);
+        assertEquals(1.0, iterationCountStat.latestValue, 0.01);
     }
 }

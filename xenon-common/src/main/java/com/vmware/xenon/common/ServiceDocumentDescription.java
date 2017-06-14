@@ -88,6 +88,14 @@ public class ServiceDocumentDescription {
         ENUM
     }
 
+    public enum DocumentIndexingOption {
+        /**
+         * Metadata should be tracked in the index and updated as documents are modified in order
+         * to improve query performance.
+         */
+        INDEX_METADATA,
+    }
+
     public enum PropertyUsageOption {
         /**
          * Property is set once and then becomes immutable
@@ -255,6 +263,16 @@ public class ServiceDocumentDescription {
     public int serializedStateSizeLimit = DEFAULT_SERIALIZED_STATE_LIMIT;
 
     /**
+     * Property to describe the indexing options for the document.
+     */
+    @Since(ReleaseConstants.RELEASE_VERSION_1_5_1)
+    public EnumSet<DocumentIndexingOption> documentIndexingOptions;
+
+    public ServiceDocumentDescription() {
+        this.documentIndexingOptions = EnumSet.noneOf(DocumentIndexingOption.class);
+    }
+
+    /**
      * Builder is a parameterized factory for ServiceDocumentDescription instances.
      */
     public static class Builder {
@@ -276,6 +294,7 @@ public class ServiceDocumentDescription {
                 desc.serializedStateSizeLimit = indexingParameters.serializedStateSize();
                 desc.versionRetentionLimit = indexingParameters.versionRetention();
                 desc.versionRetentionFloor = indexingParameters.versionRetentionFloor();
+                desc.documentIndexingOptions.addAll(Arrays.asList(indexingParameters.indexing()));
             }
 
             desc.propertyDescriptions = root.fieldDescriptions;

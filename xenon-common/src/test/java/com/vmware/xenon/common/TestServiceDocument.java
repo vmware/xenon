@@ -569,7 +569,8 @@ public class TestServiceDocument {
     }
 
     @ServiceDocument.IndexingParameters(serializedStateSize = 8, versionRetention = 44,
-            versionRetentionFloor = 22)
+            versionRetentionFloor = 22,
+            indexing = { ServiceDocumentDescription.DocumentIndexingOption.INDEX_METADATA })
     @ServiceDocument.Documentation(name = "Test Document Name", description = "Test Document Desc")
     private static class AnnotatedDoc extends ServiceDocument {
         @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
@@ -612,6 +613,8 @@ public class TestServiceDocument {
         assertEquals(8, desc.serializedStateSizeLimit);
         assertEquals(44, desc.versionRetentionLimit);
         assertEquals(22, desc.versionRetentionFloor);
+        assertEquals(EnumSet.of(ServiceDocumentDescription.DocumentIndexingOption.INDEX_METADATA),
+                desc.documentIndexingOptions);
 
         ServiceDocumentDescription.PropertyDescription optDesc = desc.propertyDescriptions
                 .get("opt");
