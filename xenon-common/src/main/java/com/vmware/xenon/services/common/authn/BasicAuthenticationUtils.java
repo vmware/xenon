@@ -29,6 +29,7 @@ import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.jwt.Verifier;
 import com.vmware.xenon.common.jwt.Verifier.TokenException;
+import com.vmware.xenon.services.common.GuestUserService;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -294,6 +295,18 @@ public final class BasicAuthenticationUtils {
             // use JWT token verifier for basic auth
             Verifier verifier = service.getTokenVerifier();
             Claims claims = verifier.verify(token, Claims.class);
+
+            if (claims != null) {
+                // In case of expired token we would just use guest context.
+                Long expirationTime = claims.getExpirationTime();
+                if (expirationTime != null
+                        && TimeUnit.SECONDS.toMicros(expirationTime)
+                        <= Utils.getSystemNowMicrosUtc()) {
+                    AuthorizationContext guestCtx = service
+                            .getAuthorizationContextForSubject(GuestUserService.SELF_LINK);
+                    claims = guestCtx.getClaims();
+                }
+            }
             op.setBody(claims);
             op.complete();
         } catch (TokenException | GeneralSecurityException e) {

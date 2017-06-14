@@ -16,10 +16,13 @@ package com.vmware.xenon.common;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import static com.vmware.xenon.services.common.authn.BasicAuthenticationUtils.constructBasicAuth;
 
+import java.security.GeneralSecurityException;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -29,8 +32,12 @@ import io.netty.handler.codec.http.cookie.Cookie;
 import org.junit.After;
 import org.junit.Test;
 
+import com.vmware.xenon.common.Claims.Builder;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.http.netty.NettyHttpListener;
+import com.vmware.xenon.common.jwt.Signer;
+import com.vmware.xenon.common.jwt.Verifier;
+import com.vmware.xenon.common.jwt.Verifier.TokenException;
 import com.vmware.xenon.common.test.AuthTestUtils;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestNodeGroupManager;
@@ -38,6 +45,7 @@ import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
+import com.vmware.xenon.services.common.GuestUserService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.SystemUserService;
 import com.vmware.xenon.services.common.authn.AuthenticationConstants;
@@ -120,7 +128,29 @@ public class TestAuthentication {
                 op.complete();
                 return;
             }
-            op.fail(new IllegalArgumentException("Invalid Token!"));
+
+            try {
+                Verifier verifier = getTokenVerifier();
+                Claims claims = verifier.verify(token, Claims.class);
+
+                if (claims != null) {
+                    // In case of expired token we would refresh the token
+                    Long expirationTime = claims.getExpirationTime();
+                    if (expirationTime != null
+                            && TimeUnit.SECONDS.toMicros(expirationTime)
+                            <= Utils.getSystemNowMicrosUtc()) {
+                        Claims.Builder cb = new Claims.Builder();
+                        cb.setIssuer(AuthenticationConstants.DEFAULT_ISSUER);
+                        cb.setSubject(claims.getSubject());
+                        cb.setExpirationTime(Instant.MAX.getEpochSecond());
+                        claims = cb.getResult();
+                    }
+                }
+                op.setBody(claims);
+                op.complete();
+            } catch (TokenException | GeneralSecurityException e) {
+                op.fail(new IllegalArgumentException("Invalid Token!"));
+            }
         }
 
         private void associateAuthorizationContext(Service service, Operation op, String token) {
@@ -447,6 +477,53 @@ public class TestAuthentication {
     }
 
     @Test
+    public void testVerificationExpiredBasicAuthAccessToken() throws Throwable {
+        VerificationHost host = createAndStartHost(true, false, null);
+        host.log("Testing verification of expired token for Basic auth");
+
+        // create user foo@vmware.com
+        createTestUsers(host);
+        String userLink = "/core/authz/users/foo@vmware.com";
+
+        Signer signer = new Signer(host.getJWTSecret());
+        long expirationMicros = Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(5));
+
+        // Create a token with short expiry
+        Claims.Builder builder = new Builder();
+        builder.setExpirationTime(TimeUnit.MICROSECONDS.toSeconds(expirationMicros));
+        builder.setSubject(userLink);
+        Claims claims = builder.getResult();
+
+        String token = signer.sign(claims);
+        TestRequestSender.setAuthToken(token);
+        TestRequestSender sender = new TestRequestSender(host);
+
+        // Make a request to verification service
+        Operation requestOp = Operation.createPost(host, BasicAuthenticationService.SELF_LINK)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERIFY_TOKEN);
+
+        Operation responseOp = sender.sendAndWait(requestOp);
+        claims = responseOp.getBody(Claims.class);
+        assertNotNull(claims);
+        assertEquals(userLink, claims.getSubject());
+
+        host.waitFor("Timed out waiting from token to expire",
+                () -> Utils.getNowMicrosUtc() > expirationMicros);
+
+        // Make a request with expired token
+        requestOp = Operation.createPost(host, BasicAuthenticationService.SELF_LINK)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERIFY_TOKEN);
+
+        responseOp = sender.sendAndWait(requestOp);
+        claims = responseOp.getBody(Claims.class);
+        assertNotNull(claims);
+        assertEquals(GuestUserService.SELF_LINK, claims.getSubject());
+
+        TestRequestSender.clearAuthToken();
+        host.log("Verification of expired token for Basic auth succeeded as expected");
+    }
+
+    @Test
     public void testVerificationValidAuthServiceToken() throws Throwable {
         VerificationHost host = createAndStartHost(true, false, new TestAuthenticationService());
         host.log("Testing verification of valid token for external auth");
@@ -485,6 +562,54 @@ public class TestAuthentication {
 
         TestRequestSender.clearAuthToken();
         host.log("Verification of invalid token for external auth fails as expected");
+    }
+
+    @Test
+    public void testVerificationExpiredExternalAuthAccessToken() throws Throwable {
+        VerificationHost host = createAndStartHost(true, false, new TestAuthenticationService());
+        host.log("Testing verification of expired token for external auth");
+
+        // create user foo@vmware.com
+        createTestUsers(host);
+        String userLink = "/core/authz/users/foo@vmware.com";
+
+        Signer signer = new Signer(host.getJWTSecret());
+        long expirationMicros = Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(5));
+
+        // Create a token with short expiry
+        Claims.Builder builder = new Builder();
+        builder.setExpirationTime(TimeUnit.MICROSECONDS.toSeconds(expirationMicros));
+        builder.setSubject(userLink);
+        Claims claims = builder.getResult();
+
+        String token = signer.sign(claims);
+        TestRequestSender.setAuthToken(token);
+        TestRequestSender sender = new TestRequestSender(host);
+
+        // Make a request to verification service
+        Operation requestOp = Operation.createPost(host, TestAuthenticationService.SELF_LINK)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERIFY_TOKEN);
+
+        Operation responseOp = sender.sendAndWait(requestOp);
+        claims = responseOp.getBody(Claims.class);
+        assertNotNull(claims);
+        assertEquals(userLink, claims.getSubject());
+
+        host.waitFor("Timed out waiting from token to expire",
+                () -> Utils.getNowMicrosUtc() > expirationMicros);
+
+        // Make a request with expired token
+        requestOp = Operation.createPost(host, TestAuthenticationService.SELF_LINK)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERIFY_TOKEN);
+
+        responseOp = sender.sendAndWait(requestOp);
+        claims = responseOp.getBody(Claims.class);
+        assertNotNull(claims);
+        assertEquals(userLink, claims.getSubject());
+        assertTrue(claims.getExpirationTime() > TimeUnit.MICROSECONDS.toSeconds(expirationMicros));
+
+        TestRequestSender.clearAuthToken();
+        host.log("Verification of expired token for external auth succeeded as expected");
     }
 
     @Test
