@@ -64,6 +64,13 @@ class LuceneIndexDocumentHelper {
 
     public static final String SORT_PROPERTY_NAME_SUFFIX = "_sort";
 
+    private static final String FIELD_NAME_INDEXING_PREFIX = "xenon.indexing";
+
+    public static final String FIELD_NAME_INDEXING_ID = FIELD_NAME_INDEXING_PREFIX + ".id";
+
+    public static final String FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT =
+            FIELD_NAME_INDEXING_PREFIX + ".metadata.current";
+
     private static final String DISABLE_SORT_FIELD_NAMING_PROPERTY_NAME =
             Utils.PROPERTY_NAME_PREFIX + "LuceneIndexDocumentHelper.DISABLE_SORT_FIELD_NAMING";
 
@@ -122,6 +129,14 @@ class LuceneIndexDocumentHelper {
         }
     };
 
+    private final LongFieldContext currentField = new LongFieldContext() {
+        @Override
+        public void initialize() {
+            this.numericDocField = new NumericDocValuesField(
+                    FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 0L);
+        }
+    };
+
     private final StringFieldContext selfLinkField = new StringFieldContext() {
         @Override
         public void initialize() {
@@ -163,6 +178,13 @@ class LuceneIndexDocumentHelper {
         }
     };
 
+    private final StringFieldContext indexingIdField = new StringFieldContext() {
+        @Override
+        public void initialize() {
+            this.stringField = new StringField(FIELD_NAME_INDEXING_ID, "", Store.YES);
+        }
+    };
+
     private final Map<String, StoredField> storedFields = new HashMap<>();
 
     private final Map<String, StringField> stringFields = new HashMap<>();
@@ -186,6 +208,8 @@ class LuceneIndexDocumentHelper {
         this.updateActionField.initialize();
         this.updateTimeField.initialize();
         this.versionField.initialize();
+        this.currentField.initialize();
+        this.indexingIdField.initialize();
     }
 
     void addSelfLinkField(String selfLink) {
@@ -226,6 +250,21 @@ class LuceneIndexDocumentHelper {
 
     void addExpirationTimeField(long exp) {
         updateLongFieldContext(exp, this.expirationTimeField);
+    }
+
+    void addCurrentField() {
+        this.currentField.numericDocField.setLongValue(1L);
+        this.doc.add(this.currentField.numericDocField);
+    }
+
+    void addIndexingIdField(String selfLink, Long epoch, long version) {
+        StringBuilder sb = new StringBuilder(selfLink);
+        if (epoch != null) {
+            sb.append(":").append(epoch);
+        }
+        String indexingId = sb.append(":").append(version).toString();
+        this.indexingIdField.stringField.setStringValue(indexingId);
+        this.doc.add(this.indexingIdField.stringField);
     }
 
     private void updateLongFieldContext(long value, LongFieldContext ctx) {
