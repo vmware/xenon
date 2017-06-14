@@ -609,6 +609,11 @@ public abstract class FactoryService extends StatelessService {
             task.querySpec.options.add(QueryOption.INCLUDE_ALL_VERSIONS);
         }
 
+        if (this.childTemplate.documentDescription.documentIndexingOptions.contains(
+                ServiceDocumentDescription.DocumentIndexingOption.INDEX_METADATA)) {
+            task.querySpec.options.add(QueryOption.INDEXED_METADATA);
+        }
+
         if (task.querySpec.resultLimit != null) {
             handleODataLimitRequest(op, task);
             return;

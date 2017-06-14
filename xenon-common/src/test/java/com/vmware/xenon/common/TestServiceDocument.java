@@ -587,7 +587,9 @@ public class TestServiceDocument {
         public int[] intArray;
     }
 
-    @ServiceDocument.IndexingParameters(serializedStateSize = 8, versionRetention = 44, versionRetentionFloor = 22)
+    @ServiceDocument.IndexingParameters(serializedStateSize = 8, versionRetention = 44,
+            versionRetentionFloor = 22,
+            indexing = { ServiceDocumentDescription.DocumentIndexingOption.INDEX_METADATA })
     @ServiceDocument.Documentation(name = "Test Document Name", description = "Test Document Desc")
     private static class AnnotatedDoc extends ServiceDocument {
         @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
@@ -599,7 +601,7 @@ public class TestServiceDocument {
         @PropertyOptions(indexing = {
                 ServiceDocumentDescription.PropertyIndexingOption.SORT,
                 ServiceDocumentDescription.PropertyIndexingOption.EXCLUDE_FROM_SIGNATURE }, usage = {
-                        ServiceDocumentDescription.PropertyUsageOption.OPTIONAL })
+                ServiceDocumentDescription.PropertyUsageOption.OPTIONAL })
         public String opts;
 
         @Documentation(description = "desc", exampleString = "{ \"from\" : \"1\", \"to\" : \"5\" }")
@@ -687,6 +689,8 @@ public class TestServiceDocument {
         assertEquals(8, desc.serializedStateSizeLimit);
         assertEquals(44, desc.versionRetentionLimit);
         assertEquals(22, desc.versionRetentionFloor);
+        assertEquals(EnumSet.of(ServiceDocumentDescription.DocumentIndexingOption.INDEX_METADATA),
+                desc.documentIndexingOptions);
 
         ServiceDocumentDescription.PropertyDescription optDesc = desc.propertyDescriptions
                 .get("opt");
@@ -877,14 +881,14 @@ public class TestServiceDocument {
     }
 
     /**
-    * Verify that the document builder builds valid example values for all
-    * known types.
-    *
-    * This functionality is used in StatefulService.getDocumentTemplate()
-    *
-    * @throws Throwable if the exampleValues could not be assigned to an empty
-    *                   ServiceDocument instance
-    */
+     * Verify that the document builder builds valid example values for all
+     * known types.
+     *
+     * This functionality is used in StatefulService.getDocumentTemplate()
+     *
+     * @throws Throwable if the exampleValues could not be assigned to an empty
+     *                   ServiceDocument instance
+     */
     @Test
     public void exampleValues() throws Throwable {
         MultiTypeServiceDocument doc = new MultiTypeServiceDocument();

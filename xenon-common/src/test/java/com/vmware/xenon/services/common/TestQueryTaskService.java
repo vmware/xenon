@@ -132,7 +132,9 @@ public class TestQueryTaskService {
             // on index stats.
             this.host.setPeerSynchronizationEnabled(false);
             this.host.start();
-            if (!this.host.isStressTest()) {
+            if (this.host.isStressTest()) {
+                Utils.setTimeDriftThreshold(TimeUnit.HOURS.toMicros(1));
+            } else {
                 this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS
                         .toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
                 this.host.toggleServiceOptions(this.host.getDocumentIndexServiceUri(),
@@ -905,28 +907,101 @@ public class TestQueryTaskService {
         expansionStrategy.validateExpandBuiltin(this.host, kindClause, taskResult);
     }
 
+    public static class QueryValidationTestServiceWithIndexedMetadata
+            extends QueryValidationTestService {
+
+        @Override
+        public ServiceDocument getDocumentTemplate() {
+            ServiceDocument template = super.getDocumentTemplate();
+            template.documentDescription.documentIndexingOptions =
+                    EnumSet.of(ServiceDocumentDescription.DocumentIndexingOption.INDEX_METADATA);
+            return template;
+        }
+    }
+
     @Test
     public void throughputSimpleQuery() throws Throwable {
         setUpHost();
-        List<URI> services = createQueryTargetServices(this.serviceCount);
+
+        this.host.toggleServiceOptions(this.host.getDocumentIndexServiceUri(),
+                EnumSet.of(ServiceOption.INSTRUMENTATION),
+                null);
+
+        doThroughputSimpleQuery(QueryValidationTestService.class, null, false);
+    }
+
+    @Test
+    public void throughputSimpleQueryWithIndexedMetadata() throws Throwable {
+        setUpHost();
+
+        this.host.toggleServiceOptions(this.host.getDocumentIndexServiceUri(),
+                EnumSet.of(ServiceOption.INSTRUMENTATION),
+                null);
+
+        LuceneDocumentIndexService.setMetadataUpdateMaxQueueDepth(0);
+        try {
+            doThroughputSimpleQuery(QueryValidationTestServiceWithIndexedMetadata.class,
+                    EnumSet.of(QueryOption.INDEXED_METADATA), true);
+        } finally {
+            LuceneDocumentIndexService.setMetadataUpdateMaxQueueDepth(
+                    LuceneDocumentIndexService.DEFAULT_METADATA_UPDATE_MAX_QUEUE_DEPTH);
+        }
+    }
+
+    private void doThroughputSimpleQuery(Class<? extends Service> type,
+            EnumSet<QueryOption> queryOptions, boolean waitForMetadataIndexing) throws Throwable {
+        List<URI> services = createQueryTargetServices(this.serviceCount, type);
         QueryValidationServiceState newState = new QueryValidationServiceState();
-        newState.textValue = "now";
-        newState = putSimpleStateOnQueryTargetServices(services, newState);
-        Query q = Query.Builder.create()
+        for (int i = 0; i < this.updateCount; i++) {
+            newState.textValue = "" + i;
+            newState = putSimpleStateOnQueryTargetServices(services, newState);
+        }
+
+        if (waitForMetadataIndexing) {
+            this.host.waitFor("Metadata indexing failed to occur", () -> {
+                Map<String, ServiceStat> indexStats = this.host.getServiceStats(
+                        this.host.getDocumentIndexServiceUri());
+                ServiceStat stat = indexStats.get(
+                        LuceneDocumentIndexService.STAT_NAME_METADATA_INDEXING_UPDATE_COUNT
+                                + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+                if (stat == null) {
+                    return false;
+                }
+
+                if (stat.accumulatedValue > this.updateCount * this.serviceCount) {
+                    throw new IllegalStateException("Value was " + stat.accumulatedValue);
+                }
+
+                return (stat.accumulatedValue == this.updateCount * this.serviceCount);
+            });
+        }
+
+        // Do a query where a single document in the index matches the query parameters
+        Query query = Query.Builder.create()
                 .addFieldClause("id", newState.id, MatchType.PHRASE, Occurance.MUST_OCCUR)
                 .addKindFieldClause(QueryValidationServiceState.class).build();
 
-        // first do the test with no concurrent updates to the index, while we query
-        boolean interleaveWrites = false;
         for (int i = 0; i < this.iterationCount; i++) {
-            doThroughputQuery(services, q, 1, newState, interleaveWrites);
+            doThroughputQuery(services, query, queryOptions, 1, newState, false);
         }
 
-        // now update the index, once for every N queries. This will have a significant
-        // impact on performance
-        interleaveWrites = true;
         for (int i = 0; i < this.iterationCount; i++) {
-            doThroughputQuery(services, q, 1, newState, interleaveWrites);
+            doThroughputQuery(services, query, queryOptions, 1, newState, true);
+        }
+
+        // Now do a query where many (this.updateCount) documents in the index match the query
+        // parameters, but only one result is expected.
+        query = Query.Builder.create()
+                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, services.get(0).getPath(),
+                        MatchType.TERM, Occurance.MUST_OCCUR)
+                .addKindFieldClause(QueryValidationServiceState.class).build();
+
+        for (int i = 0; i < this.iterationCount; i++) {
+            doThroughputQuery(services, query, queryOptions, 1, newState, false);
+        }
+
+        for (int i = 0; i < this.iterationCount; i++) {
+            doThroughputQuery(services, query, queryOptions, 1, newState, true);
         }
     }
 
@@ -1001,12 +1076,6 @@ public class TestQueryTaskService {
                 LuceneDocumentIndexService.STAT_NAME_NON_DOCUMENT_KIND_QUERY_COUNT);
         assertNotNull(nonKindQueryStat);
         assertEquals(this.queryCount, nonKindQueryStat.latestValue, 0);
-    }
-
-    private void doThroughputQuery(List<URI> services, Query q, Integer expectedResultCount,
-            QueryValidationServiceState template, boolean interleaveWrites) throws Throwable {
-        doThroughputQuery(services, q, EnumSet.noneOf(QueryOption.class), expectedResultCount,
-                template, interleaveWrites);
     }
 
     private void doThroughputQuery(List<URI> services, Query q, EnumSet<QueryOption> queryOptions,
@@ -4362,25 +4431,30 @@ public class TestQueryTaskService {
         return templateState;
     }
 
-    private List<URI> createQueryTargetServices(int serviceCount)
+    private List<URI> createQueryTargetServices(int serviceCount) throws Throwable {
+        return createQueryTargetServices(serviceCount, QueryValidationTestService.class);
+    }
+
+    private List<URI> createQueryTargetServices(int serviceCount, Class<? extends Service> type)
             throws Throwable {
-        return startQueryTargetServices(serviceCount, new QueryValidationServiceState());
+        return startQueryTargetServices(serviceCount, type, new QueryValidationServiceState());
     }
 
     private List<URI> startQueryTargetServices(int serviceCount,
-            QueryValidationServiceState initState)
-            throws Throwable {
+            QueryValidationServiceState initState) throws Throwable {
+        return startQueryTargetServices(serviceCount, QueryValidationTestService.class, initState);
+    }
+
+    private List<URI> startQueryTargetServices(int serviceCount, Class<? extends Service> type,
+            QueryValidationServiceState initState) throws Throwable {
         List<URI> queryValidationServices = new ArrayList<>();
-        List<Service> services = this.host.doThroughputServiceStart(
-                serviceCount, QueryValidationTestService.class,
-                initState,
+        List<Service> services = this.host.doThroughputServiceStart(serviceCount, type, initState,
                 null, null);
 
         for (Service s : services) {
             queryValidationServices.add(s.getUri());
         }
         return queryValidationServices;
-
     }
 
     @Test

@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -34,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.CancellationException;
@@ -52,6 +54,7 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.LongPoint;
+import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexUpgrader;
 import org.apache.lucene.index.IndexWriter;
@@ -94,6 +97,7 @@ import com.vmware.xenon.common.ReflectionUtils;
 import com.vmware.xenon.common.RoundRobinOperationQueue;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
+import com.vmware.xenon.common.ServiceDocumentDescription.DocumentIndexingOption;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceStatUtils;
@@ -144,6 +148,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final int DEFAULT_EXPIRED_DOCUMENT_SEARCH_THRESHOLD = 10000;
 
+    public static final int DEFAULT_METADATA_UPDATE_MAX_QUEUE_DEPTH = 10000;
+
     private static final String DOCUMENTS_WITHOUT_RESULTS = "DocumentsWithoutResults";
 
     protected String indexDirectory;
@@ -161,6 +167,8 @@ public class LuceneDocumentIndexService extends StatelessService {
     private static int queryPageResultLimit = DEFAULT_QUERY_PAGE_RESULT_LIMIT;
 
     private static Long searcherRefreshIntervalMicros = null;
+
+    private static int metadataUpdateMaxQueueDepth = DEFAULT_METADATA_UPDATE_MAX_QUEUE_DEPTH;
 
     public static void setImplicitQueryResultLimit(int limit) {
         queryResultLimit = limit;
@@ -218,6 +226,14 @@ public class LuceneDocumentIndexService extends StatelessService {
         searcherRefreshIntervalMicros = interval;
     }
 
+    public static void setMetadataUpdateMaxQueueDepth(int depth) {
+        metadataUpdateMaxQueueDepth = depth;
+    }
+
+    public static int getMetadataUpdateMaxQueueDepth() {
+        return metadataUpdateMaxQueueDepth;
+    }
+
     static final String LUCENE_FIELD_NAME_BINARY_SERIALIZED_STATE = "binarySerializedState";
 
     static final String LUCENE_FIELD_NAME_JSON_SERIALIZED_STATE = "jsonSerializedState";
@@ -272,6 +288,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final String STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT = "expiredDocumentForcedMaintenanceCount";
 
+    public static final String STAT_NAME_METADATA_INDEXING_UPDATE_COUNT = "metadataIndexingUpdateCount";
+
     public static final String STAT_NAME_VERSION_CACHE_LOOKUP_COUNT = "versionCacheLookupCount";
 
     public static final String STAT_NAME_VERSION_CACHE_MISS_COUNT = "versionCacheMissCount";
@@ -286,6 +304,9 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final String STAT_NAME_MAINTENANCE_VERSION_RETENTION_DURATION_MICROS =
             "maintenanceVersionRetentionDurationMicros";
+
+    public static final String STAT_NAME_MAINTENANCE_METADATA_INDEXING_DURATION_MICROS =
+            "maintenanceMetadataIndexingDurationMicros";
 
     public static final String STAT_NAME_DOCUMENT_KIND_QUERY_COUNT_FORMAT = "documentKindQueryCount-%s";
 
@@ -312,6 +333,11 @@ public class LuceneDocumentIndexService extends StatelessService {
      * Synchronization object used to coordinate index searcher refresh
      */
     protected Object searchSync;
+
+    /**
+     * Synchronization object used to coordinate document metadata updates.
+     */
+    private Object metadataUpdateSync;
 
     /**
      * Synchronization object used to coordinate index writer update
@@ -357,6 +383,10 @@ public class LuceneDocumentIndexService extends StatelessService {
     private final Map<String, Long> immutableParentLinks = new HashMap<>();
     private final Map<String, Long> documentKindUpdateInfo = new HashMap<>();
 
+    private final SortedSet<MetadataUpdateInfo> metadataUpdates =
+            new TreeSet<>(Comparator.comparingLong((info) -> info.updateTimeMicros));
+    private final Map<String, MetadataUpdateInfo> metadataUpdatesPerLink = new HashMap<>();
+
     // memory pressure threshold in bytes
     long updateMapMemoryLimit;
 
@@ -366,6 +396,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private ExecutorService privateQueryExecutor;
 
+    private Set<String> fieldToLoadIndexingIdLookup;
     private Set<String> fieldToLoadVersionLookup;
     private Set<String> fieldsToLoadNoExpand;
     private Set<String> fieldsToLoadWithExpand;
@@ -374,6 +405,13 @@ public class LuceneDocumentIndexService extends StatelessService {
     private RoundRobinOperationQueue updateQueue = RoundRobinOperationQueue.create();
 
     private URI uri;
+
+    public static class MetadataUpdateInfo {
+        public String selfLink;
+        public String kind;
+        public long updateTimeMicros;
+        public long version;
+    }
 
     public static class DocumentUpdateInfo {
         public long updateTimeMicros;
@@ -515,6 +553,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private void initializeInstance() {
         this.searchSync = new Object();
+        this.metadataUpdateSync = new Object();
         this.liveVersionsPerLink.clear();
         this.updatesPerLink.clear();
         this.searcherUpdateTimesMicros.clear();
@@ -522,6 +561,9 @@ public class LuceneDocumentIndexService extends StatelessService {
         this.paginatedSearchersByExpirationTime.clear();
         this.versionSort = new Sort(new SortedNumericSortField(ServiceDocument.FIELD_NAME_VERSION,
                 SortField.Type.LONG, true));
+
+        this.fieldToLoadIndexingIdLookup = new HashSet<>();
+        this.fieldToLoadIndexingIdLookup.add(LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ID);
 
         this.fieldToLoadVersionLookup = new HashSet<>();
         this.fieldToLoadVersionLookup.add(ServiceDocument.FIELD_NAME_VERSION);
@@ -1321,7 +1363,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         long queryStartTimeMicros = Utils.getNowMicrosUtc();
-        tq = updateQuery(op, tq, queryStartTimeMicros);
+        tq = updateQuery(op, tq, queryStartTimeMicros, options);
         if (tq == null) {
             return false;
         }
@@ -1459,12 +1501,22 @@ public class LuceneDocumentIndexService extends StatelessService {
      *
      * @return Augmented query.
      */
-    private Query updateQuery(Operation op, Query tq, long now) {
+    private Query updateQuery(Operation op, Query tq, long now,
+            EnumSet<QueryOption> queryOptions) {
         Query expirationClause = LongPoint.newRangeQuery(
                 ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS, 1, now);
         BooleanQuery.Builder builder = new BooleanQuery.Builder()
                 .add(expirationClause, Occur.MUST_NOT)
                 .add(tq, Occur.FILTER);
+
+        if (queryOptions.contains(QueryOption.INDEXED_METADATA)
+                && !queryOptions.contains(QueryOption.INCLUDE_ALL_VERSIONS)
+                && !queryOptions.contains(QueryOption.TIME_SNAPSHOT)) {
+            Query currentClause = NumericDocValuesField.newExactQuery(
+                    LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 1L);
+            builder.add(currentClause, Occur.MUST);
+        }
+
         if (!getHost().isAuthorizationEnabled()) {
             return builder.build();
         }
@@ -2496,6 +2548,11 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
         indexDocHelper.addVersionField(s.documentVersion);
 
+        if (desc.documentIndexingOptions.contains(DocumentIndexingOption.INDEX_METADATA)) {
+            indexDocHelper.addIndexingIdField(link, s.documentEpoch, s.documentVersion);
+            indexDocHelper.addCurrentField();
+        }
+
         Document threadLocalDoc = indexDocHelper.getDoc();
         try {
             if (desc.propertyDescriptions == null
@@ -2676,6 +2733,33 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         if (op.getAction() == Action.POST
                 && op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)) {
+
+            // DocumentIndexingOption.INDEX_METADATA instructs the index service to maintain
+            // additional metadata attributes in the index, such as whether a particular Lucene
+            // document represents the "current" version of a service, or whether the service is
+            // deleted.
+            //
+            // Since these attributes are updated out of band, there is the potential of a race
+            // between this update and the metadata attribute updates, which occur during index
+            // service maintenance. This race cannot be avoided by the caller, so we use a lock
+            // here to force metadata indexing updates to be flushed before deleting the existing
+            // documents.
+            //
+            // Note this may cause significant additional latency under load for this particular
+            // combination of options (PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE and INDEX_METADATA). My
+            // original preference was to fail operations in this category; however, supporting
+            // this scenario is required in order to support migration for the time being, where
+            // services with INDEX_METADATA may be deleted and recreated.
+            if (desc.documentIndexingOptions.contains(DocumentIndexingOption.INDEX_METADATA)) {
+                synchronized (this.metadataUpdateSync) {
+                    synchronized (this.metadataUpdates) {
+                        this.metadataUpdatesPerLink.remove(sd.documentSelfLink);
+                        this.metadataUpdates.removeIf((info) ->
+                                info.selfLink.equals(sd.documentSelfLink));
+                    }
+                }
+            }
+
             deleteAllDocumentsForSelfLinkForcedPost(wr, sd);
         }
 
@@ -2693,11 +2777,48 @@ public class LuceneDocumentIndexService extends StatelessService {
         // be reflected in the new searcher. If the start time would be used,
         // it is possible to race with updating the searcher and NOT have this
         // change be reflected in the searcher.
+        long updateTime = Utils.getNowMicrosUtc();
         updateLinkInfoCache(desc, sd.documentSelfLink, sd.documentKind, sd.documentVersion,
-                Utils.getNowMicrosUtc());
+                updateTime);
+        checkDocumentIndexingMetadata(sd, desc, updateTime);
         op.setBody(null).complete();
         checkDocumentRetentionLimit(sd, desc);
         applyActiveQueries(op, sd, desc);
+    }
+
+    private void checkDocumentIndexingMetadata(ServiceDocument sd, ServiceDocumentDescription desc,
+            long updateTimeMicros) {
+
+        if (!desc.documentIndexingOptions.contains(DocumentIndexingOption.INDEX_METADATA)) {
+            return;
+        }
+
+        if (sd.documentVersion == 0) {
+            return;
+        }
+
+        synchronized (this.metadataUpdates) {
+            MetadataUpdateInfo info = this.metadataUpdatesPerLink.get(sd.documentSelfLink);
+            if (info != null) {
+                if (info.updateTimeMicros < updateTimeMicros) {
+                    this.metadataUpdates.remove(info);
+                    info.updateTimeMicros = updateTimeMicros;
+                    this.metadataUpdates.add(info);
+                }
+
+                info.version = Math.max(info.version, sd.documentVersion);
+                return;
+            }
+
+            info = new MetadataUpdateInfo();
+            info.selfLink = sd.documentSelfLink;
+            info.kind = sd.documentKind;
+            info.updateTimeMicros = updateTimeMicros;
+            info.version = sd.documentVersion;
+
+            this.metadataUpdatesPerLink.put(sd.documentSelfLink, info);
+            this.metadataUpdates.add(info);
+        }
     }
 
     private void updateLinkInfoCache(ServiceDocumentDescription desc,
@@ -2742,6 +2863,26 @@ public class LuceneDocumentIndexService extends StatelessService {
             // The index update time may only be increased.
             if (this.writerUpdateTimeMicros < lastAccessTime) {
                 this.writerUpdateTimeMicros = lastAccessTime;
+            }
+        }
+    }
+
+    private void updateLinkInfoCacheForMetadataUpdates(long updateTimeMicros,
+            Collection<MetadataUpdateInfo> entries) {
+        synchronized (this.searchSync) {
+            for (MetadataUpdateInfo info : entries) {
+                this.updatesPerLink.compute(info.selfLink, (k, entry) -> {
+                    entry.updateTimeMicros = Math.max(entry.updateTimeMicros, updateTimeMicros);
+                    return entry;
+                });
+                this.documentKindUpdateInfo.compute(info.kind, (k, entry) -> {
+                    entry = Math.max(entry, updateTimeMicros);
+                    return entry;
+                });
+            }
+
+            if (this.writerUpdateTimeMicros < updateTimeMicros) {
+                this.writerUpdateTimeMicros = updateTimeMicros;
             }
         }
     }
@@ -2896,6 +3037,12 @@ public class LuceneDocumentIndexService extends StatelessService {
                 return;
             }
 
+            long searcherCreationTime = Utils.getNowMicrosUtc();
+
+            synchronized (this.metadataUpdates) {
+                this.metadataUpdatesPerLink.clear();
+            }
+
             long startNanos = System.nanoTime();
             IndexSearcher s = createOrRefreshSearcher(null, null, Integer.MAX_VALUE, w, false);
             long endNanos = System.nanoTime();
@@ -2916,6 +3063,15 @@ public class LuceneDocumentIndexService extends StatelessService {
             applyDocumentVersionRetentionPolicy(deadline);
             endNanos = System.nanoTime();
             setTimeSeriesHistogramStat(STAT_NAME_MAINTENANCE_VERSION_RETENTION_DURATION_MICROS,
+                    AGGREGATION_TYPE_AVG_MAX,
+                    TimeUnit.NANOSECONDS.toMicros(endNanos - startNanos));
+
+            startNanos = endNanos;
+            synchronized (this.metadataUpdateSync) {
+                applyMetadataIndexingUpdates(s, searcherCreationTime, deadline);
+            }
+            endNanos = System.nanoTime();
+            setTimeSeriesHistogramStat(STAT_NAME_MAINTENANCE_METADATA_INDEXING_DURATION_MICROS,
                     AGGREGATION_TYPE_AVG_MAX,
                     TimeUnit.NANOSECONDS.toMicros(endNanos - startNanos));
 
@@ -2963,6 +3119,119 @@ public class LuceneDocumentIndexService extends StatelessService {
             applyFileLimitRefreshWriter(true);
             op.fail(e);
         }
+    }
+
+    private void applyMetadataIndexingUpdates(IndexSearcher searcher, long searcherCreationTime,
+            long deadline) throws IOException {
+        Map<String, MetadataUpdateInfo> entries = new HashMap<>();
+        synchronized (this.metadataUpdates) {
+            Iterator<MetadataUpdateInfo> it = this.metadataUpdates.iterator();
+            while (it.hasNext()) {
+                MetadataUpdateInfo info = it.next();
+                if (info.updateTimeMicros > searcherCreationTime) {
+                    break;
+                }
+
+                entries.compute(info.selfLink, (selfLink, entry) -> {
+                    if (entry == null) {
+                        return info;
+                    }
+                    entry.version = Math.max(entry.version, info.version);
+                    return entry;
+                });
+
+                it.remove();
+            }
+        }
+
+        if (entries.isEmpty()) {
+            return;
+        }
+
+        Collection<MetadataUpdateInfo> entriesToProcess = entries.values();
+        int queueDepth = entriesToProcess.size();
+        Iterator<MetadataUpdateInfo> it = entriesToProcess.iterator();
+        int updateCount = 0;
+        while (it.hasNext() && --queueDepth > metadataUpdateMaxQueueDepth) {
+            IndexWriter wr = this.writer;
+            if (wr == null) {
+                break;
+            }
+            updateCount += applyMetadataIndexingUpdate(searcher, wr, it.next());
+        }
+
+        while (it.hasNext() && Utils.getSystemNowMicrosUtc() < deadline) {
+            IndexWriter wr = this.writer;
+            if (wr == null) {
+                break;
+            }
+            updateCount += applyMetadataIndexingUpdate(searcher, wr, it.next());
+        }
+
+        if (it.hasNext()) {
+            synchronized (this.metadataUpdates) {
+                while (it.hasNext()) {
+                    MetadataUpdateInfo info = it.next();
+                    it.remove();
+                    this.metadataUpdatesPerLink.putIfAbsent(info.selfLink, info);
+                    this.metadataUpdates.add(info);
+                }
+            }
+        }
+
+        updateLinkInfoCacheForMetadataUpdates(Utils.getNowMicrosUtc(), entriesToProcess);
+
+        if (updateCount > 0) {
+            setTimeSeriesHistogramStat(STAT_NAME_METADATA_INDEXING_UPDATE_COUNT,
+                    AGGREGATION_TYPE_SUM, updateCount);
+        }
+    }
+
+    private long applyMetadataIndexingUpdate(IndexSearcher searcher, IndexWriter wr,
+            MetadataUpdateInfo info) throws IOException {
+
+        Query selfLinkClause = new TermQuery(new Term(
+                ServiceDocument.FIELD_NAME_SELF_LINK, info.selfLink));
+        Query versionClause = LongPoint.newRangeQuery(
+                ServiceDocument.FIELD_NAME_VERSION, 0, info.version - 1);
+        Query currentClause = NumericDocValuesField.newExactQuery(
+                LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 1L);
+
+        BooleanQuery booleanQuery = new BooleanQuery.Builder()
+                .add(selfLinkClause, Occur.MUST)
+                .add(versionClause, Occur.MUST)
+                .add(currentClause, Occur.MUST)
+                .build();
+
+        final int pageSize = 10000;
+
+        long updateCount = 0;
+        ScoreDoc after = null;
+        while (true) {
+            TopDocs results = searcher.searchAfter(after, booleanQuery, pageSize);
+            if (results == null || results.scoreDocs == null || results.scoreDocs.length == 0) {
+                break;
+            }
+
+            DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor();
+            for (ScoreDoc scoreDoc : results.scoreDocs) {
+                loadDoc(searcher, visitor, scoreDoc.doc, this.fieldToLoadIndexingIdLookup);
+                Term indexingIdTerm = new Term(LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ID,
+                        visitor.documentIndexingId);
+                wr.updateNumericDocValue(indexingIdTerm,
+                        LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 0L);
+            }
+
+            updateCount += results.scoreDocs.length;
+
+            if (results.scoreDocs.length < pageSize) {
+                break;
+            }
+
+            after = results.scoreDocs[results.scoreDocs.length - 1];
+        }
+
+        return updateCount;
     }
 
     private void applyFileLimitRefreshWriter(boolean force) {

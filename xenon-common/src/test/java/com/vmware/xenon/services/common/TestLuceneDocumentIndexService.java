@@ -189,6 +189,22 @@ public class TestLuceneDocumentIndexService {
         }
     }
 
+    public static class IndexedMetadataExampleService extends ExampleService {
+        public static final String FACTORY_LINK = "/test/indexed-metadata-examples";
+
+        public static FactoryService createFactory() {
+            return FactoryService.create(IndexedMetadataExampleService.class);
+        }
+
+        @Override
+        public ServiceDocument getDocumentTemplate() {
+            ServiceDocument template = super.getDocumentTemplate();
+            template.documentDescription.documentIndexingOptions = EnumSet.of(
+                    ServiceDocumentDescription.DocumentIndexingOption.INDEX_METADATA);
+            return template;
+        }
+    }
+
     /**
      * Parameter that specifies number of durable service instances to create
      */
@@ -414,7 +430,7 @@ public class TestLuceneDocumentIndexService {
     @Test
     public void corruptedIndexRecovery() throws Throwable {
         setUpHost(false);
-        this.doDurableServiceUpdate(Action.PUT, 100, 2, null);
+        this.doDurableServiceUpdate(Action.PUT, MinimalTestService.class, 100, 2, null);
         Thread.sleep(this.host.getMaintenanceIntervalMicros() / 1000);
 
         // Stop the host, without cleaning up storage.
@@ -945,6 +961,17 @@ public class TestLuceneDocumentIndexService {
     public void immutableServiceQueryLongRunning() throws Throwable {
         setUpHost(false);
         URI factoryUri = createImmutableFactoryService(this.host);
+        doServiceQueryLongRunning(factoryUri, EnumSet.of(QueryOption.INCLUDE_ALL_VERSIONS));
+    }
+
+    @Test
+    public void indexedMetadataServiceQueryLongRunning() throws Throwable {
+        setUpHost(false);
+        URI factoryUri = createIndexedMetadataFactoryService(this.host);
+        doServiceQueryLongRunning(factoryUri, EnumSet.of(QueryOption.INDEXED_METADATA));
+    }
+
+    private void doServiceQueryLongRunning(URI factoryUri, EnumSet<QueryOption> queryOptions) {
 
         QueryTask.Query prefixQuery = QueryTask.Query.Builder.create()
                 .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, factoryUri.getPath(),
@@ -973,7 +1000,7 @@ public class TestLuceneDocumentIndexService {
                     .addOption(QueryOption.SORT)
                     .addOption(QueryOption.TOP_RESULTS)
                     .addOption(QueryOption.EXPAND_CONTENT)
-                    .addOption(QueryOption.INCLUDE_ALL_VERSIONS)
+                    .addOptions(queryOptions)
                     .orderDescending(ServiceDocument.FIELD_NAME_SELF_LINK,
                             ServiceDocumentDescription.TypeName.STRING)
                     .setResultLimit((int) this.serviceCount)
@@ -1053,6 +1080,7 @@ public class TestLuceneDocumentIndexService {
     @Test
     public void throughputSelfLinkQuery() throws Throwable {
         setUpHost(false);
+        this.indexService.toggleOption(ServiceOption.INSTRUMENTATION, true);
 
         // Immutable factory first:
         // we perform two passes per factory: first pass creates new services and
@@ -1060,11 +1088,13 @@ public class TestLuceneDocumentIndexService {
         boolean doPostOrUpdates = true;
         boolean interleaveUpdate = false;
         URI immutableFactoryUri = createImmutableFactoryService(this.host);
-        doThroughputSelfLinkQuery(immutableFactoryUri, null, doPostOrUpdates, interleaveUpdate);
+        doThroughputSelfLinkQuery(immutableFactoryUri, null, doPostOrUpdates, interleaveUpdate,
+                null);
         // second pass does not create new services, but does do interleaving
         doPostOrUpdates = false;
         interleaveUpdate = true;
-        doThroughputSelfLinkQuery(immutableFactoryUri, null, doPostOrUpdates, interleaveUpdate);
+        doThroughputSelfLinkQuery(immutableFactoryUri, null, doPostOrUpdates, interleaveUpdate,
+                null);
 
         // repeat for example factory (mutable)
         doPostOrUpdates = true;
@@ -1074,11 +1104,17 @@ public class TestLuceneDocumentIndexService {
         // better quantify query processing throughput when multiple versions per link are
         // present in the index results
         doThroughputSelfLinkQuery(exampleFactoryUri, this.updateCount, doPostOrUpdates,
-                interleaveUpdate);
+                interleaveUpdate, null);
         doPostOrUpdates = false;
         interleaveUpdate = true;
         doThroughputSelfLinkQuery(exampleFactoryUri, this.updateCount, doPostOrUpdates,
-                interleaveUpdate);
+                interleaveUpdate, null);
+
+        // repeat for example factory with indexted metadata
+        URI indexedMetadataFactoryUri = createIndexedMetadataFactoryService(this.host);
+        doThroughputSelfLinkQuery(indexedMetadataFactoryUri, this.updateCount, true, false,
+                this.serviceCount * this.updateCount);
+        doThroughputSelfLinkQuery(indexedMetadataFactoryUri, this.updateCount, false, true, null);
 
         // now for the in memory index and the example services associated with it
         doPostOrUpdates = true;
@@ -1090,23 +1126,39 @@ public class TestLuceneDocumentIndexService {
         // better quantify query processing throughput when multiple versions per link are
         // present in the index results
         doThroughputSelfLinkQuery(inMemExampleFactoryUri, this.updateCount, doPostOrUpdates,
-                interleaveUpdate);
+                interleaveUpdate, null);
         doPostOrUpdates = false;
         interleaveUpdate = true;
         doThroughputSelfLinkQuery(inMemExampleFactoryUri, this.updateCount, doPostOrUpdates,
-                interleaveUpdate);
-
+                interleaveUpdate, null);
     }
 
     private void doThroughputSelfLinkQuery(URI factoryUri, Integer updateCount,
-            boolean doPostOrUpdates,
-            boolean interleaveUpdates) throws Throwable {
+            boolean doPostOrUpdates, boolean interleaveUpdates, Long metadataUpdateCount)
+            throws Throwable {
         if (doPostOrUpdates) {
             doThroughputPostWithNoQueryResults(false, factoryUri);
         }
 
         if (doPostOrUpdates && updateCount != null && updateCount > 0) {
             doUpdates(factoryUri, updateCount);
+        }
+
+        if (metadataUpdateCount != null) {
+            this.host.waitFor("Metadata indexing failed to occur", () -> {
+                Map<String, ServiceStat> indexStats = this.host.getServiceStats(
+                        this.host.getDocumentIndexServiceUri());
+                ServiceStat stat = indexStats.get(
+                        LuceneDocumentIndexService.STAT_NAME_METADATA_INDEXING_UPDATE_COUNT
+                                + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+                if (stat == null) {
+                    return false;
+                }
+                if (stat.accumulatedValue > metadataUpdateCount) {
+                    throw new IllegalStateException("Update count is " + stat.accumulatedValue);
+                }
+                return stat.accumulatedValue == metadataUpdateCount;
+            });
         }
 
         double durationNanos = 0;
@@ -2087,10 +2139,17 @@ public class TestLuceneDocumentIndexService {
         interleaveQueries = false;
         doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
 
+        // similar test but with indexed metadata factory
+        factoryUri = createIndexedMetadataFactoryService(this.host);
+        interleaveQueries = true;
+        doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
+
+        interleaveQueries = false;
+        doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
+
         double finalPauseCount = getHostPauseCount();
         assertTrue(initialPauseCount == finalPauseCount);
     }
-
 
     @Test
     public void throughputPostWithExpirationLongRunning() throws Throwable {
@@ -2258,6 +2317,13 @@ public class TestLuceneDocumentIndexService {
 
         URI factoryUri = immutableFactory.getUri();
         return factoryUri;
+    }
+
+    URI createIndexedMetadataFactoryService(VerificationHost h) throws Throwable {
+        Service indexedMetadataFactory = IndexedMetadataExampleService.createFactory();
+        indexedMetadataFactory = h.startServiceAndWait(indexedMetadataFactory,
+                IndexedMetadataExampleService.FACTORY_LINK, null);
+        return indexedMetadataFactory.getUri();
     }
 
     URI createInMemoryExampleServiceFactory(VerificationHost h) throws Throwable {
@@ -3424,6 +3490,17 @@ public class TestLuceneDocumentIndexService {
         }
     }
 
+    public static class MinimalTestServiceWithIndexedMetadata extends MinimalTestService {
+
+        @Override
+        public ServiceDocument getDocumentTemplate() {
+            ServiceDocument template = super.getDocumentTemplate();
+            template.documentDescription.documentIndexingOptions =
+                    EnumSet.of(ServiceDocumentDescription.DocumentIndexingOption.INDEX_METADATA);
+            return template;
+        }
+    }
+
     @Test
     public void throughputPut() throws Throwable {
         int serviceThreshold = LuceneDocumentIndexService.getVersionRetentionServiceThreshold();
@@ -3437,7 +3514,12 @@ public class TestLuceneDocumentIndexService {
             if (this.host.isStressTest()) {
                 Utils.setTimeDriftThreshold(TimeUnit.HOURS.toMicros(1));
             }
-            doDurableServiceUpdate(Action.PUT, this.serviceCount, this.updateCount, null);
+            // Do throughput testing for basic, mutable services
+            doDurableServiceUpdate(Action.PUT, MinimalTestService.class,
+                    this.serviceCount, this.updateCount, null);
+            // Now do the same test for a similar service with indexed metadata
+            doDurableServiceUpdate(Action.PUT, MinimalTestServiceWithIndexedMetadata.class,
+                    this.serviceCount, this.updateCount, null);
         } finally {
             Utils.setTimeDriftThreshold(Utils.DEFAULT_TIME_DRIFT_THRESHOLD_MICROS);
             MinimalTestService.setVersionRetentionLimit(limit);
@@ -3446,9 +3528,8 @@ public class TestLuceneDocumentIndexService {
         }
     }
 
-    private void doDurableServiceUpdate(Action action, long serviceCount,
-            Integer putCount,
-            EnumSet<ServiceOption> caps) throws Throwable {
+    private void doDurableServiceUpdate(Action action, Class<? extends Service> type,
+            long serviceCount, Integer putCount, EnumSet<ServiceOption> caps) throws Throwable {
         EnumSet<TestProperty> props = EnumSet.noneOf(TestProperty.class);
 
         if (caps == null) {
@@ -3459,8 +3540,7 @@ public class TestLuceneDocumentIndexService {
             props.add(TestProperty.SINGLE_ITERATION);
         }
 
-        List<Service> services = this.host.doThroughputServiceStart(
-                serviceCount, MinimalTestService.class,
+        List<Service> services = this.host.doThroughputServiceStart(serviceCount, type,
                 this.host.buildMinimalTestState(), caps, null);
 
         long count = this.host.computeIterationsFromMemory(props, (int) serviceCount);
@@ -3484,8 +3564,7 @@ public class TestLuceneDocumentIndexService {
         }
         this.host.testWait();
 
-        int repeat = 5;
-        for (int i = 0; i < repeat; i++) {
+        for (int i = 0; i < this.iterationCount; i++) {
             double throughput = this.host.doServiceUpdates(action, count, props, services);
             this.testResults.getReport().all(TestResults.KEY_THROUGHPUT, throughput);
             logQuerySingleStat();
@@ -3499,9 +3578,9 @@ public class TestLuceneDocumentIndexService {
                 MinimalTestServiceState.class, services);
         int mismatchCount = 0;
         for (MinimalTestServiceState st : statesBeforeRestart.values()) {
-            if (st.documentVersion != count * repeat) {
+            if (st.documentVersion != count * this.iterationCount) {
                 this.host.log("Version mismatch for %s. Expected %d, got %d", st.documentSelfLink,
-                        count * repeat, st.documentVersion);
+                        count * this.iterationCount, st.documentVersion);
                 mismatchCount++;
             }
         }
@@ -3966,5 +4045,143 @@ public class TestLuceneDocumentIndexService {
             state.put(k, Utils.fromJson(r.documents.get(k), ExampleServiceState.class));
         }
         return state;
+    }
+
+    @Test
+    public void testDocumentMetadataIndexing() throws Throwable {
+        LuceneDocumentIndexService.setMetadataUpdateMaxQueueDepth((int) this.serviceCount / 2);
+        try {
+            doDocumentMetadataIndexing();
+        } finally {
+            LuceneDocumentIndexService.setMetadataUpdateMaxQueueDepth(
+                    LuceneDocumentIndexService.DEFAULT_METADATA_UPDATE_MAX_QUEUE_DEPTH);
+        }
+    }
+
+    private void doDocumentMetadataIndexing() throws Throwable {
+        setUpHost(false);
+        URI indexedMetadataFactoryUri = createIndexedMetadataFactoryService(this.host);
+
+        ExampleServiceState serviceState = new ExampleServiceState();
+        serviceState.name = "name";
+
+        Map<URI, ExampleServiceState> services = this.host.doFactoryChildServiceStart(null,
+                this.serviceCount, ExampleServiceState.class,
+                (o) -> o.setBody(serviceState),
+                indexedMetadataFactoryUri);
+
+        for (int i = 0; i < this.updateCount; i++) {
+            serviceState.counter = (long) i;
+            for (URI serviceUri : services.keySet()) {
+                Operation patch = Operation.createPatch(serviceUri).setBody(serviceState);
+                this.host.send(patch);
+            }
+        }
+
+        this.host.waitFor("Metadata indexing failed to occur", () -> {
+            Map<String, ServiceStat> indexStats = this.host.getServiceStats(
+                    this.host.getDocumentIndexServiceUri());
+            ServiceStat stat = indexStats.get(
+                    LuceneDocumentIndexService.STAT_NAME_METADATA_INDEXING_UPDATE_COUNT
+                            + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+            if (stat == null) {
+                return false;
+            }
+
+            return (stat.accumulatedValue == this.updateCount * this.serviceCount);
+        });
+
+        QueryTask queryTask = QueryTask.Builder.create()
+                .setQuery(QueryTask.Query.Builder.create()
+                        .addKindFieldClause(ExampleServiceState.class)
+                        .build())
+                .addOption(QueryOption.INDEXED_METADATA)
+                .setResultLimit((int) this.serviceCount)
+                .build();
+
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+        assertNotNull(queryTask.results.nextPageLink);
+
+        QueryTask result = this.host.getServiceState(null, QueryTask.class,
+                UriUtils.buildUri(this.host, queryTask.results.nextPageLink));
+        assertEquals(this.serviceCount, (long) result.results.documentCount);
+        assertNull(result.results.nextPageLink);
+
+        Map<String, ServiceStat> indexStats = this.host.getServiceStats(
+                this.host.getDocumentIndexServiceUri());
+        ServiceStat iterationCountStat = indexStats.get(
+                LuceneDocumentIndexService.STAT_NAME_ITERATIONS_PER_QUERY);
+        assertEquals(1.0, iterationCountStat.latestValue, 0.01);
+    }
+
+    @Test
+    public void testMetadataIndexingWithForcedIndexUpdate() throws Throwable {
+        for (int i = 0; i < this.iterationCount; i++) {
+            tearDown();
+            doMetadataIndexingWithForcedIndexUpdate();
+        }
+    }
+
+    private void doMetadataIndexingWithForcedIndexUpdate() throws Throwable {
+        setUpHost(false);
+        URI indexedMetadataFactoryUri = createIndexedMetadataFactoryService(this.host);
+
+        ExampleServiceState serviceState = new ExampleServiceState();
+        serviceState.name = "name";
+
+        Map<URI, ExampleServiceState> services = this.host.doFactoryChildServiceStart(null,
+                this.serviceCount, ExampleServiceState.class,
+                (o) -> o.setBody(serviceState),
+                indexedMetadataFactoryUri);
+
+        TestContext ctx = this.host.testCreate(services.size() * this.updateCount);
+        for (int i = 0; i < this.updateCount; i++) {
+            serviceState.counter = (long) i;
+            for (URI serviceUri : services.keySet()) {
+                Operation patch = Operation.createPatch(serviceUri).setBody(serviceState)
+                        .setCompletion(ctx.getCompletion());
+                this.host.send(patch);
+            }
+        }
+        this.host.testWait(ctx);
+
+        ctx = this.host.testCreate(services.size());
+        for (URI serviceUri : services.keySet()) {
+            Operation delete = Operation.createDelete(serviceUri)
+                    .setCompletion(ctx.getCompletion());
+            this.host.send(delete);
+        }
+        this.host.testWait(ctx);
+
+        serviceState.name = "nameWithForcedIndexUpdate";
+
+        ctx = this.host.testCreate(services.size());
+        for (ExampleServiceState state : services.values()) {
+            serviceState.documentSelfLink = state.documentSelfLink;
+            Operation post = Operation.createPost(indexedMetadataFactoryUri)
+                    .setBody(serviceState)
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
+                    .setCompletion(ctx.getCompletion());
+            this.host.send(post);
+        }
+        this.host.testWait(ctx);
+
+        QueryTask queryTask = QueryTask.Builder.createDirectTask()
+                .setQuery(Query.Builder.create()
+                        .addKindFieldClause(ExampleServiceState.class)
+                        .build())
+                .addOption(QueryOption.EXPAND_CONTENT)
+                .build();
+
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+        assertEquals(services.size(), queryTask.results.documentLinks.size());
+
+        for (Entry<String, Object> entry : queryTask.results.documents.entrySet()) {
+            URI selfUri = UriUtils.buildUri(this.host, entry.getKey());
+            assertTrue(services.containsKey(selfUri));
+            ExampleServiceState state = Utils.fromJson(entry.getValue(),
+                    ExampleServiceState.class);
+            assertEquals("nameWithForcedIndexUpdate", state.name);
+        }
     }
 }
