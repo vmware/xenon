@@ -21,6 +21,7 @@ import java.lang.annotation.Target;
 import java.util.EnumSet;
 
 import com.vmware.xenon.common.Service.Action;
+import com.vmware.xenon.common.ServiceDocumentDescription.DocumentIndexingOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 
@@ -96,6 +97,12 @@ public class ServiceDocument {
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.TYPE)
     public @interface IndexingParameters {
+        /**
+         * Document indexing options.
+         * @return
+         */
+        DocumentIndexingOption[] indexing() default {};
+
         /**
          * Max size of a serialized document
          * @return

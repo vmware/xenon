@@ -201,6 +201,13 @@ public class QueryTask extends ServiceDocument {
              * may increase overall resource usage.
              */
             SINGLE_USE,
+
+            /**
+             * Query target documents have {@code DocumentIndexingOption#INDEX_METADATA} enabled,
+             * and the query contents can be rewritten to take advantage of the additional indexed
+             * metadata.
+             */
+            INDEXED_METADATA,
         }
 
         public enum SortOrder {
