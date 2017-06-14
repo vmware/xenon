@@ -28,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 
 import io.netty.handler.codec.http.cookie.ClientCookieDecoder;
 import io.netty.handler.codec.http.cookie.Cookie;
+
 import org.junit.After;
 import org.junit.Test;
 
@@ -51,7 +52,6 @@ import com.vmware.xenon.services.common.authn.AuthenticationConstants;
 import com.vmware.xenon.services.common.authn.AuthenticationRequest;
 import com.vmware.xenon.services.common.authn.AuthenticationRequest.AuthenticationRequestType;
 import com.vmware.xenon.services.common.authn.BasicAuthenticationService;
-import com.vmware.xenon.services.common.authn.BasicAuthenticationUtils;
 
 public class TestAuthentication {
 
@@ -114,7 +114,7 @@ public class TestAuthentication {
                 return;
             }
             op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_VERIFY_TOKEN);
-            String token = BasicAuthenticationUtils.getAuthToken(op);
+            String token = op.getRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER);
             if (token == null) {
                 op.fail(new IllegalArgumentException("Token is empty"));
                 return;
@@ -123,7 +123,10 @@ public class TestAuthentication {
             if (token.equals(ACCESS_TOKEN)) {
                 // create and return a claims object for system user since our test uses system user
                 Claims claims = getClaims();
-                op.setBody(claims);
+                AuthorizationContext.Builder ab = AuthorizationContext.Builder.create();
+                ab.setClaims(claims);
+                ab.setToken(token);
+                op.setBody(ab.getResult());
                 op.complete();
                 return;
             }
@@ -145,7 +148,10 @@ public class TestAuthentication {
                         claims = cb.getResult();
                     }
                 }
-                op.setBody(claims);
+                AuthorizationContext.Builder ab = AuthorizationContext.Builder.create();
+                ab.setClaims(claims);
+                ab.setToken(token);
+                op.setBody(ab.getResult());
                 op.complete();
             } catch (TokenException | GeneralSecurityException e) {
                 op.fail(new IllegalArgumentException("Invalid Token!"));
@@ -502,18 +508,17 @@ public class TestAuthentication {
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERIFY_TOKEN);
 
         Operation responseOp = sender.sendAndWait(requestOp);
-        claims = responseOp.getBody(Claims.class);
-        assertNotNull(claims);
-        assertEquals(userLink, claims.getSubject());
-
+        AuthorizationContext ctx = responseOp.getBody(AuthorizationContext.class);
+        assertNotNull(ctx);
+        assertEquals(userLink, ctx.getClaims().getSubject());
         host.waitFor("Timed out waiting from token to expire", () -> {
             Operation op = Operation.createPost(host, BasicAuthenticationService.SELF_LINK)
                     .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERIFY_TOKEN);
 
             op = sender.sendAndWait(op);
-            Claims c = op.getBody(Claims.class);
+            AuthorizationContext c = op.getBody(AuthorizationContext.class);
             assertNotNull(c);
-            return GuestUserService.SELF_LINK.equals(c.getSubject());
+            return GuestUserService.SELF_LINK.equals(c.getClaims().getSubject());
         });
 
         TestRequestSender.clearAuthToken();
@@ -588,19 +593,19 @@ public class TestAuthentication {
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERIFY_TOKEN);
 
         Operation responseOp = sender.sendAndWait(requestOp);
-        claims = responseOp.getBody(Claims.class);
-        assertNotNull(claims);
-        assertEquals(userLink, claims.getSubject());
+        AuthorizationContext ctx = responseOp.getBody(AuthorizationContext.class);
+        assertNotNull(ctx);
+        assertEquals(userLink, ctx.getClaims().getSubject());
 
         host.waitFor("Timed out waiting from token to expire", () -> {
             Operation op = Operation.createPost(host, TestAuthenticationService.SELF_LINK)
                     .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERIFY_TOKEN);
 
             op = sender.sendAndWait(op);
-            Claims c = op.getBody(Claims.class);
+            AuthorizationContext c = op.getBody(AuthorizationContext.class);
             assertNotNull(c);
-            assertEquals(userLink, c.getSubject());
-            return c.getExpirationTime() > TimeUnit.MICROSECONDS.toSeconds(expirationMicros);
+            assertEquals(userLink, c.getClaims().getSubject());
+            return c.getClaims().getExpirationTime() > TimeUnit.MICROSECONDS.toSeconds(expirationMicros);
         });
 
         TestRequestSender.clearAuthToken();

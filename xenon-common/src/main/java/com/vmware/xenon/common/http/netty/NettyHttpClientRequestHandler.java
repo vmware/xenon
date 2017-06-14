@@ -411,7 +411,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             if (expirationTime != null) {
                 long nowSeconds = TimeUnit.MICROSECONDS.toSeconds(Utils.getSystemNowMicrosUtc());
                 long maxAge = expirationTime - nowSeconds;
-                tokenCookie.setMaxAge(maxAge);
+                tokenCookie.setMaxAge(maxAge > 0 ? maxAge : 0);
             }
 
             // Add an HTTP-only qualifier unless the caller has specified otherwise

@@ -98,7 +98,10 @@ public class SampleAuthenticationService extends StatelessService {
             if (token.equals(ACCESS_TOKEN)) {
                 // create and return a claims object for system user since our test uses system user
                 Claims claims = getClaims(false);
-                op.setBodyNoCloning(claims);
+                AuthorizationContext.Builder ab = AuthorizationContext.Builder.create();
+                ab.setClaims(claims);
+                ab.setToken(token);
+                op.setBodyNoCloning(ab.getResult());
                 op.complete();
                 return;
             }
