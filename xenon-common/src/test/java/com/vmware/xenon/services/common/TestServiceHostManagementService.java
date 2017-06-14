@@ -25,6 +25,7 @@ import java.io.File;
 import java.net.URI;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
@@ -40,9 +41,12 @@ import org.junit.rules.TemporaryFolder;
 import com.vmware.xenon.common.BasicTestCase;
 import com.vmware.xenon.common.FileUtils;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Service;
+import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
+import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
@@ -53,6 +57,7 @@ import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.LocalFileService.LocalFileServiceState;
 import com.vmware.xenon.services.common.ServiceHostManagementService.BackupType;
+import com.vmware.xenon.services.common.TestLuceneDocumentIndexService.IndexedMetadataExampleService;
 
 public class TestServiceHostManagementService extends BasicTestCase {
 
@@ -420,6 +425,11 @@ public class TestServiceHostManagementService extends BasicTestCase {
 
     @Test
     public void timeSnapshotRecovery() throws Throwable {
+
+        this.host.toggleServiceOptions(this.host.getDocumentIndexServiceUri(),
+                EnumSet.of(Service.ServiceOption.INSTRUMENTATION),
+                null);
+
         int serviceVersion = 10;
         int snapshotServiceVersion = serviceVersion / 2;
 
@@ -431,17 +441,48 @@ public class TestServiceHostManagementService extends BasicTestCase {
         createBackupFileService(backupFile.toURI(), backupServiceLink);
         URI backupFileServiceUri = UriUtils.buildUri(this.host, backupServiceLink);
 
-        // create and update a document
-        String selfLink = UriUtils.buildUriPath(ExampleService.FACTORY_LINK, "/foo");
+        // create indexed metadata factory
+        Service factoryService = IndexedMetadataExampleService.createFactory();
+        this.host.startServiceAndWait(factoryService, IndexedMetadataExampleService.FACTORY_LINK, null);
+
+        List<String> selfLinks = Arrays.asList(
+                UriUtils.buildUriPath(ExampleService.FACTORY_LINK, "foo"),
+                UriUtils.buildUriPath(IndexedMetadataExampleService.FACTORY_LINK, "bar"));
+
+        // create and update a set of documents
         ExampleServiceState doc = new ExampleServiceState();
         doc.name = "init";
-        doc.documentSelfLink = selfLink;
-        doc = sender.sendAndWait(Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(doc), ExampleServiceState.class);
 
+        for (String selfLink : selfLinks) {
+            doc.documentSelfLink = selfLink;
+            sender.sendAndWait(Operation.createPost(this.host, UriUtils.getParentPath(selfLink)).setBody(doc));
+        }
+
+        doc.documentSelfLink = null;
         long snapshotTime = 0;
         for (int i = 1; i <= serviceVersion; i++) {
             doc.name = "updated-v" + i;
-            sender.sendAndWait(Operation.createPatch(this.host, doc.documentSelfLink).setBody(doc));
+            for (String selfLink : selfLinks) {
+                sender.sendAndWait(Operation.createPatch(this.host, selfLink).setBody(doc));
+                if (selfLink.startsWith(IndexedMetadataExampleService.FACTORY_LINK)) {
+                    final int indexValue = i;
+                    this.host.waitFor("Metadata indexing failed to occur", () -> {
+                        Map<String, ServiceStat> indexStats = this.host.getServiceStats(
+                                this.host.getDocumentIndexServiceUri());
+                        ServiceStat indexingStat = indexStats.get(
+                                LuceneDocumentIndexService.STAT_NAME_METADATA_INDEXING_UPDATE_COUNT
+                                        + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+                        if (indexingStat == null) {
+                            return false;
+                        }
+                        if (indexingStat.accumulatedValue > indexValue) {
+                            throw new IllegalStateException("Stat value was " + indexingStat.accumulatedValue);
+                        }
+                        return indexingStat.accumulatedValue == indexValue;
+                    });
+                }
+            }
+
             if (i == snapshotServiceVersion) {
                 snapshotTime = Utils.getNowMicrosUtc();
             }
@@ -459,6 +500,10 @@ public class TestServiceHostManagementService extends BasicTestCase {
         // create new host
         this.host = VerificationHost.create(0);
         this.host.start();
+
+        factoryService = IndexedMetadataExampleService.createFactory();
+        this.host.startServiceAndWait(factoryService, IndexedMetadataExampleService.FACTORY_LINK, null);
+
         sender = this.host.getTestRequestSender();
 
         String restoreServiceLink = LocalFileService.SERVICE_PREFIX + "/restore";
@@ -474,8 +519,31 @@ public class TestServiceHostManagementService extends BasicTestCase {
 
         // verify document version is the one specified as snapshotTime
         this.host.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
-        ExampleServiceState result = sender.sendAndWait(Operation.createGet(this.host, selfLink), ExampleServiceState.class);
-        assertEquals("Point-in-time version", snapshotServiceVersion, result.documentVersion);
+        this.host.waitForReplicatedFactoryServiceAvailable(
+                UriUtils.buildUri(this.host, IndexedMetadataExampleService.FACTORY_LINK));
+
+        for (String selfLink : selfLinks) {
+            ExampleServiceState result = sender
+                    .sendAndWait(Operation.createGet(this.host, selfLink), ExampleServiceState.class);
+            assertEquals("Point-in-time version", snapshotServiceVersion, result.documentVersion);
+
+            QueryTask.Builder builder = QueryTask.Builder.createDirectTask()
+                    .setQuery(QueryTask.Query.Builder.create()
+                            .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, selfLink)
+                            .build())
+                    .addOption(QueryTask.QuerySpecification.QueryOption.EXPAND_CONTENT);
+
+            if (selfLink.startsWith(IndexedMetadataExampleService.FACTORY_LINK)) {
+                builder.addOption(QueryTask.QuerySpecification.QueryOption.INDEXED_METADATA);
+            }
+
+            QueryTask queryTask = builder.build();
+            this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+            assertEquals(1, queryTask.results.documents.size());
+            result = Utils.fromJson(queryTask.results.documents.values().iterator().next(),
+                    ExampleServiceState.class);
+            assertEquals("Point-in-time version from query", snapshotServiceVersion, result.documentVersion);
+        }
     }
 
     private void createBackupFileService(URI localFileUri, String serviceLink) {
