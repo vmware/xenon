@@ -31,6 +31,10 @@
   interacting with the destination cluster. Services can leverage this to alter
   their behavior based on whether handleStart comes from a migration or not.
 
+* MigrationTaskService supports migrating deleted documents. When query spec includes 
+  "INCLUDE_DELETED" option, migration task first posts the document, then deletes
+  it in destination nodes.
+
 * Breaking change: Add support for Accept-Encoding: gzip request header.
   When present the response body is gzipped and the response header
   Content-Encoding: gzip is added to the response.  Previously, the request
