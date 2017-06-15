@@ -2,6 +2,10 @@
 
 ## 1.5.2-SNAPSHOT
 
+* MigrationTaskService supports migrating deleted documents. When query spec includes 
+  "INCLUDE_DELETED" option, migration task first posts the document, then deletes
+  it in destination nodes.
+
 * "offset" parameter is added to QueryTask. This enables pagination logic to
   be executed in QueryTaskService rather than caller visits next pages.
   Major usecase is to provide data for list style pages, and it is expected to
