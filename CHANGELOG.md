@@ -6,6 +6,11 @@
   `Map`s. This eliminates false conflicts when reconsiling state caused by a
   map unorderedness.
 
+* MigrationTaskService supports migrating deleted documents. When query spec includes 
+  "INCLUDE_DELETED" option, migration task first posts the document, then deletes
+  it in destination nodes.
+
+
 ## 1.5.2
 
 * "offset" parameter is added to QueryTask. This enables pagination logic to
