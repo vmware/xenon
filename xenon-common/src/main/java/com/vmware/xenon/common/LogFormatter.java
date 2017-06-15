@@ -32,6 +32,7 @@ public class LogFormatter extends Formatter {
         public String m;
         public String method;
         public String classOrUri;
+        public Throwable thrown;
 
         public static LogItem create(LogRecord source) {
             LogItem sr = new LogItem();
@@ -42,6 +43,8 @@ public class LogFormatter extends Formatter {
             sr.m = source.getMessage();
             sr.method = source.getSourceMethodName();
             sr.classOrUri = source.getSourceClassName();
+            sr.thrown = source.getThrown();
+
             if (sr.classOrUri == null) {
                 sr.classOrUri = "";
             } else if (sr.classOrUri.startsWith("http")) {
