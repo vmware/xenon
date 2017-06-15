@@ -24,6 +24,11 @@
   interacting with the destination cluster. Services can leverage this to alter
   their behavior based on whether handleStart comes from a migration or not.
 
+* MigrationTaskService supports migrating deleted documents. When query spec includes 
+  "INCLUDE_DELETED" option, migration task first posts the document, then deletes
+  it in destination nodes.
+
+
 ## 1.5.0
 
 * Breaking change: Links to QueryPageService instances (e.g. the nextPageLink
