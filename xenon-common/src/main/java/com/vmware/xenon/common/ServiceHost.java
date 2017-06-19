@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.common;
 
+import static com.vmware.xenon.common.ServiceErrorResponse.ERROR_CODE_INVALID_TOKEN;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -62,7 +64,6 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
@@ -3562,7 +3563,7 @@ public class ServiceHost implements ServiceRequestSender {
 
     private void verifyToken(String token, Operation op,
             Consumer<AuthorizationContext> authorizationContextHandler) {
-        boolean shoudRetry = true;
+        boolean shouldRetry = true;
         URI tokenVerificationUri = getAuthenticationServiceUri();
         if (tokenVerificationUri == null) {
             // It is possible to receive a request while the host is starting up: the listener is
@@ -3575,10 +3576,10 @@ public class ServiceHost implements ServiceRequestSender {
 
         if (getBasicAuthenticationServiceUri().equals(getAuthenticationServiceUri())) {
             // if authenticationService is BasicAuthenticationService, then no need to retry
-            shoudRetry = false;
+            shouldRetry = false;
         }
 
-        verifyTokenInternal(token, op, tokenVerificationUri, authorizationContextHandler, shoudRetry);
+        verifyTokenInternal(token, op, tokenVerificationUri, authorizationContextHandler, shouldRetry);
     }
 
     private void verifyTokenInternal(String token, Operation parentOp, URI tokenVerificationUri,
@@ -3593,9 +3594,24 @@ public class ServiceHost implements ServiceRequestSender {
                             if (ex != null) {
                                 log(Level.WARNING, "Error verifying token: %s", ex);
                                 if (shouldRetry) {
-                                    log(Level.INFO, "Retrying token verification with basic auth.");
-                                    verifyTokenInternal(token, parentOp, getBasicAuthenticationServiceUri(),
-                                            authorizationContextHandler, false);
+                                    ServiceErrorResponse err = resultOp
+                                            .getBody(ServiceErrorResponse.class);
+                                    // If we get an invalid token error code, that means the auth
+                                    // adapter is not able to process the token, we can fallback to
+                                    // basic auth for authentication.
+                                    if (err.getErrorCode() == ERROR_CODE_INVALID_TOKEN) {
+                                        log(Level.INFO,
+                                                "Retrying token verification with basic auth.");
+                                        verifyTokenInternal(token, parentOp,
+                                                getBasicAuthenticationServiceUri(),
+                                                authorizationContextHandler, false);
+                                        return;
+                                    }
+                                    log(Level.FINE, () -> "Skipping basic auth.");
+                                    parentOp.setBody(resultOp.getBodyRaw());
+                                    resultOp.getResponseHeaders()
+                                            .forEach(parentOp::addResponseHeader);
+                                    parentOp.fail(resultOp.getStatusCode());
                                 } else {
                                     authorizationContextHandler.accept(null);
                                 }
@@ -3615,6 +3631,18 @@ public class ServiceHost implements ServiceRequestSender {
                                             }
                                             AuthorizationContext authCtx = checkAndGetAuthorizationContext(
                                                     null, claims, token, parentOp);
+                                            resultOp.getResponseHeaders()
+                                                    .forEach(parentOp::addResponseHeader);
+                                            Map<String, String> cookies = resultOp.getCookies();
+                                            if (cookies != null) {
+                                                Map<String, String> parentOpCookies = parentOp
+                                                        .getCookies();
+                                                if (parentOpCookies == null) {
+                                                    parentOp.setCookies(cookies);
+                                                } else {
+                                                    parentOpCookies.putAll(cookies);
+                                                }
+                                            }
                                             authorizationContextHandler.accept(authCtx);
                                         });
                                 getUserOp.setAuthorizationContext(getSystemAuthorizationContext());
