@@ -62,7 +62,6 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
@@ -3562,7 +3561,7 @@ public class ServiceHost implements ServiceRequestSender {
 
     private void verifyToken(Operation op,
             Consumer<AuthorizationContext> authorizationContextHandler) {
-        boolean shoudRetry = true;
+        boolean shouldRetry = true;
         URI tokenVerificationUri = getAuthenticationServiceUri();
         if (tokenVerificationUri == null) {
             // It is possible to receive a request while the host is starting up: the listener is
@@ -3575,10 +3574,10 @@ public class ServiceHost implements ServiceRequestSender {
 
         if (getBasicAuthenticationServiceUri().equals(getAuthenticationServiceUri())) {
             // if authenticationService is BasicAuthenticationService, then no need to retry
-            shoudRetry = false;
+            shouldRetry = false;
         }
 
-        verifyTokenInternal(op, tokenVerificationUri, authorizationContextHandler, shoudRetry);
+        verifyTokenInternal(op, tokenVerificationUri, authorizationContextHandler, shouldRetry);
     }
 
     private void verifyTokenInternal(Operation parentOp, URI tokenVerificationUri,
@@ -3594,8 +3593,23 @@ public class ServiceHost implements ServiceRequestSender {
                             if (ex != null) {
                                 log(Level.WARNING, "Error verifying token: %s", ex);
                                 if (shouldRetry) {
-                                    log(Level.INFO, "Retrying token verification with basic auth.");
-                                    verifyTokenInternal(parentOp, getBasicAuthenticationServiceUri(),
+                                    ServiceErrorResponse err = resultOp
+                                            .getBody(ServiceErrorResponse.class);
+                                    // If external authentication fails with this specific error
+                                    // code, we can skip basic auth.
+                                    if (err.getErrorCode()
+                                            == ServiceErrorResponse.ERROR_CODE_EXTERNAL_AUTH_FAILED) {
+                                        log(Level.FINE, () -> "Skipping basic auth.");
+                                        parentOp.transferResponseHeadersFrom(resultOp);
+                                        parentOp.fail(resultOp.getStatusCode(),
+                                                new RuntimeException(err.message),
+                                                resultOp.getBodyRaw());
+                                        return;
+                                    }
+                                    log(Level.INFO,
+                                            "Retrying token verification with basic auth.");
+                                    verifyTokenInternal(parentOp,
+                                            getBasicAuthenticationServiceUri(),
                                             authorizationContextHandler, false);
                                 } else {
                                     authorizationContextHandler.accept(null);
@@ -3616,6 +3630,17 @@ public class ServiceHost implements ServiceRequestSender {
                                             }
                                             AuthorizationContext authCtx = checkAndGetAuthorizationContext(
                                                     null, ctx.getClaims(), ctx.getToken(), parentOp);
+                                            parentOp.transferResponseHeadersFrom(resultOp);
+                                            Map<String, String> cookies = resultOp.getCookies();
+                                            if (cookies != null) {
+                                                Map<String, String> parentOpCookies = parentOp
+                                                        .getCookies();
+                                                if (parentOpCookies == null) {
+                                                    parentOp.setCookies(cookies);
+                                                } else {
+                                                    parentOpCookies.putAll(cookies);
+                                                }
+                                            }
                                             authorizationContextHandler.accept(authCtx);
                                         });
                                 getUserOp.setAuthorizationContext(getSystemAuthorizationContext());

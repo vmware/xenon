@@ -17,18 +17,21 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 
+import static com.vmware.xenon.common.TestAuthentication.TestAuthenticationService.RANDOM_COOKIE;
+import static com.vmware.xenon.common.TestAuthentication.TestAuthenticationService.RANDOM_CUSTOM_HEADER;
 import static com.vmware.xenon.services.common.authn.BasicAuthenticationUtils.constructBasicAuth;
 
 import java.security.GeneralSecurityException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import io.netty.handler.codec.http.cookie.ClientCookieDecoder;
 import io.netty.handler.codec.http.cookie.Cookie;
-
 import org.junit.After;
 import org.junit.Test;
 
@@ -97,7 +100,10 @@ public class TestAuthentication {
         public static final String SELF_LINK = UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHN,
                 "test");
 
+        public static String RANDOM_CUSTOM_HEADER = "x-random-header";
+        public static String RANDOM_COOKIE = "random-cookie";
         public static String ACCESS_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJ4biIsInN1YiI6Ii9jb3JlL2F1dGh6L3Vz";
+        public static String INVALID_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJ4biIsInN1YiI6Ii9jb3JlL2F1dGh6L3VzZXJzL2Zvb0B2bXdhcmUuY29tIiwiZXhwIjozMTU1Njg4OTg2NDQwMzE5OX0.IMX1XTP_1uQLBRe2Ep7c6yAoFgik2th5m6OGqlZPJCc";
 
         @Override
         public void handleGet(Operation op) {
@@ -123,11 +129,22 @@ public class TestAuthentication {
             if (token.equals(ACCESS_TOKEN)) {
                 // create and return a claims object for system user since our test uses system user
                 Claims claims = getClaims();
+                op.addResponseHeader(RANDOM_CUSTOM_HEADER, UUID.randomUUID().toString());
+                op.setCookies(
+                        Collections.singletonMap(RANDOM_COOKIE, UUID.randomUUID().toString()));
                 AuthorizationContext.Builder ab = AuthorizationContext.Builder.create();
                 ab.setClaims(claims);
                 ab.setToken(token);
                 op.setBody(ab.getResult());
                 op.complete();
+                return;
+            }
+
+            if (token.equals(INVALID_TOKEN)) {
+                ServiceErrorResponse err = new ServiceErrorResponse();
+                err.setInternalErrorCode(ServiceErrorResponse.ERROR_CODE_EXTERNAL_AUTH_FAILED);
+                op.setBody(err);
+                op.fail(Operation.STATUS_CODE_BAD_REQUEST);
                 return;
             }
 
@@ -540,9 +557,37 @@ public class TestAuthentication {
         Operation responseOp = sender.sendAndWait(requestOp);
         Claims claims = responseOp.getBody(Claims.class);
         assertNotNull(claims);
+        assertNotNull(responseOp.getResponseHeader(RANDOM_CUSTOM_HEADER));
+        assertNotNull(responseOp.getCookies().get(RANDOM_COOKIE));
 
         TestRequestSender.clearAuthToken();
         host.log("Verification of valid token for external auth succeeded");
+    }
+
+
+    @Test
+    public void testVerificationExternalAuthServiceWithSkipBasicAuth() throws Throwable {
+        VerificationHost host = createAndStartHost(true, false, new TestAuthenticationService());
+        host.log("Testing verification of skipping basic auth");
+
+        // create user foo@vmware.com
+        createTestUsers(host);
+
+        TestRequestSender sender = new TestRequestSender(host);
+        TestRequestSender.setAuthToken(TestAuthenticationService.INVALID_TOKEN);
+
+        // make a request to verification service
+        Operation requestOp = Operation.createPost(host, TestAuthenticationService.SELF_LINK)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERIFY_TOKEN);
+
+        FailureResponse failureResponse = sender.sendAndWaitFailure(requestOp);
+        assertNotNull(failureResponse.failure);
+        assertEquals(Operation.STATUS_CODE_BAD_REQUEST, failureResponse.op.getStatusCode());
+        assertEquals(ServiceErrorResponse.ERROR_CODE_EXTERNAL_AUTH_FAILED,
+                failureResponse.op.getBody(ServiceErrorResponse.class).getErrorCode());
+
+        TestRequestSender.clearAuthToken();
+        host.log("Verification of skipping basic auth succeeded as expected");
     }
 
     @Test
