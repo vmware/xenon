@@ -41,6 +41,7 @@ public class ServiceErrorResponse {
     public static final int ERROR_CODE_SERVICE_QUEUE_LIMIT_EXCEEDED = 0x80000007;
     public static final int ERROR_CODE_HOST_RATE_LIMIT_EXCEEDED = 0x80000008;
     public static final int ERROR_CODE_CLIENT_QUEUE_LIMIT_EXCEEDED = 0x80000009;
+    public static final int ERROR_CODE_EXTERNAL_AUTH_FAILED = 0x80000010;
 
     public enum ErrorDetail {
         SHOULD_RETRY
