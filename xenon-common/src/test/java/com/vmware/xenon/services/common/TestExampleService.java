@@ -20,13 +20,18 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
 import java.net.URI;
+import java.net.URL;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.zip.GZIPInputStream;
 
 import org.junit.After;
 import org.junit.Test;
@@ -348,6 +353,77 @@ public class TestExampleService {
 
         // validate get result...
         assertEquals("FOO", getResult.name);
+    }
+
+    @Test
+    public void multiNodeCompression() throws Throwable {
+        // scenario:
+        //   create 2 nodes and join to default group
+        //   post & get example service with compression enabled
+
+        // prepare multiple nodes (for simplicity, using VerificationHost)
+        VerificationHost host1 = createAndStartHost(false);
+        VerificationHost host2 = createAndStartHost(false);
+
+        TestNodeGroupManager nodeGroup = new TestNodeGroupManager();
+        nodeGroup.addHost(host1);
+        nodeGroup.addHost(host2);
+
+        // make node group join to the "default" node group, then wait cluster to be stabilized
+        nodeGroup.joinNodeGroupAndWaitForConvergence();
+
+        // wait the service to be available in cluster
+        nodeGroup.waitForFactoryServiceAvailable(ExampleService.FACTORY_LINK);
+
+        // prepare operation sender(client)
+        ServiceHost peer = nodeGroup.getHost();
+        TestRequestSender sender = new TestRequestSender(peer);
+
+        // POST request. create a doc with static selflink: /core/examples/foo
+        String suffix = "foo";
+        ExampleServiceState body = new ExampleServiceState();
+        body.name = "FOO";
+        body.documentSelfLink = suffix;
+        Operation post = Operation.createPost(peer, ExampleService.FACTORY_LINK).setBody(body);
+
+        // enable compression
+        post.addRequestHeader(Operation.CONTENT_ENCODING_HEADER, Operation.CONTENT_ENCODING_GZIP);
+        post.addRequestHeader(Operation.ACCEPT_ENCODING_HEADER, Operation.CONTENT_ENCODING_GZIP);
+
+        // verify post response
+        ExampleServiceState result = sender.sendAndWait(post, ExampleServiceState.class);
+        assertEquals("FOO", result.name);
+
+        // make get and validate result
+        String servicePath = UriUtils.buildUriPath(ExampleService.FACTORY_LINK, suffix);
+        Operation get = Operation.createGet(peer, servicePath);
+        get.addRequestHeader(Operation.CONTENT_ENCODING_HEADER, Operation.CONTENT_ENCODING_GZIP);
+        get.addRequestHeader(Operation.ACCEPT_ENCODING_HEADER, Operation.CONTENT_ENCODING_GZIP);
+
+        ExampleServiceState getResult = sender.sendAndWait(get, ExampleServiceState.class);
+
+        // validate get result...
+        assertEquals("FOO", getResult.name);
+
+        // now do a manual get with manual gunzip to check compresion was actually used
+        URL url = new URL(peer.getUri() + getResult.documentSelfLink);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestProperty(Operation.ACCEPT_ENCODING_HEADER, Operation.CONTENT_ENCODING_GZIP);
+
+        InputStream inputStream = conn.getInputStream();
+        ByteArrayOutputStream baos;
+        try (GZIPInputStream zis = new GZIPInputStream(inputStream)) {
+            baos = new ByteArrayOutputStream();
+            byte[] buffer = new byte[1024];
+            int read = 0;
+            while ((read = zis.read(buffer, 0, buffer.length)) != -1) {
+                baos.write(buffer, 0, read);
+            }   baos.flush();
+        }
+
+        String json = new String(baos.toByteArray(), Utils.CHARSET);
+        ExampleServiceState manualResult = Utils.fromJson(json, ExampleServiceState.class);
+        assertEquals("FOO", manualResult.name);
     }
 
     @Test

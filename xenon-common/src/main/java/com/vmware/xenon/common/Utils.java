@@ -717,7 +717,7 @@ public final class Utils {
         if (useBinary && source.getAction() != Action.POST) {
             try {
                 byte[] encodedBody = Utils.encodeBody(source, source.getLinkedState(),
-                        Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM);
+                        Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM, true);
                 source.linkSerializedState(encodedBody);
             } catch (Throwable e2) {
                 Utils.logWarning("Failure binary serializing, will fallback to JSON: %s",
@@ -734,11 +734,21 @@ public final class Utils {
         }
     }
 
+    @Deprecated
     public static byte[] encodeBody(Operation op) throws Throwable {
         return encodeBody(op, op.getBodyRaw(), op.getContentType());
     }
 
-    public static byte[] encodeBody(Operation op, Object body, String contentType)
+    @Deprecated
+    public static byte[] encodeBody(Operation op, Object body, String contentType) throws Throwable {
+        return encodeBody(op, op.getBodyRaw(), op.getContentType(), true);
+    }
+
+    public static byte[] encodeBody(Operation op, boolean isRequest) throws Throwable {
+        return encodeBody(op, op.getBodyRaw(), op.getContentType(), isRequest);
+    }
+
+    public static byte[] encodeBody(Operation op, Object body, String contentType, boolean isRequest)
             throws Throwable {
         if (body == null) {
             op.setContentLength(0);
@@ -781,7 +791,27 @@ public final class Utils {
             op.setContentLength(data.length);
         }
 
+        String acceptEncodingHeader = op.getRequestHeaderAsIs(Operation.ACCEPT_ENCODING_HEADER);
+        if (Operation.CONTENT_ENCODING_GZIP.equals(acceptEncodingHeader)) {
+            data = compressGZip(data);
+            op.setContentLength(data.length);
+            if (!isRequest) {
+                op.addResponseHeader(Operation.CONTENT_ENCODING_HEADER, Operation.CONTENT_ENCODING_GZIP);
+            }
+        }
+
         return data;
+    }
+
+   /**
+     * Compresses byte[] to gzip byte[]
+     */
+    private static byte[] compressGZip(byte[] input) throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (GZIPOutputStream zos = new GZIPOutputStream(out)) {
+            zos.write(input, 0, input.length);
+        }
+        return out.toByteArray();
     }
 
     /**

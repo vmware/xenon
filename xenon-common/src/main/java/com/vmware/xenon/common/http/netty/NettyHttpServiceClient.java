@@ -421,7 +421,7 @@ public class NettyHttpServiceClient implements ServiceClient {
     private void sendHttpRequest(Operation op) {
         final Object originalBody = op.getBodyRaw();
         try {
-            byte[] body = Utils.encodeBody(op);
+            byte[] body = Utils.encodeBody(op, true);
             if (op.getContentLength() > getRequestPayloadSizeLimit()) {
                 String error = String.format("Content length %d, limit is %d",
                         op.getContentLength(), getRequestPayloadSizeLimit());

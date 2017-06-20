@@ -1124,6 +1124,28 @@ public class TestUtils {
         }
     }
 
+    @Test
+    public void testEncodeGzipResponseBody() throws Throwable {
+        String body = "This is the original body content, but gzipped";
+        byte[] gzippedBody = compress(body);
+
+        Operation op = Operation
+                .createGet(null)
+                .setContentLength(body.length())
+                .setBody(body)
+                .addRequestHeader(Operation.ACCEPT_ENCODING_HEADER,
+                        Operation.CONTENT_ENCODING_GZIP)
+                .addResponseHeader(Operation.CONTENT_TYPE_HEADER, Operation.MEDIA_TYPE_TEXT_PLAIN);
+
+        byte[] encodedBody = Utils.encodeBody(op, body, Operation.MEDIA_TYPE_TEXT_PLAIN, false);
+
+        assertTrue(Arrays.equals(gzippedBody, encodedBody));
+
+        // Content encoding header is present
+        assertEquals(op.getResponseHeader(Operation.CONTENT_ENCODING_HEADER),
+                Operation.CONTENT_ENCODING_GZIP);
+    }
+
     private static byte[] compress(String str) throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         GZIPOutputStream gzip = new GZIPOutputStream(out);
