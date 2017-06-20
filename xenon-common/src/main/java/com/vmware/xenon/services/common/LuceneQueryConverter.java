@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.services.common;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 
@@ -27,8 +28,10 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.SortedNumericSortField;
+import org.apache.lucene.search.TermInSetQuery;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.WildcardQuery;
+import org.apache.lucene.util.BytesRef;
 
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
@@ -42,6 +45,8 @@ final class LuceneQueryConverter {
     private LuceneQueryConverter() {
 
     }
+
+    static final int BOOLEAN_REWRITE_TERM_COUNT_THRESHOLD = 16;
 
     static Query convertToLuceneQuery(QueryTask.Query query, QueryRuntimeContext context) {
         if (query.occurance == null) {
@@ -133,6 +138,27 @@ final class LuceneQueryConverter {
     static Query convertToLuceneBooleanQuery(QueryTask.Query query, QueryRuntimeContext context) {
         BooleanQuery.Builder parentQuery = new BooleanQuery.Builder();
 
+        int rewriteThreshold = Math.min(BOOLEAN_REWRITE_TERM_COUNT_THRESHOLD, BooleanQuery.getMaxClauseCount());
+        if (query.booleanClauses.size() >= rewriteThreshold) {
+            List<BytesRef> termList = new ArrayList<>();
+            String termKey = null;
+            boolean isTermQuery = true;
+            for (QueryTask.Query q : query.booleanClauses) {
+                if (q.term == null || q.occurance != QueryTask.Query.Occurance.SHOULD_OCCUR
+                        || (termKey != null && !termKey.equals(q.term.propertyName))) {
+                    isTermQuery = false;
+                    break;
+                }
+                termList.add(new BytesRef(q.term.matchValue));
+                if (termKey == null) {
+                    termKey = q.term.propertyName;
+                }
+            }
+            // convert to a TermInSet query
+            if (isTermQuery) {
+                return new TermInSetQuery(termKey, termList);
+            }
+        }
         // Recursively build the boolean query. We allow arbitrary nesting and grouping.
         for (QueryTask.Query q : query.booleanClauses) {
             buildBooleanQuery(parentQuery, q, context);

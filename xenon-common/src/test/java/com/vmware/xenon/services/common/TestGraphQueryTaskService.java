@@ -60,6 +60,11 @@ public class TestGraphQueryTaskService extends BasicTestCase {
      */
     public int linkCount = 2;
 
+    /**
+     * Number of services that are not linked to the graph
+     */
+    public int unlinkedServiceCount = 20000;
+
     public int nodeCount = 3;
 
     private long taskCreationTimeMicros;
@@ -186,6 +191,30 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         String name = UUID.randomUUID().toString();
 
         createQueryTargetServices(name, 0);
+
+        GraphQueryTask initialState = createTwoStageTask(name);
+        GraphQueryTask finalState = waitForTask(initialState);
+
+        validateNStageResult(finalState, this.serviceCount, this.serviceCount);
+
+        finalState = createTwoStageTask(name, true);
+        validateNStageResult(finalState, this.serviceCount, this.serviceCount);
+    }
+
+    @Test
+    public void twoStageUnlinked() throws Throwable {
+        String name = UUID.randomUUID().toString();
+
+        createQueryTargetServices(name, 0);
+        // Create a set of example service instances that are not linked
+        this.host.doFactoryChildServiceStart(null,
+                this.unlinkedServiceCount, ExampleServiceState.class,
+                (o) -> {
+                    ExampleServiceState s = new ExampleServiceState();
+                    s.name = name;
+                    s.id = UUID.randomUUID().toString();
+                    o.setBody(s);
+                }, this.exampleFactoryUri);
 
         GraphQueryTask initialState = createTwoStageTask(name);
         GraphQueryTask finalState = waitForTask(initialState);
