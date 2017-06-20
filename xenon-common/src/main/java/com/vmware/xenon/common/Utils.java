@@ -769,13 +769,9 @@ public final class Utils {
 
         if (data == null) {
             String encodedBody;
-            if (op.getAction() == Action.GET) {
-                encodedBody = Utils.toJsonHtml(body);
-            } else {
-                encodedBody = Utils.toJson(body);
-                if (contentType == null) {
-                    op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
-                }
+            encodedBody = Utils.toJson(body);
+            if (op.getAction() != Action.GET && contentType == null) {
+                op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
             }
             data = encodedBody.getBytes(Utils.CHARSET);
             op.setContentLength(data.length);
