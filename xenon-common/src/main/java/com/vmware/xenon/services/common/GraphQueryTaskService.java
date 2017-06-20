@@ -14,17 +14,20 @@
 package com.vmware.xenon.services.common;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.GraphQueryTask.GraphQueryOption;
+import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 
 /**
@@ -52,7 +55,6 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
         post.setBody(initialState)
                 .setStatusCode(Operation.STATUS_CODE_ACCEPTED)
                 .complete();
-
         // self patch to start state machine
         sendSelfPatch(initialState, TaskStage.STARTED, null);
     }
@@ -113,7 +115,7 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
             }
 
             if (stage.results.nextPageLink == null
-                    && !hasInlineResults(stage.results)) {
+                    && !hasInlineResults(task, stage.results)) {
                 taskOperation.fail(new IllegalArgumentException(
                         "First stage has results instance but no actual results: "
                                 + Utils.toJson(stage)));
@@ -152,9 +154,15 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
             stageQueryTask.taskInfo.isDirect = true;
 
             if (i < task.stages.size() - 1) {
-                // stages other than the last one, must set select links, since we need to guide
-                // the query along the edges of the document graph.
-                stageQueryTask.querySpec.options.add(QueryOption.SELECT_LINKS);
+                if (task.options.contains(GraphQueryTask.GraphQueryOption.USE_LINK_TERM)) {
+                    // if we are using the USE_LINK_TERM option, we do not have to follow
+                    // the graph based on selectLinks
+                    stageQueryTask.querySpec.options.remove(QueryOption.SELECT_LINKS);
+                } else {
+                    // stages other than the last one, must set select links, since we need to guide
+                    // the query along the edges of the document graph.
+                    stageQueryTask.querySpec.options.add(QueryOption.SELECT_LINKS);
+                }
             }
 
             if (task.tenantLinks != null && stageQueryTask.tenantLinks == null) {
@@ -163,7 +171,7 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
 
             if (i == 0) {
                 // a client can initiate a graph query by supplying a initial stage with results
-                if (hasInlineResults(stageQueryTask.results)) {
+                if (hasInlineResults(task, stageQueryTask.results)) {
                     logInfo("First stage has %d (page:%s) results, skipping query, moving to next stage",
                             stageQueryTask.results.documentCount,
                             stageQueryTask.results.nextPageLink);
@@ -192,7 +200,6 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
 
         updateState(currentState, body);
         patch.complete();
-
         switch (body.taskInfo.stage) {
         case STARTED:
             startOrContinueGraphQuery(currentState);
@@ -280,7 +287,7 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
         QueryTask task = currentState.stages.get(traversalSpecIndex);
         task.documentExpirationTimeMicros = currentState.documentExpirationTimeMicros;
 
-        scopeNextStageQueryToSelectedLinks(lastResults, task);
+        scopeNextStageQueryToSelectedLinks(currentState, lastResults, task);
 
         Operation getResultsOrStartQueryOp = null;
 
@@ -308,19 +315,24 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
         sendRequest(getResultsOrStartQueryOp);
     }
 
-    private void scopeNextStageQueryToSelectedLinks(ServiceDocumentQueryResult lastResults,
+    private void scopeNextStageQueryToSelectedLinks(GraphQueryTask graphTask, ServiceDocumentQueryResult lastResults,
             QueryTask task) {
-        if (!hasInlineResults(lastResults)) {
+        if (!hasInlineResults(graphTask, lastResults)) {
             return;
         }
-        // Use query context white list, using the selected links, or documentLinks, from the last
-        // stage results. This restricts the query scope to only documents that are "linked"
-        // from the current stage to the next, effectively guiding our search of the index, across
-        // the graph edges (links) specified in each traversal specification.
-        // This is a performance optimization: the alternative would have been a massive boolean
-        // clause with SHOULD_OCCUR child clauses for each link
-        logFine("Setting whitelist to %d links", lastResults.selectedLinks.size());
-        task.querySpec.context.documentLinkWhiteList = lastResults.selectedLinks;
+        Query.Builder qBuilder = Query.Builder.create();
+        String propertyName = null;
+        Collection<String> matchDocuments = null;
+        if (graphTask.options.contains(GraphQueryTask.GraphQueryOption.USE_LINK_TERM)) {
+            //TODO: Support multiple linkTerms
+            propertyName = task.querySpec.linkTerms.get(0).propertyName;
+            matchDocuments = lastResults.documentLinks;
+        } else {
+            propertyName = ServiceDocument.FIELD_NAME_SELF_LINK;
+            matchDocuments = lastResults.selectedLinks;
+        }
+        Query inClause = qBuilder.addInClause(propertyName, matchDocuments).build();
+        task.querySpec.query.addBooleanClause(inClause);
     }
 
     private boolean checkAndPatchToFinished(GraphQueryTask currentState,
@@ -356,7 +368,13 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
     }
 
     private void finishTask(GraphQueryTask currentState) {
-        if (currentState.options.contains(GraphQueryOption.FILTER_STAGE_RESULTS)) {
+        // when we specify USE_LINK_TERM, we are doing a directed search either
+        // expanding or contracting the list of results at each stage; We do not
+        // need to walk back the hierarchy and filter out results from any
+        // previous stages as all results in the previous stage contributed to
+        // the next stage
+        if (!currentState.options.contains(GraphQueryOption.USE_LINK_TERM)
+                && currentState.options.contains(GraphQueryOption.FILTER_STAGE_RESULTS)) {
             applyFilterOnStageResults(currentState);
         }
 
@@ -462,10 +480,13 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
         sendSelfPatch(currentState, TaskStage.STARTED, null);
     }
 
-    private static boolean hasInlineResults(ServiceDocumentQueryResult results) {
-        return results != null && results.documentCount != null
-                && results.documentCount > 0
-                && results.selectedLinks != null
-                && !results.selectedLinks.isEmpty();
+    private static boolean hasInlineResults(GraphQueryTask graphTask, ServiceDocumentQueryResult results) {
+        boolean hasResults =  results != null && results.documentCount != null
+                && results.documentCount > 0;
+        if (!graphTask.options.contains(GraphQueryOption.USE_LINK_TERM)) {
+            hasResults = hasResults && results.selectedLinks != null
+                    && !results.selectedLinks.isEmpty();
+        }
+        return hasResults;
     }
 }

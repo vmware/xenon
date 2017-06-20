@@ -35,8 +35,18 @@ public class GraphQueryTask extends TaskService.TaskServiceState {
          * will remove the result document B from stage zero.
          * The logic is applied recursively starting at the final stage, and can result in
          * modifications across all stages (except the final one)
+         * This option is incompatible with USE_LINK_TERM
          */
-        FILTER_STAGE_RESULTS
+        FILTER_STAGE_RESULTS,
+
+        /**
+         * Uses the specified linkTerm to filter the resultset at each stage. All results obtained
+         * in the previous stage will be used as filter criteria in the next stage with the
+         * linkTerm being used as the property name.
+         * If this option is not specified, the contents of selectLinks list obtained in the
+         * previous stage will guide list of documents discovered in the next stage
+         */
+        USE_LINK_TERM
     }
 
     public EnumSet<GraphQueryOption> options = EnumSet.noneOf(GraphQueryOption.class);
