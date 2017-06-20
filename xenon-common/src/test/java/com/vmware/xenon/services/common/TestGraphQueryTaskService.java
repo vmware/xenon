@@ -21,9 +21,12 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.After;
 import org.junit.Before;
@@ -32,6 +35,7 @@ import org.junit.Test;
 import com.vmware.xenon.common.BasicTestCase;
 import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
@@ -59,6 +63,16 @@ public class TestGraphQueryTaskService extends BasicTestCase {
      * Number of links to peer services, per service
      */
     public int linkCount = 2;
+
+    /**
+     * Number of services that are not linked to the graph
+     */
+    public int unlinkedServiceCount = 20000;
+
+    /**
+     * Number of service instances to consider for the first stage
+     */
+    public int firstStageCount = 5;
 
     public int nodeCount = 3;
 
@@ -172,7 +186,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         // we do not expect results, since we never created any documents. But first stage
         // should have at least run and returned zero documents
         ServiceDocumentQueryResult stageOneResults = finalState.stages.get(0).results;
-        validateStageResults(stageOneResults, 0, true);
+        validateStageResults(finalState, stageOneResults, 0, true);
 
         validateEmptyResultTask(finalState);
 
@@ -190,10 +204,96 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         GraphQueryTask initialState = createTwoStageTask(name);
         GraphQueryTask finalState = waitForTask(initialState);
 
-        validateNStageResult(finalState, this.serviceCount, this.serviceCount);
+        assertTrue(validateNStageResult(finalState, this.serviceCount, this.serviceCount));
 
-        finalState = createTwoStageTask(name, true);
-        validateNStageResult(finalState, this.serviceCount, this.serviceCount);
+        // invoke query on a subset of the documents
+        List<String> qualifiedIds = getNodesForFirstStage(false);
+        finalState = createTwoStageTask(name, true, qualifiedIds);
+        assertTrue(validateNStageResult(finalState, qualifiedIds.size(), qualifiedIds.size()));
+    }
+
+    @Test
+    public void testTwoStateWithSelectLinks() throws Throwable {
+        String name = UUID.randomUUID().toString();
+
+        createQueryTargetServices(name, 0);
+
+        GraphQueryTask finalState = createTwoStageTaskWithSelfLinks(name, true, null);
+        assertTrue(validateNStageResult(finalState, this.serviceCount * 2, this.serviceCount));
+
+        List<String> qualifiedIds = getNodesForFirstStage(true);
+        finalState = createTwoStageTaskWithSelfLinks(name, true, qualifiedIds);
+        assertTrue(validateNStageResult(finalState, qualifiedIds.size(), qualifiedIds.size()));
+    }
+
+    private GraphQueryTask createTwoStageTaskWithSelfLinks(String name, boolean isDirect,
+            List<String> idsForFirstStage) throws Throwable {
+
+        // Stage one is a query for example service instances
+        Query.Builder qBuilder = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .addFieldClause(ExampleServiceState.FIELD_NAME_NAME, name);
+
+        if (idsForFirstStage != null) {
+            qBuilder.addInClause(ServiceDocument.FIELD_NAME_SELF_LINK, idsForFirstStage);
+        }
+        QueryTask stageOneTask = QueryTask.Builder.create()
+                .setQuery(qBuilder.build())
+                .build();
+        // Add the linkTerm for the second stage query
+        QueryTask stageTwoTask = QueryTask.Builder.create()
+                .addLinkTerm(QueryValidationServiceState.FIELD_NAME_SERVICE_LINK)
+                .setQuery(Query.Builder.create()
+                        .addKindFieldClause(QueryValidationServiceState.class).build())
+                .build();
+
+        GraphQueryTask initialState = GraphQueryTask.Builder.create(2)
+                .setDirect(true)
+                .addQueryStage(stageOneTask)
+                .addQueryStage(stageTwoTask)
+                .addOption(GraphQueryOption.USE_LINK_TERM)
+                .build();
+        initialState = createTask(initialState);
+        return initialState;
+    }
+
+    private List<String> getNodesForFirstStage(boolean isExampleService) {
+        Set<Integer> docIds = new HashSet<>();
+        Random r = new Random();
+        int firstStageCount = Math.min(this.serviceCount, this.firstStageCount);
+        for (int i = 0; i < firstStageCount; i++) {
+            docIds.add(r.nextInt(this.serviceCount));
+        }
+        List<String> qualifiedIds = new ArrayList<>();
+        if (isExampleService) {
+            docIds.stream().forEach(docId -> qualifiedIds.add(UriUtils.buildUriPath(
+                    ExampleService.FACTORY_LINK,
+                    "linked-" + docId)));
+        } else {
+            docIds.stream().forEach(docId -> qualifiedIds.add(UriUtils.buildUriPath(
+                            GraphQueryValidationTestService.FACTORY_LINK,
+                            "layer-0-" + docId)));
+        }
+        return qualifiedIds;
+    }
+
+    @Test
+    public void twoStageUnlinked() throws Throwable {
+        String name = UUID.randomUUID().toString();
+
+        createQueryTargetServices(name, 0);
+        // Create a set of example service instances that are not linked
+        this.host.doFactoryChildServiceStart(null,
+                this.unlinkedServiceCount, ExampleServiceState.class,
+                (o) -> {
+                    ExampleServiceState s = new ExampleServiceState();
+                    s.name = name;
+                    s.id = UUID.randomUUID().toString();
+                    o.setBody(s);
+                }, this.exampleFactoryUri);
+
+        GraphQueryTask finalState = createTwoStageTask(name, true);
+        assertTrue(validateNStageResult(finalState, this.serviceCount, this.serviceCount));
     }
 
     @Test
@@ -208,10 +308,10 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         GraphQueryTask initialState = createTwoStageTask(name);
         GraphQueryTask finalState = waitForTask(initialState);
 
-        validateNStageResult(finalState, this.serviceCount, 0);
+        assertTrue(validateNStageResult(finalState, this.serviceCount, 0));
 
         finalState = createTwoStageTask(name, true);
-        validateNStageResult(finalState, this.serviceCount, 0);
+        assertTrue(validateNStageResult(finalState, this.serviceCount, 0));
     }
 
     @Test
@@ -244,7 +344,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
                 this.serviceCount * this.linkCount * this.linkCount
         };
 
-        createAndVerifyTreeGraph(resultCounts, stageCount);
+        createAndVerifyTreeGraph(resultCounts, null, stageCount);
 
         createAndVerifyTreeGraphWithStageFiltering(stageCount);
 
@@ -272,11 +372,28 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         stageWithResults.querySpec.options.remove(QueryOption.SELECT_LINKS);
         createAndVerifyDirectTreeGraphWithZeroStagePaginatedResults(stageCount, stageWithResults);
         this.isFailureExpected = false;
+
+        // invoke query on a subset of the documents
+        List<String> qualifiedIds = getNodesForFirstStage(false);
+        QueryTask stage = QueryTask.Builder.create()
+                .addOption(QueryOption.SELECT_LINKS)
+                .addLinkTerm(QueryValidationServiceState.FIELD_NAME_SERVICE_LINKS)
+                .setQuery(Query.Builder.create()
+                        .addInClause(ServiceDocument.FIELD_NAME_SELF_LINK, qualifiedIds)
+                        .addKindFieldClause(QueryValidationServiceState.class)
+                        .build())
+                .build();
+        int[] filteredResultCounts = {
+                qualifiedIds.size(),
+                qualifiedIds.size() * this.linkCount,
+                qualifiedIds.size() * this.linkCount * this.linkCount
+        };
+        createAndVerifyTreeGraph(filteredResultCounts, stage, stageCount);
     }
 
-    private void createAndVerifyTreeGraph(int[] resultCounts, int stageCount) throws Throwable {
+    private void createAndVerifyTreeGraph(int[] resultCounts, QueryTask initialStage, int stageCount) throws Throwable {
         this.host.waitFor("query result mismatch", () -> {
-            GraphQueryTask initialState = createTreeGraphTask(stageCount, false);
+            GraphQueryTask initialState = createTreeGraphTask(stageCount, initialStage, false);
             GraphQueryTask finalState = waitForTask(initialState);
             logGraphQueryThroughput(finalState);
             return validateNStageResult(finalState, true, resultCounts);
@@ -440,19 +557,19 @@ public class TestGraphQueryTaskService extends BasicTestCase {
             int expectedCount = expectedCounts == null ? this.serviceCount : expectedCounts[i];
             ServiceDocumentQueryResult stageOneResults = finalState.stages.get(i).results;
             boolean isFinalStage = i == expectedCounts.length - 1;
-            if (!validateStageResults(stageOneResults, i, expectedCount, isRecursive, isFinalStage)) {
+            if (!validateStageResults(finalState, stageOneResults, i, expectedCount, isRecursive, isFinalStage)) {
                 return false;
             }
         }
         return true;
     }
 
-    private boolean validateStageResults(ServiceDocumentQueryResult stage,
+    private boolean validateStageResults(GraphQueryTask finalState, ServiceDocumentQueryResult stage,
             int expectedResultCount, boolean isFinalStage) {
-        return validateStageResults(stage, 0, expectedResultCount, false, isFinalStage);
+        return validateStageResults(finalState, stage, 0, expectedResultCount, false, isFinalStage);
     }
 
-    private boolean validateStageResults(ServiceDocumentQueryResult stageResults,
+    private boolean validateStageResults(GraphQueryTask finalState, ServiceDocumentQueryResult stageResults,
             int stageIndex,
             int expectedResultCount, boolean isRecursive, boolean isFinalStage) {
         if (stageResults == null) {
@@ -465,17 +582,19 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         if (stageResults.documentLinks.size() != expectedResultCount) {
             return false;
         }
-        if (!isFinalStage && stageResults.selectedLinks == null) {
-            if (expectedResultCount > 0) {
-                throw new IllegalStateException("null selectedLinks");
-            }
-        } else if (!isFinalStage) {
-            int expectedLinkCount = expectedResultCount;
-            if (isRecursive) {
-                expectedLinkCount *= this.linkCount;
-            }
-            if (stageResults.selectedLinks.size() != expectedLinkCount) {
-                return false;
+        if (!finalState.options.contains(GraphQueryOption.USE_LINK_TERM)) {
+            if (!isFinalStage && stageResults.selectedLinks == null) {
+                if (expectedResultCount > 0) {
+                    throw new IllegalStateException("null selectedLinks");
+                }
+            } else if (!isFinalStage) {
+                int expectedLinkCount = expectedResultCount;
+                if (isRecursive) {
+                    expectedLinkCount *= this.linkCount;
+                }
+                if (stageResults.selectedLinks.size() != expectedLinkCount) {
+                    return false;
+                }
             }
         }
         return true;
@@ -497,16 +616,26 @@ public class TestGraphQueryTaskService extends BasicTestCase {
     }
 
     private GraphQueryTask createTwoStageTask(String name, boolean isDirect) throws Throwable {
+        return createTwoStageTask(name, isDirect, null);
+    }
+
+    private GraphQueryTask createTwoStageTask(String name, boolean isDirect,
+            List<String> idsForFirstStage) throws Throwable {
 
         // specify two key things:
         // The kind, so we begin the search from specific documents (the source nodes in the
         // graph), and the link, the graph edge that will lead us to documents in the second
         // stage
+        Query.Builder qBuilder = Query.Builder.create()
+                .addKindFieldClause(QueryValidationServiceState.class);
+
+        if (idsForFirstStage != null) {
+            qBuilder.addInClause(ServiceDocument.FIELD_NAME_SELF_LINK, idsForFirstStage);
+        }
+
         QueryTask stageOneSelectQueryValidationInstances = QueryTask.Builder.create()
                 .addLinkTerm(QueryValidationServiceState.FIELD_NAME_SERVICE_LINK)
-                .setQuery(Query.Builder.create()
-                        .addKindFieldClause(QueryValidationServiceState.class)
-                        .build())
+                .setQuery(qBuilder.build())
                 .build();
 
         // for the second stage, filter the links by kind (although redundant, its good to
@@ -690,12 +819,14 @@ public class TestGraphQueryTaskService extends BasicTestCase {
     }
 
     private void createQueryTargetServices(String name, int recursionDepth) throws Throwable {
+        AtomicInteger serviceCounter = new AtomicInteger();
         Map<URI, ExampleServiceState> exampleStates = this.host.doFactoryChildServiceStart(null,
                 this.serviceCount, ExampleServiceState.class,
                 (o) -> {
                     ExampleServiceState s = new ExampleServiceState();
                     s.name = name;
-                    s.id = UUID.randomUUID().toString();
+                    s.id = "linked-" + serviceCounter.getAndIncrement();
+                    s.documentSelfLink = s.id;
                     o.setBody(s);
                 }, this.exampleFactoryUri);
 
@@ -708,7 +839,8 @@ public class TestGraphQueryTaskService extends BasicTestCase {
                 (o) -> {
                     ExampleServiceState s = new ExampleServiceState();
                     s.name = name;
-                    s.id = UUID.randomUUID().toString();
+                    s.id = "non-linked-" + serviceCounter.incrementAndGet();
+                    s.documentSelfLink = s.id;
                     o.setBody(s);
                 }, this.exampleFactoryUri);
     }
@@ -746,7 +878,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
                 for (int i = 0; i < this.serviceCount; i++) {
                     previousLayerLinks.add(UriUtils.buildUriPath(
                             GraphQueryValidationTestService.FACTORY_LINK,
-                            "layer-" + layer + "-" + UUID.randomUUID().toString()));
+                            "layer-" + layer + "-" + i));
                 }
             }
 
