@@ -770,7 +770,7 @@ public final class Utils {
         if (data == null) {
             String encodedBody;
             if (op.getAction() == Action.GET) {
-                encodedBody = Utils.toJsonHtml(body);
+                encodedBody = Utils.toJson(body);
             } else {
                 encodedBody = Utils.toJson(body);
                 if (contentType == null) {
