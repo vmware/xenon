@@ -19,12 +19,14 @@ import java.util.Map;
 import java.util.Set;
 
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.GraphQueryTask.GraphQueryOption;
+import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 
 /**
@@ -313,14 +315,10 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
         if (!hasInlineResults(lastResults)) {
             return;
         }
-        // Use query context white list, using the selected links, or documentLinks, from the last
-        // stage results. This restricts the query scope to only documents that are "linked"
-        // from the current stage to the next, effectively guiding our search of the index, across
-        // the graph edges (links) specified in each traversal specification.
-        // This is a performance optimization: the alternative would have been a massive boolean
-        // clause with SHOULD_OCCUR child clauses for each link
-        logFine("Setting whitelist to %d links", lastResults.selectedLinks.size());
-        task.querySpec.context.documentLinkWhiteList = lastResults.selectedLinks;
+        Query.Builder qBuilder = Query.Builder.create();
+        Query inClause = qBuilder.addInClause(
+                ServiceDocument.FIELD_NAME_SELF_LINK, lastResults.selectedLinks).build();
+        task.querySpec.query.addBooleanClause(inClause);
     }
 
     private boolean checkAndPatchToFinished(GraphQueryTask currentState,
