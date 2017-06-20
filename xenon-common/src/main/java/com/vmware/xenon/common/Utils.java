@@ -781,7 +781,24 @@ public final class Utils {
             op.setContentLength(data.length);
         }
 
+        String acceptEncodingHeader = op.getRequestHeaderAsIs(Operation.ACCEPT_ENCODING_HEADER);
+        if (Operation.CONTENT_ENCODING_GZIP.equals(acceptEncodingHeader)) {
+            data = compressGZip(data);
+            op.setContentLength(data.length);
+        }
+
         return data;
+    }
+
+   /**
+     * Compresses byte[] to gzip byte[]
+     */
+    private static byte[] compressGZip(byte[] input) throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (GZIPOutputStream zos = new GZIPOutputStream(out)) {
+            zos.write(input, 0, input.length);
+        }
+        return out.toByteArray();
     }
 
     /**

@@ -351,6 +351,54 @@ public class TestExampleService {
     }
 
     @Test
+    public void multiNodeBasicWithCompression() throws Throwable {
+
+        // scenario:
+        //   create 2 nodes and join to default group
+        //   post & get example service
+
+        // prepare multiple nodes (for simplicity, using VerificationHost)
+        VerificationHost host1 = createAndStartHost(false);
+        VerificationHost host2 = createAndStartHost(false);
+
+        TestNodeGroupManager nodeGroup = new TestNodeGroupManager();
+        nodeGroup.addHost(host1);
+        nodeGroup.addHost(host2);
+
+        // make node group join to the "default" node group, then wait cluster to be stabilized
+        nodeGroup.joinNodeGroupAndWaitForConvergence();
+
+        // wait the service to be available in cluster
+        nodeGroup.waitForFactoryServiceAvailable(ExampleService.FACTORY_LINK);
+
+        // prepare operation sender(client)
+        ServiceHost peer = nodeGroup.getHost();
+        TestRequestSender sender = new TestRequestSender(peer);
+
+        // POST request. create a doc with static selflink: /core/examples/foo
+        String suffix = "foo";
+        ExampleServiceState body = new ExampleServiceState();
+        body.name = "FOO";
+        body.documentSelfLink = suffix;
+        Operation post = Operation.createPost(peer, ExampleService.FACTORY_LINK).setBody(body);
+
+        post.addRequestHeader(Operation.CONTENT_ENCODING_HEADER, Operation.CONTENT_ENCODING_GZIP);
+        post.addRequestHeader(Operation.ACCEPT_ENCODING_HEADER, Operation.CONTENT_ENCODING_GZIP);
+
+        // verify post response
+        ExampleServiceState result = sender.sendAndWait(post, ExampleServiceState.class);
+        assertEquals("FOO", result.name);
+
+        // make get and validate result
+        String servicePath = UriUtils.buildUriPath(ExampleService.FACTORY_LINK, suffix);
+        Operation get = Operation.createGet(peer, servicePath);
+        ExampleServiceState getResult = sender.sendAndWait(get, ExampleServiceState.class);
+
+        // validate get result...
+        assertEquals("FOO", getResult.name);
+    }
+
+    @Test
     public void multiNodeOnDemandLoad() throws Throwable {
         // scenario:
         //   create 2 nodes and join to default group
