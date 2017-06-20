@@ -31,6 +31,11 @@
   interacting with the destination cluster. Services can leverage this to alter
   their behavior based on whether handleStart comes from a migration or not.
 
+* Breaking change: Add support for Accept-Encoding: gzip request header.
+  When present the response body is gzipped and the response header
+  Content-Encoding: gzip is added to the response.  Previously, the request
+  header was ignored.
+
 ## 1.5.0
 
 * Breaking change: Links to QueryPageService instances (e.g. the nextPageLink

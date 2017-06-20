@@ -338,7 +338,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         FullHttpResponse response;
 
         try {
-            byte[] data = Utils.encodeBody(request);
+            byte[] data = Utils.encodeBody(request, false);
 
             // if some service returns a response that is greater than the maximum allowed size,
             // we return an INTERNAL_SERVER_ERROR.
