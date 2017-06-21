@@ -26,7 +26,7 @@ public class LoaderFactoryService extends FactoryService {
     }
 
     @Override
-    public Service createServiceInstance() throws Throwable {
+    public Service createServiceInstance() {
         return new LoaderService();
     }
 

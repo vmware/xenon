@@ -41,7 +41,7 @@ public class JVMStatsService extends StatefulService {
         }
 
         @Override
-        public Service createServiceInstance() throws Throwable {
+        public Service createServiceInstance() throws Exception {
             return new JVMStatsService();
         }
     }

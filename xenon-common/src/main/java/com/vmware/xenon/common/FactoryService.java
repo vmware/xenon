@@ -79,7 +79,7 @@ public abstract class FactoryService extends StatelessService {
             Class<? extends ServiceDocument> childServiceDocumentType, ServiceOption... options) {
         FactoryService fs = new FactoryService(childServiceDocumentType) {
             @Override
-            public Service createServiceInstance() throws Throwable {
+            public Service createServiceInstance() throws Exception {
                 return childServiceType.newInstance();
             }
         };
@@ -202,7 +202,7 @@ public abstract class FactoryService extends StatelessService {
                 // make sure service can be serialized, so it can be paused under memory pressure
                 Utils.toBytes(s, buffer, 0);
             }
-        } catch (Throwable e) {
+        } catch (Exception e) {
             logSevere(e);
             startPost.fail(e);
             return;
@@ -390,7 +390,7 @@ public abstract class FactoryService extends StatelessService {
                 serviceUri = UriUtils.extendUri(getUri(), suffix);
             }
             o.setUri(serviceUri);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             logSevere(e);
             o.fail(e);
             return;
@@ -802,7 +802,7 @@ public abstract class FactoryService extends StatelessService {
         op.complete();
     }
 
-    private Service createChildService() throws Throwable {
+    private Service createChildService() throws Exception {
         Service childService;
         childService = createServiceInstance();
         this.childOptions = childService.getOptions();
@@ -855,7 +855,7 @@ public abstract class FactoryService extends StatelessService {
     private Service createChildServiceSafe() {
         try {
             return createChildService();
-        } catch (Throwable e) {
+        } catch (Exception e) {
             logSevere(e);
             return null;
         }
@@ -914,7 +914,7 @@ public abstract class FactoryService extends StatelessService {
                 s.setSelfLink(childLink);
                 s.toggleOption(ServiceOption.FACTORY_ITEM, true);
                 this.childTemplate = s.getDocumentTemplate();
-            } catch (Throwable e) {
+            } catch (Exception e) {
                 logSevere(e);
                 return null;
             }
@@ -1160,5 +1160,5 @@ public abstract class FactoryService extends StatelessService {
         getHost().broadcastRequest(this.nodeSelectorLink, this.getSelfLink(), true, broadcastSelectOp);
     }
 
-    public abstract Service createServiceInstance() throws Throwable;
+    public abstract Service createServiceInstance() throws Exception;
 }

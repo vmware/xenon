@@ -24,7 +24,7 @@ public class LocalQueryTaskFactoryService extends QueryTaskFactoryService {
     }
 
     @Override
-    public Service createServiceInstance() throws Throwable {
+    public Service createServiceInstance() {
         QueryTaskService service = new QueryTaskService();
         service.toggleOption(ServiceOption.REPLICATION, false);
         service.toggleOption(ServiceOption.OWNER_SELECTION, false);

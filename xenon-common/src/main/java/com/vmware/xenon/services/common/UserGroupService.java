@@ -32,7 +32,7 @@ public class UserGroupService extends StatefulService {
         FactoryService fs = new FactoryService(UserGroupState.class) {
 
             @Override
-            public Service createServiceInstance() throws Throwable {
+            public Service createServiceInstance() {
                 return new UserGroupService();
             }
 

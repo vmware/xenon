@@ -30,7 +30,7 @@ public class GatewayPathFactoryService extends FactoryService {
     }
 
     @Override
-    public Service createServiceInstance() throws Throwable {
+    public Service createServiceInstance() {
         return new GatewayPathService();
     }
 

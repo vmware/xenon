@@ -32,7 +32,7 @@ public class RoleService extends StatefulService {
         FactoryService fs = new FactoryService(RoleState.class) {
 
             @Override
-            public Service createServiceInstance() throws Throwable {
+            public Service createServiceInstance() {
                 return new RoleService();
             }
 
