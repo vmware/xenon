@@ -2812,8 +2812,16 @@ public class ServiceHost implements ServiceRequestSender {
 
                     // Skip caching for replication requests if the service
                     // is indexed.
-                    boolean skipCaching = post.isFromReplication() &&
-                            isServiceIndexed(s);
+                    boolean skipCaching = post.isFromReplication() && isServiceIndexed(s);
+
+                    // A replication request for an ODL service can cause xenon to start the target service with
+                    // POST if the service was paused in cleanup cycle. That internally triggered POST will have
+                    // isReplicationDisabled flag set.  We skip caching if this is ODL service
+                    // and isReplicationDisabled is set.
+                    skipCaching |= post.isReplicationDisabled() &&
+                            isServiceOnDemandLoad(s) &&
+                            !this.isDocumentOwner(s);
+
                     if (!skipCaching) {
                         this.serviceResourceTracker.updateCachedServiceState(s,
                                 state, post);
@@ -5332,7 +5340,18 @@ public class ServiceHost implements ServiceRequestSender {
         body.description = buildDocumentDescription(s);
         body.serializedDocument = op.getLinkedSerializedState();
         op.linkSerializedState(null);
-        if (!op.isFromReplication()) {
+
+        boolean skipCaching = op.isFromReplication();
+
+        // A replication request for an ODL service can cause xenon to start the target service with
+        // POST if the service was paused in cleanup cycle. That internally triggered POST will have
+        // isReplicationDisabled flag set.  We skip caching if this is ODL service
+        // and isReplicationDisabled is set.
+        skipCaching |= op.isReplicationDisabled() &&
+                isServiceOnDemandLoad(s) &&
+                !this.isDocumentOwner(s);
+
+        if (!skipCaching) {
             // Do not cache state, in replicas
             cacheServiceState(s, state, op);
         }
