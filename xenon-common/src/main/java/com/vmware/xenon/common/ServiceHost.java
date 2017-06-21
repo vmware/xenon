@@ -2958,6 +2958,17 @@ public class ServiceHost implements ServiceRequestSender {
     void loadServiceState(Service s, Operation op) {
         ServiceDocument state = this.serviceResourceTracker.getCachedServiceState(s, op);
 
+        // For ODL service, cache might not be consistent with index in case of owner change.
+        // In multi-node environment when an owner of ODL child service is stopped, the synchronization
+        // is not kicked until now, in that case cache of this new owner will be out of synch with Index
+        // because only owner gets to keep the updated cache.
+        if (ServiceHost.isServiceOnDemandLoad(s)
+                && state != null
+                && state.documentOwner != null
+                && !state.documentOwner.equals(this.getId())) {
+            state = null;
+        }
+
         // Clone state if it might change while processing
         if (state != null && !s.hasOption(ServiceOption.CONCURRENT_UPDATE_HANDLING)) {
             state = Utils.clone(state);
@@ -3006,6 +3017,11 @@ public class ServiceHost implements ServiceRequestSender {
                     if (!isAuthorized(s, st, op)) {
                         op.fail(Operation.STATUS_CODE_FORBIDDEN);
                         return;
+                    }
+
+                    // Update cache on the owner node
+                    if (st.documentOwner != null && st.documentOwner.equals(this.getId())) {
+                        this.serviceResourceTracker.updateCachedServiceState(s, st, op);
                     }
 
                     op.linkState(st).complete();
