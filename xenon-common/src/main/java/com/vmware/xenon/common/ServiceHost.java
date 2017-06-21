@@ -2956,7 +2956,14 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     void loadServiceState(Service s, Operation op) {
-        ServiceDocument state = this.serviceResourceTracker.getCachedServiceState(s, op);
+        ServiceDocument state = null;
+
+        // Skip cache for ODL service because it might not be up-to-date with the content
+        // in the index. This can happen in multi-node environment when an owner is stopped
+        // of a child service and synchronization was not kicked until now.
+        if (!ServiceHost.isServiceOnDemandLoad(s)) {
+            state = this.serviceResourceTracker.getCachedServiceState(s, op);
+        }
 
         // Clone state if it might change while processing
         if (state != null && !s.hasOption(ServiceOption.CONCURRENT_UPDATE_HANDLING)) {
