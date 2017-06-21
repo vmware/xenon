@@ -106,7 +106,7 @@ class TypeMismatchTestFactoryService extends FactoryService {
     }
 
     @Override
-    public Service createServiceInstance() throws Throwable {
+    public Service createServiceInstance() throws Exception {
         // intentionally create a child service with a different state type than the one we declare
         // in our constructor, for a negative test
         Service s = new MinimalTestService();
@@ -137,7 +137,7 @@ class SynchTestFactoryService extends FactoryService {
     }
 
     @Override
-    public Service createServiceInstance() throws Throwable {
+    public Service createServiceInstance() throws Exception {
         return new ExampleService();
     }
 
@@ -1643,7 +1643,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         }
 
         @Override
-        public Service createServiceInstance() throws Throwable {
+        public Service createServiceInstance() throws Exception {
             return new SomeStatefulService();
         }
 

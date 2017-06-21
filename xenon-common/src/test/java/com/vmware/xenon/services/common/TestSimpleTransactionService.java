@@ -1049,7 +1049,7 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
         }
 
         @Override
-        public Service createServiceInstance() throws Throwable {
+        public Service createServiceInstance() throws Exception {
             return new BankAccountService();
         }
 
@@ -1175,7 +1175,7 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
         }
 
         @Override
-        public Service createServiceInstance() throws Throwable {
+        public Service createServiceInstance() throws Exception {
             return new StrictUpdateCheckService();
         }
 

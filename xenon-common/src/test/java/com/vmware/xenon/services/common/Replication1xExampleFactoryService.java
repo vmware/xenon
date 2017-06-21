@@ -30,7 +30,7 @@ public class Replication1xExampleFactoryService extends FactoryService {
     }
 
     @Override
-    public Service createServiceInstance() throws Throwable {
+    public Service createServiceInstance() throws Exception {
         return new ExampleService();
     }
 }

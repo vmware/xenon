@@ -121,7 +121,7 @@ public class TestNodeGroupService {
         }
 
         @Override
-        public Service createServiceInstance() throws Throwable {
+        public Service createServiceInstance() throws Exception {
             ExampleService s = new ExampleService();
             s.toggleOption(ServiceOption.PERSISTENCE, false);
             super.toggleOption(ServiceOption.PERSISTENCE, false);
@@ -137,7 +137,7 @@ public class TestNodeGroupService {
         }
 
         @Override
-        public Service createServiceInstance() throws Throwable {
+        public Service createServiceInstance() throws Exception {
             ExampleService s = new ExampleService();
             s.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
             return s;
@@ -163,7 +163,7 @@ public class TestNodeGroupService {
         }
 
         @Override
-        public Service createServiceInstance() throws Throwable {
+        public Service createServiceInstance() throws Exception {
             return new ExampleServiceWithCustomSelector();
         }
 

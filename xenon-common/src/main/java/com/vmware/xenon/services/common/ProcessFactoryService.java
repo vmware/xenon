@@ -24,7 +24,7 @@ public class ProcessFactoryService extends FactoryService {
     }
 
     @Override
-    public Service createServiceInstance() throws Throwable {
+    public Service createServiceInstance() throws Exception {
         return new ProcessService();
     }
 }

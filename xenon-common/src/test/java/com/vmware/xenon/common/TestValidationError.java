@@ -147,7 +147,7 @@ public class TestValidationError extends BasicTestCase {
         }
 
         @Override
-        public Service createServiceInstance() throws Throwable {
+        public Service createServiceInstance() throws Exception {
             return new TestValidationStatefulService();
         }
 

@@ -61,7 +61,7 @@ public class MinimalFactoryTestService extends FactoryService {
     }
 
     @Override
-    public Service createServiceInstance() throws Throwable {
+    public Service createServiceInstance() throws Exception {
         Service s = new MinimalTestService();
         if (this.childServiceCaps != null) {
             for (ServiceOption c : this.childServiceCaps) {

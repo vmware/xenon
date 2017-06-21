@@ -103,7 +103,7 @@ class DeleteVerificationTestFactoryService extends FactoryService {
     }
 
     @Override
-    public Service createServiceInstance() throws Throwable {
+    public Service createServiceInstance() throws Exception {
         Service s = new DeleteVerificationTestService();
         return s;
     }

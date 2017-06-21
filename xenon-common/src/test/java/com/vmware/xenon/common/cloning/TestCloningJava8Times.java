@@ -163,7 +163,7 @@ public class TestCloningJava8Times extends BasicReusableHostTestCase {
         }
 
         @Override
-        public Service createServiceInstance() throws Throwable {
+        public Service createServiceInstance() throws Exception {
             return new ServiceWithJava8Times();
         }
 

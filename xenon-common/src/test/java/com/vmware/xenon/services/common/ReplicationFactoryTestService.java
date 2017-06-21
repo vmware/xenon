@@ -43,7 +43,7 @@ public class ReplicationFactoryTestService extends FactoryService {
     }
 
     @Override
-    public Service createServiceInstance() throws Throwable {
+    public Service createServiceInstance() throws Exception {
         ReplicationTestService r = new ReplicationTestService();
         EnumSet<ServiceOption> options = null;
         if (getSelfLink().endsWith(SIMPLE_REPL_SELF_LINK)) {
