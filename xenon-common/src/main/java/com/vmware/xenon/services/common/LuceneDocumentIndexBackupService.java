@@ -468,7 +468,7 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
 
             op.complete();
             logInfo("restore complete");
-        } catch (Throwable e) {
+        } catch (Exception e) {
             logSevere(e);
             op.fail(e);
         } finally {

@@ -584,7 +584,7 @@ public class NettyHttpServiceClient implements ServiceClient {
 
             op.toggleOption(OperationOption.SOCKET_ACTIVE, true);
             op.getSocketContext().writeHttpRequest(request);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             op.setBody(ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST,
                     EnumSet.of(ErrorDetail.SHOULD_RETRY)));
             fail(e, op, originalBody);

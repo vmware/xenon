@@ -31,11 +31,11 @@ public interface ServiceRequestListener {
 
     int getPort();
 
-    void setSSLContextFiles(URI certFile, URI keyFile) throws Throwable;
+    void setSSLContextFiles(URI certFile, URI keyFile) throws Exception;
 
-    void setSSLContextFiles(URI certFile, URI keyFile, String keyPassphrase) throws Throwable;
+    void setSSLContextFiles(URI certFile, URI keyFile, String keyPassphrase) throws Exception;
 
-    void start(int port, String bindAddress) throws Throwable;
+    void start(int port, String bindAddress) throws Exception;
 
     void handleMaintenance(Operation op);
 

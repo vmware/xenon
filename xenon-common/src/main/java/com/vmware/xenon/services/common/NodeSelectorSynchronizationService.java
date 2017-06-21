@@ -384,7 +384,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 }
                 sendRequest(peerOp);
             }
-        } catch (Throwable e) {
+        } catch (Exception e) {
             logSevere(e);
             post.fail(e);
         }

@@ -791,7 +791,7 @@ public class SynchronizationTaskService
                 .setRetryCount(0);
         try {
             sendRequest(synchRequest);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             logSevere(e);
             synchRequest.fail(e);
         }

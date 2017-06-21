@@ -394,11 +394,11 @@ public class QueryTaskClientHelper<T extends ServiceDocument> {
                                 }
                             }
                             getNextPageLinks(page.results.nextPageLink, resultLimit, handler);
-                        } catch (Throwable ex) {
+                        } catch (Exception ex) {
                             handler.handle(noResult(), ex);
                         }
                     }));
-        } catch (Throwable ex) {
+        } catch (Exception ex) {
             handler.handle(noResult(), ex);
         }
     }

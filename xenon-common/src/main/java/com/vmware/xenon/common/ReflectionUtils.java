@@ -47,7 +47,7 @@ public final class ReflectionUtils {
                 ctor.setAccessible(true);
             }
             return ctor.newInstance();
-        } catch (Throwable e) {
+        } catch (Exception e) {
             Utils.logWarning("Reflection error: %s", Utils.toString(e));
         }
         return null;
@@ -56,7 +56,7 @@ public final class ReflectionUtils {
     public static Object getPropertyValue(PropertyDescription pd, Object instance) {
         try {
             return pd.accessor.get(instance);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             Utils.logWarning("Reflection error: %s", Utils.toString(e));
         }
         return null;
@@ -65,7 +65,7 @@ public final class ReflectionUtils {
     public static void setPropertyValue(PropertyDescription pd, Object instance, Object value) {
         try {
             pd.accessor.set(instance, value);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
@@ -106,7 +106,7 @@ public final class ReflectionUtils {
                 hasValueChanged = value != null;
             }
             return hasValueChanged;
-        } catch (Throwable e) {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }

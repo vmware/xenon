@@ -259,7 +259,7 @@ public class UtilityService implements Service {
             if (!performSubscriptionsMaintenance(now)) {
                 return;
             }
-        } catch (Throwable e) {
+        } catch (Exception e) {
             this.parent.getHost().log(Level.WARNING,
                     "Uncaught exception notifying subscribers for %s: %s",
                     this.parent.getSelfLink(), Utils.toString(e));

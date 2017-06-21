@@ -248,8 +248,8 @@ public class ServiceHostManagementService extends StatefulService {
             }
 
             throw new IllegalArgumentException("unknown request");
-        } catch (Throwable t) {
-            patch.fail(t);
+        } catch (Exception e) {
+            patch.fail(e);
         }
     }
 
@@ -296,7 +296,7 @@ public class ServiceHostManagementService extends StatefulService {
     }
 
     private void handleOperationTracingRequest(ConfigureOperationTracingRequest req, Operation op)
-            throws Throwable {
+            throws Exception {
         URI operationTracingServiceUri = UriUtils.buildUri(this.getHost(),
                 ServiceUriPaths.CORE_OPERATION_INDEX);
 
@@ -315,7 +315,7 @@ public class ServiceHostManagementService extends StatefulService {
                 if (req.level != null) {
                     level = Level.parse(req.level);
                 }
-            } catch (Throwable ex) {
+            } catch (Exception ex) {
                 logSevere(ex);
             }
             this.getHost().setOperationTracingLevel(level);

@@ -109,7 +109,7 @@ class AsyncLogFileReader {
             }
 
             read(op, CHUNK_SIZE);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             fail(e, op);
         }
     }
@@ -135,7 +135,7 @@ class AsyncLogFileReader {
                                 fail(exc, op);
                             }
                         });
-            } catch (Throwable e) {
+            } catch (Exception e) {
                 fail(e, op);
             }
         } else {

@@ -150,7 +150,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             parseRequestUri(request, nettyRequest);
 
             decodeRequestBody(ctx, request, nettyRequest.content(), streamId);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             this.host.log(Level.SEVERE, "Uncaught exception: %s", Utils.toString(e));
             if (request == null) {
                 request = Operation.createGet(this.host.getUri());
@@ -319,7 +319,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         try {
             applyRateLimit(ctx, request);
             writeResponseUnsafe(ctx, request, streamId);
-        } catch (Throwable e1) {
+        } catch (Exception e1) {
             this.host.log(Level.SEVERE, "%s", Utils.toString(e1));
         }
     }
@@ -352,7 +352,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             if (data != null) {
                 bodyBuffer = Unpooled.wrappedBuffer(data);
             }
-        } catch (Throwable e1) {
+        } catch (Exception e1) {
             // Note that this is a program logic error - some service isn't properly checking or setting Content-Type
             this.host.log(Level.SEVERE, "Error encoding body: %s", Utils.toString(e1));
             writeInternalServerError(ctx, request, streamId,
@@ -480,7 +480,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                     remote.getPort(),
                     path,
                     null));
-        } catch (Throwable e) {
+        } catch (Exception e) {
             this.host.log(Level.SEVERE, "%s", Utils.toString(e));
         }
     }

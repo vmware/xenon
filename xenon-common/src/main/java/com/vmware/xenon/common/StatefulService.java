@@ -438,7 +438,7 @@ public class StatefulService implements Service {
 
             handleRequestStageExecutingServiceHandler(request,
                     opProcessingStage, isCompletionNested);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             handleRequestUnhandledException(request, isCompletionNested, e);
         }
     }
@@ -798,7 +798,7 @@ public class StatefulService implements Service {
                 }
                 applyUpdate(op);
                 linkedState = op.getLinkedState();
-            } catch (Throwable e1) {
+            } catch (Exception e1) {
                 logSevere(e1);
                 // set failure so we fail operation below
                 e = e1;
@@ -1330,7 +1330,7 @@ public class StatefulService implements Service {
         return op;
     }
 
-    private void applyUpdate(Operation op) throws Throwable {
+    private void applyUpdate(Operation op) throws Exception {
         ServiceDocument cachedState = op.getLinkedState();
         if (cachedState == null) {
             cachedState = this.context.stateType.newInstance();
@@ -1815,7 +1815,7 @@ public class StatefulService implements Service {
         type = this.context.stateType;
         try {
             d = type.newInstance();
-        } catch (Throwable e) {
+        } catch (Exception e) {
             logSevere(e);
             throw (new RuntimeException(e));
         }
@@ -1831,7 +1831,7 @@ public class StatefulService implements Service {
                         pd.exampleValue, pd.accessor.getName(), pd.accessor.getType());
                 logSevere(msg);
                 throw (new RuntimeException(msg, e));
-            } catch (Throwable e) {
+            } catch (Exception e) {
                 logSevere(e);
                 throw (new RuntimeException(e));
             }

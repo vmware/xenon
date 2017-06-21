@@ -302,7 +302,7 @@ public class AuthorizationContextServiceHelper {
                     userGroupStates.add(userGroupState);
                 }
                 loadRoles(op, ctx, claims, userGroupStates, context);
-            } catch (Throwable e) {
+            } catch (Exception e) {
                 op.fail(e);
                 return;
             }
@@ -541,7 +541,7 @@ public class AuthorizationContextServiceHelper {
                     }
                 }
                 populateAuthorizationContext(op, ctx, claims, roles, context);
-            } catch (Throwable e) {
+            } catch (Exception e) {
                 op.fail(e);
                 return;
             }
@@ -625,7 +625,7 @@ public class AuthorizationContextServiceHelper {
             // set the populated auth context on the operation
             context.authContextService.setAuthorizationContext(op, newContext);
             op.complete();
-        } catch (Throwable e) {
+        } catch (Exception e) {
             op.fail(e);
         }
     }

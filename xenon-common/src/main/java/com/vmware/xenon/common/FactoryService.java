@@ -64,7 +64,7 @@ public abstract class FactoryService extends StatelessService {
             Class<? extends ServiceDocument> childServiceDocumentType = s.getStateType();
             FactoryService fs = create(childServiceType, childServiceDocumentType, options);
             return fs;
-        } catch (Throwable e) {
+        } catch (Exception e) {
             Utils.logWarning("Failure creating factory for %s: %s", childServiceType,
                     Utils.toString(e));
             return null;
@@ -1135,7 +1135,7 @@ public abstract class FactoryService extends StatelessService {
                         NodeSelectorService.SelectOwnerResponse rsp = null;
                         try {
                             rsp = Utils.fromJson(r.getValue(), NodeSelectorService.SelectOwnerResponse.class);
-                        } catch (Throwable e) {
+                        } catch (Exception e) {
                             logWarning("Exception thrown in de-serializing json response. %s", e.toString());
 
                             // Ignore if the remote node returned a bad response. Most likely this is because

@@ -305,7 +305,7 @@ class ServiceSynchronizationTracker {
             ServiceDocument template = null;
             try {
                 template = s.getStateType().newInstance();
-            } catch (Throwable e) {
+            } catch (Exception e) {
                 this.host.log(Level.SEVERE, "Could not create instance state type: %s",
                         e.toString());
                 op.fail(e);

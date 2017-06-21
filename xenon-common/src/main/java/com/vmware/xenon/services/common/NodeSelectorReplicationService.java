@@ -118,7 +118,7 @@ public class NodeSelectorReplicationService extends StatelessService {
                             context.successThreshold, eligibleMemberCount);
                     throw new IllegalArgumentException(errorMsg);
                 }
-            } catch (Throwable e) {
+            } catch (Exception e) {
                 outboundOp.setRetryCount(0).fail(e);
                 return;
             }

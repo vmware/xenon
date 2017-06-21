@@ -173,7 +173,7 @@ class ServiceMaintenanceTracker {
                 }
                 start[0] = Utils.getSystemNowMicrosUtc();
                 s.handleMaintenance(servicePost);
-            } catch (Throwable ex) {
+            } catch (Exception ex) {
                 // Mostly at this point, CompletionHandler for servicePost has already consumed in
                 // "s.handleMaintenance()" and have set null (based on the handleMaintenance impl).
                 // Calling fail() will not trigger any CompletionHandler, therefore explicitly

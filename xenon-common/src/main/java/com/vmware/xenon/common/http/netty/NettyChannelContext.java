@@ -290,7 +290,7 @@ public class NettyChannelContext extends SocketContext {
         if (c.isOpen()) {
             try {
                 c.close();
-            } catch (Throwable e) {
+            } catch (Exception e) {
             }
         }
 

@@ -347,9 +347,9 @@ public class ServiceDocument {
             String currentSignature = Utils.computeSignature(currentDocument, description);
             String newSignature = Utils.computeSignature(newDocument, description);
             return currentSignature.equals(newSignature);
-        } catch (Throwable throwable) {
-            if (throwable instanceof IllegalArgumentException) {
-                throw (IllegalArgumentException) throwable;
+        } catch (Exception e) {
+            if (e instanceof IllegalArgumentException) {
+                throw (IllegalArgumentException) e;
             }
             return false;
         }

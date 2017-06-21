@@ -92,7 +92,7 @@ public class ServiceContextIndexService extends StatefulService {
         try {
             output = new BufferedOutputStream(new FileOutputStream(serviceContextFile));
             output.write(bb.array(), bb.position(), bb.limit());
-        } catch (Throwable e) {
+        } catch (Exception e) {
             put.fail(e);
             return;
         } finally {
@@ -134,7 +134,7 @@ public class ServiceContextIndexService extends StatefulService {
             getHost().resumeService(link, resumedService);
 
             put.setBodyNoCloning(src).complete();
-        } catch (Throwable ex) {
+        } catch (Exception ex) {
             if (ex instanceof NoSuchFileException) {
                 put.setBody(null).complete();
                 return;
