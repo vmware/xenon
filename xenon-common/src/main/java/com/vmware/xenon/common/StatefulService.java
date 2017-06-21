@@ -404,7 +404,7 @@ public class StatefulService implements Service {
             }
 
             if (opProcessingStage == OperationProcessingStage.PROCESSING_FILTERS) {
-                if (request.getAction() != Action.GET && validateOwnerSelectedUpdate(request)) {
+                if (validateOwnerSelectedUpdate(request)) {
                     return;
                 }
 

@@ -316,6 +316,20 @@ class ServiceResourceTracker {
     public void updateCachedServiceState(Service s,
              ServiceDocument st, Operation op) {
 
+        if (st.documentSelfLink.contains("odl-examples") &&
+                (st.documentOwner == null ||
+                !st.documentOwner.equals(this.host.getId()))) {
+            this.host.log(Level.INFO,
+                    "DEBUG: Caching service:%s hostId:%s port:%s ownerId:%s options:%s op:%s",
+                    st.documentSelfLink,
+                    this.host.getId(),
+                    op.getUri().getPort(),
+                    st.documentOwner,
+                    op.getOptions(),
+                    op.getAction());
+            Thread.dumpStack();
+        }
+
         if (ServiceHost.isServiceIndexed(s) && !isTransactional(op)) {
             this.persistedServiceLastAccessTimes.put(s.getSelfLink(), Utils.getNowMicrosUtc());
         }

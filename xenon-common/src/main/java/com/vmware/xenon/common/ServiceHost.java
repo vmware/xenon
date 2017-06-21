@@ -2812,8 +2812,13 @@ public class ServiceHost implements ServiceRequestSender {
 
                     // Skip caching for replication requests if the service
                     // is indexed.
-                    boolean skipCaching = post.isFromReplication() &&
-                            isServiceIndexed(s);
+                    boolean skipCaching = post.isFromReplication() && isServiceIndexed(s);
+
+                    // Skip caching if this is ODL service and replication is disabled.
+                    // This will be true when xenon tries to load/start the ODL service internally with a POST and
+                    // would disable replication in that POST operation.
+                    skipCaching |= post.isReplicationDisabled() && isServiceOnDemandLoad(s);
+
                     if (!skipCaching) {
                         this.serviceResourceTracker.updateCachedServiceState(s,
                                 state, post);
@@ -5332,7 +5337,15 @@ public class ServiceHost implements ServiceRequestSender {
         body.description = buildDocumentDescription(s);
         body.serializedDocument = op.getLinkedSerializedState();
         op.linkSerializedState(null);
-        if (!op.isFromReplication()) {
+
+        boolean skipCaching = op.isFromReplication();
+
+        // Skip caching if this is ODL service and replication is disabled.
+        // This will be true when xenon tries to load/start the ODL service internally with a POST and
+        // would disable replication in that POST operation.
+        skipCaching |= op.isReplicationDisabled() && isServiceOnDemandLoad(s);
+
+        if (!skipCaching) {
             // Do not cache state, in replicas
             cacheServiceState(s, state, op);
         }
