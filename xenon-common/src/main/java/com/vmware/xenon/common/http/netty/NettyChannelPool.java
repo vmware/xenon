@@ -360,7 +360,7 @@ public class NettyChannelPool {
                     fail(request, future.cause());
                 }
             });
-        } catch (Throwable e) {
+        } catch (Exception e) {
             fail(request, e);
         }
     }
@@ -677,7 +677,7 @@ public class NettyChannelPool {
             if (this.nettyExecutorService != null) {
                 this.nettyExecutorService.shutdown();
             }
-        } catch (Throwable e) {
+        } catch (Exception e) {
             // ignore exception
         }
         this.bootStrap = null;
@@ -737,7 +737,7 @@ public class NettyChannelPool {
                         if (c.getChannel() == null || !c.getChannel().isOpen()) {
                             continue;
                         }
-                    } catch (Throwable e) {
+                    } catch (Exception e) {
                     }
                 }
 

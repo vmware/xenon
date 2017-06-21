@@ -161,7 +161,7 @@ public class StatelessService implements Service {
                     handlePut(op);
                 }
             }
-        } catch (Throwable e) {
+        } catch (Exception e) {
             op.fail(e);
         }
     }
@@ -512,7 +512,7 @@ public class StatelessService implements Service {
 
         try {
             d = this.stateType.newInstance();
-        } catch (Throwable e) {
+        } catch (Exception e) {
             logSevere(e);
             return null;
         }

@@ -179,7 +179,7 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
                 p.addLast(UPGRADE_REQUEST, new UpgradeRequestHandler());
                 p.addLast("settings-handler", new Http2SettingsHandler(settingsPromise));
                 p.addLast(EVENT_LOGGER, new NettyHttp2UserEventLogger(this.debugLogging));
-            } catch (Throwable ex) {
+            } catch (Exception ex) {
                 Utils.log(NettyHttpClientRequestInitializer.class,
                         NettyHttpClientRequestInitializer.class.getSimpleName(),
                         Level.WARNING, "Channel Initializer exception: %s", ex);

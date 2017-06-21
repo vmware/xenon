@@ -887,7 +887,7 @@ public class ServiceHost implements ServiceRequestSender {
                                 }
                                 this.state = fileState;
                                 l.countDown();
-                            } catch (Throwable ex) {
+                            } catch (Exception ex) {
                                 log(Level.WARNING, "Invalid state from %s: %s", hostStateFile,
                                         Utils.toJsonHtml(o.getBodyRaw()));
                                 l.countDown();
@@ -1305,7 +1305,7 @@ public class ServiceHost implements ServiceRequestSender {
         return startImpl();
     }
 
-    private void setSystemProperties() throws Throwable {
+    private void setSystemProperties() {
         Properties props = System.getProperties();
 
         // Prefer IPv4 by default.
@@ -1629,7 +1629,7 @@ public class ServiceHost implements ServiceRequestSender {
         return outputPath;
     }
 
-    private void startUiFileContentServices(Service s) throws Throwable {
+    private void startUiFileContentServices(Service s) throws Exception {
         if (!s.hasOption(ServiceOption.HTML_USER_INTERFACE)) {
             return;
         }
@@ -1645,7 +1645,7 @@ public class ServiceHost implements ServiceRequestSender {
                 Path baseResourcePath = Utils.getServiceUiResourcePath(s);
                 pathToURIPath = discoverUiResources(baseResourcePath, s, false);
             }
-        } catch (Throwable e) {
+        } catch (Exception e) {
             log(Level.WARNING, "Error enumerating UI resources for %s: %s", s.getSelfLink(),
                     Utils.toString(e));
         }
@@ -1667,7 +1667,7 @@ public class ServiceHost implements ServiceRequestSender {
 
     // Find UI resources for this service (e.g. html, css, js)
     private Map<Path, String> discoverUiResources(Path path, Service s, boolean hasCustomResources)
-            throws Throwable {
+            throws Exception {
         Map<Path, String> pathToURIPath = new HashMap<>();
         Path baseUriPath;
 
@@ -1798,7 +1798,7 @@ public class ServiceHost implements ServiceRequestSender {
                         UriUtils.extendUri(peerNodeBaseUri, nodeGroupUriPath), null);
                 sendJoinPeerRequest(joinBody, localNodeGroupUri);
             }
-        } catch (Throwable e) {
+        } catch (Exception e) {
             log(Level.WARNING, "%s", Utils.toString(e));
         }
     }
@@ -2339,9 +2339,9 @@ public class ServiceHost implements ServiceRequestSender {
 
         try {
             service.setProcessingStage(ProcessingStage.CREATED);
-        } catch (Throwable t) {
-            log(Level.SEVERE, "Unhandled error: %s", Utils.toString(t));
-            post.fail(t);
+        } catch (Exception e) {
+            log(Level.SEVERE, "Unhandled error: %s", Utils.toString(e));
+            post.fail(e);
             return this;
         }
 
@@ -2723,7 +2723,7 @@ public class ServiceHost implements ServiceRequestSender {
                 try {
                     s.adjustStat(Service.STAT_NAME_CREATE_COUNT, 1);
                     s.handleCreate(post);
-                } catch (Throwable e) {
+                } catch (Exception e) {
                     handleUncaughtException(s, post, e);
                     return;
                 } finally {
@@ -2780,7 +2780,7 @@ public class ServiceHost implements ServiceRequestSender {
                 opCtx = extractAndApplyContext(post);
                 try {
                     s.handleStart(post);
-                } catch (Throwable e) {
+                } catch (Exception e) {
                     handleUncaughtException(s, post, e);
                     return;
                 } finally {
@@ -2897,7 +2897,7 @@ public class ServiceHost implements ServiceRequestSender {
                 break;
 
             }
-        } catch (Throwable e) {
+        } catch (Exception e) {
             log(Level.SEVERE, "Unhandled error: %s", Utils.toString(e));
             post.fail(e);
         }
@@ -3072,8 +3072,8 @@ public class ServiceHost implements ServiceRequestSender {
             if (queryFilter == null || !queryFilter.evaluate(document, documentDescription)) {
                 return false;
             }
-        } catch (Throwable t) {
-            log(Level.SEVERE, "Unexpected failure during authorization check. %s", t.toString());
+        } catch (Exception e) {
+            log(Level.SEVERE, "Unexpected failure during authorization check. %s", e.toString());
             return false;
         }
 
@@ -4134,7 +4134,7 @@ public class ServiceHost implements ServiceRequestSender {
                 OperationContext opCtx = extractAndApplyContext(op);
                 try {
                     s.handleRequest(op);
-                } catch (Throwable e) {
+                } catch (Exception e) {
                     handleUncaughtException(s, op, e);
                 } finally {
                     OperationContext.setFrom(opCtx);
@@ -4377,7 +4377,7 @@ public class ServiceHost implements ServiceRequestSender {
         try {
             this.client.stop();
             this.client = null;
-        } catch (Throwable e1) {
+        } catch (Exception e1) {
         }
 
         // listener will implicitly shutdown the executor (which is shared for both I/O dispatching
@@ -4389,7 +4389,7 @@ public class ServiceHost implements ServiceRequestSender {
                 this.httpsListener.stop();
                 this.httpsListener = null;
             }
-        } catch (Throwable e1) {
+        } catch (Exception e1) {
         }
 
         this.executor.shutdownNow();
@@ -4506,7 +4506,7 @@ public class ServiceHost implements ServiceRequestSender {
                     log(Level.WARNING, "%s did not complete DELETE", l);
                 }
             }
-        } catch (Throwable e) {
+        } catch (Exception e) {
             log(Level.INFO, "%s", e.toString());
         }
     }
@@ -4520,7 +4520,7 @@ public class ServiceHost implements ServiceRequestSender {
                 .setReferer(getUri());
         try {
             queueOrScheduleRequest(s, delete);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             log(Level.WARNING, Utils.toString(e));
             removeServiceCompletion.handle(delete, e);
         }
@@ -4991,7 +4991,7 @@ public class ServiceHost implements ServiceRequestSender {
             }
 
             this.info.ipAddresses = ipAddresses;
-        } catch (Throwable e) {
+        } catch (Exception e) {
             log(Level.SEVERE, "Failure: %s", Utils.toString(e));
         }
 
@@ -5019,7 +5019,7 @@ public class ServiceHost implements ServiceRequestSender {
             this.info.freeDiskByteCount = f.getFreeSpace();
             this.info.usableDiskByteCount = f.getUsableSpace();
             this.info.totalDiskByteCount = f.getTotalSpace();
-        } catch (Throwable e) {
+        } catch (Exception e) {
             log(Level.WARNING, "Exception getting disk usage: %s", Utils.toString(e));
         }
     }
@@ -5127,7 +5127,7 @@ public class ServiceHost implements ServiceRequestSender {
     private void executeRunnableSafe(Runnable task) {
         try {
             task.run();
-        } catch (Throwable e) {
+        } catch (Exception e) {
             log(Level.SEVERE, "Unhandled exception executing task: %s", Utils.toString(e));
         }
     }
@@ -5216,7 +5216,7 @@ public class ServiceHost implements ServiceRequestSender {
                 return;
             }
             performMaintenanceStage(post, stage, deadline);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             log(Level.SEVERE, "Uncaught exception: %s", e.toString());
             post.fail(e);
         }
@@ -5233,7 +5233,7 @@ public class ServiceHost implements ServiceRequestSender {
         try {
             this.operationTracker.performMaintenance(now);
             performMaintenanceStage(post, nextStage, deadline);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             log(Level.WARNING, "Exception: %s", Utils.toString(e));
             performMaintenanceStage(post, nextStage, deadline);
         }

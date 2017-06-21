@@ -306,7 +306,7 @@ public final class FileUtils {
                 }
                 files.add(f);
             }
-        } catch (Throwable e) {
+        } catch (Exception e) {
             Logger.getAnonymousLogger().warning(Utils.toString(e));
         }
         return files;
@@ -460,7 +460,7 @@ public final class FileUtils {
                                     op.setContentLength(bb.limit());
                                 }
                                 op.complete();
-                            } catch (Throwable e) {
+                            } catch (Exception e) {
                                 failed(e, v);
                             }
                         }
@@ -471,7 +471,7 @@ public final class FileUtils {
                             op.fail(arg0);
                         }
                     });
-        } catch (Throwable e) {
+        } catch (Exception e) {
             if (channel != null) {
                 closeFileChannelSafe(channel);
             }
@@ -508,7 +508,7 @@ public final class FileUtils {
                         }
 
                     });
-        } catch (Throwable e) {
+        } catch (Exception e) {
             closeFileChannelSafe(channel);
             op.fail(e);
         }
@@ -552,7 +552,7 @@ public final class FileUtils {
                                 f.toString()));
                 // no content ranges
                 writeBody(get, o, ch, bytesWritten);
-            } catch (Throwable ex) {
+            } catch (Exception ex) {
                 get.fail(ex);
             }
 
@@ -603,7 +603,7 @@ public final class FileUtils {
                                         getChunks(h, range[0], parentGet, ch,
                                                 bytesWritten);
                                     }
-                                } catch (Throwable exx) {
+                                } catch (Exception exx) {
                                     parentGet.fail(exx);
                                 }
                             });
@@ -613,7 +613,7 @@ public final class FileUtils {
     }
 
     private static void writeBody(Operation parentOp, Operation o, AsynchronousFileChannel ch,
-            AtomicInteger bytesWritten) throws Throwable {
+            AtomicInteger bytesWritten) throws Exception {
 
         byte[] b = (byte[]) o.getBodyRaw();
         if (b == null || b.length == 0) {
@@ -733,7 +733,7 @@ public final class FileUtils {
                                 }
 
                                 h.send(rangePut);
-                            } catch (Throwable e) {
+                            } catch (Exception e) {
                                 failed(e, r);
                             }
                         }
@@ -747,7 +747,7 @@ public final class FileUtils {
                         private void close(AsynchronousFileChannel channel) {
                             try {
                                 channel.close();
-                            } catch (Throwable e) {
+                            } catch (Exception e) {
                                 Logger.getAnonymousLogger().log(Level.WARNING,
                                         String.format("PUT of file failed %s",
                                                 e.toString()));
@@ -887,7 +887,7 @@ public final class FileUtils {
         Properties properties = new Properties();
         try {
             properties.load(url.openStream());
-        } catch (Throwable e) {
+        } catch (Exception e) {
             String message = String.format("Unable to load properties from %s", url.toString());
             throw new IOException(message, e);
         }

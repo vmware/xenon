@@ -58,7 +58,7 @@ public class TaskFactoryService extends FactoryService {
             };
             Arrays.stream(options).forEach(option -> fs.toggleOption(option, true));
             return fs;
-        } catch (Throwable e) {
+        } catch (Exception e) {
             Utils.logWarning("Failure creating factory for %s: %s", childServiceType,
                     Utils.toString(e));
             return null;

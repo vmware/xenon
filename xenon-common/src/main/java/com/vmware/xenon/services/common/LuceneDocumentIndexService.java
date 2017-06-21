@@ -452,7 +452,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                         logInfo("Retry to create index writer was successful");
                     }
                     break;
-                } catch (Throwable e) {
+                } catch (Exception e) {
                     adjustStat(STAT_NAME_INDEX_LOAD_RETRY_COUNT, 1);
                     if (retryCount < 1) {
                         logWarning("Failure creating index writer: %s, will retry",
@@ -470,7 +470,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             // create RAM based index writer
             try {
                 createWriter(null, false);
-            } catch (Throwable e) {
+            } catch (Exception e) {
                 logSevere(e);
                 post.fail(e);
                 return;
@@ -660,7 +660,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     /**
      * Issues a query to verify index is healthy
      */
-    private void doSelfValidationQuery() throws Throwable {
+    private void doSelfValidationQuery() throws Exception {
         TermQuery tq = new TermQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK, getSelfLink()));
         ServiceDocumentQueryResult rsp = new ServiceDocumentQueryResult();
 
@@ -671,7 +671,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 Utils.getNowMicrosUtc());
     }
 
-    private void handleDeleteRuntimeContext(Operation op) throws Throwable {
+    private void handleDeleteRuntimeContext(Operation op) throws Exception {
         DeleteQueryRuntimeContextRequest request = (DeleteQueryRuntimeContextRequest)
                 op.getBodyRaw();
         if (request.context == null) {
@@ -695,7 +695,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         try {
             infoToRemove.searcher.getIndexReader().close();
-        } catch (Throwable ignored) {
+        } catch (Exception ignored) {
         }
 
         op.complete();
@@ -738,7 +738,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         return infoToRemove;
     }
 
-    private void handleBackup(Operation op) throws Throwable {
+    private void handleBackup(Operation op) throws Exception {
 
         if (!isDurable()) {
             op.fail(new IllegalStateException("Index service is not durable"));
@@ -883,7 +883,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 }
                 op = pollQueryOperation();
             }
-        } catch (Throwable e) {
+        } catch (Exception e) {
             checkFailureAndRecover(e);
             if (op != null) {
                 op.fail(e);
@@ -921,7 +921,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 }
                 op = pollUpdateOperation();
             }
-        } catch (Throwable e) {
+        } catch (Exception e) {
             checkFailureAndRecover(e);
             if (op != null) {
                 op.fail(e);
@@ -931,7 +931,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    private void handleQueryTaskPatch(Operation op, QueryTask task) throws Throwable {
+    private void handleQueryTaskPatch(Operation op, QueryTask task) throws Exception {
         QueryTask.QuerySpecification qs = task.querySpec;
 
         Query luceneQuery = (Query) qs.context.nativeQuery;
@@ -1133,7 +1133,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         return s;
     }
 
-    public void handleGetImpl(Operation get) throws Throwable {
+    public void handleGetImpl(Operation get) throws Exception {
         String selfLink = null;
         Long version = null;
         ServiceOption serviceOption = ServiceOption.NONE;
@@ -1265,7 +1265,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             long expiration,
             String indexLink,
             ServiceDocumentQueryResult rsp,
-            QuerySpecification qs) throws Throwable {
+            QuerySpecification qs) throws Exception {
         if (options == null) {
             options = EnumSet.noneOf(QueryOption.class);
         }
@@ -1327,7 +1327,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void queryIndexSingle(String selfLink, Operation op, Long version)
-            throws Throwable {
+            throws Exception {
         IndexWriter w = this.writer;
         if (w == null) {
             op.fail(new CancellationException());
@@ -1598,7 +1598,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             ServiceDocumentQueryResult response,
             QuerySpecification querySpec,
             long queryStartTimeMicros)
-            throws Throwable {
+            throws Exception {
 
         if (queryOptions.contains(QueryOption.INCLUDE_ALL_VERSIONS)) {
             // Special handling for queries which include all versions in order to avoid allocating
@@ -1665,7 +1665,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             String indexLink,
             ServiceDocumentQueryResult rsp,
             QuerySpecification qs,
-            long queryStartTimeMicros) throws Throwable {
+            long queryStartTimeMicros) throws Exception {
         ScoreDoc[] hits;
         ScoreDoc after = null;
         boolean hasExplicitLimit = count != Integer.MAX_VALUE;
@@ -1845,7 +1845,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             Sort sort,
             int count,
             QuerySpecification qs,
-            long queryStartTimeMicros) throws Throwable {
+            long queryStartTimeMicros) throws Exception {
 
         boolean hasValidNextPageEntry = false;
 
@@ -1968,7 +1968,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private ScoreDoc processQueryResults(QuerySpecification qs, EnumSet<QueryOption> options,
             int resultLimit, IndexSearcher s, ServiceDocumentQueryResult rsp, ScoreDoc[] hits,
-            long queryStartTimeMicros) throws Throwable {
+            long queryStartTimeMicros) throws Exception {
 
         ScoreDoc lastDocVisited = null;
         Set<String> fieldsToLoad = this.fieldsToLoadNoExpand;
@@ -2201,7 +2201,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     private ServiceDocument processQueryResultsForSelectLinks(IndexSearcher s,
             QuerySpecification qs, ServiceDocumentQueryResult rsp, DocumentStoredFieldVisitor d, int docId,
             String link,
-            ServiceDocument state) throws Throwable {
+            ServiceDocument state) throws Exception {
         if (rsp.selectedLinksPerDocument == null) {
             rsp.selectedLinksPerDocument = new HashMap<>();
             rsp.selectedLinks = new HashSet<>();
@@ -2365,7 +2365,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    public void handleDeleteImpl(Operation delete) throws Throwable {
+    public void handleDeleteImpl(Operation delete) throws Exception {
         setProcessingStage(ProcessingStage.STOPPED);
 
         this.privateIndexingExecutor.shutdown();
@@ -2385,12 +2385,12 @@ public class LuceneDocumentIndexService extends StatelessService {
             logInfo("Document count: %d ", wr.maxDoc());
             wr.commit();
             wr.close();
-        } catch (Throwable e) {
+        } catch (Exception e) {
 
         }
     }
 
-    protected void updateIndex(Operation updateOp) throws Throwable {
+    protected void updateIndex(Operation updateOp) throws Exception {
         UpdateIndexRequest r = updateOp.getBody(UpdateIndexRequest.class);
         ServiceDocument s = r.document;
         ServiceDocumentDescription desc = r.description;
@@ -2519,7 +2519,7 @@ public class LuceneDocumentIndexService extends StatelessService {
      * Will attempt to re-open index writer to recover from a specific exception. The method
      * assumes the caller has acquired the writer semaphore
      */
-    private void checkFailureAndRecover(Throwable e) {
+    private void checkFailureAndRecover(Exception e) {
 
         // When document create or update fails with an exception. Clear the threadLocalDoc.
         Document threadLocalDoc = this.indexDocumentHelper.get().getDoc();
@@ -2558,7 +2558,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private void deleteAllDocumentsForSelfLink(Operation postOrDelete, String link,
             ServiceDocument state)
-            throws Throwable {
+            throws Exception {
         deleteDocumentsFromIndex(postOrDelete, link, state != null ? state.documentKind : null, 0, Long.MAX_VALUE);
         adjustTimeSeriesStat(STAT_NAME_SERVICE_DELETE_COUNT, AGGREGATION_TYPE_SUM, 1);
         logFine("%s expired", link);
@@ -2575,7 +2575,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void deleteDocumentsFromIndex(Operation delete, String link, String kind, long oldestVersion,
-            long newestVersion) throws Throwable {
+            long newestVersion) throws Exception {
 
         IndexWriter wr = this.writer;
         if (wr == null) {
@@ -2809,7 +2809,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         handleRequest(maintenanceOp);
     }
 
-    private void handleMaintenanceImpl(Operation op) throws Throwable {
+    private void handleMaintenanceImpl(Operation op) throws Exception {
         try {
             IndexWriter w = this.writer;
             if (w == null) {
@@ -2867,7 +2867,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
 
             op.complete();
-        } catch (Throwable e) {
+        } catch (Exception e) {
             if (this.getHost().isStopping()) {
                 op.fail(new CancellationException());
                 return;
@@ -2944,7 +2944,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 try {
                     IndexSearcher s = info.searcher;
                     s.getIndexReader().close();
-                } catch (Throwable ignored) {
+                } catch (Exception ignored) {
                 }
             }
 
@@ -2954,7 +2954,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             try {
                 w.close();
-            } catch (Throwable ignored) {
+            } catch (Exception ignored) {
             }
 
             w = createWriter(directory, false);
@@ -2962,7 +2962,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             count = stream.count();
             logInfo("(%s) reopened writer, document count: %d, file count: %d",
                     this.writerSync, w.maxDoc(), count);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             // If we fail to re-open we should stop the host, since we can not recover.
             logSevere(e);
             logWarning("Stopping local host since index is not accessible");
@@ -2978,7 +2978,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    private void applyDocumentVersionRetentionPolicy(long deadline) throws Throwable {
+    private void applyDocumentVersionRetentionPolicy(long deadline) throws Exception {
         Map<String, Long> links = new HashMap<>();
         Iterator<Entry<String, Long>> it;
 
@@ -3056,7 +3056,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 logFine("Closing paginated query searcher, expired at %d", entry.getKey());
                 try {
                     info.searcher.getIndexReader().close();
-                } catch (Throwable ignored) {
+                } catch (Exception ignored) {
                 }
             }
         }
@@ -3102,7 +3102,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         logInfo("Cleared %d document update entries", count);
     }
 
-    private void applyDocumentExpirationPolicy(IndexSearcher s, long deadline) throws Throwable {
+    private void applyDocumentExpirationPolicy(IndexSearcher s, long deadline) throws Exception {
 
         Query versionQuery = LongPoint.newRangeQuery(
                 ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS, 1L, Utils.getNowMicrosUtc());
@@ -3151,7 +3151,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 ServiceDocument serviceDocument = null;
                 try {
                     serviceDocument = getStateFromLuceneDocument(visitor, documentSelfLink);
-                } catch (Throwable e) {
+                } catch (Exception e) {
                     logWarning("Error deserializing state for %s: %s", documentSelfLink,
                             e.getMessage());
                 }

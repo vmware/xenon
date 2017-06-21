@@ -396,7 +396,7 @@ public final class UriUtils {
             return new URI(baseUri.getScheme(), baseUri.getUserInfo(), baseUri.getHost(),
                     baseUri.getPort(), buildPath == null ? null : buildPath.toString(), query, null)
                             .normalize();
-        } catch (Throwable e) {
+        } catch (Exception e) {
             Utils.log(Utils.class, Utils.class.getSimpleName(), Level.SEVERE,
                     "Failure building uri %s, %s: %s", baseUri, path,
                     Utils.toString(e));
@@ -410,7 +410,7 @@ public final class UriUtils {
     public static URI buildUri(String uri) {
         try {
             return new URI(uri);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             Utils.log(Utils.class, Utils.class.getSimpleName(), Level.SEVERE,
                     "Failure building uri %s: %s", uri, Utils.toString(e));
         }
@@ -627,7 +627,7 @@ public final class UriUtils {
         try {
             return new URI(baseUri.getScheme(), baseUri.getUserInfo(), baseUri.getHost(),
                     baseUri.getPort(), path, query, null);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             Utils.log(Utils.class, Utils.class.getSimpleName(), Level.SEVERE,
                     "Failure building uri %s, %s, %s: %s", baseUri, path, query,
                     Utils.toString(e));
@@ -996,7 +996,7 @@ public final class UriUtils {
             socket.setReuseAddress(true);
             port = socket.getLocalPort();
             Logger.getAnonymousLogger().info("port candidate:" + port);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             Logger.getAnonymousLogger().severe(e.toString());
         } finally {
             try {

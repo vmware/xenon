@@ -254,9 +254,9 @@ public class OperationSequence {
             if (this.sequence.child != null && !errors.get()) {
                 try {
                     this.sequence.child.send(this.sequence.sender);
-                } catch (Throwable t) {
+                } catch (Exception e) {
                     // complete with failure
-                    this.sequence.child.join.fail(t);
+                    this.sequence.child.join.fail(e);
                 }
             }
         }

@@ -67,7 +67,7 @@ public abstract class UiFileContentService extends StatelessService {
                 FileContentService fcs = new FileContentService(e.getKey().toFile());
                 getHost().startService(post, fcs);
             }
-        } catch (Throwable e) {
+        } catch (Exception e) {
             log(Level.WARNING, "Error enumerating UI resources for %s: %s", this.getSelfLink(),
                     Utils.toString(e));
         }

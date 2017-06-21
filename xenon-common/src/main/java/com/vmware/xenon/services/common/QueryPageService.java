@@ -136,7 +136,7 @@ public class QueryPageService extends StatelessService {
                     });
 
             sendRequest(localPatch);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             handleQueryCompletion(task, e, get);
         }
     }

@@ -663,7 +663,7 @@ class ServiceResourceTracker {
                     .setBodyNoCloning(src)
                     .setCompletion(indexCompletion);
             this.host.sendRequest(indexPut);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             abortPause(s, path, e);
         }
     }

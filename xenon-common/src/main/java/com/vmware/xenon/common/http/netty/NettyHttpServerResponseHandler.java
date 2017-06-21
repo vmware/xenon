@@ -173,7 +173,7 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
                 return;
             }
             completeRequest(request);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             request.fail(e);
             return;
         }
@@ -226,7 +226,7 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
                     errorMsg += " message " + rsp.message;
                 }
                 op.setBodyNoCloning(originalBody);
-            } catch (Throwable e) {
+            } catch (Exception e) {
                 this.logger.warning("Error response body not JSON: " + e.getMessage());
                 ServiceErrorResponse rsp = ServiceErrorResponse.create(e,
                         op.getStatusCode());

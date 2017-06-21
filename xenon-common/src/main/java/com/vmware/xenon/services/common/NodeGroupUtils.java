@@ -214,7 +214,7 @@ public final class NodeGroupUtils {
                                 .append(error)
                                 .append("\n");
                     }
-                } catch (Throwable e) {
+                } catch (Exception e) {
                 }
                 parentOp.fail(new IllegalStateException("Failures: " + errorRsp.toString()));
                 return;

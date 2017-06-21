@@ -99,7 +99,7 @@ public class NettyHttpListener implements ServiceRequestListener {
     }
 
     @Override
-    public void start(int port, String bindAddress) throws Throwable {
+    public void start(int port, String bindAddress) throws Exception {
         this.nettyExecutorService = Executors.newFixedThreadPool(EVENT_LOOP_THREAD_COUNT,
                 r -> new Thread(r, this.host.getUri().toString() + "/netty-listener/"
                         + this.host.getId()));
@@ -173,7 +173,7 @@ public class NettyHttpListener implements ServiceRequestListener {
                 c.config().setAutoRead(true);
             }
             op.complete();
-        } catch (Throwable e) {
+        } catch (Exception e) {
             op.fail(e);
         }
     }
@@ -212,12 +212,12 @@ public class NettyHttpListener implements ServiceRequestListener {
     }
 
     @Override
-    public void setSSLContextFiles(URI certFile, URI keyFile) throws Throwable {
+    public void setSSLContextFiles(URI certFile, URI keyFile) throws Exception {
         setSSLContextFiles(certFile, keyFile, null);
     }
 
     @Override
-    public void setSSLContextFiles(URI certFile, URI keyFile, String keyPassphrase) throws Throwable {
+    public void setSSLContextFiles(URI certFile, URI keyFile, String keyPassphrase) throws Exception {
         if (isListening()) {
             throw new IllegalStateException("listener already started");
         }

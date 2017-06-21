@@ -137,7 +137,7 @@ public class ProcessService extends StatefulService {
         try {
             this.process = pb.start();
             this.processStartTimeMillis = (new Date()).getTime();
-        } catch (Throwable e) {
+        } catch (Exception e) {
             logWarning("Failure starting %s (%s)",
                     state.arguments[0],
                     e.toString());

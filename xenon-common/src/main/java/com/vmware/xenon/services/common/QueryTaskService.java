@@ -606,7 +606,7 @@ public class QueryTaskService extends StatefulService {
                     });
 
             sendRequest(localPatch);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             handleQueryCompletion(task, e, directOp);
         }
     }

@@ -41,7 +41,7 @@ public class OperationIndexService extends LuceneDocumentIndexService {
             // by pass base class queuing and allow delete directly
             try {
                 super.handleDeleteImpl(op);
-            } catch (Throwable e) {
+            } catch (Exception e) {
                 op.fail(e);
             }
             return;

@@ -1161,7 +1161,7 @@ public class Operation implements Cloneable {
         if (this.referer instanceof String) {
             try {
                 this.referer = new URI((String) this.referer);
-            } catch (Throwable e) {
+            } catch (Exception e) {
                 throw new RuntimeException(e);
             }
         }
@@ -1265,7 +1265,7 @@ public class Operation implements Cloneable {
                     if (rsp.message != null) {
                         hasErrorResponseBody = true;
                     }
-                } catch (Throwable ex) {
+                } catch (Exception ex) {
                     // the body is not JSON, ignore
                 }
             } else {
@@ -1315,7 +1315,7 @@ public class Operation implements Cloneable {
         try {
             OperationContext.setFrom(this);
             c.handle(this, e);
-        } catch (Throwable outer) {
+        } catch (Exception outer) {
             Utils.logWarning("Uncaught failure inside completion: %s", Utils.toString(outer));
         }
 
@@ -1361,7 +1361,7 @@ public class Operation implements Cloneable {
             }
             try {
                 successHandler.accept(o);
-            } catch (Throwable ex) {
+            } catch (Exception ex) {
                 fail(ex);
             }
         };

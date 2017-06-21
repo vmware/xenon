@@ -719,7 +719,7 @@ public final class Utils {
                 byte[] encodedBody = Utils.encodeBody(source, source.getLinkedState(),
                         Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM);
                 source.linkSerializedState(encodedBody);
-            } catch (Throwable e2) {
+            } catch (Exception e2) {
                 Utils.logWarning("Failure binary serializing, will fallback to JSON: %s",
                         Utils.toString(e2));
             }
@@ -734,12 +734,12 @@ public final class Utils {
         }
     }
 
-    public static byte[] encodeBody(Operation op) throws Throwable {
+    public static byte[] encodeBody(Operation op) throws Exception {
         return encodeBody(op, op.getBodyRaw(), op.getContentType());
     }
 
     public static byte[] encodeBody(Operation op, Object body, String contentType)
-            throws Throwable {
+            throws Exception {
         if (body == null) {
             op.setContentLength(0);
             return null;
