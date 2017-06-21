@@ -77,8 +77,8 @@ public class GatewayService extends StatelessService {
                 }
                 startOp.complete();
             });
-        } catch (Throwable t) {
-            startOp.fail(t);
+        } catch (Exception e) {
+            startOp.fail(e);
         }
     }
 

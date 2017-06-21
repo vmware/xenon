@@ -3734,7 +3734,7 @@ public class ServiceHost implements ServiceRequestSender {
                         Service childService;
                         try {
                             childService = ((FactoryService) factory).createServiceInstance();
-                        } catch (Throwable t) {
+                        } catch (Exception t) {
                             op.fail(t);
                             return true;
                         }

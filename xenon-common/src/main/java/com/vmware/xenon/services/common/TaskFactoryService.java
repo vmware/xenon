@@ -52,7 +52,7 @@ public class TaskFactoryService extends FactoryService {
                     (Class<? extends TaskServiceState>) s.getStateType();
             FactoryService fs = new TaskFactoryService(childServiceDocumentType) {
                 @Override
-                public Service createServiceInstance() throws Throwable {
+                public Service createServiceInstance() throws Exception {
                     return childServiceType.newInstance();
                 }
             };
@@ -207,7 +207,7 @@ public class TaskFactoryService extends FactoryService {
     }
 
     @Override
-    public Service createServiceInstance() throws Throwable {
+    public Service createServiceInstance() throws Exception {
         return null;
     }
 

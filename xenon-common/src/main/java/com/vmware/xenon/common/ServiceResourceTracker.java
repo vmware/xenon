@@ -944,7 +944,7 @@ class ServiceResourceTracker {
         try {
             childService = factoryService.createServiceInstance();
             childService.toggleOption(ServiceOption.FACTORY_ITEM, true);
-        } catch (Throwable e1) {
+        } catch (Exception e1) {
             inboundOp.fail(e1);
             return;
         }

@@ -67,7 +67,7 @@ public class OnDemandLoadFactoryService extends FactoryService {
     }
 
     @Override
-    public Service createServiceInstance() throws Throwable {
+    public Service createServiceInstance() throws Exception {
         Service s = new OnDemandLoadService();
         if (this.childServiceCaps != null) {
             for (ServiceOption c : this.childServiceCaps) {
