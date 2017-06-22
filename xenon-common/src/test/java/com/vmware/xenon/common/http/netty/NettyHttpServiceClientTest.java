@@ -415,12 +415,16 @@ public class NettyHttpServiceClientTest {
             // Use a random boolean to test the keep-alive and close code paths
             Random r = new Random();
 
+            // Use a custom tag to ensure that connections are not shared with the default pool.
+            String tag = ServiceClient.CONNECTION_TAG_DEFAULT + "-timeout";
+
             // timeout tracking currently works only for remote requests
             this.host.testStart(count);
             for (int i = 0; i < count; i++) {
                 Operation request = Operation
                         .createPatch(services.get(0).getUri())
                         .forceRemote()
+                        .setConnectionTag(tag)
                         .setBody(body)
                         .setKeepAlive(r.nextBoolean())
                         .setCompletion((o, e) -> {
@@ -437,7 +441,7 @@ public class NettyHttpServiceClientTest {
 
             }
             this.host.testWait();
-            validateTagInfo(this.host, ServiceClient.CONNECTION_TAG_DEFAULT);
+            validateTagInfo(this.host, this.host.getClient(), tag, 0);
         } finally {
             this.host.toggleNegativeTestMode(false);
             this.host.setOperationTimeOutMicros(
