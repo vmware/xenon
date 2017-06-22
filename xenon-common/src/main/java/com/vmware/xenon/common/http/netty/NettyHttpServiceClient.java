@@ -676,7 +676,9 @@ public class NettyHttpServiceClient implements ServiceClient {
                 } else {
                     pool = this.channelPool;
                 }
-                r = () -> pool.returnOrClose(nettyCtx, !op.isKeepAlive());
+                // For HTTP/1.1, close the connection if operation is not keep alive or it timed out
+                r = () -> pool.returnOrClose(nettyCtx,
+                        !op.isKeepAlive() || op.getStatusCode() == Operation.STATUS_CODE_TIMEOUT);
             }
 
             ExecutorService exec = this.host != null ? this.host.getExecutor() : this.executor;
