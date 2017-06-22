@@ -387,9 +387,10 @@ class LuceneIndexDocumentHelper {
         }
 
         boolean isStored = fsv == Field.Store.YES;
+        String stringValue = null;
 
         if (v instanceof String) {
-            String stringValue = v.toString();
+            stringValue = v.toString();
             if (opts == null) {
                 luceneField = getAndSetStringField(fieldName, stringValue, fsv, isCollectionItem);
             } else {
@@ -405,11 +406,11 @@ class LuceneIndexDocumentHelper {
             }
 
         } else if (v instanceof URI) {
-            String uriValue = QuerySpecification.toMatchValue((URI) v);
-            luceneField = getAndSetStringField(fieldName, uriValue, fsv, isCollectionItem);
+            stringValue = QuerySpecification.toMatchValue((URI) v);
+            luceneField = getAndSetStringField(fieldName, stringValue, fsv, isCollectionItem);
         } else if (pd.typeName.equals(TypeName.ENUM)) {
-            String enumValue = QuerySpecification.toMatchValue((Enum<?>) v);
-            luceneField = getAndSetStringField(fieldName, enumValue, fsv, isCollectionItem);
+            stringValue = QuerySpecification.toMatchValue((Enum<?>) v);
+            luceneField = getAndSetStringField(fieldName, stringValue, fsv, isCollectionItem);
         } else if (pd.typeName.equals(TypeName.LONG)) {
             long value = ((Number) v).longValue();
             addNumericField(fieldName, value, isStored, isCollectionItem, isSortedField);
@@ -426,8 +427,8 @@ class LuceneIndexDocumentHelper {
             // Set sorted to false; Appropriate SortedDocValues field is added in addNumericField
             isSortedField = false;
         } else if (pd.typeName.equals(TypeName.BOOLEAN)) {
-            String booleanValue = QuerySpecification.toMatchValue((boolean) v);
-            luceneField = getAndSetStringField(fieldName, booleanValue, fsv, isCollectionItem);
+            stringValue = QuerySpecification.toMatchValue((boolean) v);
+            luceneField = getAndSetStringField(fieldName, stringValue, fsv, isCollectionItem);
         } else if (pd.typeName.equals(TypeName.BYTES)) {
             // Don't store bytes in the index
             isSortedField = false;
@@ -447,12 +448,13 @@ class LuceneIndexDocumentHelper {
             addCollectionIndexableFieldToDocument(v, pd, fieldName);
             return;
         } else {
-            luceneField = getAndSetStringField(fieldName, v.toString(), fsv, isCollectionItem);
+            stringValue = v.toString();
+            luceneField = getAndSetStringField(fieldName, stringValue, fsv, isCollectionItem);
         }
 
         if (isSortedField && allowSortedField) {
             luceneDocValuesField = getAndSetSortedStoredField(
-                    createSortFieldPropertyName(fieldName), v.toString());
+                    createSortFieldPropertyName(fieldName), stringValue);
         }
 
         if (luceneField != null) {

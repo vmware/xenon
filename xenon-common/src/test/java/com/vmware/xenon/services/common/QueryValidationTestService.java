@@ -127,6 +127,7 @@ public class QueryValidationTestService extends StatefulService {
         pdTextValue.indexingOptions.add(PropertyIndexingOption.TEXT);
         PropertyDescription pdStringValue = d.documentDescription.propertyDescriptions
                 .get(QueryValidationServiceState.FIELD_NAME_STRING_VALUE);
+        pdStringValue.indexingOptions.add(PropertyIndexingOption.SORT);
         pdStringValue.indexingOptions.add(PropertyIndexingOption.CASE_INSENSITIVE);
 
         PropertyDescription pdExample = d.documentDescription.propertyDescriptions

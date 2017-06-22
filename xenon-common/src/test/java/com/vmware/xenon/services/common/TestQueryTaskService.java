@@ -2634,6 +2634,75 @@ public class TestQueryTaskService {
     }
 
     @Test
+    public void sortTestOnQueryValidationStates() throws Throwable {
+        doSortTestOnQueryValidationStates(false, Integer.MAX_VALUE);
+        doSortTestOnQueryValidationStates(true, Integer.MAX_VALUE);
+    }
+
+    @Test
+    public void sortTestOnQueryValidationStatesWithTopResults() throws Throwable {
+        doSortTestOnQueryValidationStates(true, 10);
+    }
+
+    private void doSortTestOnQueryValidationStates(boolean isDirect, int resultLimit)
+            throws Throwable {
+        setUpHost();
+
+        List<URI> services = createQueryTargetServices(this.serviceCount);
+        for (int i = 0; i < services.size(); i++) {
+            QueryValidationServiceState initialState = new QueryValidationServiceState();
+            initialState.stringValue = ((i % 2 == 0) ? "stringvalue" : "STRINGVALUE") + i;
+            putSimpleStateOnQueryTargetServices(Collections.singletonList(services.get(i)),
+                    initialState);
+        }
+
+        QueryTask queryTask = QueryTask.Builder.create()
+                .setQuery(QueryTask.Query.Builder.create()
+                        .addKindFieldClause(QueryValidationServiceState.class)
+                        .build())
+                .orderAscending(QueryValidationServiceState.FIELD_NAME_STRING_VALUE,
+                        TypeName.STRING)
+                .addOption(QueryOption.EXPAND_CONTENT)
+                .setResultLimit(resultLimit)
+                .build();
+
+        if (resultLimit < Integer.MAX_VALUE) {
+            queryTask.querySpec.options.add(QueryOption.TOP_RESULTS);
+        }
+
+        if (queryTask.documentExpirationTimeMicros != 0) {
+            queryTask.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                    queryTask.documentExpirationTimeMicros);
+        }
+
+        URI queryTaskUri = this.host.createQueryTaskService(queryTask, false, isDirect, queryTask,
+                null);
+        if (!isDirect) {
+            queryTask = this.host.waitForQueryTaskCompletion(queryTask.querySpec, 0, 0,
+                    queryTaskUri, false, false);
+        }
+
+        assertTrue(queryTask.results.nextPageLink == null);
+
+        if (queryTask.querySpec.options.contains(QueryOption.TOP_RESULTS)) {
+            assertTrue(queryTask.results.documentLinks.size() == resultLimit);
+        }
+
+        String previousValue = null;
+        for (String selfLink : queryTask.results.documentLinks) {
+            QueryValidationServiceState currentState = Utils.fromJson(
+                    queryTask.results.documents.get(selfLink), QueryValidationServiceState.class);
+            String currentValue = currentState.stringValue.toLowerCase();
+            if (previousValue != null) {
+                assertTrue(currentValue.compareTo(previousValue) > 0);
+            }
+            previousValue = currentValue;
+        }
+
+        deleteServices(services);
+    }
+
+    @Test
     public void multiFieldSortTestOnExampleStates() throws Throwable {
         doMultiFieldSortTestOnExampleStates(false, Integer.MAX_VALUE);
         doMultiFieldSortTestOnExampleStates(true, Integer.MAX_VALUE);
