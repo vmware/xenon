@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## 1.5.1-SNAPSHOT
+## 1.5.1
 
 * Providing an override for the method ServiceHost.startDefaultCoreServicesSynchronously
   to make joining peer nodes optional.
