@@ -488,16 +488,6 @@ public class NettyHttp2Test {
                     tag,
                     http11Count / services.size(),
                     false);
-
-            // HTTP/2 test (connectionSharing == true)
-            // Limit the per-tag connection limit to 1 to reduce the likelihood that a connection
-            // will be fully established before subsequent operations are submitted.
-            tag = ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT;
-            this.host.getClient().setConnectionLimitPerTag(tag, 1);
-            verifyPerHostPendingRequestLimit(this.host, services,
-                    tag,
-                    this.requestCount,
-                    true);
             this.host.getClient().stop();
         }
     }
