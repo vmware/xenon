@@ -938,8 +938,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         Sort luceneSort = (Sort) qs.context.nativeSort;
 
         if (luceneQuery == null) {
-            luceneQuery = LuceneQueryConverter.convertToLuceneQuery(task.querySpec.query,
-                    qs.context);
+            luceneQuery = LuceneQueryConverter.convert(task.querySpec.query, qs.context);
             if (qs.options.contains(QueryOption.TIME_SNAPSHOT)) {
                 Query latestDocumentClause = LongPoint.newRangeQuery(
                         ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS, 0,
@@ -1467,7 +1466,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (resourceQuery == null) {
             rq = new MatchNoDocsQuery();
         } else {
-            rq = LuceneQueryConverter.convertToLuceneQuery(resourceQuery, null);
+            rq = LuceneQueryConverter.convert(resourceQuery, null);
         }
 
         builder.add(rq, Occur.FILTER);
@@ -1566,9 +1565,9 @@ public class LuceneDocumentIndexService extends StatelessService {
                 QueryTask.Query topLevelClause = perGroupQuery;
                 perGroupQuery.addBooleanClause(topLevelClause);
             }
+
             perGroupQuery.addBooleanClause(clause);
-            Query lucenePerGroupQuery = LuceneQueryConverter.convertToLuceneQuery(perGroupQuery,
-                    qs.context);
+            Query lucenePerGroupQuery = LuceneQueryConverter.convert(perGroupQuery, qs.context);
 
             // for each group generate a query page link
             String pageLink = createNextPage(op, s, qs, lucenePerGroupQuery, sort,
