@@ -711,6 +711,31 @@ public class TestLuceneDocumentIndexService {
             return true;
         });
 
+        // verify that a new index searcher is picked up when DO_NOT_REFRESH is specified
+        // and the query is issued one maintenance interval after the index has been updated
+        this.host.doFactoryChildServiceStart(null, this.serviceCount, ExampleServiceState.class,
+                (o) -> {
+                    ExampleServiceState b = new ExampleServiceState();
+                    b.name = UUID.randomUUID().toString();
+                    o.setBody(b);
+                }, UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+        // wait for the refresh interval
+        LuceneDocumentIndexService.setSearcherRefreshIntervalMicros(
+                ServiceHostState.DEFAULT_MAINTENANCE_INTERVAL_MICROS);
+        Thread.sleep(TimeUnit.MICROSECONDS.toMillis(
+                ServiceHostState.DEFAULT_MAINTENANCE_INTERVAL_MICROS));
+        // verify that there are just two paginated searchers
+        assertEquals(2, this.indexService.paginatedSearchersByCreationTime.values().size());
+        queryTask = QueryTask.Builder.create()
+                .setQuery(query)
+                .setResultLimit(2)
+                .addOption(QueryOption.DO_NOT_REFRESH)
+                .build();
+        queryTask.documentExpirationTimeMicros = extendedQueryExpirationTimeMicros;
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+        // we should now have 3 index searchers
+        assertEquals(3, this.indexService.paginatedSearchersByCreationTime.values().size());
+
         // Create a new direct paginated searcher with a long expiration and the SINGLE_USE option,
         // traverse all of the results pages, and verify that the pages and the index searcher were
         // closed.
@@ -740,7 +765,7 @@ public class TestLuceneDocumentIndexService {
             if (expirationMicros == queryExpirationTimeMicros) {
                 assertEquals(1, expirationList.size());
             } else if (expirationMicros == extendedQueryExpirationTimeMicros) {
-                assertEquals(2, expirationList.size());
+                assertEquals(3, expirationList.size());
             } else {
                 throw new IllegalStateException("Unexpected expiration time: " + expirationMicros);
             }
@@ -788,7 +813,7 @@ public class TestLuceneDocumentIndexService {
                     throw new IllegalStateException("Unexpected expiration time: "
                             + expirationMicros);
                 } else {
-                    return expirationList.size() == 1;
+                    return expirationList.size() == 2;
                 }
             }
 
