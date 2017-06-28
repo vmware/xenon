@@ -14,6 +14,8 @@
 package com.vmware.xenon.common;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Array;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
@@ -23,16 +25,20 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 import com.esotericsoftware.kryo.serializers.VersionFieldSerializer.Since;
@@ -269,6 +275,8 @@ public class ServiceDocumentDescription {
      */
     public static class Builder {
 
+        private static final Logger logger = Logger.getLogger(Builder.class.getName());
+
         public static Builder create() {
             return new Builder();
         }
@@ -404,7 +412,7 @@ public class ServiceDocumentDescription {
             return pd;
         }
 
-        @SuppressWarnings("rawtypes")
+        @SuppressWarnings({ "rawtypes", "unchecked" })
         protected void buildPropertyDescription(
                 Class<?> documentType,
                 PropertyDescription pd,
@@ -470,12 +478,14 @@ public class ServiceDocumentDescription {
                             pd.propertyDocumentation = ServiceDocumentDescriptionHelper
                                     .lookupDocumentationDescription(documentType, df.description());
                         }
-                        if (df.exampleString() != null && !df.exampleString().isEmpty()) {
+                        final String example = df.exampleString();
+                        if (example == null) {
+                            // user explicitly set null value (default is empty string) so set null
+                            pd.exampleValue = null;
+                        } else if (!example.isEmpty()) {
                             // we can try and coerse the string into the appropriate type
-                            final String example = df.exampleString();
                             try {
-                                if (!isSimpleType || pd.typeName == null && example != null
-                                        && !example.isEmpty()) {
+                                if (!isSimpleType) {
                                     // try to JSON deserialize the string to the type
                                     pd.exampleValue = Utils.fromJson(example, clazz);
                                 } else if (pd.typeName != null) {
@@ -508,7 +518,11 @@ public class ServiceDocumentDescription {
                             } catch (IllegalArgumentException
                                     | DateTimeParseException
                                     | JsonParseException e) {
-                                // cannot parse example - leave empty
+                                // cannot parse example - leave with default
+                                if (logger.isLoggable(Level.FINE)) {
+                                    logger.log(Level.FINE,
+                                            "Invalid example for type " + clazz + ": " + example, e);
+                                }
                             }
                         }
                     } else if (UsageOptions.class.equals(a.annotationType())) {
@@ -575,6 +589,20 @@ public class ServiceDocumentDescription {
                     buildPropertyDescription(documentType, fd, componentClass, componentType, null, visited,
                             depth + 1);
                     pd.elementDescription = fd;
+                    if (pd.exampleValue == null) {
+                        try {
+                            Map<Object,Object> example;
+                            if (!Modifier.isAbstract(clazz.getModifiers())) {
+                                example = (Map<Object,Object>)clazz.getConstructor((Class[])null).newInstance((Object[])null);
+                            } else {
+                                example = new HashMap<>();
+                            }
+                            example.put("example", refitValue(componentClass, fd.exampleValue));
+                            pd.exampleValue = example;
+                        } catch (Exception ex) {
+                            logger.log(Level.FINE, "Cannot initialize example for " + pd.kind + ": " + ex.getMessage(), ex);
+                        }
+                    }
                 } else if (Enum.class.isAssignableFrom(clazz)) {
                     pd.typeName = TypeName.ENUM;
                     Object[] enumConstants = clazz.getEnumConstants();
@@ -597,6 +625,15 @@ public class ServiceDocumentDescription {
                     buildPropertyDescription(documentType, fd, componentClass, componentType, null, visited,
                             depth + 1);
                     pd.elementDescription = fd;
+                    if (pd.exampleValue == null) {
+                        try {
+                            Object example = Array.newInstance(componentClass, 1);
+                            Array.set(example, 0, refitValue(componentClass, fd.exampleValue));
+                            pd.exampleValue = example;
+                        } catch (Exception ex) {
+                            logger.log(Level.FINE, "Cannot initialize example for " + pd.kind + ": " + ex.getMessage(), ex);
+                        }
+                    }
                 } else if (Collection.class.isAssignableFrom(clazz)) {
                     pd.typeName = TypeName.COLLECTION;
                     if (depth > 0) {
@@ -622,6 +659,26 @@ public class ServiceDocumentDescription {
                     buildPropertyDescription(documentType, fd, componentClass, componentType, null, visited,
                             depth + 1);
                     pd.elementDescription = fd;
+
+                    // if example not defined, try creating one
+                    if (pd.exampleValue == null && !(EnumSet.class.isAssignableFrom(clazz))) {
+                        try {
+                            Collection<Object> example;
+                            if (!Modifier.isAbstract(clazz.getModifiers())) {
+                                example = (Collection<Object>)clazz.getConstructor((Class[])null).newInstance((Object[])null);
+                            } else if (List.class.isAssignableFrom(clazz)) {
+                                example = new ArrayList<>(1);
+                            } else if (Set.class.isAssignableFrom(clazz)) {
+                                example = new HashSet<>();
+                            } else {
+                                throw new RuntimeException("Unexpected type in example: " + clazz);
+                            }
+                            example.add(refitValue(componentClass, fd.exampleValue));
+                            pd.exampleValue = example;
+                        } catch (Exception ex) {
+                            logger.log(Level.FINE, "Cannot initialize example for " + pd.kind + ": " + ex.getMessage(), ex);
+                        }
+                    }
                 } else {
                     pd.typeName = TypeName.PODO;
                     pd.kind = Utils.buildKind(clazz);
@@ -631,11 +688,51 @@ public class ServiceDocumentDescription {
                         pd.indexingOptions.add(PropertyIndexingOption.EXPAND);
                     }
 
-                    // Recurse into object
+                    // Recurse into PODO object
                     PropertyDescription podo = buildPodoPropertyDescription(documentType, clazz, visited,
                             depth + 1);
                     pd.fieldDescriptions = podo.fieldDescriptions;
+                    // populate an example if we can
+                    if (pd.exampleValue == null && podo.fieldDescriptions != null) {
+                        try {
+                            Constructor cons = clazz.getConstructor((Class[])null);
+                            Object example = cons.newInstance((Object[])null);
+
+                            podo.fieldDescriptions.entrySet().stream().forEach((entry) -> {
+                                try {
+                                    Field f = clazz.getField(entry.getKey());
+                                    f.set(example, refitValue(f.getType(), entry.getValue().exampleValue));
+                                } catch (Exception ex) {
+                                    logger.log(Level.FINE, "Cannot initialize example field " + entry.getKey() +
+                                            " for " + pd.kind + ": " + ex.getMessage(), ex);
+                                }
+                            });
+
+                            pd.exampleValue = example;
+                        } catch (Exception ex) {
+                            logger.log(Level.FINE, "Cannot initialize example for " + pd.kind + ": " + ex.getMessage(), ex);
+                        }
+                    }
                 }
+            }
+        }
+
+        private Object refitValue(Class<?> clazz, Object value) {
+            if (value == null || !Long.class.isAssignableFrom(value.getClass())) {
+                return value;
+            }
+            // We may need to cast the 'Long' value into an Integer or Short or Byte
+            Long longVal = (Long) value;
+            if (Long.class.equals(clazz) || long.class.equals(clazz)) {
+                return longVal;
+            } else if (Integer.class.equals(clazz) || int.class.equals(clazz)) {
+                return longVal.intValue();
+            } else if (Short.class.equals(clazz) || short.class.equals(clazz)) {
+                return longVal.shortValue();
+            } else if (Byte.class.equals(clazz) || byte.class.equals(clazz)) {
+                return longVal.byteValue();
+            } else {
+                throw new IllegalArgumentException("Unexpected value " + value + "of type " + value.getClass() + " for type: " + clazz);
             }
         }
     }

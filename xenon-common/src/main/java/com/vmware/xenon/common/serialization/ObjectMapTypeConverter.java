@@ -60,7 +60,7 @@ public enum ObjectMapTypeConverter
             throws JsonParseException {
 
         if (!json.isJsonObject()) {
-            throw new JsonParseException("The json element is not valid");
+            throw new JsonParseException("Expecting a json Map object but found: " + json);
         }
 
         Map<String, Object> result = new HashMap<String, Object>();

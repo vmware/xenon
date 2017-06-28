@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.common;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -91,6 +93,16 @@ public class LogFormatter extends Formatter {
                 sb.append(this.m);
             }
             sb.append(']');
+            if (this.thrown != null) {
+                sb.append('[');
+                StringWriter sw = new StringWriter();
+                PrintWriter pw = new PrintWriter(sw);
+                pw.println();
+                this.thrown.printStackTrace(pw);
+                pw.close();
+                sb.append(sw.toString());
+                sb.append(']');
+            }
 
             return sb.toString();
         }

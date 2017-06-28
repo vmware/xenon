@@ -644,6 +644,21 @@ public class TestServiceDocument {
         @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.OPTIONAL)
         public Set<String> someSet;
 
+        @Documentation(description = "desc")
+        public AnnotatedPodo somePodo;
+
+        @Documentation(description = "desc")
+        public Set<AnnotatedPodo> somePodoSet;
+
+        @Documentation(description = "desc")
+        public List<AnnotatedPodo> somePodoList;
+
+        @Documentation(description = "desc")
+        public Map<String,AnnotatedPodo> somePodoMap;
+
+        @Documentation(description = "desc")
+        public AnnotatedPodo[] somePodoArray;
+
         @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.ID)
         @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.REQUIRED)
         public String requiredId;
@@ -652,7 +667,13 @@ public class TestServiceDocument {
         public String required;
     }
 
+    public static class AnnotatedPodo {
+        @ServiceDocument.Documentation(description = "desc", exampleString = "podoValue")
+        public String podoField;
+    }
+
     @Test
+    @SuppressWarnings("unchecked")
     public void testAnnotationOnFields() {
         ServiceDocumentDescription.Builder builder = ServiceDocumentDescription.Builder.create();
         ServiceDocumentDescription desc = builder.buildDescription(AnnotatedDoc.class);
@@ -696,6 +717,50 @@ public class TestServiceDocument {
         @SuppressWarnings("unchecked")
         Set<String> set = (Set<String>) setDesc.exampleValue;
         assertEquals(2, set.size());
+
+        ServiceDocumentDescription.PropertyDescription podoDesc = desc.propertyDescriptions
+                .get("somePodo");
+        assertTrue("Example must implement Podo",
+                AnnotatedPodo.class.isAssignableFrom(podoDesc.exampleValue.getClass()));
+        @SuppressWarnings("unchecked")
+        AnnotatedPodo podo = (AnnotatedPodo)podoDesc.exampleValue;
+        assertEquals("podoValue", podo.podoField);
+
+        // podoSet
+        ServiceDocumentDescription.PropertyDescription podoSetDesc = desc.propertyDescriptions
+                .get("somePodoSet");
+        assertTrue("Set example must implement java.utils.Set",
+                Set.class.isAssignableFrom(podoSetDesc.exampleValue.getClass()));
+        Set<AnnotatedPodo> exampleSet = (Set<AnnotatedPodo>)podoSetDesc.exampleValue;
+        assertEquals(1, exampleSet.size());
+        assertEquals("podoValue", exampleSet.iterator().next().podoField);
+
+        // podoList
+        ServiceDocumentDescription.PropertyDescription podoListDesc = desc.propertyDescriptions
+                .get("somePodoList");
+        assertTrue("List example must implement java.utils.List",
+                List.class.isAssignableFrom(podoListDesc.exampleValue.getClass()));
+        List<AnnotatedPodo> exampleList = (List<AnnotatedPodo>)podoListDesc.exampleValue;
+        assertEquals(1, exampleList.size());
+        assertEquals("podoValue", exampleList.iterator().next().podoField);
+
+        // podoMap
+        ServiceDocumentDescription.PropertyDescription podoMapDesc = desc.propertyDescriptions
+                .get("somePodoMap");
+        assertTrue("Map example must implement java.utils.List",
+                Map.class.isAssignableFrom(podoMapDesc.exampleValue.getClass()));
+        Map<String,AnnotatedPodo> exampleMap = (Map<String,AnnotatedPodo>)podoMapDesc.exampleValue;
+        assertEquals(1, exampleMap.size());
+        assertEquals("podoValue", exampleMap.values().iterator().next().podoField);
+
+        // podoArray
+        ServiceDocumentDescription.PropertyDescription podoArrayDesc = desc.propertyDescriptions
+                .get("somePodoArray");
+        assertTrue("Array example must be an Array",
+                podoArrayDesc.exampleValue.getClass().isArray());
+        AnnotatedPodo[] podoArray = (AnnotatedPodo[])podoArrayDesc.exampleValue;
+        assertEquals(1, podoArray.length);
+        assertEquals("podoValue", podoArray[0].podoField);
 
         ServiceDocumentDescription.PropertyDescription optsDesc = desc.propertyDescriptions
                 .get("opts");

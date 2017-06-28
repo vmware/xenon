@@ -1141,7 +1141,7 @@ public final class Utils {
                         ReflectionUtils.setPropertyValue(prop, state, UUID.randomUUID().toString());
                     } else {
                         throw new IllegalArgumentException(
-                                prop.accessor.getName() + " is required.");
+                                prop.accessor.getName() + " is a required field.");
                     }
                 }
             }
