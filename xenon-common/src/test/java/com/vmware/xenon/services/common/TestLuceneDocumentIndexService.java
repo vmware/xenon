@@ -580,6 +580,24 @@ public class TestLuceneDocumentIndexService {
     }
 
     @Test
+    public void testLuceneQueryConversion() throws Throwable {
+        Query topLevelQuery = Query.Builder.create()
+                .addFieldClause("name", "foo", Occurance.SHOULD_OCCUR)
+                .addFieldClause("id", "foo-id", Occurance.SHOULD_OCCUR)
+                .build();
+
+        org.apache.lucene.search.Query luceneQuery = LuceneQueryConverter.convertToLuceneQuery(topLevelQuery, null);
+
+        // Assert that the top level MUST_OCCUR is ignored ( old behavior )
+        assertEquals(luceneQuery.toString(), "name:foo id:foo-id");
+
+        luceneQuery = LuceneQueryConverter.convert(topLevelQuery, null);
+
+        // Assert that the top level MUST_OCCUR is not ignored
+        assertEquals(luceneQuery.toString(), "+(name:foo id:foo-id)");
+    }
+
+    @Test
     public void testPaginatedSearcherLists() throws Throwable {
         for (int i = 0; i < this.iterationCount; i++) {
             tearDown();

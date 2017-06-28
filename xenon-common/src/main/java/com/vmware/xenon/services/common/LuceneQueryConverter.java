@@ -48,6 +48,27 @@ final class LuceneQueryConverter {
 
     static final int BOOLEAN_REWRITE_TERM_COUNT_THRESHOLD = 16;
 
+    static Query convert(QueryTask.Query query, QueryRuntimeContext context) {
+
+        if (query.occurance == null) {
+            query.occurance = QueryTask.Query.Occurance.MUST_OCCUR;
+        }
+
+        // Special case for top level occurance which was ignored otherwise
+        if (query.booleanClauses != null) {
+            if (query.term != null) {
+                throw new IllegalArgumentException(
+                        "term and booleanClauses are mutually exclusive");
+            }
+
+            Query booleanClauses = convertToLuceneQuery(query, context);
+            BooleanQuery.Builder builder = new BooleanQuery.Builder();
+            return builder.add(booleanClauses, convertToLuceneOccur(query.occurance)).build();
+        }
+
+        return convertToLuceneQuery(query, context);
+    }
+
     static Query convertToLuceneQuery(QueryTask.Query query, QueryRuntimeContext context) {
         if (query.occurance == null) {
             query.occurance = QueryTask.Query.Occurance.MUST_OCCUR;
