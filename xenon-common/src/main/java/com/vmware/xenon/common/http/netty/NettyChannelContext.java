@@ -70,16 +70,18 @@ public class NettyChannelContext extends SocketContext {
         HTTP11, HTTP2
     }
 
-    public static final PooledByteBufAllocator ALLOCATOR = NettyChannelContext.createAllocator();
+    public static final PooledByteBufAllocator ALLOCATOR = PooledByteBufAllocator.DEFAULT;
 
-    static PooledByteBufAllocator createAllocator() {
-        // We are using defaults from the code internals since the pooled allocator does not
-        // expose the values it calculates. The available constructor methods that take cache
-        // sizes require us to pass things like max order and page size.
-        // maxOrder determines the allocation chunk size as a multiple of page size
-        int maxOrder = 4;
-        return new PooledByteBufAllocator(true, 2, 2, 8192, maxOrder, 64, 32, 16, true);
-    }
+    //    public static final PooledByteBufAllocator ALLOCATOR = NettyChannelContext.createAllocator();
+    //
+    //    static PooledByteBufAllocator createAllocator() {
+    //        // We are using defaults from the code internals since the pooled allocator does not
+    //        // expose the values it calculates. The available constructor methods that take cache
+    //        // sizes require us to pass things like max order and page size.
+    //        // maxOrder determines the allocation chunk size as a multiple of page size
+    //        int maxOrder = 4;
+    //        return new PooledByteBufAllocator(true, 2, 2, 8192, maxOrder, 64, 32, 16, true);
+    //    }
 
     public static final String ENABLE_ALPN_PROPERTY_NAME =
             Utils.PROPERTY_NAME_PREFIX + "NettyChannelContext.isALPNEnabled";
