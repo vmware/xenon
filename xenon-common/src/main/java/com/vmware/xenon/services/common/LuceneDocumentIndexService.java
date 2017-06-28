@@ -160,6 +160,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private static int queryPageResultLimit = DEFAULT_QUERY_PAGE_RESULT_LIMIT;
 
+    private static long searcherRefreshIntervalMicros = TimeUnit.SECONDS.toMicros(5);
+
     public static void setImplicitQueryResultLimit(int limit) {
         queryResultLimit = limit;
     }
@@ -206,6 +208,14 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static int getVersionRetentionServiceThreshold() {
         return versionRetentionServiceThreshold;
+    }
+
+    public static long getSearcherRefreshIntervalMicros() {
+        return searcherRefreshIntervalMicros;
+    }
+
+    public static void setSearcherRefreshIntervalMicros(long interval) {
+        searcherRefreshIntervalMicros = interval;
     }
 
     static final String LUCENE_FIELD_NAME_BINARY_SERIALIZED_STATE = "binarySerializedState";
@@ -314,6 +324,11 @@ public class LuceneDocumentIndexService extends StatelessService {
      * from the maintenance logic
      */
     protected Map<Long, IndexSearcher> searchers = new HashMap<>();
+
+    /**
+     * Set of index searchers marked for closure
+     */
+    protected Set<IndexSearcher> dirtySearchers = new HashSet<>();
 
     private ThreadLocal<LuceneIndexDocumentHelper> indexDocumentHelper = new ThreadLocal<LuceneIndexDocumentHelper>() {
         @Override
@@ -1034,12 +1049,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         IndexSearcher searcher;
         synchronized (this.searchSync) {
-            // Pass documentKind only when doNotRefresh is false.
-            if (doNotRefresh) {
-                searcher = getOrUpdateExistingSearcher(expirationMicros, null);
-            } else {
-                searcher = getOrUpdateExistingSearcher(expirationMicros, kindScope);
-            }
+            searcher = getOrUpdateExistingSearcher(expirationMicros, kindScope, doNotRefresh);
         }
 
         if (searcher != null) {
@@ -1050,7 +1060,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private IndexSearcher getOrUpdateExistingSearcher(long newExpirationMicros,
-            Set<String> kindScope) {
+            Set<String> kindScope, boolean doNotRefresh) {
 
         if (this.paginatedSearchersByCreationTime.isEmpty()) {
             return null;
@@ -1071,11 +1081,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             return null;
         }
 
-        if (kindScope != null) {
-            long searcherUpdateTime = this.searcherUpdateTimesMicros.get(info.searcher.hashCode());
-            if (documentNeedsNewSearcher(null, kindScope, -1, searcherUpdateTime)) {
-                return null;
-            }
+        long searcherUpdateTime = this.searcherUpdateTimesMicros.get(info.searcher.hashCode());
+        if (documentNeedsNewSearcher(null, kindScope, -1, searcherUpdateTime, doNotRefresh)) {
+            return null;
         }
 
         long currentExpirationMicros = info.expirationTimeMicros;
@@ -2757,9 +2765,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             long searcherUpdateTime = getSearcherUpdateTime(s, 0);
             if (s == null) {
                 needNewSearcher = true;
-            } else if (documentNeedsNewSearcher(selfLink, kindScope, resultLimit,
-                    searcherUpdateTime)) {
-                needNewSearcher = !doNotRefresh;
+            } else {
+                needNewSearcher = documentNeedsNewSearcher(selfLink, kindScope, resultLimit,
+                        searcherUpdateTime, doNotRefresh);
             }
         }
 
@@ -2783,7 +2791,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private boolean documentNeedsNewSearcher(String selfLink, Set<String> kindScope,
-            int resultLimit, long searcherUpdateTime) {
+            int resultLimit, long searcherUpdateTime, boolean doNotRefresh) {
         if (selfLink != null && resultLimit == 1) {
             DocumentUpdateInfo du = this.updatesPerLink.get(selfLink);
 
@@ -2803,22 +2811,37 @@ public class LuceneDocumentIndexService extends StatelessService {
                     return true;
                 }
             }
-        } else if (kindScope != null) {
-            for (String kind : kindScope) {
-                Long documentKindUpdateTime = this.documentKindUpdateInfo.get(kind);
-                if (documentKindUpdateTime == null) {
-                    documentKindUpdateTime = Long.MAX_VALUE;
+        } else {
+            boolean newSearcher = false;
+            long indexUpdateTime = this.writerUpdateTimeMicros;
+            if (kindScope != null) {
+                for (String kind : kindScope) {
+                    Long documentKindUpdateTime = this.documentKindUpdateInfo.get(kind);
+                    if (documentKindUpdateTime == null) {
+                        documentKindUpdateTime = Long.MAX_VALUE;
+                    }
+                    if (searcherUpdateTime < documentKindUpdateTime) {
+                        indexUpdateTime = documentKindUpdateTime;
+                        newSearcher = true;
+                        break;
+                    }
                 }
-                if (searcherUpdateTime < documentKindUpdateTime) {
-                    return true;
+                adjustTimeSeriesStat(STAT_NAME_SEARCHER_REUSE_BY_DOCUMENT_KIND_COUNT,
+                        AGGREGATION_TYPE_SUM, 1);
+            } else if (searcherUpdateTime < this.writerUpdateTimeMicros) {
+                indexUpdateTime = this.writerUpdateTimeMicros;
+                newSearcher = true;
+            }
+            if (doNotRefresh) {
+                if (newSearcher) {
+                    if ((indexUpdateTime + searcherRefreshIntervalMicros)
+                            >= Utils.getNowMicrosUtc()) {
+                        return false;
+                    }
                 }
             }
-            adjustTimeSeriesStat(STAT_NAME_SEARCHER_REUSE_BY_DOCUMENT_KIND_COUNT,
-                    AGGREGATION_TYPE_SUM, 1);
-        } else if (searcherUpdateTime < this.writerUpdateTimeMicros) {
-            return true;
+            return newSearcher;
         }
-
         return false;
     }
 
@@ -2968,6 +2991,11 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
 
             this.searchers.clear();
+
+            for (IndexSearcher s : this.dirtySearchers) {
+                s.getIndexReader().close();
+            }
+            this.dirtySearchers.clear();
 
             if (!force) {
                 return;
