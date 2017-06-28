@@ -714,6 +714,45 @@ public class TestLuceneDocumentIndexService {
             return true;
         });
 
+        // verify that a new index searcher is picked up when DO_NOT_REFRESH is specified
+        // and the query is issued one maintenance interval after the index has been updated
+        this.host.doFactoryChildServiceStart(null, this.serviceCount, ExampleServiceState.class,
+                (o) -> {
+                    ExampleServiceState b = new ExampleServiceState();
+                    b.name = UUID.randomUUID().toString();
+                    o.setBody(b);
+                }, UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+        // set the searcher refresh interval to an hour and ensure we are
+        // reusing an existing searcher
+        LuceneDocumentIndexService.setSearcherRefreshIntervalMicros(
+                TimeUnit.HOURS.toMicros(1));
+        queryTask = QueryTask.Builder.create()
+                .setQuery(query)
+                .setResultLimit(2)
+                .addOption(QueryOption.DO_NOT_REFRESH)
+                .build();
+        queryTask.documentExpirationTimeMicros = extendedQueryExpirationTimeMicros;
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+        assertEquals(2, this.indexService.paginatedSearchersByCreationTime.values().size());
+        // next, set the searcher refresh interval to the maintenance interval and ensure
+        // a new searcher is created
+        LuceneDocumentIndexService.setSearcherRefreshIntervalMicros(
+                ServiceHostState.DEFAULT_MAINTENANCE_INTERVAL_MICROS);
+        this.host.waitFor("New index searcher was not created", () -> {
+            QueryTask qTask = QueryTask.Builder.create()
+                    .setQuery(query)
+                    .setResultLimit(2)
+                    .addOption(QueryOption.DO_NOT_REFRESH)
+                    .build();
+            qTask.documentExpirationTimeMicros = extendedQueryExpirationTimeMicros;
+            this.host.createQueryTaskService(qTask, false, true, qTask, null);
+            // we should have 3 index searchers after the searcher refresh interval has elapsed
+            if (this.indexService.paginatedSearchersByCreationTime.values().size() >= 3) {
+                return true;
+            }
+            return false;
+        });
+
         // Create a new direct paginated searcher with a long expiration and the SINGLE_USE option,
         // traverse all of the results pages, and verify that the pages and the index searcher were
         // closed.
@@ -743,7 +782,7 @@ public class TestLuceneDocumentIndexService {
             if (expirationMicros == queryExpirationTimeMicros) {
                 assertEquals(1, expirationList.size());
             } else if (expirationMicros == extendedQueryExpirationTimeMicros) {
-                assertEquals(2, expirationList.size());
+                assertEquals(3, expirationList.size());
             } else {
                 throw new IllegalStateException("Unexpected expiration time: " + expirationMicros);
             }
@@ -791,7 +830,7 @@ public class TestLuceneDocumentIndexService {
                     throw new IllegalStateException("Unexpected expiration time: "
                             + expirationMicros);
                 } else {
-                    return expirationList.size() == 1;
+                    return expirationList.size() == 2;
                 }
             }
 
