@@ -586,6 +586,9 @@ public class TestLuceneDocumentIndexService {
                 .addFieldClause("id", "foo-id", Occurance.SHOULD_OCCUR)
                 .build();
 
+        System.out.println(
+                "The top level query that I am working with is" + Utils.toJsonHtml(topLevelQuery));
+
         org.apache.lucene.search.Query luceneQuery = LuceneQueryConverter.convertToLuceneQuery(topLevelQuery, null);
 
         // Assert that the top level MUST_OCCUR is ignored ( old behavior )
@@ -595,6 +598,27 @@ public class TestLuceneDocumentIndexService {
 
         // Assert that the top level MUST_OCCUR is not ignored
         assertEquals(luceneQuery.toString(), "+(name:foo id:foo-id)");
+    }
+
+    @Test
+    public void testLuceneQueryConversionForComplexQueries() throws Throwable {
+        String str = "{\"tenantLinks\":[\"/tenants/project/2f594066a7f4c14f-7f703c5265a63d87\"],\"taskInfo\":{\"isDirect\":true},\"querySpec\":{\"query\":{\"occurance\":\"MUST_OCCUR\",\"booleanClauses\":[{\"occurance\":\"SHOULD_OCCUR\",\"term\":{\"propertyName\":\"name\",\"matchValue\":\"resource-a\",\"matchType\":\"TERM\"}},{\"occurance\":\"SHOULD_OCCUR\",\"term\":{\"propertyName\":\"name\",\"matchValue\":\"resource-b\",\"matchType\":\"TERM\"}},{\"occurance\":\"MUST_OCCUR\",\"booleanClauses\":[{\"occurance\":\"MUST_OCCUR\",\"booleanClauses\":[{\"occurance\":\"SHOULD_OCCUR\",\"term\":{\"propertyName\":\"documentKind\",\"matchValue\":\"com:vmware:photon:controller:model:resources:DiskService:DiskState\",\"matchType\":\"TERM\"}},{\"occurance\":\"SHOULD_OCCUR\",\"term\":{\"propertyName\":\"documentKind\",\"matchValue\":\"com:vmware:photon:controller:model:resources:ComputeService:ComputeState\",\"matchType\":\"TERM\"}},{\"occurance\":\"SHOULD_OCCUR\",\"term\":{\"propertyName\":\"documentKind\",\"matchValue\":\"com:vmware:photon:controller:model:resources:NetworkService:NetworkState\",\"matchType\":\"TERM\"}},{\"occurance\":\"SHOULD_OCCUR\",\"term\":{\"propertyName\":\"documentKind\",\"matchValue\":\"com:vmware:photon:controller:model:resources:NetworkInterfaceService:NetworkInterfaceState\",\"matchType\":\"TERM\"}},{\"occurance\":\"SHOULD_OCCUR\",\"term\":{\"propertyName\":\"documentKind\",\"matchValue\":\"com:vmware:photon:controller:model:resources:SubnetService:SubnetState\",\"matchType\":\"TERM\"}}]}]},{\"occurance\":\"MUST_NOT_OCCUR\",\"booleanClauses\":[{\"occurance\":\"SHOULD_OCCUR\",\"booleanClauses\":[{\"occurance\":\"MUST_OCCUR\",\"term\":{\"propertyName\":\"type\",\"matchValue\":\"VM_HOST\",\"matchType\":\"TERM\"}}]},{\"occurance\":\"SHOULD_OCCUR\",\"booleanClauses\":[{\"occurance\":\"MUST_OCCUR\",\"term\":{\"propertyName\":\"type\",\"matchValue\":\"ZONE\",\"matchType\":\"TERM\"}}]}]}]},\"linkTerms\":[{\"propertyName\":\"endpointLink\",\"propertyType\":\"STRING\"},{\"propertyName\":\"tagLinks\",\"propertyType\":\"STRING\"},{\"propertyName\":\"subnetLink\",\"propertyType\":\"STRING\"}],\"resultLimit\":50,\"options\":[\"EXPAND_CONTENT\",\"EXPAND_LINKS\",\"SELECT_LINKS\"]},\"indexLink\":\"/core/document-index\",\"nodeSelectorLink\":\"/core/node-selectors/default\",\"documentVersion\":0,\"documentUpdateTimeMicros\":0,\"documentExpirationTimeMicros\":0}";
+        QueryTask queryTask = Utils.fromJson(str, QueryTask.class);
+
+        System.out.println(
+                "The top level query that I am working with is"
+                        + Utils.toJsonHtml(queryTask.querySpec.query));
+
+        org.apache.lucene.search.Query luceneQuery = LuceneQueryConverter
+                .convertToLuceneQuery(queryTask.querySpec.query, null);
+
+        // Assert that the top level MUST_OCCUR is ignored ( old behavior )
+        System.out.println("The query that is generated using old way is" + luceneQuery.toString());
+
+        luceneQuery = LuceneQueryConverter.convert(queryTask.querySpec.query, null);
+
+        // Assert that the top level MUST_OCCUR is not ignored
+        System.out.println("The query that is generated using new way is" + luceneQuery.toString());
     }
 
     @Test

@@ -4403,6 +4403,14 @@ public class TestQueryTaskService {
                 .setCompletion(this.host.getCompletion());
         this.host.send(postTenant);
 
+        // Create another tenant but give the name Coke
+        TenantState tenantState2 = new TenantState();
+        tenantState.name = "Coke";
+        Operation postTenant2 = Operation.createPost(tenantFactoryUri)
+                .setBody(tenantState2)
+                .setCompletion(this.host.getCompletion());
+        this.host.send(postTenant2);
+
         this.host.testWait();
 
         QuerySpecification spec = new QuerySpecification();

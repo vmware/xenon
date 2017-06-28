@@ -948,6 +948,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                         .add(luceneQuery, Occur.FILTER).build();
             }
             qs.context.nativeQuery = luceneQuery;
+            logInfo("The generated query is" + Utils.toJsonHtml(luceneQuery));
         }
 
         if (luceneSort == null && task.querySpec.options != null
