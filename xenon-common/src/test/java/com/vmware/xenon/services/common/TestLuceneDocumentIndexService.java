@@ -728,6 +728,26 @@ public class TestLuceneDocumentIndexService {
             }
         }
 
+        // create an example service instance. The paginated searchers must be marked dirty
+        this.host.doFactoryChildServiceStart(null, this.serviceCount, ExampleServiceState.class,
+                (o) -> {
+                    ExampleServiceState b = new ExampleServiceState();
+                    b.name = Utils.getNowMicrosUtc() + " before stop";
+                    o.setBody(b);
+                }, UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+
+        this.host.waitFor("Paginated query searcher was not marked dirty", () -> {
+            Collection<PaginatedSearcherInfo> searcherInfo =
+                    this.indexService.paginatedSearchersByCreationTime.values();
+
+            for (PaginatedSearcherInfo searcher: searcherInfo) {
+                if (!searcher.isDirty) {
+                    return false;
+                }
+            }
+            return true;
+        });
+
         TestContext ctx = this.host.testCreate(1);
         List<String> pageLinks = traversePageLinks(ctx, queryTask.results.nextPageLink);
         this.host.testWait(ctx);

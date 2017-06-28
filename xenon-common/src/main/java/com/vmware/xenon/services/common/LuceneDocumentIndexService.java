@@ -315,6 +315,11 @@ public class LuceneDocumentIndexService extends StatelessService {
      */
     protected Map<Long, IndexSearcher> searchers = new HashMap<>();
 
+    /**
+     * Set of index searchers marked for closure
+     */
+    protected Set<IndexSearcher> dirtySearchers = new HashSet<>();
+
     private ThreadLocal<LuceneIndexDocumentHelper> indexDocumentHelper = new ThreadLocal<LuceneIndexDocumentHelper>() {
         @Override
         public LuceneIndexDocumentHelper initialValue() {
@@ -378,6 +383,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         public long creationTimeMicros;
         public long expirationTimeMicros;
         public boolean singleUse;
+        public boolean isDirty = false;
         public IndexSearcher searcher;
     }
 
@@ -1062,7 +1068,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 this.paginatedSearchersByCreationTime.descendingMap().entrySet().iterator();
         while (itr.hasNext()) {
             PaginatedSearcherInfo i = itr.next().getValue();
-            if (!i.singleUse) {
+            if (!i.singleUse && !i.isDirty) {
                 info = i;
                 break;
             }
@@ -2889,6 +2895,9 @@ public class LuceneDocumentIndexService extends StatelessService {
                 setStat(LuceneDocumentIndexService.STAT_NAME_INDEXED_DOCUMENT_COUNT, w.numDocs());
             }
 
+            // update searchers
+            updateSearchers();
+
             op.complete();
         } catch (Exception e) {
             if (this.getHost().isStopping()) {
@@ -2898,6 +2907,28 @@ public class LuceneDocumentIndexService extends StatelessService {
             logWarning("Attempting recovery due to error: %s", Utils.toString(e));
             applyFileLimitRefreshWriter(true);
             op.fail(e);
+        }
+    }
+
+    private void updateSearchers() throws Exception {
+        synchronized (this.searchSync) {
+            Iterator<Entry<Long, IndexSearcher>> iter = this.searchers.entrySet().iterator();
+            while (iter.hasNext()) {
+                Entry<Long, IndexSearcher> entry = iter.next();
+                IndexSearcher s = entry.getValue();
+                long searcherUpdateTime = getSearcherUpdateTime(s, 0);
+                if (searcherUpdateTime < this.writerUpdateTimeMicros) {
+                    this.dirtySearchers.add(s);
+                    this.searcherUpdateTimesMicros.remove(s.hashCode());
+                    iter.remove();
+                }
+            }
+            for (PaginatedSearcherInfo pSearcher: this.paginatedSearchersByCreationTime.values()) {
+                long searcherUpdateTime = getSearcherUpdateTime(pSearcher.searcher, 0);
+                if (searcherUpdateTime < this.writerUpdateTimeMicros) {
+                    pSearcher.isDirty = true;
+                }
+            }
         }
     }
 
@@ -2955,6 +2986,11 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
 
             this.searchers.clear();
+
+            for (IndexSearcher s : this.dirtySearchers) {
+                s.getIndexReader().close();
+            }
+            this.dirtySearchers.clear();
 
             if (!force) {
                 return;
