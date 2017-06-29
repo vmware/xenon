@@ -19,6 +19,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
@@ -1106,6 +1107,7 @@ public class NettyHttpServiceClientTest {
         List<Map<String, String>> actualCookies = new ArrayList<>();
         Operation getOp = Operation
                 .createGet(UriUtils.buildUri(this.host, link))
+                .setCookies(Collections.singletonMap("custom-cookie", "custom-value"))
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         this.host.failIteration(e);
@@ -1124,8 +1126,10 @@ public class NettyHttpServiceClientTest {
         this.host.testWait();
 
         assertNotNull("expect cookies to be set", actualCookies.get(0));
-        assertEquals(1, actualCookies.get(0).size());
+        assertEquals(2, actualCookies.get(0).size());
         assertEquals("value", actualCookies.get(0).get("key"));
+        // Make sure that the cookies passed with operation are not lost.
+        assertEquals("custom-value", actualCookies.get(0).get("custom-cookie"));
     }
 
     @Test

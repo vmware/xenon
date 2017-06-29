@@ -16,6 +16,7 @@ package com.vmware.xenon.common.http.netty;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.EnumSet;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.SortedMap;
 import java.util.concurrent.CancellationException;
@@ -294,7 +295,17 @@ public class NettyHttpServiceClient implements ServiceClient {
             return;
         }
         // Set cookies for outbound request
-        clone.setCookies(this.cookieJar.list(clone.getUri()));
+        Map<String, String> cookies = this.cookieJar.list(clone.getUri());
+        if (cookies == null || cookies.isEmpty()) {
+            return;
+        }
+
+        Map<String, String> existingCookies = clone.getCookies();
+        if (existingCookies == null) {
+            clone.setCookies(cookies);
+        } else {
+            existingCookies.putAll(cookies);
+        }
     }
 
     private void startTracking(Operation op) {
