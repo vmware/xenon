@@ -52,10 +52,7 @@ import java.util.logging.Level;
 import javax.xml.bind.DatatypeConverter;
 
 import org.apache.lucene.search.IndexSearcher;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.*;
 import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.AuthorizationSetupHelper;
@@ -2672,6 +2669,31 @@ public class TestLuceneDocumentIndexService {
             this.host.log("Results AFTER expiration: %s", Utils.toJsonHtml(t.results));
             return 0 == t.results.documentLinks.size();
         });
+        Thread.sleep(1000);
+        TestContext ctx = this.host.testCreate(services.size());
+        for (ExampleServiceState st : services.values()) {
+            st.documentExpirationTimeMicros = 0;
+            st.documentVersion = 0L;
+            Operation post = Operation.createPost(factoryUri)
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
+                    .setBody(st)
+                    .setCompletion((o, e) -> {
+                                ctx.completeIteration();
+                                System.out.println(o.getBody(ExampleServiceState.class).documentVersion);
+                            }
+                    );
+            this.host.send(post);
+        }
+        this.host.testWait(ctx);
+        URI factoryExpandedUri = UriUtils.buildExpandLinksQueryUri(factoryUri);
+        Operation get = Operation.createGet(factoryExpandedUri);
+        ServiceDocumentQueryResult result =
+                this.host.getTestRequestSender().sendAndWait(get, ServiceDocumentQueryResult.class);
+        Assert.assertEquals(services.size(), (long) result.documentCount);
+        for (Object d : result.documents.values()) {
+            ExampleServiceState state = Utils.fromJson(d, ExampleServiceState.class);
+            Assert.assertEquals(0, state.documentVersion);
+        }
     }
 
     @Test

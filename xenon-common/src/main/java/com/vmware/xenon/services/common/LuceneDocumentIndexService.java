@@ -2577,12 +2577,24 @@ public class LuceneDocumentIndexService extends StatelessService {
         // duplicate version history
         adjustStat(STAT_NAME_FORCED_UPDATE_DOCUMENT_DELETE_COUNT, 1);
         wr.deleteDocuments(new Term(ServiceDocument.FIELD_NAME_SELF_LINK, sd.documentSelfLink));
+        synchronized (this.searchSync) {
+            // Clean previous cached entry
+            this.updatesPerLink.remove(sd.documentSelfLink);
+            this.writerUpdateTimeMicros = Utils.getNowMicrosUtc();
+            this.serviceRemovalDetectedTimeMicros = Utils.getNowMicrosUtc();
+        }
     }
 
     private void deleteAllDocumentsForSelfLink(Operation postOrDelete, String link,
             ServiceDocument state)
             throws Exception {
         deleteDocumentsFromIndex(postOrDelete, link, state != null ? state.documentKind : null, 0, Long.MAX_VALUE);
+        synchronized (this.searchSync) {
+            // Remove previous cached entry
+            this.updatesPerLink.remove(link);
+            this.writerUpdateTimeMicros = Utils.getNowMicrosUtc();
+            this.serviceRemovalDetectedTimeMicros = Utils.getNowMicrosUtc();
+        }
         adjustTimeSeriesStat(STAT_NAME_SERVICE_DELETE_COUNT, AGGREGATION_TYPE_SUM, 1);
         logFine("%s expired", link);
         if (state == null) {
