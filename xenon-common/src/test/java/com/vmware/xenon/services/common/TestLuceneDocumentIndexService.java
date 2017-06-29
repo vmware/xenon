@@ -2670,6 +2670,43 @@ public class TestLuceneDocumentIndexService {
             this.host.log("Results AFTER expiration: %s", Utils.toJsonHtml(t.results));
             return 0 == t.results.documentLinks.size();
         });
+        // wait for stopping service
+        for (ExampleServiceState st : services.values()) {
+            this.host.waitFor("service not stopped", () -> {
+                Operation get = Operation.createGet(UriUtils.buildUri(this.host, st.documentSelfLink));
+                try {
+                    FailureResponse failureResponse = this.host.getTestRequestSender().sendAndWaitFailure(get);
+                    return failureResponse.op.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND;
+                } catch (RuntimeException e) {
+                    return false;
+                }
+            });
+        }
+        TestContext ctx = this.host.testCreate(services.size());
+        boolean forceIndexUpdate = false;
+        for (ExampleServiceState st : services.values()) {
+            st.documentExpirationTimeMicros = 0;
+            st.documentVersion = 0L;
+            Operation post = Operation.createPost(factoryUri)
+                    .setBody(st)
+                    .setCompletion(ctx.getCompletion());
+            if (forceIndexUpdate) {
+                post.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE);
+            }
+            this.host.send(post);
+            //post or force index update in alternative
+            forceIndexUpdate = !forceIndexUpdate;
+        }
+        this.host.testWait(ctx);
+        URI factoryExpandedUri = UriUtils.buildExpandLinksQueryUri(factoryUri);
+        Operation get = Operation.createGet(factoryExpandedUri);
+        ServiceDocumentQueryResult result =
+                this.host.getTestRequestSender().sendAndWait(get, ServiceDocumentQueryResult.class);
+        assertEquals(services.size(), (long) result.documentCount);
+        for (Object d : result.documents.values()) {
+            ExampleServiceState state = Utils.fromJson(d, ExampleServiceState.class);
+            assertEquals(0, state.documentVersion);
+        }
     }
 
     @Test
