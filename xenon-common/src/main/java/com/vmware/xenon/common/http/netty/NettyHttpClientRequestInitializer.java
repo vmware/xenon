@@ -110,6 +110,7 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
     public static final String AGGREGATOR_HANDLER = "aggregator";
     public static final String XENON_HANDLER = "xenon";
     public static final String EVENT_LOGGER = "event-logger";
+    public static final String EVENT_STREAM_HANDLER = "event-stream-handler";
 
     private final NettyChannelPool pool;
     private boolean isHttp2Only = false;
@@ -186,6 +187,7 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
                 throw ex;
             }
         } else {
+            p.addLast(EVENT_STREAM_HANDLER, new NettyHttpEventStreamHandler());
             // The HttpObjectAggregator is not needed for HTTP/2. For HTTP/1.1 it
             // aggregates the HttpMessage and HttpContent into the FullHttpResponse
             p.addLast(AGGREGATOR_HANDLER,
