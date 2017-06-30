@@ -1266,7 +1266,7 @@ public final class Utils {
      * Return a non-null, zero-length thread-local instance.
      * @return
      */
-    static StringBuilder getBuilder() {
+    public static StringBuilder getBuilder() {
         return builderPerThread.get();
     }
 
