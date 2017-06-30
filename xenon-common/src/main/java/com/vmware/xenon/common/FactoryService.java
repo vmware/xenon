@@ -1150,6 +1150,10 @@ public abstract class FactoryService extends StatelessService {
                             // irrelevant.
                             continue;
                         }
+                        if (rsp == null || rsp.ownerNodeId == null) {
+                            logWarning("%s responded with '%s'", r.getKey(), r.getValue());
+                            logWarning("%s failure is '%s'", r.getKey(), Utils.toJson(response.failures.get(r.getKey())));
+                        }
                         if (!rsp.ownerNodeId.equals(this.getHost().getId())) {
                             logWarning("SelectOwner response from %s does not indicate that " +
                                             "local node %s is the owner for factory %s. JsonResponse: %s",
