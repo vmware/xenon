@@ -462,6 +462,7 @@ public class Operation implements Cloneable {
     public static final String ACCEPT_ENCODING_HEADER = "accept-encoding";
     public static final String AUTHORIZATION_HEADER = "authorization";
     public static final String ACCEPT_LANGUAGE_HEADER = "accept-language";
+    public static final String LAST_EVENT_ID_HEADER = "last-event-id";
 
     // HTTP2 Header definitions
     public static final String STREAM_ID_HEADER = "x-http2-stream-id";
@@ -621,6 +622,7 @@ public class Operation implements Cloneable {
     public static final String MEDIA_TYPE_APPLICATION_JAVASCRIPT = "application/javascript";
     public static final String MEDIA_TYPE_IMAGE_SVG_XML = "image/svg+xml";
     public static final String MEDIA_TYPE_APPLICATION_FONT_WOFF2 = "application/font-woff2";
+    public static final String MEDIA_TYPE_TEXT_EVENT_STREAM = "text/event-stream";
 
     public static final String CONTENT_ENCODING_GZIP = "gzip";
 
@@ -676,6 +678,10 @@ public class Operation implements Cloneable {
     private short retriesRemaining;
 
     private EnumSet<OperationOption> options = EnumSet.of(OperationOption.KEEP_ALIVE);
+
+    private volatile Consumer<ServerSentEvent> eventHandler;
+
+    private volatile Consumer<Operation> headersReceivedHandler;
 
     public static Operation create(SerializedOperation ctx, ServiceHost host) {
         Operation op = new Operation();
@@ -1099,6 +1105,54 @@ public class Operation implements Cloneable {
         return this;
     }
 
+    /**
+     * Sets the handler to be invoked upon receiving {@link ServerSentEvent}.
+     * @param eventHandler called when {@link ServerSentEvent} is received
+     * @return operation
+     */
+    public Operation setEventHandler(Consumer<ServerSentEvent> eventHandler) {
+        this.eventHandler = eventHandler;
+        return this;
+    }
+
+    /**
+     * Inserts a handler in LIFO style.
+     * @see #nestHeadersReceivedHandler(Consumer)
+     * @see #nestCompletion(CompletionHandler)
+     * @param eventHandler
+     * @return
+     */
+    public Operation nestEventHandler(Consumer<ServerSentEvent> eventHandler) {
+        if (this.eventHandler != null) {
+            eventHandler = eventHandler.andThen(this.eventHandler);
+        }
+        return this.setEventHandler(eventHandler);
+    }
+
+    /**
+     * Sets the handler to be invoked upon receiving the headers.
+     * @param handler called after the headers are received.
+     * @return operation
+     */
+    public Operation setHeadersReceivedHandler(Consumer<Operation> handler) {
+        this.headersReceivedHandler = handler;
+        return this;
+    }
+
+    /**
+     * Inserts a handler in LIFO style.
+     * @see #nestEventHandler(Consumer)
+     * @see #nestCompletion(CompletionHandler)
+     * @param handler
+     * @return
+     */
+    public Operation nestHeadersReceivedHandler(Consumer<Operation> handler) {
+        if (this.headersReceivedHandler != null) {
+            handler = handler.andThen(this.headersReceivedHandler);
+        }
+        return this.setHeadersReceivedHandler(handler);
+    }
+
     public CompletionHandler getCompletion() {
         return this.completion;
     }
@@ -1221,6 +1275,58 @@ public class Operation implements Cloneable {
 
     public void fail(Throwable e) {
         fail(e, null);
+    }
+
+    /**
+     * Sends a &quot;server sent event&quot;. See <a href=https://www.w3.org/TR/eventsource/>SSE specification</a>}
+     * @param event The event to send.
+     */
+    public void sendEvent(ServerSentEvent event) {
+        if (this.eventHandler == null) {
+            return;
+        }
+
+        // Keep track of current operation context
+        OperationContext originalContext = OperationContext.getOperationContext();
+        try {
+            OperationContext.setFrom(this);
+            this.eventHandler.accept(event);
+        } catch (Exception outer) {
+            Utils.logWarning("Uncaught failure inside eventHandler: %s", Utils.toString(outer));
+        } finally {
+            // Restore original context
+            OperationContext.setFrom(originalContext);
+        }
+    }
+
+    /**
+     * Sends the headers to the channel.
+     * This effectively enables streaming.
+     */
+    public void sendHeaders() {
+        if (this.headersReceivedHandler == null) {
+            return;
+        }
+
+        // Keep track of current operation context
+        OperationContext originalContext = OperationContext.getOperationContext();
+        try {
+            OperationContext.setFrom(this);
+            this.headersReceivedHandler.accept(this);
+        } catch (Exception outer) {
+            Utils.logWarning("Uncaught failure inside headersReceivedHandler: %s", Utils.toString(outer));
+        } finally {
+            // Restore original context
+            OperationContext.setFrom(originalContext);
+        }
+    }
+
+    /**
+     * Send the appropriate headers and prepare the connection for streaming.
+     */
+    public void startEventStream() {
+        this.setContentType(MEDIA_TYPE_TEXT_EVENT_STREAM);
+        this.sendHeaders();
     }
 
     public void fail(int statusCode) {

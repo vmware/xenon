@@ -31,9 +31,12 @@ import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http2.HttpConversionUtil;
 
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.ServerSentEvent;
 import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.http.netty.NettyHttpEventStreamHandler.EventStreamHeadersMessage;
+import com.vmware.xenon.common.http.netty.NettyHttpEventStreamHandler.EventStreamMessage;
 
 /**
  * Processes responses from a remote HTTP server and completes the request associated with the
@@ -55,11 +58,26 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
 
         if (msg instanceof FullHttpResponse) {
             FullHttpResponse response = (FullHttpResponse) msg;
-
-            Operation request = findOperation(ctx, response);
+            Operation request = findOperation(ctx, msg, true);
             request.setStatusCode(response.status().code());
             parseResponseHeaders(request, response);
             completeRequest(ctx, request, response.content());
+        } else if (msg instanceof EventStreamHeadersMessage) {
+            EventStreamHeadersMessage sseHeaders = (EventStreamHeadersMessage) msg;
+            Operation request = findOperation(ctx, msg, false);
+            request.setStatusCode(sseHeaders.originalResponse.status().code());
+            parseResponseHeaders(request, sseHeaders.originalResponse);
+            request.sendHeaders();
+        } else if (msg instanceof EventStreamMessage) {
+            EventStreamMessage sseMessage = (EventStreamMessage) msg;
+            ServerSentEvent event = sseMessage.event;
+            if (event != null && ServerSentEvent.EVENT_TYPE_ERROR.equals(event.event)) {
+                Operation request = findOperation(ctx, msg, true);
+                this.handleEventStreamError(request, event);
+            } else {
+                Operation request = findOperation(ctx, msg, false);
+                request.sendEvent(event);
+            }
         }
     }
 
@@ -72,11 +90,11 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
      * For HTTP/2, we have multiple requests and have to check a map in the associated
      * NettyChannelContext
      */
-    private Operation findOperation(ChannelHandlerContext ctx, FullHttpResponse response) {
+    private Operation findOperation(ChannelHandlerContext ctx, HttpObject msg, boolean remove) {
         Operation request;
 
-        if (ctx.channel().hasAttr(NettyChannelContext.HTTP2_KEY)) {
-            Integer streamId = response.headers()
+        if (ctx.channel().hasAttr(NettyChannelContext.HTTP2_KEY) && msg instanceof HttpResponse) {
+            Integer streamId = ((HttpResponse) msg).headers()
                     .getInt(HttpConversionUtil.ExtensionHeaderNames.STREAM_ID.text());
             if (streamId == null) {
                 this.logger.warning("HTTP/2 message has no stream ID: ignoring.");
@@ -97,7 +115,11 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
             // We only have one request/response per stream, so remove the association.
             channelContext.removeOperationForStream(streamId);
         } else {
-            request = ctx.channel().attr(NettyChannelContext.OPERATION_KEY).getAndSet(null);
+            if (remove) {
+                request = ctx.channel().attr(NettyChannelContext.OPERATION_KEY).getAndSet(null);
+            } else {
+                request = ctx.channel().attr(NettyChannelContext.OPERATION_KEY).get();
+            }
             if (request == null) {
                 this.logger.warning("Can't find operation for channel");
                 return null;
@@ -207,6 +229,13 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
         request.fail(cause);
     }
 
+    @Override public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+        Operation request = ctx.channel().attr(NettyChannelContext.OPERATION_KEY).getAndSet(null);
+        if (request != null) {
+            request.complete();
+        }
+    }
+
     private boolean checkResponseForError(Operation op) {
         if (op.getStatusCode() < Operation.STATUS_CODE_FAILURE_THRESHOLD) {
             return false;
@@ -236,6 +265,15 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
 
         op.fail(new ProtocolException(errorMsg));
         return true;
+    }
+
+    private void handleEventStreamError(Operation op, ServerSentEvent event) {
+        String errorMsg = String.format("Service %s returned error for %s. id %d",
+                op.getUri(), op.getAction(), op.getId());
+        ServiceErrorResponse rsp = Utils.fromJson(event.data, ServiceErrorResponse.class);
+        errorMsg += " message " + rsp.message;
+        op.setBodyNoCloning(rsp);
+        op.fail(new ProtocolException(errorMsg));
     }
 
     public static void logResponseFraming(Operation op, HttpResponse response) {
