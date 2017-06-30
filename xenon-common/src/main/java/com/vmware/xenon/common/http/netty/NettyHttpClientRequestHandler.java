@@ -19,8 +19,8 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
-
 import javax.net.ssl.SSLSession;
 
 import io.netty.buffer.ByteBuf;
@@ -30,12 +30,14 @@ import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
@@ -50,11 +52,13 @@ import io.netty.util.AsciiString;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.OperationOption;
+import com.vmware.xenon.common.ServerSentEvent;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.serialization.ServerSentEventConverter;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.authn.AuthenticationConstants;
 
@@ -311,9 +315,35 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
     private void submitRequest(ChannelHandlerContext ctx, Operation request,
             Integer streamId, String originalPath, double startTime) {
+        AtomicBoolean isStreamingEnabled = new AtomicBoolean();
         request.nestCompletion((o, e) -> {
-            request.setBodyNoCloning(o.getBodyRaw());
-            sendResponse(ctx, request, streamId, originalPath, startTime);
+            if (!isStreamingEnabled.get()) {
+                request.setBodyNoCloning(o.getBodyRaw());
+                sendResponse(ctx, request, streamId, originalPath, startTime);
+            } else {
+                if (e != null) {
+                    ServerSentEvent errorEvent = new ServerSentEvent().setEvent(ServerSentEvent.EVENT_TYPE_ERROR)
+                            .setData(Utils.toJson(o.getBody(ServiceErrorResponse.class)));
+                    request.sendServerSentEvent(errorEvent);
+                }
+                concludeRequest(ctx, request, true);
+            }
+        });
+        request.nestHeadersReceivedHandler(ignore -> {
+            if (!isStreamingEnabled.getAndSet(true)) {
+                HttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(request.getStatusCode()));
+                this.addCommonHeaders(response, request, streamId);
+                ctx.writeAndFlush(response);
+            }
+        });
+        request.nestServerSentEventHandler(event -> {
+            if (isStreamingEnabled.get()) {
+                byte[] data = ServerSentEventConverter.INSTANCE.serialize(event).getBytes(ServerSentEventConverter.ENCODING_CHARSET);
+                ByteBuf byteBuf = Unpooled.wrappedBuffer(data);
+                ctx.writeAndFlush(byteBuf);
+            } else {
+                throw new RuntimeException("Call to startEventStream() or sendHeaders() is necessary to enable streaming!");
+            }
         });
 
         request.toggleOption(OperationOption.CLONING_DISABLED, true);
@@ -379,6 +409,13 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                     HttpResponseStatus.valueOf(request.getStatusCode()), bodyBuffer, false, false);
         }
 
+        this.addCommonHeaders(response, request, streamId);
+        response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH,
+                response.content().readableBytes());
+        writeResponse(ctx, request, response, streamId, originalPath, startTime);
+    }
+
+    private void addCommonHeaders(HttpResponse response, Operation request, Integer streamId) {
         if (streamId != null) {
             // This is the stream ID from the incoming request: we need to use it for our
             // response so the client knows this is the response. If we don't set the stream
@@ -392,8 +429,6 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
         response.headers().set(HttpHeaderNames.CONTENT_TYPE,
                 request.getContentType());
-        response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH,
-                response.content().readableBytes());
 
         if (request.hasResponseHeaders()) {
             // add any other custom headers associated with operation
@@ -437,8 +472,6 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             String tokenCookieString = ServerCookieEncoder.LAX.encode(tokenCookie);
             response.headers().add(Operation.SET_COOKIE_HEADER, tokenCookieString);
         }
-
-        writeResponse(ctx, request, response, streamId, originalPath, startTime);
     }
 
     private void writeInternalServerError(ChannelHandlerContext ctx, Operation request,
@@ -462,7 +495,6 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH,
                 response.content().readableBytes());
         writeResponse(ctx, request, response, streamId, originalPath, startTime);
-        return;
     }
 
     @Override
@@ -529,4 +561,12 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         }
     }
 
+    private void concludeRequest(ChannelHandlerContext ctx, Operation request, boolean forceClose) {
+        boolean isClose = !request.isKeepAlive() || forceClose;
+        ctx.channel().attr(NettyChannelContext.OPERATION_KEY).set(null);
+        ChannelFuture future = ctx.writeAndFlush(Unpooled.EMPTY_BUFFER);
+        if (isClose) {
+            future.addListener(ChannelFutureListener.CLOSE);
+        }
+    }
 }
