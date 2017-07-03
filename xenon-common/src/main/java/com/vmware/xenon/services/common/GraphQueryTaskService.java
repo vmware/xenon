@@ -198,7 +198,7 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
             return;
         }
 
-        updateState(currentState, body);
+        updateState(currentState, Utils.clone(body));
         patch.complete();
         switch (body.taskInfo.stage) {
         case STARTED:
