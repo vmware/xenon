@@ -76,6 +76,11 @@ public class TestGraphQueryTaskService extends BasicTestCase {
 
     public int nodeCount = 3;
 
+    /**
+     * Number of iterations to use when running tight-loop test wrappers.
+     */
+    public int iterationCount = 0;
+
     private long taskCreationTimeMicros;
 
     private long taskCompletionTimeMicros;
@@ -312,6 +317,17 @@ public class TestGraphQueryTaskService extends BasicTestCase {
 
         finalState = createTwoStageTask(name, true);
         assertTrue(validateNStageResult(finalState, this.serviceCount, 0));
+    }
+
+    @Test
+    public void threeStageTreeGraphMultiNodeLoop() throws Throwable {
+        for (int i = 0; i < this.iterationCount; i++) {
+            tearDown();
+            this.host = createHost();
+            initializeHost(this.host);
+            this.host.start();
+            threeStageTreeGraphMultiNode();
+        }
     }
 
     @Test
