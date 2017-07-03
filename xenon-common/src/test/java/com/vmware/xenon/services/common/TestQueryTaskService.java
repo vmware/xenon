@@ -105,6 +105,7 @@ public class TestQueryTaskService {
     public int serviceCount = 50;
     public int queryCount = 10;
     public int updateCount = 10;
+    public int deletedServiceCount = 25;
 
     private VerificationHost host;
 
@@ -927,7 +928,7 @@ public class TestQueryTaskService {
                 EnumSet.of(ServiceOption.INSTRUMENTATION),
                 null);
 
-        doThroughputSimpleQuery(QueryValidationTestService.class, null, false);
+        doThroughputSimpleQuery(QueryValidationTestService.class, null);
     }
 
     @Test
@@ -941,7 +942,7 @@ public class TestQueryTaskService {
         LuceneDocumentIndexService.setMetadataUpdateMaxQueueDepth(0);
         try {
             doThroughputSimpleQuery(QueryValidationTestServiceWithIndexedMetadata.class,
-                    EnumSet.of(QueryOption.INDEXED_METADATA), true);
+                    EnumSet.of(QueryOption.INDEXED_METADATA));
         } finally {
             LuceneDocumentIndexService.setMetadataUpdateMaxQueueDepth(
                     LuceneDocumentIndexService.DEFAULT_METADATA_UPDATE_MAX_QUEUE_DEPTH);
@@ -949,7 +950,7 @@ public class TestQueryTaskService {
     }
 
     private void doThroughputSimpleQuery(Class<? extends Service> type,
-            EnumSet<QueryOption> queryOptions, boolean waitForMetadataIndexing) throws Throwable {
+            EnumSet<QueryOption> queryOptions) throws Throwable {
         List<URI> services = createQueryTargetServices(this.serviceCount, type);
         QueryValidationServiceState newState = new QueryValidationServiceState();
         for (int i = 0; i < this.updateCount; i++) {
@@ -957,24 +958,24 @@ public class TestQueryTaskService {
             newState = putSimpleStateOnQueryTargetServices(services, newState);
         }
 
-        if (waitForMetadataIndexing) {
-            this.host.waitFor("Metadata indexing failed to occur", () -> {
-                Map<String, ServiceStat> indexStats = this.host.getServiceStats(
-                        this.host.getDocumentIndexServiceUri());
-                ServiceStat stat = indexStats.get(
-                        LuceneDocumentIndexService.STAT_NAME_METADATA_INDEXING_UPDATE_COUNT
-                                + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
-                if (stat == null) {
-                    return false;
-                }
-
-                if (stat.accumulatedValue > this.updateCount * this.serviceCount) {
-                    throw new IllegalStateException("Value was " + stat.accumulatedValue);
-                }
-
-                return (stat.accumulatedValue == this.updateCount * this.serviceCount);
-            });
+        int baseline = 0;
+        if (queryOptions != null && queryOptions.contains(QueryOption.INDEXED_METADATA)) {
+            baseline = waitForMetadataIndexing(0, services.size() * this.updateCount);
         }
+
+        List<URI> deletedServices = services.stream().limit(this.deletedServiceCount)
+                .collect(Collectors.toList());
+
+        if (!deletedServices.isEmpty()) {
+            deleteServices(deletedServices);
+            if (queryOptions != null && queryOptions.contains(QueryOption.INDEXED_METADATA)) {
+                waitForMetadataIndexing(baseline, deletedServices.size() * 2);
+            }
+        }
+
+        List<URI> remainingServices = services.stream()
+                .filter((serviceUri) -> !deletedServices.contains(serviceUri))
+                .collect(Collectors.toList());
 
         // Do a query where a single document in the index matches the query parameters
         Query query = Query.Builder.create()
@@ -982,38 +983,105 @@ public class TestQueryTaskService {
                 .addKindFieldClause(QueryValidationServiceState.class).build();
 
         for (int i = 0; i < this.iterationCount; i++) {
-            doThroughputQuery(services, query, queryOptions, 1, newState, false);
+            doThroughputQuery(remainingServices, query, queryOptions, 1, newState, false);
         }
 
         for (int i = 0; i < this.iterationCount; i++) {
-            doThroughputQuery(services, query, queryOptions, 1, newState, true);
+            doThroughputQuery(remainingServices, query, queryOptions, 1, newState, true);
         }
 
         // Now do a query where many (this.updateCount) documents in the index match the query
         // parameters, but only one result is expected.
         query = Query.Builder.create()
-                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, services.get(0).getPath(),
-                        MatchType.TERM, Occurance.MUST_OCCUR)
+                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK,
+                        remainingServices.get(0).getPath(), MatchType.TERM, Occurance.MUST_OCCUR)
                 .addKindFieldClause(QueryValidationServiceState.class).build();
 
         for (int i = 0; i < this.iterationCount; i++) {
-            doThroughputQuery(services, query, queryOptions, 1, newState, false);
+            doThroughputQuery(remainingServices, query, queryOptions, 1, newState, false);
         }
 
         for (int i = 0; i < this.iterationCount; i++) {
-            doThroughputQuery(services, query, queryOptions, 1, newState, true);
+            doThroughputQuery(remainingServices, query, queryOptions, 1, newState, true);
         }
+    }
+
+    private int waitForMetadataIndexing(int baseline, int count) {
+        final int expectedValue = baseline + count;
+        this.host.waitFor("Metadata indexing failed to occur", () -> {
+            Map<String, ServiceStat> indexStats = this.host.getServiceStats(
+                    this.host.getDocumentIndexServiceUri());
+            ServiceStat stat = indexStats.get(
+                    LuceneDocumentIndexService.STAT_NAME_METADATA_INDEXING_UPDATE_COUNT
+                            + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+            if (stat == null) {
+                return false;
+            } else if (stat.accumulatedValue < baseline) {
+                throw new IllegalStateException("Stat below baseline: " + stat.accumulatedValue);
+            } else if (stat.accumulatedValue > expectedValue) {
+                throw new IllegalStateException("Stat above expected: " + stat.accumulatedValue);
+            } else {
+                return stat.accumulatedValue == expectedValue;
+            }
+        });
+
+        return expectedValue;
     }
 
     @Test
     public void throughputCountQuery() throws Throwable {
         setUpHost();
-        List<URI> services = createQueryTargetServices(this.serviceCount);
+
+        this.host.toggleServiceOptions(this.host.getDocumentIndexServiceUri(),
+                EnumSet.of(ServiceOption.INSTRUMENTATION), null);
+
+        doThroughputCountQuery(QueryValidationTestService.class, EnumSet.of(QueryOption.COUNT));
+    }
+
+    @Test
+    public void throughputCountQueryWithIndexedMetadata() throws Throwable {
+        setUpHost();
+
+        this.host.toggleServiceOptions(this.host.getDocumentIndexServiceUri(),
+                EnumSet.of(ServiceOption.INSTRUMENTATION), null);
+
+        LuceneDocumentIndexService.setMetadataUpdateMaxQueueDepth(0);
+        try {
+            doThroughputCountQuery(QueryValidationTestServiceWithIndexedMetadata.class,
+                    EnumSet.of(QueryOption.COUNT, QueryOption.INDEXED_METADATA));
+        } finally {
+            LuceneDocumentIndexService.setMetadataUpdateMaxQueueDepth(
+                    LuceneDocumentIndexService.DEFAULT_METADATA_UPDATE_MAX_QUEUE_DEPTH);
+        }
+    }
+
+    private void doThroughputCountQuery(Class<? extends Service> type,
+            EnumSet<QueryOption> queryOptions) throws Throwable {
+        List<URI> services = createQueryTargetServices(this.serviceCount, type);
         QueryValidationServiceState newState = new QueryValidationServiceState();
         for (int i = 0; i < this.updateCount; i++) {
             newState.textValue = i + "";
-            putSimpleStateOnQueryTargetServices(services, newState, true);
+            putSimpleStateOnQueryTargetServices(services, newState);
         }
+
+        int baseline = 0;
+        if (queryOptions.contains(QueryOption.INDEXED_METADATA)) {
+            baseline = waitForMetadataIndexing(0, services.size() * this.updateCount);
+        }
+
+        List<URI> deletedServices = services.stream().limit(this.deletedServiceCount)
+                .collect(Collectors.toList());
+
+        if (!deletedServices.isEmpty()) {
+            deleteServices(deletedServices);
+            if (queryOptions.contains(QueryOption.INDEXED_METADATA)) {
+                waitForMetadataIndexing(baseline, deletedServices.size() * 2);
+            }
+        }
+
+        List<URI> remainingServices = services.stream()
+                .filter((serviceUri) -> !deletedServices.contains(serviceUri))
+                .collect(Collectors.toList());
 
         Query q = Query.Builder.create()
                 .addKindFieldClause(QueryValidationServiceState.class)
@@ -1021,15 +1089,13 @@ public class TestQueryTaskService {
 
         // first do the test with no concurrent updates to the index while queries occur
         for (int i = 0; i < this.iterationCount; i++) {
-            doThroughputQuery(services, q, EnumSet.of(QueryOption.COUNT), null,
-                    newState, false);
+            doThroughputQuery(remainingServices, q, queryOptions, null, newState, false);
         }
 
         // now update the index once for every N queries. This will have a significant impact on
         // performance.
         for (int i = 0; i < this.iterationCount; i++) {
-            doThroughputQuery(services, q, EnumSet.of(QueryOption.COUNT), null,
-                    newState, true);
+            doThroughputQuery(remainingServices, q, queryOptions, null, newState, true);
         }
     }
 
@@ -1110,7 +1176,8 @@ public class TestQueryTaskService {
                         QueryTask rsp = o.getBody(QueryTask.class);
                         if (expectedResultCount != null
                                 && rsp.results.documentLinks.size() != expectedResultCount) {
-                            ctx.fail(new IllegalStateException("Unexpected result count"));
+                            ctx.fail(new IllegalStateException("Unexpected result count: "
+                                    + rsp.results.documentLinks.size()));
                             return;
                         }
 
@@ -4401,12 +4468,7 @@ public class TestQueryTaskService {
     }
 
     private QueryValidationServiceState putSimpleStateOnQueryTargetServices(
-            List<URI> services, QueryValidationServiceState templateState) throws Throwable {
-        return putSimpleStateOnQueryTargetServices(services, templateState, false);
-    }
-
-    private QueryValidationServiceState putSimpleStateOnQueryTargetServices(
-            List<URI> services, QueryValidationServiceState templateState, boolean commitAfter)
+            List<URI> services, QueryValidationServiceState templateState)
             throws Throwable {
 
         this.host.testStart(services.size());
@@ -4417,16 +4479,6 @@ public class TestQueryTaskService {
             this.host.send(put);
         }
         this.host.testWait();
-
-        if (commitAfter) {
-            TestContext ctx = this.host.testCreate(1);
-            Operation post = Operation.createPost(this.host.getDocumentIndexServiceUri())
-                    .setBody(new LuceneDocumentIndexService.MaintenanceRequest())
-                    .setCompletion(ctx.getCompletion());
-            this.host.send(post);
-            this.host.testWait(ctx);
-        }
-
         this.host.logThroughput();
         return templateState;
     }
