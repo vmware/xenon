@@ -35,7 +35,6 @@ import java.util.Set;
 import java.util.concurrent.CancellationException;
 
 import org.apache.lucene.document.LongPoint;
-import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexCommit;
 import org.apache.lucene.index.IndexWriter;
@@ -503,15 +502,8 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
         IndexSearcher searcher = new IndexSearcher(
                 DirectoryReader.open(newWriter, true, true));
 
-        Query updateTimeClause = LongPoint.newRangeQuery(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS,
+        Query updateTimeQuery = LongPoint.newRangeQuery(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS,
                 timeSnapshotBoundaryMicros + 1, Long.MAX_VALUE);
-        Query currentClause = NumericDocValuesField.newExactQuery(
-                LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 1L);
-
-        Query booleanQuery = new BooleanQuery.Builder()
-                .add(updateTimeClause, Occur.MUST)
-                .add(currentClause, Occur.MUST)
-                .build();
 
         Sort selfLinkSort = new Sort(new SortField(
                 LuceneIndexDocumentHelper.createSortFieldPropertyName(
@@ -522,6 +514,54 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
 
         Set<String> prevPageLinks = new HashSet<>();
         ScoreDoc after = null;
+        while (true) {
+            TopDocs results = searcher.searchAfter(after, updateTimeQuery, pageSize, selfLinkSort,
+                    false, false);
+            if (results == null || results.scoreDocs == null || results.scoreDocs.length == 0) {
+                break;
+            }
+
+            Set<String> pageLinks = new HashSet<>();
+            DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor();
+            for (ScoreDoc sd : results.scoreDocs) {
+                visitor.reset(ServiceDocument.FIELD_NAME_SELF_LINK);
+                searcher.doc(sd.doc, visitor);
+                if (prevPageLinks.contains(visitor.documentSelfLink)) {
+                    pageLinks.add(visitor.documentSelfLink);
+                    continue;
+                }
+
+                if (!pageLinks.add(visitor.documentSelfLink)) {
+                    continue;
+                }
+
+                updateCurrentAttributeForSelfLink(searcher, timeSnapshotBoundaryMicros,
+                        visitor.documentSelfLink, newWriter);
+            }
+
+            if (results.scoreDocs.length < pageSize) {
+                break;
+            }
+
+            after = results.scoreDocs[results.scoreDocs.length - 1];
+            prevPageLinks = pageLinks;
+        }
+
+        // For documents with metadata indexing enabled, the "deleted" attribute may have been set
+        // on documents with a given self-link after the restore point. Find any documents with a
+        // last update action of DELETE after the snapshot boundary time and clear the "deleted"
+        // attribute from documents with the corresponding self-link.
+
+        Query updateActionClause = new TermQuery(new Term(ServiceDocument.FIELD_NAME_UPDATE_ACTION,
+                Action.DELETE.toString()));
+
+        BooleanQuery booleanQuery = new BooleanQuery.Builder()
+                .add(updateTimeQuery, Occur.MUST)
+                .add(updateActionClause, Occur.MUST)
+                .build();
+
+        prevPageLinks = new HashSet<>();
+        after = null;
         while (true) {
             TopDocs results = searcher.searchAfter(after, booleanQuery, pageSize, selfLinkSort,
                     false, false);
@@ -543,7 +583,7 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                     continue;
                 }
 
-                updateCurrentAttributeForSelfLink(searcher, timeSnapshotBoundaryMicros,
+                updateDeletedAttributeForSelfLink(searcher, timeSnapshotBoundaryMicros,
                         visitor.documentSelfLink, newWriter);
             }
 
@@ -586,10 +626,59 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
         DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor();
         visitor.reset(LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ID);
         searcher.doc(results.scoreDocs[0].doc, visitor);
+        if (visitor.documentIndexingId == null) {
+            return;
+        }
+
         Term indexingIdTerm = new Term(LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ID,
                 visitor.documentIndexingId);
         newWriter.updateNumericDocValue(indexingIdTerm,
                 LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 1L);
+    }
+
+    private void updateDeletedAttributeForSelfLink(IndexSearcher searcher,
+            long timeSnapshotBoundaryMicros, String selfLink, IndexWriter newWriter)
+            throws IOException {
+
+        Query selfLinkClause = new TermQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK,
+                selfLink));
+        Query updateTimeClause = LongPoint.newRangeQuery(
+                ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS, 0, timeSnapshotBoundaryMicros);
+
+        Query booleanQuery = new BooleanQuery.Builder()
+                .add(selfLinkClause, Occur.MUST)
+                .add(updateTimeClause, Occur.MUST)
+                .build();
+
+        final int pageSize = 10000;
+
+        ScoreDoc after = null;
+        while (true) {
+            TopDocs results = searcher.searchAfter(after, booleanQuery, pageSize);
+            if (results == null || results.scoreDocs == null || results.scoreDocs.length == 0) {
+                break;
+            }
+
+            DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor();
+            for (ScoreDoc sd : results.scoreDocs) {
+                visitor.reset(LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ID);
+                searcher.doc(sd.doc, visitor);
+                if (visitor.documentIndexingId == null) {
+                    continue;
+                }
+
+                Term indexingIdTerm = new Term(LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ID,
+                        visitor.documentIndexingId);
+                newWriter.updateNumericDocValue(indexingIdTerm,
+                        LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_DELETED, 0L);
+            }
+
+            if (results.scoreDocs.length < pageSize) {
+                break;
+            }
+
+            after = results.scoreDocs[results.scoreDocs.length - 1];
+        }
     }
 
     private boolean isInMemoryIndex() {

@@ -105,6 +105,7 @@ public class TestQueryTaskService {
     public int serviceCount = 50;
     public int queryCount = 10;
     public int updateCount = 10;
+    public int deletedServiceCount = 0;
 
     private VerificationHost host;
 
@@ -1008,12 +1009,84 @@ public class TestQueryTaskService {
     @Test
     public void throughputCountQuery() throws Throwable {
         setUpHost();
-        List<URI> services = createQueryTargetServices(this.serviceCount);
+
+        this.host.toggleServiceOptions(this.host.getDocumentIndexServiceUri(),
+                EnumSet.of(ServiceOption.INSTRUMENTATION), null);
+
+        doThroughputCountQuery(QueryValidationTestService.class, EnumSet.of(QueryOption.COUNT));
+    }
+
+    @Test
+    public void throughputCountQueryWithIndexedMetadata() throws Throwable {
+        setUpHost();
+
+        this.host.toggleServiceOptions(this.host.getDocumentIndexServiceUri(),
+                EnumSet.of(ServiceOption.INSTRUMENTATION), null);
+
+        LuceneDocumentIndexService.setMetadataUpdateMaxQueueDepth(0);
+        try {
+            doThroughputCountQuery(QueryValidationTestServiceWithIndexedMetadata.class,
+                    EnumSet.of(QueryOption.COUNT, QueryOption.INDEXED_METADATA));
+        } finally {
+            LuceneDocumentIndexService.setMetadataUpdateMaxQueueDepth(
+                    LuceneDocumentIndexService.DEFAULT_METADATA_UPDATE_MAX_QUEUE_DEPTH);
+        }
+    }
+
+    private void doThroughputCountQuery(Class<? extends Service> type,
+            EnumSet<QueryOption> queryOptions) throws Throwable {
+        List<URI> services = createQueryTargetServices(this.serviceCount, type);
         QueryValidationServiceState newState = new QueryValidationServiceState();
         for (int i = 0; i < this.updateCount; i++) {
             newState.textValue = i + "";
-            putSimpleStateOnQueryTargetServices(services, newState, true);
+            putSimpleStateOnQueryTargetServices(services, newState);
         }
+
+        if (queryOptions.contains(QueryOption.INDEXED_METADATA)) {
+            this.host.waitFor("Metadata indexing failed to occur", () -> {
+                Map<String, ServiceStat> indexStats = this.host.getServiceStats(
+                        this.host.getDocumentIndexServiceUri());
+                ServiceStat stat = indexStats.get(
+                        LuceneDocumentIndexService.STAT_NAME_METADATA_INDEXING_UPDATE_COUNT
+                                + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+                if (stat == null) {
+                    return false;
+                }
+
+                if (stat.accumulatedValue > this.updateCount * this.serviceCount) {
+                    throw new IllegalStateException("Value was " + stat.accumulatedValue);
+                }
+
+                return (stat.accumulatedValue == this.updateCount * this.serviceCount);
+            });
+        }
+
+        List<URI> deletedServices = services.stream().limit(this.deletedServiceCount)
+                .collect(Collectors.toList());
+
+        if (!deletedServices.isEmpty()) {
+            deleteServices(deletedServices);
+            if (queryOptions.contains(QueryOption.INDEXED_METADATA)) {
+                this.host.waitFor("Deletion metadata indexing failed to occur", () -> {
+                    Map<String, ServiceStat> indexStats = this.host.getServiceStats(
+                            this.host.getDocumentIndexServiceUri());
+                    ServiceStat stat = indexStats.get(
+                            LuceneDocumentIndexService.STAT_NAME_METADATA_INDEXING_DELETION_COUNT
+                                    + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+                    if (stat == null) {
+                        return false;
+                    } else if (stat.accumulatedValue > deletedServices.size() * (2 + this.updateCount)) {
+                        throw new IllegalStateException("" + stat.accumulatedValue);
+                    } else {
+                        return stat.accumulatedValue == deletedServices.size() * (2 + this.updateCount);
+                    }
+                });
+            }
+        }
+
+        List<URI> remainingServices = services.stream()
+                .filter((serviceUri) -> !deletedServices.contains(serviceUri))
+                .collect(Collectors.toList());
 
         Query q = Query.Builder.create()
                 .addKindFieldClause(QueryValidationServiceState.class)
@@ -1021,15 +1094,13 @@ public class TestQueryTaskService {
 
         // first do the test with no concurrent updates to the index while queries occur
         for (int i = 0; i < this.iterationCount; i++) {
-            doThroughputQuery(services, q, EnumSet.of(QueryOption.COUNT), null,
-                    newState, false);
+            doThroughputQuery(remainingServices, q, queryOptions, null, newState, false);
         }
 
         // now update the index once for every N queries. This will have a significant impact on
         // performance.
         for (int i = 0; i < this.iterationCount; i++) {
-            doThroughputQuery(services, q, EnumSet.of(QueryOption.COUNT), null,
-                    newState, true);
+            doThroughputQuery(remainingServices, q, queryOptions, null, newState, true);
         }
     }
 
@@ -4401,12 +4472,7 @@ public class TestQueryTaskService {
     }
 
     private QueryValidationServiceState putSimpleStateOnQueryTargetServices(
-            List<URI> services, QueryValidationServiceState templateState) throws Throwable {
-        return putSimpleStateOnQueryTargetServices(services, templateState, false);
-    }
-
-    private QueryValidationServiceState putSimpleStateOnQueryTargetServices(
-            List<URI> services, QueryValidationServiceState templateState, boolean commitAfter)
+            List<URI> services, QueryValidationServiceState templateState)
             throws Throwable {
 
         this.host.testStart(services.size());
@@ -4417,16 +4483,6 @@ public class TestQueryTaskService {
             this.host.send(put);
         }
         this.host.testWait();
-
-        if (commitAfter) {
-            TestContext ctx = this.host.testCreate(1);
-            Operation post = Operation.createPost(this.host.getDocumentIndexServiceUri())
-                    .setBody(new LuceneDocumentIndexService.MaintenanceRequest())
-                    .setCompletion(ctx.getCompletion());
-            this.host.send(post);
-            this.host.testWait(ctx);
-        }
-
         this.host.logThroughput();
         return templateState;
     }

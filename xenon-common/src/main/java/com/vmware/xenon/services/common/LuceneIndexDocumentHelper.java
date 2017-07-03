@@ -71,6 +71,9 @@ class LuceneIndexDocumentHelper {
     public static final String FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT =
             FIELD_NAME_INDEXING_PREFIX + ".metadata.current";
 
+    public static final String FIELD_NAME_INDEXING_METADATA_VALUE_DELETED =
+            FIELD_NAME_INDEXING_PREFIX + ".metadata.deleted";
+
     private static final String DISABLE_SORT_FIELD_NAMING_PROPERTY_NAME =
             Utils.PROPERTY_NAME_PREFIX + "LuceneIndexDocumentHelper.DISABLE_SORT_FIELD_NAMING";
 
@@ -134,6 +137,14 @@ class LuceneIndexDocumentHelper {
         public void initialize() {
             this.numericDocField = new NumericDocValuesField(
                     FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 0L);
+        }
+    };
+
+    private final LongFieldContext deletedField = new LongFieldContext() {
+        @Override
+        public void initialize() {
+            this.numericDocField = new NumericDocValuesField(
+                    FIELD_NAME_INDEXING_METADATA_VALUE_DELETED, 0L);
         }
     };
 
@@ -209,6 +220,7 @@ class LuceneIndexDocumentHelper {
         this.updateTimeField.initialize();
         this.versionField.initialize();
         this.currentField.initialize();
+        this.deletedField.initialize();
         this.indexingIdField.initialize();
     }
 
@@ -255,6 +267,11 @@ class LuceneIndexDocumentHelper {
     void addCurrentField() {
         this.currentField.numericDocField.setLongValue(1L);
         this.doc.add(this.currentField.numericDocField);
+    }
+
+    void addDeletedField() {
+        this.deletedField.numericDocField.setLongValue(0L);
+        this.doc.add(this.deletedField.numericDocField);
     }
 
     void addIndexingIdField(String selfLink, Long epoch, long version) {
