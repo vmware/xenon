@@ -76,6 +76,11 @@ public class TestGraphQueryTaskService extends BasicTestCase {
 
     public int nodeCount = 3;
 
+    /**
+     * Number of iterations to use when running tight-loop test wrappers.
+     */
+    public int iterationCount = 0;
+
     private long taskCreationTimeMicros;
 
     private long taskCompletionTimeMicros;
@@ -315,6 +320,17 @@ public class TestGraphQueryTaskService extends BasicTestCase {
     }
 
     @Test
+    public void threeStageTreeGraphMultiNodeLoop() throws Throwable {
+        for (int i = 0; i < this.iterationCount; i++) {
+            tearDown();
+            this.host = createHost();
+            initializeHost(this.host);
+            this.host.start();
+            threeStageTreeGraphMultiNode();
+        }
+    }
+
+    @Test
     public void threeStageTreeGraphMultiNode() throws Throwable {
         setUpMultiNode();
         verifyThreeStageTreeGraph();
@@ -479,6 +495,9 @@ public class TestGraphQueryTaskService extends BasicTestCase {
 
             if (!converged) {
                 this.host.log("Not converged, graph results: %s", Utils.toJsonHtml(finalState));
+                this.host.log("Not converged, graph query task version: %s", finalState.documentVersion);
+            } else {
+                this.host.log("Converged, graph query task version: %s", finalState.documentVersion);
             }
 
             return converged;
