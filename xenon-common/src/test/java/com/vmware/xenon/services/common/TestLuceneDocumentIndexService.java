@@ -2716,22 +2716,8 @@ public class TestLuceneDocumentIndexService {
                 null,
                 this.serviceCount, ExampleServiceState.class,
                 setBodyReUseLinks, factoryUri);
-
-        this.host.waitFor("links versions did not expire", () -> {
-            QueryTask t = QueryTask.Builder
-                    .createDirectTask()
-                    .addOption(QueryOption.INCLUDE_ALL_VERSIONS)
-                    .addOption(QueryOption.INCLUDE_DELETED)
-                    .setQuery(
-                            Query.Builder.create().addKindFieldClause(ExampleServiceState.class)
-                                    .build()).build();
-            this.host.createQueryTaskService(t, false, true, t, null);
-            this.host.log("Results AFTER expiration: %s", Utils.toJsonHtml(t.results));
-            return 0 == t.results.documentLinks.size();
-        });
-        // wait for stopping service
         for (ExampleServiceState st : services.values()) {
-            this.host.waitFor("service not stopped", () -> {
+            this.host.waitFor("document not expired", () -> {
                 Operation get = Operation.createGet(UriUtils.buildUri(this.host, st.documentSelfLink));
                 try {
                     FailureResponse failureResponse = this.host.getTestRequestSender().sendAndWaitFailure(get);
@@ -2741,31 +2727,74 @@ public class TestLuceneDocumentIndexService {
                 }
             });
         }
-        TestContext ctx = this.host.testCreate(services.size());
+
         boolean forceIndexUpdate = false;
         for (ExampleServiceState st : services.values()) {
             st.documentExpirationTimeMicros = 0;
             st.documentVersion = 0L;
             Operation post = Operation.createPost(factoryUri)
-                    .setBody(st)
-                    .setCompletion(ctx.getCompletion());
+                    .setBody(st);
             if (forceIndexUpdate) {
                 post.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE);
             }
-            this.host.send(post);
+            this.host.waitFor("Cache in service host not cleaned", () -> {
+                try {
+                    this.host.getTestRequestSender().sendAndWait(post.clone());
+                    return true;
+                } catch (RuntimeException e) {// fail since service not cleaned during index service maintenance
+                    return false;
+                }
+            });
             //post or force index update in alternative
             forceIndexUpdate = !forceIndexUpdate;
         }
-        this.host.testWait(ctx);
-        URI factoryExpandedUri = UriUtils.buildExpandLinksQueryUri(factoryUri);
-        Operation get = Operation.createGet(factoryExpandedUri);
-        ServiceDocumentQueryResult result =
-                this.host.getTestRequestSender().sendAndWait(get, ServiceDocumentQueryResult.class);
-        assertEquals(services.size(), (long) result.documentCount);
-        for (Object d : result.documents.values()) {
-            ExampleServiceState state = Utils.fromJson(d, ExampleServiceState.class);
-            assertEquals(0, state.documentVersion);
+        this.host.waitFor("get factory timeout", () -> {
+            Operation get = Operation.createGet(factoryUri);
+            ServiceDocumentQueryResult result =
+                    this.host.getTestRequestSender().sendAndWait(get, ServiceDocumentQueryResult.class);
+            if (this.serviceCount != result.documentCount.longValue()) {
+                this.host.log("Not converged doc count, expected %d, actual %d with version filtering", this.serviceCount, result.documentCount);
+                return false;
+            }
+            return true;
+        });
+        boolean converge = true;
+        QueryTask t = QueryTask.Builder
+                .createDirectTask()
+                .addOption(QueryOption.INCLUDE_ALL_VERSIONS)
+                .addOption(QueryOption.INCLUDE_DELETED)
+                .addOption(QueryOption.EXPAND_CONTENT)
+                .setQuery(
+                        Query.Builder.create().addKindFieldClause(ExampleServiceState.class)
+                                .build()).build();
+        this.host.createQueryTaskService(t, false, true, t, null);
+        if (services.size() != t.results.documentCount.longValue()) {
+            this.host.log("Not converged doc count, expected %d, actual %d without version filtering", services.size(), t.results.documentCount);
+            converge = false;
         }
+        for (Object d : t.results.documents.values()) {
+            ExampleServiceState state = Utils.fromJson(d, ExampleServiceState.class);
+            if (0 != state.documentVersion) {
+                this.host.log("Not converged doc version %s\nexpected %d, actual %d", Utils.toJsonHtml(state), 0, state.documentVersion);
+                converge = false;
+            }
+            if (!state.documentUpdateAction.equals(Action.POST.toString())) {
+                this.host.log("Not converged doc update action %s\nexpected %s, actual %s", Utils.toJsonHtml(state), Action.POST, state.documentUpdateAction);
+                converge = false;
+            }
+            //get each document
+            Operation getDocument = Operation.createGet(UriUtils.buildUri(this.host, state.documentSelfLink));
+            state = this.host.getTestRequestSender().sendAndWait(getDocument).getBody(ExampleServiceState.class);
+            if (0 != state.documentVersion) {
+                this.host.log("Not converged doc version %s\nexpected %d, actual %d", Utils.toJsonHtml(state), 0, state.documentVersion);
+                converge = false;
+            }
+            if (!state.documentUpdateAction.equals(Action.POST.toString())) {
+                this.host.log("Not converged doc update action %s\nexpected %s, actual %s", Utils.toJsonHtml(state), Action.POST, state.documentUpdateAction);
+                converge = false;
+            }
+        }
+        assertTrue(converge);
     }
 
     @Test
