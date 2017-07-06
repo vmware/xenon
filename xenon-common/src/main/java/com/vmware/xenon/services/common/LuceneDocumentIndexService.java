@@ -2602,27 +2602,57 @@ public class LuceneDocumentIndexService extends StatelessService {
             throws IOException {
         // Delete all previous versions from the index. If we do not, we will end up with
         // duplicate version history
-        adjustStat(STAT_NAME_FORCED_UPDATE_DOCUMENT_DELETE_COUNT, 1);
-        wr.deleteDocuments(new Term(ServiceDocument.FIELD_NAME_SELF_LINK, sd.documentSelfLink));
         synchronized (this.searchSync) {
+            wr.deleteDocuments(new Term(ServiceDocument.FIELD_NAME_SELF_LINK, sd.documentSelfLink));
             // Clean previous cached entry
             this.updatesPerLink.remove(sd.documentSelfLink);
             long now = Utils.getNowMicrosUtc();
-            this.writerUpdateTimeMicros = now;
-            this.serviceRemovalDetectedTimeMicros = now;
+            this.documentKindUpdateInfo.compute(sd.documentKind, (k, entry) -> {
+                if (entry == null) {
+                    entry = 0L;
+                }
+                entry = Math.max(entry, now);
+                return entry;
+            });
+            if (this.writerUpdateTimeMicros < now) {
+                this.writerUpdateTimeMicros = now;
+            }
+            if (this.serviceRemovalDetectedTimeMicros < now) {
+                this.serviceRemovalDetectedTimeMicros = now;
+            }
         }
+        adjustStat(STAT_NAME_FORCED_UPDATE_DOCUMENT_DELETE_COUNT, 1);
     }
 
     private void deleteAllDocumentsForSelfLink(Operation postOrDelete, String link,
             ServiceDocument state)
             throws Exception {
-        deleteDocumentsFromIndex(postOrDelete, link, state != null ? state.documentKind : null, 0, Long.MAX_VALUE);
         synchronized (this.searchSync) {
+            IndexWriter wr = this.writer;
+            if (wr == null) {
+                postOrDelete.fail(new CancellationException());
+                return;
+            }
+            deleteDocumentFromIndex(link, 0, Long.MAX_VALUE, wr);
             // Remove previous cached entry
             this.updatesPerLink.remove(link);
             long now = Utils.getNowMicrosUtc();
-            this.writerUpdateTimeMicros = now;
-            this.serviceRemovalDetectedTimeMicros = now;
+            if (state != null) {
+                this.documentKindUpdateInfo.compute(state.documentKind, (k, entry) -> {
+                    if (entry == null) {
+                        entry = 0L;
+                    }
+                    entry = Math.max(entry, now);
+                    return entry;
+                });
+            }
+            if (this.writerUpdateTimeMicros < now) {
+                this.writerUpdateTimeMicros = now;
+            }
+            if (this.serviceRemovalDetectedTimeMicros < now) {
+                this.serviceRemovalDetectedTimeMicros = now;
+            }
+            postOrDelete.complete();
         }
         adjustTimeSeriesStat(STAT_NAME_SERVICE_DELETE_COUNT, AGGREGATION_TYPE_SUM, 1);
         logFine("%s expired", link);
