@@ -2716,47 +2716,29 @@ public class TestLuceneDocumentIndexService {
                 null,
                 this.serviceCount, ExampleServiceState.class,
                 setBodyReUseLinks, factoryUri);
-
-        this.host.waitFor("links versions did not expire", () -> {
-            QueryTask t = QueryTask.Builder
-                    .createDirectTask()
-                    .addOption(QueryOption.INCLUDE_ALL_VERSIONS)
-                    .addOption(QueryOption.INCLUDE_DELETED)
-                    .setQuery(
-                            Query.Builder.create().addKindFieldClause(ExampleServiceState.class)
-                                    .build()).build();
-            this.host.createQueryTaskService(t, false, true, t, null);
-            this.host.log("Results AFTER expiration: %s", Utils.toJsonHtml(t.results));
-            return 0 == t.results.documentLinks.size();
-        });
-        // wait for stopping service
         for (ExampleServiceState st : services.values()) {
-            this.host.waitFor("service not stopped", () -> {
-                Operation get = Operation.createGet(UriUtils.buildUri(this.host, st.documentSelfLink));
-                try {
-                    FailureResponse failureResponse = this.host.getTestRequestSender().sendAndWaitFailure(get);
-                    return failureResponse.op.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND;
-                } catch (RuntimeException e) {
-                    return false;
+            this.host.waitFor("document not expired", () -> {
+                ProcessingStage stage = this.host.getServiceStage(st.documentSelfLink);
+                if (stage == null) {
+                    return true;
                 }
+                this.host.log("link: %s with stage: %s", st.documentSelfLink, stage.toString());
+                return false;
             });
         }
-        TestContext ctx = this.host.testCreate(services.size());
         boolean forceIndexUpdate = false;
         for (ExampleServiceState st : services.values()) {
             st.documentExpirationTimeMicros = 0;
             st.documentVersion = 0L;
             Operation post = Operation.createPost(factoryUri)
-                    .setBody(st)
-                    .setCompletion(ctx.getCompletion());
+                    .setBody(st);
             if (forceIndexUpdate) {
                 post.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE);
             }
-            this.host.send(post);
+            this.host.getTestRequestSender().sendAndWait(post);
             //post or force index update in alternative
             forceIndexUpdate = !forceIndexUpdate;
         }
-        this.host.testWait(ctx);
         URI factoryExpandedUri = UriUtils.buildExpandLinksQueryUri(factoryUri);
         Operation get = Operation.createGet(factoryExpandedUri);
         ServiceDocumentQueryResult result =
