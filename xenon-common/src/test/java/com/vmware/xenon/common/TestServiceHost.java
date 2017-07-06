@@ -2326,7 +2326,7 @@ public class TestServiceHost {
         Operation patch = createMinimalTestServicePatch(servicePath, null);
         this.host.sendAndWaitExpectSuccess(patch);
 
-        assertTrue(this.host.getServiceStage(servicePath) == ProcessingStage.AVAILABLE);
+        assertEquals(ProcessingStage.AVAILABLE, this.host.getServiceStage(servicePath));
 
         requestCount = this.requestCount;
         // service is started. issue updates in parallel and then stop service while requests are
