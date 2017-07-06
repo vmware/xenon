@@ -2729,7 +2729,7 @@ public class TestLuceneDocumentIndexService {
             this.host.log("Results AFTER expiration: %s", Utils.toJsonHtml(t.results));
             return 0 == t.results.documentLinks.size();
         });
-        // wait for stopping service
+        // wait for cleaning index cache
         for (ExampleServiceState st : services.values()) {
             this.host.waitFor("service not stopped", () -> {
                 Operation get = Operation.createGet(UriUtils.buildUri(this.host, st.documentSelfLink));
@@ -2741,22 +2741,28 @@ public class TestLuceneDocumentIndexService {
                 }
             });
         }
+        // clean cached services in service host
         TestContext ctx = this.host.testCreate(services.size());
+        for (ExampleServiceState st : services.values()) {
+            Operation cleanCache = Operation.createDelete(UriUtils.buildUri(this.host, st.documentSelfLink))
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)//stop service if it's not stopped yet during index maintenance
+                    .setCompletion(ctx.getCompletion());
+            this.host.send(cleanCache);
+        }
+        this.host.testWait(ctx);
         boolean forceIndexUpdate = false;
         for (ExampleServiceState st : services.values()) {
             st.documentExpirationTimeMicros = 0;
             st.documentVersion = 0L;
             Operation post = Operation.createPost(factoryUri)
-                    .setBody(st)
-                    .setCompletion(ctx.getCompletion());
+                    .setBody(st);
             if (forceIndexUpdate) {
                 post.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE);
             }
-            this.host.send(post);
+            this.host.getTestRequestSender().sendAndWait(post);
             //post or force index update in alternative
             forceIndexUpdate = !forceIndexUpdate;
         }
-        this.host.testWait(ctx);
         URI factoryExpandedUri = UriUtils.buildExpandLinksQueryUri(factoryUri);
         Operation get = Operation.createGet(factoryExpandedUri);
         ServiceDocumentQueryResult result =
@@ -2765,6 +2771,12 @@ public class TestLuceneDocumentIndexService {
         for (Object d : result.documents.values()) {
             ExampleServiceState state = Utils.fromJson(d, ExampleServiceState.class);
             assertEquals(0, state.documentVersion);
+            assertEquals(Action.POST.toString(), state.documentUpdateAction);
+            //get each document
+            Operation getDocument = Operation.createGet(UriUtils.buildUri(this.host, state.documentSelfLink));
+            state = this.host.getTestRequestSender().sendAndWait(getDocument).getBody(ExampleServiceState.class);
+            assertEquals(0, state.documentVersion);
+            assertEquals(Action.POST.toString(), state.documentUpdateAction);
         }
     }
 
