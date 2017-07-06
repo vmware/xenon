@@ -53,6 +53,7 @@ import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexUpgrader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -2796,11 +2797,18 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         if (s != null) {
-            s.getIndexReader().close();
-            this.searcherUpdateTimesMicros.remove(s.hashCode());
-        }
+            IndexReader oldReader = s.getIndexReader();
+            IndexReader newReader = DirectoryReader.openIfChanged((DirectoryReader) oldReader, w);
+            if (newReader == null || newReader == oldReader) {
+                return s;
+            }
 
-        s = new IndexSearcher(DirectoryReader.open(w, true, true));
+            oldReader.close();
+            this.searcherUpdateTimesMicros.remove(s.hashCode());
+            s = new IndexSearcher(newReader);
+        } else {
+            s = new IndexSearcher(DirectoryReader.open(w, true, true));
+        }
 
         adjustTimeSeriesStat(STAT_NAME_SEARCHER_UPDATE_COUNT, AGGREGATION_TYPE_SUM, 1);
         synchronized (this.searchSync) {
