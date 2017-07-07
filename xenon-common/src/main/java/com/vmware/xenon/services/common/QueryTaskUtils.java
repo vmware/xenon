@@ -27,16 +27,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
 
-import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.*;
 import com.vmware.xenon.common.Operation.CompletionHandler;
-import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
-import com.vmware.xenon.common.ServiceDocumentQueryResult;
-import com.vmware.xenon.common.ServiceHost;
-import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 
@@ -290,6 +286,13 @@ public final class QueryTaskUtils {
         } else {
             return Collections.singleton(propertyName);
         }
+    }
+
+    public static void failTask(Operation get, Throwable ex) {
+        QueryTask t = new QueryTask();
+        t.taskInfo.stage = TaskState.TaskStage.FAILED;
+        t.taskInfo.failure = Utils.toServiceErrorResponse(ex);
+        get.setBody(t).fail(ex);
     }
 
 }
