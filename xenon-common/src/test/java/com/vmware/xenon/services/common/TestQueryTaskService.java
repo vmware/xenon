@@ -4306,6 +4306,8 @@ public class TestQueryTaskService {
             for (int i = 0; i < SERVICE_LINK_COUNT; i++) {
                 templateState.serviceLinks.add(SERVICE_LINK_VALUE + "." + i);
             }
+            // add null entry to validate it gets handled properly
+            templateState.serviceLinks.add(null);
 
             for (int i = 0; i < versionsPerService; i++) {
                 // change all other fields, per service
