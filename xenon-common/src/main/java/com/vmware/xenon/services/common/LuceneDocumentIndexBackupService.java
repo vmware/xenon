@@ -33,6 +33,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
+import java.util.logging.Level;
 
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.index.IndexCommit;
@@ -47,12 +50,17 @@ import org.apache.lucene.store.RAMDirectory;
 
 import com.vmware.xenon.common.FileUtils;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
+import com.vmware.xenon.common.ServiceHost;
+import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.services.common.LuceneDocumentIndexService.CommitInfo;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService.MaintenanceRequest;
 import com.vmware.xenon.services.common.ServiceHostManagementService.BackupRequest;
+import com.vmware.xenon.services.common.ServiceHostManagementService.BackupType;
 import com.vmware.xenon.services.common.ServiceHostManagementService.RestoreRequest;
 
 /**
@@ -71,6 +79,70 @@ import com.vmware.xenon.services.common.ServiceHostManagementService.RestoreRequ
 public class LuceneDocumentIndexBackupService extends StatelessService {
 
     public static final String SELF_LINK = ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP;
+
+    /**
+     * Helper method to return a consumer that triggers incremental backup for auto-backup.
+     * The returned consumer is expected to be used for a subscription callback on {@link LuceneDocumentIndexService}
+     * commit event.
+     *
+     * @return a consumer to trigger incremental backup upon CommitInfo event.
+     */
+    public static Consumer<Operation> createAutoBackupConsumer(ServiceHost host, Service managementService) {
+        URI autoBackupDirPath = host.getState().autoBackupDirectoryReference;
+
+        BackupRequest backupRequest = new BackupRequest();
+        backupRequest.kind = BackupRequest.KIND;
+        backupRequest.destination = autoBackupDirPath;
+        backupRequest.backupType = BackupType.DIRECTORY;
+
+        AtomicBoolean autoBackupInProgress = new AtomicBoolean(false);
+
+        return (notifyOp) -> {
+            // immediately complete subscription
+            notifyOp.complete();
+
+            // check auto-backup is currently enabled or not
+            if (!host.isAutoBackupEnabled()) {
+                return;
+            }
+
+            // since it is in-memory call, body is a raw object. check notification event type.
+            if (!(notifyOp.getBodyRaw() instanceof CommitInfo)) {
+                return;
+            }
+
+            if (autoBackupInProgress.get()) {
+                incrementAutoBackupStat(managementService, ServiceHostManagementService.STAT_NAME_AUTO_BACKUP_SKIPPED_COUNT);
+                CommitInfo commitInfo = notifyOp.getBody(CommitInfo.class);
+                host.log(Level.INFO, "Auto backup is in progress. Wait for next commit event. sequenceNumber=%s",
+                        commitInfo.sequenceNumber);
+                return;
+            }
+
+            Operation backupOp = Operation.createPatch(host, ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP)
+                    .setBody(backupRequest)
+                    .setReferer(host.getUri())
+                    .setCompletion((op, ex) -> {
+                        if (ex != null) {
+                            host.log(Level.SEVERE, "Auto backup failed. %s", Utils.toString(ex));
+                            return;
+                        }
+
+                        incrementAutoBackupStat(managementService, ServiceHostManagementService.STAT_NAME_AUTO_BACKUP_PERFORMED_COUNT);
+                        autoBackupInProgress.set(false);
+                    });
+
+            autoBackupInProgress.set(true);
+            host.sendRequest(backupOp);
+        };
+    }
+
+    private static void incrementAutoBackupStat(Service service, String statKeyPrefix) {
+        String hourlyStatKey = statKeyPrefix + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
+        String dailyStatKey = statKeyPrefix + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
+        service.adjustStat(hourlyStatKey, 1);
+        service.adjustStat(dailyStatKey, 1);
+    }
 
     private LuceneDocumentIndexService indexService;
 
@@ -200,6 +272,7 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
 
         SnapshotDeletionPolicy snapshotter = null;
         IndexCommit commit = null;
+        long backupStartTime = System.currentTimeMillis();
         try {
             // Create a snapshot so the index files won't be deleted.
             writer.commit();
@@ -276,8 +349,9 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                         Files.delete(path);
                     }
 
-                    logInfo("Incremental backup performed. dir=%s, added=%d, deleted=%d",
-                            destinationPath, toAdd.size(), toDelete.size());
+                    long backupEndTime = System.currentTimeMillis();
+                    logInfo("Incremental backup performed. dir=%s, added=%d, deleted=%d, took=%dms",
+                            destinationPath, toAdd.size(), toDelete.size(), backupEndTime - backupStartTime);
                 } finally {
                     if (tempDir != null) {
                         FileUtils.deleteFiles(tempDir.toFile());
