@@ -282,6 +282,17 @@ public class ServiceHost implements ServiceRequestSender {
          */
         public String location;
 
+        /**
+         * Optional file directory path to store auto backup files.
+         * If not specified, default location is "[sandbox]/[port]/auto-backup".
+         */
+        public Path autoBackup;
+
+        /**
+         * When enabled, perform incremental backup whenever document-index service performed commits.
+         */
+        public boolean isAutoBackupEnabled = false;
+
     }
 
     protected static final LogFormatter LOG_FORMATTER = new LogFormatter();
@@ -340,6 +351,7 @@ public class ServiceHost implements ServiceRequestSender {
     static final Path DEFAULT_TMPDIR = Paths.get(System.getProperty("java.io.tmpdir"));
     static final Path DEFAULT_SANDBOX = DEFAULT_TMPDIR.resolve("xenon");
     static final Path DEFAULT_RESOURCE_SANDBOX_DIR = Paths.get("resources");
+    private static final String DEFAULT_AUTO_BACKUP_DIR = "auto-backup";
 
     /**
      * Estimate for average service state memory cost, in bytes. This can be computed per
@@ -436,6 +448,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         public URI storageSandboxFileReference;
         public URI resourceSandboxFileReference;
+        public URI autoBackupDirectoryReference;
         public URI privateKeyFileReference;
         public String privateKeyPassphrase;
         public URI certificateFileReference;
@@ -457,6 +470,7 @@ public class ServiceHost implements ServiceRequestSender {
         public long serviceCount;
         public String location;
         public URI authProviderHostURI;
+        public boolean isAutoBackupEnabled;
 
         /**
          * Relative memory limit per service path. The limit is expressed as
@@ -804,6 +818,13 @@ public class ServiceHost implements ServiceRequestSender {
 
         this.state.initialPeerNodes = args.peerNodes;
         this.state.location = args.location;
+
+        if (args.autoBackup != null) {
+            this.state.autoBackupDirectoryReference = args.autoBackup.toUri();
+        } else {
+            this.state.autoBackupDirectoryReference = s.toPath().resolve(DEFAULT_AUTO_BACKUP_DIR).toUri();
+        }
+        this.state.isAutoBackupEnabled = args.isAutoBackupEnabled;
     }
 
     public String getLocation() {
@@ -988,6 +1009,14 @@ public class ServiceHost implements ServiceRequestSender {
 
     public void setPeerSynchronizationTimeLimitSeconds(int seconds) {
         this.state.peerSynchronizationTimeLimitSeconds = seconds;
+    }
+
+    public boolean isAutoBackupEnabled() {
+        return this.state.isAutoBackupEnabled;
+    }
+
+    public void setAutoBackupEnabled(boolean enabled) {
+        this.state.isAutoBackupEnabled = enabled;
     }
 
     public int getSecurePort() {
@@ -1521,6 +1550,17 @@ public class ServiceHost implements ServiceRequestSender {
                         TaskFactoryService.create(SynchronizationTaskService.class),
                         new QueryPageForwardingService(defaultNodeSelectorService) };
                 startCoreServicesSynchronously(queryServiceArray);
+
+                // register auto-backup consumer to the document index service
+                // turning on/off the feature is checked in consumer to allow toggling at runtime
+                this.registerForServiceAvailability((o, e) -> {
+                    URI subscriptionUri = UriUtils.buildSubscriptionUri(this, this.documentIndexService.getSelfLink());
+                    Operation createSubscriptionOp = Operation.createPost(subscriptionUri).setReferer(getUri());
+
+                    Consumer<Operation> autoBackupConsumer = LuceneDocumentIndexBackupService.createAutoBackupConsumer(this, this.managementService);
+                    startSubscriptionService(createSubscriptionOp, autoBackupConsumer);
+                }, this.documentIndexService.getSelfLink());
+
             }
         }
 

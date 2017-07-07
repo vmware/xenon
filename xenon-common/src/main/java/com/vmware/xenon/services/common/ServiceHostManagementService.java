@@ -14,12 +14,15 @@
 package com.vmware.xenon.services.common;
 
 import java.net.URI;
+import java.util.EnumSet;
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
+import com.vmware.xenon.common.ServiceStatUtils;
 import com.vmware.xenon.common.ServiceStats;
+import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
@@ -80,6 +83,9 @@ public class ServiceHostManagementService extends StatefulService {
     public static final String STAT_NAME_RATE_LIMITED_OP_COUNT = "rateLimitedOperationCount";
     public static final String STAT_NAME_PENDING_SERVICE_DELETION_COUNT = "pendingServiceDeletionCount";
 
+    public static final String STAT_NAME_AUTO_BACKUP_SKIPPED_COUNT = "autoBackupSkippedCount";
+    public static final String STAT_NAME_AUTO_BACKUP_PERFORMED_COUNT = "autoBackupPerformedCount";
+
     public ServiceHostManagementService() {
         super(ServiceHostState.class);
         super.toggleOption(ServiceOption.CORE, true);
@@ -91,7 +97,11 @@ public class ServiceHostManagementService extends StatefulService {
         STOP
     }
 
-    public static class SynchronizeWithPeersRequest {
+    private static class BaseManagementServiceRequest {
+        public String kind;
+    }
+
+    public static class SynchronizeWithPeersRequest extends BaseManagementServiceRequest {
         public static final String KIND = Utils.buildKind(SynchronizeWithPeersRequest.class);
 
         public static SynchronizeWithPeersRequest create(String path) {
@@ -102,18 +112,13 @@ public class ServiceHostManagementService extends StatefulService {
         }
 
         public String nodeSelectorPath;
-
-        /** Request kind **/
-        public String kind;
     }
 
-    public static class ConfigureOperationTracingRequest {
+    public static class ConfigureOperationTracingRequest extends BaseManagementServiceRequest {
         public static final String KIND = Utils.buildKind(ConfigureOperationTracingRequest.class);
 
         public OperationTracingEnable enable = OperationTracingEnable.START;
         public String level;
-        /** Request kind **/
-        public String kind;
     }
 
     public enum BackupType {
@@ -140,7 +145,7 @@ public class ServiceHostManagementService extends StatefulService {
      * Request to snapshot the index, create an archive of it, and upload it to the given URL with the given
      * credentials.
      */
-    public static class BackupRequest {
+    public static class BackupRequest extends BaseManagementServiceRequest {
         public static final String KIND = Utils.buildKind(BackupRequest.class);
 
         /** Auth token for upload, if any **/
@@ -161,9 +166,6 @@ public class ServiceHostManagementService extends StatefulService {
          */
         public BackupType backupType = BackupType.ZIP;
 
-        /** Request kind **/
-        public String kind;
-
         /**
          * Link to the document index backup/restore service
          */
@@ -174,7 +176,7 @@ public class ServiceHostManagementService extends StatefulService {
      * Request to snapshot the index, create an archive of it, and upload it to the given URL with the given
      * credentials.
      */
-    public static class RestoreRequest {
+    public static class RestoreRequest extends BaseManagementServiceRequest {
         public static final String KIND = Utils.buildKind(RestoreRequest.class);
 
         /** Auth token for upload, if any **/
@@ -190,9 +192,6 @@ public class ServiceHostManagementService extends StatefulService {
          **/
         public URI destination;
 
-        /** Request kind **/
-        public String kind;
-
         /** Recover the data to the specified point in time */
         public Long timeSnapshotBoundaryMicros;
 
@@ -200,6 +199,34 @@ public class ServiceHostManagementService extends StatefulService {
          * Link to the document index backup/restore service
          */
         public String backupServiceLink = ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP;
+    }
+
+    public static class AutoBackupConfiguration extends BaseManagementServiceRequest {
+        public static final String KIND = Utils.buildKind(AutoBackupConfiguration.class);
+
+        /**
+         * Enable/Disable auto backup.
+         */
+        public boolean enable;
+
+    }
+
+    @Override
+    public void handleStart(Operation post) {
+        initializeStats();
+        post.complete();
+    }
+
+    private void initializeStats() {
+        if (!this.hasOption(ServiceOption.INSTRUMENTATION)) {
+            return;
+        }
+
+        ServiceStatUtils.getOrCreateHourlyTimeSeriesStat(this, STAT_NAME_AUTO_BACKUP_PERFORMED_COUNT, EnumSet.of(AggregationType.SUM));
+        ServiceStatUtils.getOrCreateDailyTimeSeriesStat(this, STAT_NAME_AUTO_BACKUP_PERFORMED_COUNT, EnumSet.of(AggregationType.SUM));
+
+        ServiceStatUtils.getOrCreateHourlyTimeSeriesStat(this, STAT_NAME_AUTO_BACKUP_SKIPPED_COUNT, EnumSet.of(AggregationType.SUM));
+        ServiceStatUtils.getOrCreateDailyTimeSeriesStat(this, STAT_NAME_AUTO_BACKUP_SKIPPED_COUNT, EnumSet.of(AggregationType.SUM));
     }
 
     @Override
@@ -220,30 +247,40 @@ public class ServiceHostManagementService extends StatefulService {
             }
 
             patch.setStatusCode(Operation.STATUS_CODE_NOT_MODIFIED);
-            ConfigureOperationTracingRequest tr = patch
-                    .getBody(ConfigureOperationTracingRequest.class);
+            BaseManagementServiceRequest request = patch.getBody(BaseManagementServiceRequest.class);
+            if (request.kind == null || request.kind.equals("")) {
+                throw new IllegalArgumentException("kind is required");
+            }
 
-            if (tr.kind.equals(ConfigureOperationTracingRequest.KIND)) {
+
+            if (request.kind.equals(ConfigureOperationTracingRequest.KIND)) {
                 // Actuating the operation tracing service doesn't modify the index.
+                ConfigureOperationTracingRequest tr = patch.getBody(ConfigureOperationTracingRequest.class);
                 handleOperationTracingRequest(tr, patch);
                 return;
             }
 
-            BackupRequest br = patch.getBody(BackupRequest.class);
-            if (br.kind.equals(BackupRequest.KIND)) {
+            if (request.kind.equals(BackupRequest.KIND)) {
+                BackupRequest br = patch.getBody(BackupRequest.class);
                 handleBackupRequest(br, patch);
                 return;
             }
 
-            RestoreRequest rr = patch.getBody(RestoreRequest.class);
-            if (rr.kind.equals(RestoreRequest.KIND)) {
+            if (request.kind.equals(RestoreRequest.KIND)) {
+                RestoreRequest rr = patch.getBody(RestoreRequest.class);
                 handleRestoreRequest(rr, patch);
                 return;
             }
 
-            SynchronizeWithPeersRequest sr = patch.getBody(SynchronizeWithPeersRequest.class);
-            if (sr.kind.equals(SynchronizeWithPeersRequest.KIND)) {
+            if (request.kind.equals(SynchronizeWithPeersRequest.KIND)) {
+                SynchronizeWithPeersRequest sr = patch.getBody(SynchronizeWithPeersRequest.class);
                 handleSynchronizeWithPeersRequest(sr, patch);
+                return;
+            }
+
+            if (request.kind.equals(AutoBackupConfiguration.KIND)) {
+                AutoBackupConfiguration autoBackupConfigRequest = patch.getBody(AutoBackupConfiguration.class);
+                handleAutoBackupConfigRequest(autoBackupConfigRequest, patch);
                 return;
             }
 
@@ -344,33 +381,26 @@ public class ServiceHostManagementService extends StatefulService {
         }
 
         // delegate backup to backup service
-        Operation patch = Operation.createPatch(this, req.backupServiceLink)
-                .transferRequestHeadersFrom(op)
-                .transferRefererFrom(op)
-                .setExpiration(op.getExpirationMicrosUtc())
-                .setBody(req)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        op.fail(e);
-                        return;
-                    }
-                    op.transferResponseHeadersFrom(o);
-                    op.setBodyNoCloning(o.getBodyRaw());
-                    op.complete();
-                });
-
-        sendRequest(patch);
-
+        sendPatchToBackupService(op, req.backupServiceLink, req);
     }
 
     private void handleRestoreRequest(RestoreRequest req, Operation op) {
-
         // delegate restore to backup service
-        Operation patch = Operation.createPatch(this, req.backupServiceLink)
+        sendPatchToBackupService(op, req.backupServiceLink, req);
+    }
+
+    private void handleAutoBackupConfigRequest(AutoBackupConfiguration req, Operation op) {
+        getHost().setAutoBackupEnabled(req.enable);
+        logInfo("Auto Backup is %s", req.enable ? "enabled" : "disabled");
+        op.complete();
+    }
+
+    private void sendPatchToBackupService(Operation op, String backupServiceLink, Object body) {
+        Operation patch = Operation.createPatch(this, backupServiceLink)
                 .transferRequestHeadersFrom(op)
                 .transferRefererFrom(op)
                 .setExpiration(op.getExpirationMicrosUtc())
-                .setBody(req)
+                .setBody(body)
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         op.fail(e);
@@ -380,9 +410,7 @@ public class ServiceHostManagementService extends StatefulService {
                     op.setBodyNoCloning(o.getBodyRaw());
                     op.complete();
                 });
-
         sendRequest(patch);
-
     }
 
 }
