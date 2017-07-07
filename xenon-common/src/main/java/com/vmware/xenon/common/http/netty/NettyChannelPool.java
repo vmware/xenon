@@ -785,6 +785,7 @@ public class NettyChannelPool {
                 }
 
                 it.remove();
+                LOGGER.warning("Closing expired HTTP/2 channel " + http2Channel.getKey());
                 http2Channel.close();
             }
 

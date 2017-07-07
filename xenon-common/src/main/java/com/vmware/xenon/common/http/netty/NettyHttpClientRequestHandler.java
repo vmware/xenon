@@ -487,7 +487,17 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
     private void writeResponse(ChannelHandlerContext ctx, Operation request,
             FullHttpResponse response) {
-        boolean isClose = !request.isKeepAlive() || response == null;
+        boolean isClose = false;
+        if (!request.isKeepAlive()) {
+            this.host.log(Level.INFO, "Closing channel %s: keep alive not set",
+                    ctx.channel().toString());
+            isClose = true;
+        } else if (response == null) {
+            this.host.log(Level.WARNING, "Closing channel %s: response is null",
+                    ctx.channel().toString());
+            isClose = true;
+        }
+
         Object rsp = Unpooled.EMPTY_BUFFER;
         if (response != null) {
             AsciiString v = isClose ? HttpHeaderValues.CLOSE : HttpHeaderValues.KEEP_ALIVE;

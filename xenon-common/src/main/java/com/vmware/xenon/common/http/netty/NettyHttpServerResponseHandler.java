@@ -58,7 +58,7 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
 
             Operation request = findOperation(ctx, response);
             request.setStatusCode(response.status().code());
-            parseResponseHeaders(request, response);
+            parseResponseHeaders(ctx, request, response);
             completeRequest(ctx, request, response.content());
         }
     }
@@ -106,7 +106,8 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
         return request;
     }
 
-    private void parseResponseHeaders(Operation request, HttpResponse nettyResponse) {
+    private void parseResponseHeaders(ChannelHandlerContext ctx, Operation request,
+            HttpResponse nettyResponse) {
         HttpHeaders headers = nettyResponse.headers();
         if (headers.isEmpty()) {
             return;
@@ -117,7 +118,12 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
         }
 
         request.setKeepAlive(HttpUtil.isKeepAlive(nettyResponse));
+
+        String connection = headers.get(HttpHeaderNames.CONNECTION);
         headers.remove(HttpHeaderNames.CONNECTION);
+        if (connection != null && connection.equals("close")) {
+            this.logger.warning("Saw close header for channel " + ctx.channel().toString());
+        }
 
         if (HttpUtil.isContentLengthSet(nettyResponse)) {
             request.setContentLength(HttpUtil.getContentLength(nettyResponse));
@@ -195,10 +201,15 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
             // associated with the channel. For now, we're just logging, but we could
             // find all the requests and fail all of them. That's slightly risky because
             // we don't understand why we failed, and we may get responses for them later.
-            this.logger.info(
-                    "Channel exception but no HTTP/1.1 request to fail:" + cause.getMessage());
+            this.logger.warning(String.format(
+                    "Channel exception but no HTTP/1.1 request to fail: %s",
+                    Utils.toString(cause)));
+
             return;
         }
+
+        this.logger.warning(String.format("Channel exception, failing request %d: %s",
+                request.getId(), Utils.toString(cause)));
 
         // I/O exception this code recommends retry since it never made it to the remote end
         request.setStatusCode(Operation.STATUS_CODE_BAD_REQUEST);

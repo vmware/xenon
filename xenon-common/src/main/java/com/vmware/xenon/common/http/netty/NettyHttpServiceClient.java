@@ -843,6 +843,9 @@ public class NettyHttpServiceClient implements ServiceClient {
             if (!forceExpiration && !o.hasOption(OperationOption.SOCKET_ACTIVE)) {
                 continue;
             }
+
+            LOGGER.warning(String.format("Failing op %d with STATUS_CODE_TIMEOUT", o.getId()));
+
             o.fail(Operation.STATUS_CODE_TIMEOUT);
             expiredCount++;
             if (forceExpiration) {
