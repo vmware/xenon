@@ -178,7 +178,16 @@ public class QueryPageService extends StatelessService {
         QueryRuntimeContext context = task.querySpec.context;
         task.querySpec.context = null;
         task.taskInfo.stage = TaskStage.FINISHED;
-        QueryTaskUtils.expandLinks(getHost(), task, get);
+        try {
+            QueryTaskUtils.expandLinks(getHost(), task, get);
+        } catch (Exception ex) {
+            // fail the paginated query, client has to re-create the query task
+            QueryTask t = new QueryTask();
+            t.taskInfo.stage = TaskStage.FAILED;
+            t.taskInfo.failure = Utils.toServiceErrorResponse(ex);
+            get.setBody(t).fail(ex);
+            return;
+        }
 
         if (singleUse && task.results.nextPageLink == null) {
             DeleteQueryRuntimeContextRequest request = new DeleteQueryRuntimeContextRequest();
