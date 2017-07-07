@@ -2302,10 +2302,12 @@ public class LuceneDocumentIndexService extends StatelessService {
             Collection<String> linkCollection = (Collection<String>) fieldValue;
             int index = 0;
             for (String item : linkCollection) {
-                linksPerDocument.put(
-                        QuerySpecification.buildLinkCollectionItemName(qt.propertyName, index++),
-                        item);
-                rsp.selectedLinks.add(item);
+                if (item != null) {
+                    linksPerDocument.put(
+                            QuerySpecification.buildLinkCollectionItemName(qt.propertyName, index++),
+                            item);
+                    rsp.selectedLinks.add(item);
+                }
             }
         }
         return state;

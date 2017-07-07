@@ -161,39 +161,42 @@ public class QueryPageService extends StatelessService {
             }
 
             // fail the paginated query, client has to re-create the query task
-            QueryTask t = new QueryTask();
-            t.taskInfo.stage = TaskStage.FAILED;
-            t.taskInfo.failure = Utils.toServiceErrorResponse(e);
-            get.setBody(t).fail(e);
+            QueryTaskUtils.failTask(get, e);
             return;
         }
 
-        boolean singleUse = task.querySpec.options.contains(QueryOption.SINGLE_USE);
-        if (singleUse) {
-            getHost().stopService(this);
-        }
+        try {
+            boolean singleUse = task.querySpec.options.contains(QueryOption.SINGLE_USE);
+            if (singleUse) {
+                getHost().stopService(this);
+            }
 
-        // null the native query context in the cloned spec, so it does not serialize on the wire,
-        // and complete the request.
-        QueryRuntimeContext context = task.querySpec.context;
-        task.querySpec.context = null;
-        task.taskInfo.stage = TaskStage.FINISHED;
-        QueryTaskUtils.expandLinks(getHost(), task, get);
+            // null the native query context in the cloned spec, so it does not serialize on the wire,
+            // and complete the request.
+            QueryRuntimeContext context = task.querySpec.context;
+            task.querySpec.context = null;
+            task.taskInfo.stage = TaskStage.FINISHED;
+            QueryTaskUtils.expandLinks(getHost(), task, get);
 
-        if (singleUse && task.results.nextPageLink == null) {
-            DeleteQueryRuntimeContextRequest request = new DeleteQueryRuntimeContextRequest();
-            request.documentKind = DeleteQueryRuntimeContextRequest.KIND;
-            request.context = context;
+            if (singleUse && task.results.nextPageLink == null) {
+                DeleteQueryRuntimeContextRequest request = new DeleteQueryRuntimeContextRequest();
+                request.documentKind = DeleteQueryRuntimeContextRequest.KIND;
+                request.context = context;
 
-            Operation patch = Operation.createPatch(this, task.indexLink)
-                    .setBodyNoCloning(request)
-                    .setCompletion((op, ex) -> {
-                        if (ex != null) {
-                            logWarning("Failed to delete runtime context: %s", Utils.toString(ex));
-                        }
-                    });
+                Operation patch = Operation.createPatch(this, task.indexLink)
+                        .setBodyNoCloning(request)
+                        .setCompletion((op, ex) -> {
+                            if (ex != null) {
+                                logWarning("Failed to delete runtime context: %s", Utils.toString(ex));
+                            }
+                        });
 
-            sendRequest(patch);
+                sendRequest(patch);
+            }
+        } catch (Exception ex) {
+            // fail the paginated query, client has to re-create the query task
+            QueryTaskUtils.failTask(get, ex);
+            return;
         }
     }
 }
