@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## 1.4.2-CR4-SNAPSHOT
+## 1.4.2-CR4
 
 * Bug fix related to closing HTTP/1.1 channels on client-side operation timeout.
 
