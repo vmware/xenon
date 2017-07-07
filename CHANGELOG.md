@@ -25,6 +25,16 @@
   `Map`s. This eliminates false conflicts when reconsiling state caused by a
   map unorderedness.
 
+* Add auto backup
+  When auto-backup is enabled, host performs incremental backup when underlying
+  document-index service persists document changes.
+  (for default `LuceneDocumentIndexService` service, it performs commit periodically)
+  The location is configurable by `autoBackup` host argument parameter.
+  To enable auto-backup, `isAutoBackupEnabled` argument is added for host start up.
+  Also, `/core/management` takes `AutoBackupConfiguration` patch request to toggle the
+  feature at run time.
+
+
 ## 1.5.2
 
 * "offset" parameter is added to QueryTask. This enables pagination logic to
