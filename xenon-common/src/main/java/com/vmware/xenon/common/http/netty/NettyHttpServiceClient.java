@@ -843,6 +843,18 @@ public class NettyHttpServiceClient implements ServiceClient {
             if (!forceExpiration && !o.hasOption(OperationOption.SOCKET_ACTIVE)) {
                 continue;
             }
+
+            LOGGER.warning(String.format("Failing op %d with STATUS_CODE_TIMEOUT", o.getId()));
+
+            NettyChannelContext ctx = (NettyChannelContext) o.getSocketContext();
+            if (ctx != null) {
+                LOGGER.warning(String.format("Operation %d timeout with uri %s and channel %s",
+                        o.getId(), o.getUri().toString(), ctx.getChannel().id().asLongText()));
+            } else {
+                LOGGER.warning(String.format("Operation %d timeout with uri %s and null channel",
+                        o.getId(), o.getUri().toString()));
+            }
+
             o.fail(Operation.STATUS_CODE_TIMEOUT);
             expiredCount++;
             if (forceExpiration) {
