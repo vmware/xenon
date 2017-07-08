@@ -96,6 +96,7 @@ import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
+import com.vmware.xenon.common.ServiceStatUtils;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
@@ -556,11 +557,12 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (!this.hasOption(ServiceOption.INSTRUMENTATION)) {
             return;
         }
-        ServiceStat dayStat = getTimeSeriesStat(name + ServiceStats.STAT_NAME_SUFFIX_PER_DAY,
-                (int) TimeUnit.DAYS.toHours(1), TimeUnit.HOURS.toMillis(1), type);
+        String dayStatName = name + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
+        ServiceStat dayStat = ServiceStatUtils.getOrCreateDailyTimeSeriesStat(this, dayStatName, type);
         this.setStat(dayStat, v);
-        ServiceStat hourStat = getTimeSeriesStat(name + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR,
-                (int) TimeUnit.HOURS.toMinutes(1), TimeUnit.MINUTES.toMillis(1), type);
+
+        String hourStatName = name + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
+        ServiceStat hourStat = ServiceStatUtils.getOrCreateHourlyTimeSeriesStat(this, hourStatName, type);
         this.setStat(hourStat, v);
     }
 
@@ -568,11 +570,13 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (!this.hasOption(ServiceOption.INSTRUMENTATION)) {
             return;
         }
-        ServiceStat dayStat = getTimeSeriesStat(name + ServiceStats.STAT_NAME_SUFFIX_PER_DAY,
-                (int) TimeUnit.DAYS.toHours(1), TimeUnit.HOURS.toMillis(1), type);
+
+        String dayStatName = name + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
+        ServiceStat dayStat = ServiceStatUtils.getOrCreateDailyTimeSeriesStat(this, dayStatName, type);
         this.adjustStat(dayStat, delta);
-        ServiceStat hourStat = getTimeSeriesStat(name + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR,
-                (int) TimeUnit.HOURS.toMinutes(1), TimeUnit.MINUTES.toMillis(1), type);
+
+        String hourStatName = name + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
+        ServiceStat hourStat = ServiceStatUtils.getOrCreateHourlyTimeSeriesStat(this, hourStatName, type);
         this.adjustStat(hourStat, delta);
     }
 
@@ -580,11 +584,12 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (!this.hasOption(ServiceOption.INSTRUMENTATION)) {
             return;
         }
-        ServiceStat dayStat = getTimeSeriesHistogramStat(name + ServiceStats.STAT_NAME_SUFFIX_PER_DAY,
-                (int) TimeUnit.DAYS.toHours(1), TimeUnit.HOURS.toMillis(1), type);
+        String dayStatName = name + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
+        ServiceStat dayStat = ServiceStatUtils.getOrCreateDailyTimeSeriesHistogramStat(this, dayStatName, type);
         this.setStat(dayStat, v);
-        ServiceStat hourStat = getTimeSeriesHistogramStat(name + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR,
-                (int) TimeUnit.HOURS.toMinutes(1), TimeUnit.MINUTES.toMillis(1), type);
+
+        String hourStatName = name + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
+        ServiceStat hourStat = ServiceStatUtils.getOrCreateHourlyTimeSeriesHistogramStat(this, hourStatName, type);
         this.setStat(hourStat, v);
     }
 
@@ -1864,7 +1869,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         } while (resultLimit > 0);
 
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
-            ServiceStat st = getHistogramStat(STAT_NAME_ITERATIONS_PER_QUERY);
+            ServiceStat st = ServiceStatUtils.getOrCreateHistogramStat(this, STAT_NAME_ITERATIONS_PER_QUERY);
             setStat(st, queryCount);
         }
 
@@ -2515,7 +2520,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             if (hasOption(ServiceOption.INSTRUMENTATION)) {
                 int fieldCount = indexDocHelper.getDoc().getFields().size();
                 setTimeSeriesStat(STAT_NAME_INDEXED_FIELD_COUNT, AGGREGATION_TYPE_SUM, fieldCount);
-                ServiceStat st = getHistogramStat(STAT_NAME_FIELD_COUNT_PER_DOCUMENT);
+                ServiceStat st = ServiceStatUtils.getOrCreateHistogramStat(this, STAT_NAME_FIELD_COUNT_PER_DOCUMENT);
                 setStat(st, fieldCount);
             }
 

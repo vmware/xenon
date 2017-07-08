@@ -30,10 +30,9 @@ import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
+import com.vmware.xenon.common.ServiceStatUtils;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
-import com.vmware.xenon.common.ServiceStats.ServiceStatLogHistogram;
-import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.UriUtils;
@@ -793,17 +792,8 @@ public class NodeGroupService extends StatefulService {
 
         String statName = remotePeer.id + STAT_NAME_PREFIX_GOSSIP_PATCH_DURATION
                 + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
-        ServiceStat st = getStat(statName);
-        if (st.logHistogram == null) {
-            st.logHistogram = new ServiceStatLogHistogram();
-        }
 
-        if (st.timeSeriesStats == null) {
-            st.timeSeriesStats = new TimeSeriesStats((int) TimeUnit.HOURS.toMinutes(1),
-                    TimeUnit.MINUTES.toMillis(1),
-                    EnumSet.of(AggregationType.AVG));
-        }
-
+        ServiceStat st = ServiceStatUtils.getOrCreateHourlyTimeSeriesHistogramStat(this, statName, EnumSet.of(AggregationType.AVG));
         setStat(st, patchCompletionTime - sendTimeMicros);
     }
 

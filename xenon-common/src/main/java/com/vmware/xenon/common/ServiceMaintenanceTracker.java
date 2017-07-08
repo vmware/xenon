@@ -197,7 +197,7 @@ class ServiceMaintenanceTracker {
     }
 
     private void updateStats(Service s, long actual, long limit, String servicePath) {
-        ServiceStats.ServiceStat durationStat = ServiceStatUtils.getHistogramStat(s,
+        ServiceStats.ServiceStat durationStat = ServiceStatUtils.getOrCreateHistogramStat(s,
                 Service.STAT_NAME_MAINTENANCE_DURATION);
         s.setStat(durationStat, actual);
         if (limit * 2 < actual) {
