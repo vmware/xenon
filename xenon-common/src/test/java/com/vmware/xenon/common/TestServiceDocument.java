@@ -706,7 +706,6 @@ public class TestServiceDocument {
                 .get("someMap");
         assertTrue("Map example must implement java.utils.Map",
                 Map.class.isAssignableFrom(mapDesc.exampleValue.getClass()));
-        @SuppressWarnings("unchecked")
         Map<String, String> map = (Map<String, String>) mapDesc.exampleValue;
         assertEquals(2, map.size());
 
@@ -714,7 +713,6 @@ public class TestServiceDocument {
                 .get("someSet");
         assertTrue("Set example must implement java.utils.Set",
                 Set.class.isAssignableFrom(setDesc.exampleValue.getClass()));
-        @SuppressWarnings("unchecked")
         Set<String> set = (Set<String>) setDesc.exampleValue;
         assertEquals(2, set.size());
 
@@ -722,7 +720,6 @@ public class TestServiceDocument {
                 .get("somePodo");
         assertTrue("Example must implement Podo",
                 AnnotatedPodo.class.isAssignableFrom(podoDesc.exampleValue.getClass()));
-        @SuppressWarnings("unchecked")
         AnnotatedPodo podo = (AnnotatedPodo)podoDesc.exampleValue;
         assertEquals("podoValue", podo.podoField);
 
