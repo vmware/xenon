@@ -509,7 +509,7 @@ public class StatefulService implements Service {
     private boolean handleRequestLoadingAndLinkingState(Operation request) {
         if (hasOption(Service.ServiceOption.INSTRUMENTATION)) {
             request.setHandlerInvokeTime(System.nanoTime() / 1000);
-            adjustStat(request.getAction() + Service.STAT_NAME_REQUEST_COUNT, 1.0);
+            adjustStat(ServiceStatUtils.getPerActionRequestCountName(request.getAction()), 1.0);
         }
 
         if (checkServiceStopped(request, false)) {
@@ -1235,13 +1235,15 @@ public class StatefulService implements Service {
             setStat(s,
                     ctx.documentStoreCompletionTimeMicros - ctx.handlerCompletionTimeMicros);
         }
-        ServiceStat s = getHistogramStat(op.getAction()
-                + Service.STAT_NAME_OPERATION_QUEUEING_LATENCY);
+        ServiceStat s = getHistogramStat(ServiceStatUtils.getPerActionQueueLatencyName(op.getAction()));
         setStat(s, queueLatency);
-        s = getHistogramStat(op.getAction() + Service.STAT_NAME_SERVICE_HANDLER_LATENCY);
+
+        s = getHistogramStat(ServiceStatUtils.getPerActionServiceHandlerLatencyName(op.getAction()));
         setStat(s, handlerLatency);
-        s = getHistogramStat(op.getAction() + Service.STAT_NAME_OPERATION_DURATION);
-        setStat(op.getAction() + Service.STAT_NAME_OPERATION_DURATION, endToEndDuration);
+
+        String durationStatName = ServiceStatUtils.getPerActionDurationName(op.getAction());
+        s = getHistogramStat(durationStatName);
+        setStat(durationStatName, endToEndDuration);
     }
 
     private void loadAndLinkState(Operation op) {
