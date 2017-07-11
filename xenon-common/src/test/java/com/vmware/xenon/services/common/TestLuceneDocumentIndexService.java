@@ -43,6 +43,8 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -51,6 +53,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.logging.Level;
+import java.util.stream.IntStream;
 import javax.xml.bind.DatatypeConverter;
 
 import org.apache.lucene.search.IndexSearcher;
@@ -2057,6 +2060,24 @@ public class TestLuceneDocumentIndexService {
 
 
     @Test
+    public void throughputPostGetQuery() throws Throwable {
+        if (this.serviceCacheClearIntervalSeconds == 0) {
+            // effectively disable ODL stop/start behavior while running throughput tests
+            this.serviceCacheClearIntervalSeconds = TimeUnit.MICROSECONDS.toSeconds(
+                    ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS);
+        }
+        setUpHost(false);
+
+        double initialPauseCount = getHostPauseCount();
+
+        URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+        doMultipleIterationsThroughputPostGetQuery(this.iterationCount, factoryUri);
+
+        double finalPauseCount = getHostPauseCount();
+        assertTrue(initialPauseCount == finalPauseCount);
+    }
+
+    @Test
     public void throughputPostWithExpirationLongRunning() throws Throwable {
         if (this.serviceCacheClearIntervalSeconds == 0) {
             // effectively disable ODL stop/start behavior while running throughput tests
@@ -2267,13 +2288,24 @@ public class TestLuceneDocumentIndexService {
     }
 
     private void doMultipleIterationsThroughputPost(boolean interleaveQueries, int iterationCount,
-            URI factoryUri) throws Throwable {
+                                                    URI factoryUri) throws Throwable {
 
         for (int ic = 0; ic < iterationCount; ic++) {
             this.host.log("(%d) Starting POST test to %s, count:%d",
                     ic, factoryUri, this.serviceCount);
 
             doThroughputPostWithNoQueryResults(interleaveQueries, factoryUri);
+            this.host.deleteOrStopAllChildServices(factoryUri, true, true);
+            logQuerySingleStat();
+        }
+    }
+
+    private void doMultipleIterationsThroughputPostGetQuery(int iterationCount,
+                                                    URI factoryUri) throws Throwable {
+        for (int ic = 0; ic < iterationCount; ic++) {
+            this.host.log("(%d) Starting POST+GET+QUERY test to %s, count:%d",
+                    ic, factoryUri, this.serviceCount);
+            doThroughputPostGetQuery(factoryUri);
             this.host.deleteOrStopAllChildServices(factoryUri, true, true);
             logQuerySingleStat();
         }
@@ -2394,6 +2426,96 @@ public class TestLuceneDocumentIndexService {
                 .build();
         queryTask.indexLink = this.indexLink;
         doThroughputPost(interleaveQueries, factoryUri, null, queryTask);
+    }
+
+    private void doThroughputPostGetQuery(URI factoryUri)
+            throws Throwable {
+        AtomicLong queryCount = new AtomicLong(0);
+        AtomicLong queryResultCount = new AtomicLong();
+
+        ExecutorService executor = Executors.newFixedThreadPool(16);
+
+        long startTimeMicros = System.nanoTime() / 1000;
+
+        IntStream.range(0, (int) this.serviceCount).forEach(i -> executor.submit(() ->
+        {
+            String name = "name" + UUID.randomUUID().toString().replaceAll("-","");
+            String id = UUID.randomUUID().toString();
+
+            // create an example document
+            Operation postOperation = Operation.createPost(factoryUri);
+            ExampleServiceState postBody = new ExampleServiceState();
+            postBody.name = name;
+            postBody.documentSelfLink = id;
+            postOperation.setBody(postBody);
+
+            TestContext postContext = this.host.testCreate(1);
+            postOperation.setCompletion(postContext.getCompletion());
+            this.host.send(postOperation);
+            this.host.testWait(postContext);
+
+            // get the document by id
+            Operation getOperation = Operation.createGet(URI.create(factoryUri.toString() + "/" + id));
+
+            TestContext getContext = this.host.testCreate(1);
+            getOperation.setCompletion(getContext.getCompletion());
+            this.host.send(getOperation);
+            this.host.testWait(getContext);
+
+            // query for the document by name
+            Operation queryOperation = Operation.createPost(this.host, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
+            TestContext queryContext = this.host.testCreate(1);
+            QueryTask queryTask = QueryTask.Builder.createDirectTask()
+                    .setQuery(Query.Builder.create()
+                            .addFieldClause(ServiceDocument.FIELD_NAME_KIND, Utils.buildKind(ExampleServiceState.class))
+                            .addFieldClause(ExampleServiceState.FIELD_NAME_NAME, name)
+                            .build())
+                    .build();
+            queryTask.indexLink = this.indexLink;
+            queryOperation.setBody(queryTask);
+            queryOperation.setCompletion((o, e) -> {
+                queryResultCount.addAndGet(
+                        o.getBody(QueryTask.class).results.documentCount // should be 1
+                );
+                queryContext.complete();
+            });
+
+            this.host.send(queryOperation);
+            this.host.testWait(queryContext);
+
+            queryCount.incrementAndGet();
+        }));
+
+        // wait for all threads to complete
+        executor.shutdown();
+        executor.awaitTermination(1, TimeUnit.HOURS);
+
+        long endTimeMicros = System.nanoTime() / 1000;
+        double deltaSeconds = (endTimeMicros - startTimeMicros) / 1000000.0; // TimeUnit conversion loses precision
+        double operations = 3 * this.serviceCount; // 3 operations per execution
+        double throughput = operations / deltaSeconds;
+
+        String subject = "(none)";
+        if (this.host.isAuthorizationEnabled()) {
+            subject = OperationContext.getAuthorizationContext().getClaims().getSubject();
+        }
+
+        String timeSeriesStatName = LuceneDocumentIndexService.STAT_NAME_INDEXED_DOCUMENT_COUNT
+                + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
+        double docCount = this.getLuceneStat(timeSeriesStatName).accumulatedValue;
+
+        this.host.log(
+                "(%s) Factory: %s, Services: %d Docs: %.0f, Ops: %.0f, Queries: %d, Per query results: %d, ops/sec: %.2f",
+                subject,
+                factoryUri.getPath(),
+                this.host.getState().serviceCount,
+                docCount,
+                operations,
+                queryCount.get(),
+                queryResultCount.get(),
+                throughput);
+
+        this.testResults.getReport().all("POSTs/sec", throughput);
     }
 
     private void doThroughputPost(boolean interleaveQueries, URI factoryUri, Long expirationMicros,
