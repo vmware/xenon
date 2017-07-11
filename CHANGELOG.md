@@ -1,5 +1,7 @@
 # CHANGELOG
 
+## 1.5.3-SNAPSHOT
+
 ## 1.5.2
 
 * "offset" parameter is added to QueryTask. This enables pagination logic to
