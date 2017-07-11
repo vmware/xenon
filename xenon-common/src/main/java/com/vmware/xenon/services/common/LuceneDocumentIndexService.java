@@ -44,6 +44,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Stream;
 
 import com.google.gson.JsonElement;
@@ -53,6 +54,7 @@ import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexUpgrader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -334,6 +336,8 @@ public class LuceneDocumentIndexService extends StatelessService {
     protected TreeMap<Long, List<PaginatedSearcherInfo>> paginatedSearchersByExpirationTime = new TreeMap<>();
 
     protected IndexWriter writer = null;
+    // avoid lock starvation for commits when opening a new reader
+    protected ReentrantLock commitLock = new ReentrantLock(true);
 
     protected Map<String, QueryTask> activeQueries = new ConcurrentHashMap<>();
 
@@ -2792,12 +2796,24 @@ public class LuceneDocumentIndexService extends StatelessService {
             return s;
         }
 
-        if (s != null) {
-            s.getIndexReader().close();
-            this.searcherUpdateTimesMicros.remove(s.hashCode());
-        }
+        this.commitLock.lock();
+        try {
+            if (s != null) {
+                IndexReader oldReader = s.getIndexReader();
+                IndexReader newReader = DirectoryReader.openIfChanged((DirectoryReader) oldReader, w);
+                if (newReader == null || newReader == oldReader) {
+                    return s;
+                }
 
-        s = new IndexSearcher(DirectoryReader.open(w, true, true));
+                oldReader.close();
+                this.searcherUpdateTimesMicros.remove(s.hashCode());
+                s = new IndexSearcher(newReader);
+            } else {
+                s = new IndexSearcher(DirectoryReader.open(w, true, true));
+            }
+        } finally {
+            this.commitLock.unlock();
+        }
 
         adjustTimeSeriesStat(STAT_NAME_SEARCHER_UPDATE_COUNT, AGGREGATION_TYPE_SUM, 1);
         synchronized (this.searchSync) {
@@ -2879,7 +2895,15 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
 
             long startNanos = System.nanoTime();
-            IndexSearcher s = createOrRefreshSearcher(null, null, Integer.MAX_VALUE, w, false);
+            IndexSearcher s = null;
+
+            this.commitLock.lock();
+            try {
+                s = createOrRefreshSearcher(null, null, Integer.MAX_VALUE, w, false);
+            } finally {
+                this.commitLock.unlock();
+            }
+
             long endNanos = System.nanoTime();
             setTimeSeriesHistogramStat(STAT_NAME_MAINTENANCE_SEARCHER_REFRESH_DURATION_MICROS,
                     AGGREGATION_TYPE_AVG_MAX,
@@ -2909,7 +2933,14 @@ public class LuceneDocumentIndexService extends StatelessService {
                     TimeUnit.NANOSECONDS.toMicros(endNanos - startNanos));
 
             startNanos = endNanos;
-            long sequenceNumber = w.commit();
+            long sequenceNumber = -1;
+            this.commitLock.lock();
+            try {
+                sequenceNumber = w.commit();
+            } finally {
+                this.commitLock.unlock();
+            }
+
             endNanos = System.nanoTime();
             adjustTimeSeriesStat(STAT_NAME_COMMIT_COUNT, AGGREGATION_TYPE_SUM, 1);
             setTimeSeriesHistogramStat(STAT_NAME_COMMIT_DURATION_MICROS,
