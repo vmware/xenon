@@ -25,6 +25,9 @@ pom.xml.releaseBackup
 *.pmd
 *.pmdruleset.xml
 
+# netbeans
+nbactions.xml
+
 # vagrant
 vagrant/
 .vagrant/
