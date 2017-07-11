@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## 1.5.2-SNAPSHOT
+## 1.5.2
 
 * "offset" parameter is added to QueryTask. This enables pagination logic to
   be executed in QueryTaskService rather than caller visits next pages.
