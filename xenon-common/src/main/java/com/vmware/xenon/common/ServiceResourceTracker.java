@@ -32,7 +32,6 @@ import com.vmware.xenon.common.ServiceClient.ConnectionPoolMetrics;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
-import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -185,28 +184,12 @@ class ServiceResourceTracker {
     }
 
     void createTimeSeriesStat(String name, double v) {
-        createDayTimeSeriesStat(name, v);
-        createHourTimeSeriesStat(name, v);
-    }
-
-    private void createDayTimeSeriesStat(String name, double v) {
-        Service mgmtService = getManagementService();
-        ServiceStat st = new ServiceStat();
-        st.name = name + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
-        st.timeSeriesStats = new TimeSeriesStats((int) TimeUnit.DAYS.toHours(1),
-                TimeUnit.HOURS.toMillis(1),
-                EnumSet.of(AggregationType.AVG));
-        mgmtService.setStat(st, v);
-    }
-
-    private void createHourTimeSeriesStat(String name, double v) {
-        Service mgmtService = getManagementService();
-        ServiceStat st = new ServiceStat();
-        st.name = name + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
-        st.timeSeriesStats = new TimeSeriesStats((int) TimeUnit.HOURS.toMinutes(1),
-                TimeUnit.MINUTES.toMillis(1),
-                EnumSet.of(AggregationType.AVG));
-        mgmtService.setStat(st, v);
+        Service service = getManagementService();
+        EnumSet<AggregationType> types = EnumSet.of(AggregationType.AVG);
+        ServiceStat dayStat = ServiceStatUtils.getOrCreateDailyTimeSeriesStat(service, name, types);
+        ServiceStat hourStat = ServiceStatUtils.getOrCreateHourlyTimeSeriesHistogramStat(service, name, types);
+        service.setStat(dayStat, v);
+        service.setStat(hourStat, v);
     }
 
     private void updateStats(long now) {

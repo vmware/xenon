@@ -14,6 +14,8 @@
 package com.vmware.xenon.common;
 
 import java.util.EnumSet;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
@@ -27,53 +29,54 @@ public final class ServiceStatUtils {
 
     }
 
-    public static ServiceStat getHistogramStat(Service service, String name) {
-        if (!service.hasOption(ServiceOption.INSTRUMENTATION)) {
-            return null;
-        }
-        ServiceStat stat = service.getStat(name);
-        synchronized (stat) {
-            if (stat.logHistogram == null) {
-                stat.logHistogram = new ServiceStatLogHistogram();
-            }
-        }
-        return stat;
+    public static ServiceStat getOrCreateHistogramStat(Service service, String name) {
+        return getOrCreateStat(service, name, true, null);
     }
 
-    public static ServiceStat getTimeSeriesStat(Service service, String name, int numBins,
-            long binDurationMillis, EnumSet<AggregationType> aggregationType) {
-        if (!service.hasOption(ServiceOption.INSTRUMENTATION)) {
-            return null;
-        }
-        ServiceStat stat = service.getStat(name);
-        synchronized (stat) {
-            if (stat.timeSeriesStats == null) {
-                stat.timeSeriesStats = new TimeSeriesStats(numBins, binDurationMillis,
-                        aggregationType);
-            } else if (!stat.timeSeriesStats.aggregationType.equals(aggregationType)) {
-                throw new IllegalStateException("Mismatched aggregation type "
-                        + stat.timeSeriesStats.aggregationType);
-            }
-        }
-        return stat;
+    public static TimeSeriesStats createHourlyTimeSeriesStat(EnumSet<AggregationType> aggregationTypes) {
+        return new TimeSeriesStats((int) TimeUnit.HOURS.toMinutes(1), TimeUnit.MINUTES.toMillis(1), aggregationTypes);
     }
 
-    public static ServiceStat getTimeSeriesHistogramStat(Service service, String name, int numBins,
-            long binDurationMillis, EnumSet<AggregationType> aggregationType) {
+    public static TimeSeriesStats createDailyTimeSeriesStat(EnumSet<AggregationType> aggregationTypes) {
+        return new TimeSeriesStats((int) TimeUnit.DAYS.toHours(1), TimeUnit.HOURS.toMillis(1), aggregationTypes);
+    }
+
+    public static ServiceStat getOrCreateHourlyTimeSeriesStat(Service service, String prefix, EnumSet<AggregationType> aggregationTypes) {
+        String statName = prefix + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
+        return getOrCreateStat(service, statName, false, () -> createHourlyTimeSeriesStat(aggregationTypes));
+    }
+
+    public static ServiceStat getOrCreateDailyTimeSeriesStat(Service service, String prefix, EnumSet<AggregationType> aggregationTypes) {
+        String statName = prefix + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
+        return getOrCreateStat(service, statName, false, () -> createDailyTimeSeriesStat(aggregationTypes));
+    }
+
+    public static ServiceStat getOrCreateHourlyTimeSeriesHistogramStat(Service service, String prefix, EnumSet<AggregationType> aggregationTypes) {
+        String statName = prefix + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
+        return getOrCreateStat(service, statName, true, () -> createHourlyTimeSeriesStat(aggregationTypes));
+    }
+
+    public static ServiceStat getOrCreateDailyTimeSeriesHistogramStat(Service service, String prefix, EnumSet<AggregationType> aggregationTypes) {
+        String statName = prefix + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
+        return getOrCreateStat(service, statName, true, () -> createDailyTimeSeriesStat(aggregationTypes));
+    }
+
+    public static ServiceStat getOrCreateTimeSeriesStat(Service service, String name, Supplier<TimeSeriesStats> timeSeriesStatsSupplier) {
+        return getOrCreateStat(service, name, false, timeSeriesStatsSupplier);
+    }
+
+
+    private static ServiceStat getOrCreateStat(Service service, String name, boolean createHistogram, Supplier<TimeSeriesStats> timeSeriesStatsSupplier) {
         if (!service.hasOption(ServiceOption.INSTRUMENTATION)) {
             return null;
         }
         ServiceStat stat = service.getStat(name);
         synchronized (stat) {
-            if (stat.logHistogram == null) {
+            if (stat.logHistogram == null && createHistogram) {
                 stat.logHistogram = new ServiceStatLogHistogram();
             }
-            if (stat.timeSeriesStats == null) {
-                stat.timeSeriesStats = new TimeSeriesStats(numBins, binDurationMillis,
-                        aggregationType);
-            } else if (!stat.timeSeriesStats.aggregationType.equals(aggregationType)) {
-                throw new IllegalStateException("Mismatched aggregation type "
-                        + stat.timeSeriesStats.aggregationType);
+            if (stat.timeSeriesStats == null && timeSeriesStatsSupplier != null) {
+                stat.timeSeriesStats = timeSeriesStatsSupplier.get();
             }
         }
         return stat;

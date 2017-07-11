@@ -24,7 +24,6 @@ import com.vmware.xenon.common.RequestRouter.Route.RouteDocumentation;
 import com.vmware.xenon.common.RequestRouter.Route.SupportLevel;
 import com.vmware.xenon.common.ServiceHost.ServiceNotFoundException;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
-import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.common.jwt.Verifier;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -407,22 +406,6 @@ public class StatelessService implements Service {
         }
         allocateUtilityService();
         return this.utilityService.getStat(name);
-    }
-
-    public ServiceStat getHistogramStat(String name) {
-        return ServiceStatUtils.getHistogramStat(this, name);
-    }
-
-    public ServiceStat getTimeSeriesStat(String name, int numBins, long binDurationMillis,
-            EnumSet<AggregationType> aggregationType) {
-        return ServiceStatUtils.getTimeSeriesStat(this, name, numBins, binDurationMillis,
-                aggregationType);
-    }
-
-    public ServiceStat getTimeSeriesHistogramStat(String name, int numBins, long binDurationMillis,
-            EnumSet<AggregationType> aggregationType) {
-        return ServiceStatUtils.getTimeSeriesHistogramStat(this, name, numBins, binDurationMillis,
-                aggregationType);
     }
 
     /**

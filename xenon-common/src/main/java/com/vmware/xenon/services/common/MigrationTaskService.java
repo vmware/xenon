@@ -49,7 +49,9 @@ import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceMaintenanceRequest;
 import com.vmware.xenon.common.ServiceMaintenanceRequest.MaintenanceReason;
+import com.vmware.xenon.common.ServiceStatUtils;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
+import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.TaskState;
@@ -1426,7 +1428,7 @@ public class MigrationTaskService extends StatefulService {
      * Therefore, using single bin which captures all time(Long.Max_VALUE).
      */
     private ServiceStat getSingleBinTimeSeriesStat(String statName) {
-        return getTimeSeriesStat(statName, 1, Long.MAX_VALUE,
-                EnumSet.of(AggregationType.AVG, AggregationType.MAX, AggregationType.MIN, AggregationType.LATEST));
+        return ServiceStatUtils.getOrCreateTimeSeriesStat(this, statName, () -> new TimeSeriesStats(1, Long.MAX_VALUE,
+                EnumSet.of(AggregationType.AVG, AggregationType.MAX, AggregationType.MIN, AggregationType.LATEST)));
     }
 }

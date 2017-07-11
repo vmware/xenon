@@ -1558,19 +1558,7 @@ public class StatefulService implements Service {
     }
 
     private ServiceStat getHistogramStat(String name) {
-        return ServiceStatUtils.getHistogramStat(this, name);
-    }
-
-    public ServiceStat getTimeSeriesStat(String name, int numBins, long binDurationMillis,
-            EnumSet<ServiceStats.TimeSeriesStats.AggregationType> aggregationType) {
-        return ServiceStatUtils.getTimeSeriesStat(this, name, numBins, binDurationMillis,
-                aggregationType);
-    }
-
-    public ServiceStat getTimeSeriesHistogramStat(String name, int numBins, long binDurationMillis,
-            EnumSet<ServiceStats.TimeSeriesStats.AggregationType> aggregationType) {
-        return ServiceStatUtils.getTimeSeriesHistogramStat(this, name, numBins, binDurationMillis,
-                aggregationType);
+        return ServiceStatUtils.getOrCreateHistogramStat(this, name);
     }
 
     private boolean allocateUtilityService(boolean forceAllocate) {

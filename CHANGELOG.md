@@ -8,6 +8,40 @@
   be used with TOP_RESULTS query option and sorting term specified but not
   limited to.
 
+* Breaking change:
+
+  Following stat creation methods are removed:
+    - `StatefulService#getTimeSeriesStat`
+    - `StatefulService#getTimeSeriesHistogramStat`
+    - `StatelessService#getHistogramStat`
+    - `StatelessService#getTimeSeriesStat`
+    - `StatelessService#getTimeSeriesHistogramStat`
+    - `ServiceStatUtils#getTimeSeriesStat`
+    - `ServiceStatUtils#getTimeSeriesHistogramStat`
+  New methods are added on `ServiceStatUtils` to replace removed methods.
+    - `ServiceStatUtils#getOrCreateHourlyTimeSeriesStat`
+    - `ServiceStatUtils#getOrCreateHourlyTimeSeriesHistogramStat`
+    - `ServiceStatUtils#getOrCreateDailyTimeSeriesStat`
+    - `ServiceStatUtils#getOrCreateDailyTimeSeriesHistogramStat`
+    - `ServiceStatUtils#getOrCreateHistogramStat` (renamed from `getHistogramStat`)
+    - `ServiceStatUtils#getOrCreateTimeSeriesStat`
+
+  Also, `NodeGroupService`(/core/node-groups/default/stats) had a stat
+  "[RemoteHostID]GossipPatchDurationMicrosPerDay". However, it was actually an hourly stat.
+  So, it was renamed to "[RemoteHostID]GossipPatchDurationMicrosPerHour"
+
+* Breaking change: Gson's '@SerializedName(value)' is now properly supported,
+  the field name exposed in the DocumentDescription and available in xenon
+  queries now respects Gson's @SerializedName annotation.
+
+  Previously, the exposed JSON document respected this annotation but the
+  DocumentDescription and query service did not respect the annotation,
+  exposing the underlying field with its java name, which was incoherent.
+
+  As a result of this fields which had the 'SerializeName' annotation
+  may no longer be properly indexed as the field name has changed.
+
+  See: https://www.pivotaltracker.com/story/show/148644281  
 
 ## 1.5.1
 
