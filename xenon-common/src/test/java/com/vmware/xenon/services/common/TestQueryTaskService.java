@@ -43,6 +43,7 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import com.google.gson.annotations.SerializedName;
 import org.junit.After;
 import org.junit.Rule;
 import org.junit.Test;
@@ -4816,6 +4817,56 @@ public class TestQueryTaskService {
                 .setQuery(query).build();
         this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
         assertEquals(this.serviceCount, (long) queryTask.results.documentCount);
+    }
+
+    public static class ServiceWithMappedFieldName extends StatefulService {
+
+        public static final String FIELD_NAME_DEFAULT = "default";
+
+        public static class State extends ServiceDocument {
+
+            @ServiceDocument.PropertyOptions(indexing = PropertyIndexingOption.SORT)
+            @SerializedName("default")
+            public String _default;
+        }
+
+        public ServiceWithMappedFieldName() {
+            super(State.class);
+            toggleOption(ServiceOption.PERSISTENCE, true);
+        }
+    }
+
+    @Test
+    public void testServiceWithMappedFieldName() throws Throwable {
+        setUpHost();
+
+        // Issue a query for documents which don't exist.
+        Query query = Query.Builder.create()
+                .addFieldClause(ServiceWithMappedFieldName.FIELD_NAME_DEFAULT,
+                        "a special string value")
+                .addKindFieldClause(ServiceWithMappedFieldName.State.class)
+                .build();
+        QueryTask queryTask = QueryTask.Builder.createDirectTask()
+                .orderAscending(ServiceWithMappedFieldName.FIELD_NAME_DEFAULT,
+                        TypeName.STRING)
+                .setQuery(query).build();
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+        assertEquals(0, (long) queryTask.results.documentCount);
+
+        // Now create some documents of the expected type, re-issue the same query once again, and
+        // verify that the newly-created documents are sorted correctly in the results
+        ServiceWithMappedFieldName.State initialState1 = new ServiceWithMappedFieldName.State();
+        initialState1._default = "a special string value";
+        this.host.doThroughputServiceStart(this.serviceCount, ServiceWithMappedFieldName.class,
+                initialState1, null, null);
+
+        queryTask = QueryTask.Builder.createDirectTask()
+                .orderAscending(ServiceWithMappedFieldName.FIELD_NAME_DEFAULT,
+                        TypeName.STRING)
+                .setQuery(query).build();
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+        assertEquals(this.serviceCount, (long) queryTask.results.documentCount);
+
     }
 
     private void createUserServices(URI userFactorURI, List<URI> userServices)

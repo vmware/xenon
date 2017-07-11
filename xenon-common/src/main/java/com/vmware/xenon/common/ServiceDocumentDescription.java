@@ -44,6 +44,7 @@ import java.util.stream.Collectors;
 import com.esotericsoftware.kryo.serializers.VersionFieldSerializer.Since;
 
 import com.google.gson.JsonParseException;
+import com.google.gson.annotations.SerializedName;
 
 import com.vmware.xenon.common.RequestRouter.Route;
 import com.vmware.xenon.common.Service.Action;
@@ -400,7 +401,14 @@ public class ServiceDocumentDescription {
                 }
 
                 fd.accessor = f;
-                pd.fieldDescriptions.put(f.getName(), fd);
+                String fieldName;
+                SerializedName sn = f.getAnnotation(SerializedName.class);
+                if (sn != null) {
+                    fieldName = sn.value();
+                } else {
+                    fieldName = f.getName();
+                }
+                pd.fieldDescriptions.put(fieldName, fd);
 
                 if (fd.typeName == TypeName.PODO) {
                     fd.kind = Utils.buildKind(f.getType());
@@ -696,11 +704,22 @@ public class ServiceDocumentDescription {
                     if (pd.exampleValue == null && podo.fieldDescriptions != null) {
                         try {
                             Constructor cons = clazz.getConstructor((Class[])null);
-                            Object example = cons.newInstance((Object[])null);
-
+                            Object example = cons.newInstance((Object[]) null);
+                            // create map of json field name to Field object, dealing with
+                            Map<String, Field> fieldMap = new HashMap<>();
+                            for (Field f : clazz.getFields()) {
+                                String fieldName;
+                                SerializedName sn = f.getAnnotation(SerializedName.class);
+                                if (sn != null) {
+                                    fieldName = sn.value();
+                                } else {
+                                    fieldName = f.getName();
+                                }
+                                fieldMap.put(fieldName, f);
+                            }
                             podo.fieldDescriptions.entrySet().stream().forEach((entry) -> {
                                 try {
-                                    Field f = clazz.getField(entry.getKey());
+                                    Field f = fieldMap.get(entry.getKey());
                                     f.set(example, refitValue(f.getType(), entry.getValue().exampleValue));
                                 } catch (Exception ex) {
                                     logger.log(Level.FINE, "Cannot initialize example field " + entry.getKey() +
