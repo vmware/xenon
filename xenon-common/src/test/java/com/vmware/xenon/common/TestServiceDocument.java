@@ -37,6 +37,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
+import com.google.gson.annotations.SerializedName;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -659,6 +660,9 @@ public class TestServiceDocument {
         @Documentation(description = "desc")
         public AnnotatedPodo[] somePodoArray;
 
+        @SerializedName("default")
+        public String _default;
+
         @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.ID)
         @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.REQUIRED)
         public String requiredId;
@@ -669,7 +673,8 @@ public class TestServiceDocument {
 
     public static class AnnotatedPodo {
         @ServiceDocument.Documentation(description = "desc", exampleString = "podoValue")
-        public String podoField;
+        @SerializedName("podoField")
+        public String _podoField;
     }
 
     @Test
@@ -718,13 +723,18 @@ public class TestServiceDocument {
         Set<String> set = (Set<String>) setDesc.exampleValue;
         assertEquals(2, set.size());
 
+        assertTrue("_default field must be serialized as default",
+                desc.propertyDescriptions.containsKey("default"));
+
         ServiceDocumentDescription.PropertyDescription podoDesc = desc.propertyDescriptions
                 .get("somePodo");
         assertTrue("Example must implement Podo",
                 AnnotatedPodo.class.isAssignableFrom(podoDesc.exampleValue.getClass()));
+        assertTrue("podoField must be serialized as podoField",
+                podoDesc.fieldDescriptions.containsKey("podoField"));
         @SuppressWarnings("unchecked")
         AnnotatedPodo podo = (AnnotatedPodo)podoDesc.exampleValue;
-        assertEquals("podoValue", podo.podoField);
+        assertEquals("podoValue", podo._podoField);
 
         // podoSet
         ServiceDocumentDescription.PropertyDescription podoSetDesc = desc.propertyDescriptions
@@ -733,7 +743,7 @@ public class TestServiceDocument {
                 Set.class.isAssignableFrom(podoSetDesc.exampleValue.getClass()));
         Set<AnnotatedPodo> exampleSet = (Set<AnnotatedPodo>)podoSetDesc.exampleValue;
         assertEquals(1, exampleSet.size());
-        assertEquals("podoValue", exampleSet.iterator().next().podoField);
+        assertEquals("podoValue", exampleSet.iterator().next()._podoField);
 
         // podoList
         ServiceDocumentDescription.PropertyDescription podoListDesc = desc.propertyDescriptions
@@ -742,7 +752,7 @@ public class TestServiceDocument {
                 List.class.isAssignableFrom(podoListDesc.exampleValue.getClass()));
         List<AnnotatedPodo> exampleList = (List<AnnotatedPodo>)podoListDesc.exampleValue;
         assertEquals(1, exampleList.size());
-        assertEquals("podoValue", exampleList.iterator().next().podoField);
+        assertEquals("podoValue", exampleList.iterator().next()._podoField);
 
         // podoMap
         ServiceDocumentDescription.PropertyDescription podoMapDesc = desc.propertyDescriptions
@@ -751,7 +761,7 @@ public class TestServiceDocument {
                 Map.class.isAssignableFrom(podoMapDesc.exampleValue.getClass()));
         Map<String,AnnotatedPodo> exampleMap = (Map<String,AnnotatedPodo>)podoMapDesc.exampleValue;
         assertEquals(1, exampleMap.size());
-        assertEquals("podoValue", exampleMap.values().iterator().next().podoField);
+        assertEquals("podoValue", exampleMap.values().iterator().next()._podoField);
 
         // podoArray
         ServiceDocumentDescription.PropertyDescription podoArrayDesc = desc.propertyDescriptions
@@ -760,7 +770,7 @@ public class TestServiceDocument {
                 podoArrayDesc.exampleValue.getClass().isArray());
         AnnotatedPodo[] podoArray = (AnnotatedPodo[])podoArrayDesc.exampleValue;
         assertEquals(1, podoArray.length);
-        assertEquals("podoValue", podoArray[0].podoField);
+        assertEquals("podoValue", podoArray[0]._podoField);
 
         ServiceDocumentDescription.PropertyDescription optsDesc = desc.propertyDescriptions
                 .get("opts");
