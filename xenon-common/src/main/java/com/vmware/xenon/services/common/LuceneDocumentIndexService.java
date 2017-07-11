@@ -44,6 +44,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Stream;
 
 import com.google.gson.JsonElement;
@@ -53,6 +54,7 @@ import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexUpgrader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -334,6 +336,12 @@ public class LuceneDocumentIndexService extends StatelessService {
     protected TreeMap<Long, List<PaginatedSearcherInfo>> paginatedSearchersByExpirationTime = new TreeMap<>();
 
     protected IndexWriter writer = null;
+
+    /**
+     * Avoid lock starvation between addDocument, openIfChanged and commit with fair locking
+     **/
+    protected ReentrantReadWriteLock flushLock = new ReentrantReadWriteLock(true);
+    protected ReentrantReadWriteLock commitLock = new ReentrantReadWriteLock(true);
 
     protected Map<String, QueryTask> activeQueries = new ConcurrentHashMap<>();
 
@@ -2680,7 +2688,12 @@ public class LuceneDocumentIndexService extends StatelessService {
             deleteAllDocumentsForSelfLinkForcedPost(wr, sd);
         }
 
-        wr.addDocument(doc);
+        this.flushLock.readLock().lock();
+        try {
+            wr.addDocument(doc);
+        } finally {
+            this.flushLock.readLock().unlock();
+        }
 
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
             long durationNanos = System.nanoTime() - startNanos;
@@ -2792,12 +2805,28 @@ public class LuceneDocumentIndexService extends StatelessService {
             return s;
         }
 
-        if (s != null) {
-            s.getIndexReader().close();
-            this.searcherUpdateTimesMicros.remove(s.hashCode());
+        this.commitLock.readLock().lock();
+        try {
+            if (s != null) {
+                IndexReader oldReader = s.getIndexReader();
+                this.flushLock.writeLock().lock();
+                try {
+                    IndexReader newReader = DirectoryReader.openIfChanged((DirectoryReader) oldReader, w);
+                    if (newReader == null || newReader == oldReader) {
+                        return s;
+                    }
+                    oldReader.close();
+                    this.searcherUpdateTimesMicros.remove(s.hashCode());
+                    s = new IndexSearcher(newReader);
+                } finally {
+                    this.flushLock.writeLock().unlock();
+                }
+            } else {
+                s = new IndexSearcher(DirectoryReader.open(w, true, true));
+            }
+        } finally {
+            this.commitLock.readLock().unlock();
         }
-
-        s = new IndexSearcher(DirectoryReader.open(w, true, true));
 
         adjustTimeSeriesStat(STAT_NAME_SEARCHER_UPDATE_COUNT, AGGREGATION_TYPE_SUM, 1);
         synchronized (this.searchSync) {
@@ -2879,7 +2908,10 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
 
             long startNanos = System.nanoTime();
-            IndexSearcher s = createOrRefreshSearcher(null, null, Integer.MAX_VALUE, w, false);
+            IndexSearcher s = null;
+
+            s = createOrRefreshSearcher(null, null, Integer.MAX_VALUE, w, false);
+
             long endNanos = System.nanoTime();
             setTimeSeriesHistogramStat(STAT_NAME_MAINTENANCE_SEARCHER_REFRESH_DURATION_MICROS,
                     AGGREGATION_TYPE_AVG_MAX,
@@ -2909,7 +2941,9 @@ public class LuceneDocumentIndexService extends StatelessService {
                     TimeUnit.NANOSECONDS.toMicros(endNanos - startNanos));
 
             startNanos = endNanos;
-            long sequenceNumber = w.commit();
+            long sequenceNumber = -1;
+            sequenceNumber = w.commit();
+
             endNanos = System.nanoTime();
             adjustTimeSeriesStat(STAT_NAME_COMMIT_COUNT, AGGREGATION_TYPE_SUM, 1);
             setTimeSeriesHistogramStat(STAT_NAME_COMMIT_DURATION_MICROS,
