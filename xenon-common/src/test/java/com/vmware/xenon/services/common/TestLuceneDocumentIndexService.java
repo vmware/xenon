@@ -24,10 +24,12 @@ import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
+import java.math.BigInteger;
 import java.net.URI;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
@@ -43,6 +45,9 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -51,6 +56,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.logging.Level;
+import java.util.stream.IntStream;
 import javax.xml.bind.DatatypeConverter;
 
 import org.apache.lucene.search.IndexSearcher;
@@ -2057,6 +2063,27 @@ public class TestLuceneDocumentIndexService {
 
 
     @Test
+    public void throughputPostQuery() throws Throwable {
+        if (this.serviceCacheClearIntervalSeconds == 0) {
+            // effectively disable ODL stop/start behavior while running throughput tests
+            this.serviceCacheClearIntervalSeconds = TimeUnit.MICROSECONDS.toSeconds(
+                    ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS);
+        }
+        setUpHost(false);
+
+        // similar test but with regular, mutable, example factory
+        double initialPauseCount = getHostPauseCount();
+
+        URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+        doMultipleIterationsThroughputPostQuery(this.iterationCount, factoryUri);
+
+        double finalPauseCount = getHostPauseCount();
+        assertTrue(initialPauseCount == finalPauseCount);
+    }
+
+
+
+    @Test
     public void throughputPostWithExpirationLongRunning() throws Throwable {
         if (this.serviceCacheClearIntervalSeconds == 0) {
             // effectively disable ODL stop/start behavior while running throughput tests
@@ -2267,13 +2294,26 @@ public class TestLuceneDocumentIndexService {
     }
 
     private void doMultipleIterationsThroughputPost(boolean interleaveQueries, int iterationCount,
-            URI factoryUri) throws Throwable {
+                                                    URI factoryUri) throws Throwable {
 
         for (int ic = 0; ic < iterationCount; ic++) {
             this.host.log("(%d) Starting POST test to %s, count:%d",
                     ic, factoryUri, this.serviceCount);
 
             doThroughputPostWithNoQueryResults(interleaveQueries, factoryUri);
+            this.host.deleteOrStopAllChildServices(factoryUri, true, true);
+            logQuerySingleStat();
+        }
+    }
+
+    private void doMultipleIterationsThroughputPostQuery(int iterationCount,
+                                                    URI factoryUri) throws Throwable {
+
+        for (int ic = 0; ic < iterationCount; ic++) {
+            this.host.log("(%d) Starting POST test to %s, count:%d",
+                    ic, factoryUri, this.serviceCount);
+
+            doThroughputPostQuery(factoryUri);
             this.host.deleteOrStopAllChildServices(factoryUri, true, true);
             logQuerySingleStat();
         }
@@ -2394,6 +2434,100 @@ public class TestLuceneDocumentIndexService {
                 .build();
         queryTask.indexLink = this.indexLink;
         doThroughputPost(interleaveQueries, factoryUri, null, queryTask);
+    }
+
+    private SecureRandom random = new SecureRandom();
+
+    private void doThroughputPostQuery(URI factoryUri)
+            throws Throwable {
+        long startTimeMicros = System.nanoTime() / 1000;
+
+        TestContext ctx = this.host.testCreate((int) this.serviceCount);
+        long totalQueryCount = this.serviceCount / this.updatesPerQuery;
+
+        AtomicLong queryCount = new AtomicLong(0);
+        AtomicLong queryResultCount = new AtomicLong();
+
+        ExecutorService executor = Executors.newFixedThreadPool(50);
+        IntStream.range(0, (int) this.serviceCount).forEach(i -> executor.submit(() ->
+        {
+            String name = new BigInteger(130, this.random).toString(32);
+            String id = new BigInteger(130, this.random).toString(32);
+
+            Operation createPost = Operation.createPost(factoryUri);
+            ExampleServiceState body = new ExampleServiceState();
+            body.name = name;
+            body.id = id;
+
+            createPost.setBody(body);
+
+            CountDownLatch postLatch = new CountDownLatch(1);
+            // create a start service POST with an initial state
+            createPost.setCompletion((op, err) -> {
+                postLatch.countDown();
+                ctx.getCompletion();
+            });
+
+            this.host.send(createPost);
+
+            try {
+                postLatch.await();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+
+            QueryTask queryTask = QueryTask.Builder.createDirectTask()
+                    .setQuery(Query.Builder.create()
+                            .addFieldClause(ServiceDocument.FIELD_NAME_KIND, Utils.buildKind(ExampleServiceState.class))
+                            .addFieldClause(ExampleServiceState.FIELD_NAME_NAME, name)
+                            .build())
+                    .build();
+            queryTask.indexLink = this.indexLink;
+
+            TestContext queryCtx = this.host.testCreate(totalQueryCount);
+
+            Operation createQuery = Operation.createPost(this.host,
+                    ServiceUriPaths.CORE_LOCAL_QUERY_TASKS)
+                    .setBody(queryTask)
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            queryCtx.fail(e);
+                            return;
+                        }
+                        QueryTask rsp = o.getBody(QueryTask.class);
+                        queryResultCount.addAndGet(rsp.results.documentCount);
+                        queryCtx.complete();
+                    });
+
+            this.host.send(createQuery);
+            queryCount.incrementAndGet();
+        }));
+        executor.shutdown();
+        executor.awaitTermination(1, TimeUnit.DAYS);
+
+        long endTimeMicros = System.nanoTime() / 1000;
+        double deltaSeconds = (endTimeMicros - startTimeMicros) / 1000000.0;
+        double ioCount = this.serviceCount;
+        double throughput = ioCount / deltaSeconds;
+        String subject = "(none)";
+        if (this.host.isAuthorizationEnabled()) {
+            subject = OperationContext.getAuthorizationContext().getClaims().getSubject();
+        }
+
+        String timeSeriesStatName = LuceneDocumentIndexService.STAT_NAME_INDEXED_DOCUMENT_COUNT
+                + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
+        double docCount = this.getLuceneStat(timeSeriesStatName).accumulatedValue;
+
+        this.host.log(
+                "(%s) Factory: %s, Services: %d Docs: %f, Ops: %f, Queries: %d, Per query results: %d, ops/sec: %f",
+                subject,
+                factoryUri.getPath(),
+                this.host.getState().serviceCount,
+                docCount,
+                ioCount, queryCount.get(), queryResultCount.get(), throughput);
+
+        this.testResults.getReport().all("POSTs/sec", throughput);
     }
 
     private void doThroughputPost(boolean interleaveQueries, URI factoryUri, Long expirationMicros,
