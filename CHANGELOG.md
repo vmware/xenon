@@ -2,6 +2,11 @@
 
 ## 1.5.2-CR1-SNAPSHOT
 
+* Bug fix related to population of the service state cache on the GET path
+  after a cache miss. See:
+
+  https://www.pivotaltracker.com/story/show/148771711
+
 ## 1.5.2
 
 * "offset" parameter is added to QueryTask. This enables pagination logic to
