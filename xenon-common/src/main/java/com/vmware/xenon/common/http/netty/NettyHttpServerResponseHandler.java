@@ -57,6 +57,11 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
             FullHttpResponse response = (FullHttpResponse) msg;
 
             Operation request = findOperation(ctx, response);
+            if (request == null) {
+                // This will happen when a client-side timeout occurs
+                this.logger.warning("No request in channel " + ctx.channel().id().asLongText());
+                return;
+            }
             request.setStatusCode(response.status().code());
             parseResponseHeaders(request, response);
             completeRequest(ctx, request, response.content());
@@ -99,7 +104,7 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
         } else {
             request = ctx.channel().attr(NettyChannelContext.OPERATION_KEY).getAndSet(null);
             if (request == null) {
-                this.logger.warning("Can't find operation for channel");
+                this.logger.warning("Can't find operation for channel " + ctx.channel().id().asLongText());
                 return null;
             }
         }
