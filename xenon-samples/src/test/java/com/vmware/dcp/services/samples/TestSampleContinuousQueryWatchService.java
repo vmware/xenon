@@ -13,13 +13,13 @@
 
 package com.vmware.dcp.services.samples;
 
-import static java.util.stream.Collectors.toList;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import org.junit.After;
 import org.junit.Before;
@@ -31,12 +31,13 @@ import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
+import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
+import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.samples.SampleContinuousQueryWatchService;
 import com.vmware.xenon.services.samples.SamplePreviousEchoService;
-import com.vmware.xenon.services.samples.SamplePreviousEchoService.EchoServiceState;
 
 public class TestSampleContinuousQueryWatchService {
 
@@ -87,7 +88,7 @@ public class TestSampleContinuousQueryWatchService {
 
         QueryTask.QuerySpecification spec = new QueryTask.QuerySpecification();
         spec.query.addBooleanClause(
-                Query.Builder.create().addKindFieldClause(SamplePreviousEchoService.EchoServiceState.class).build());
+                Query.Builder.create().addKindFieldClause(ExampleService.ExampleServiceState.class).build());
         spec.options.add(QueryTask.QuerySpecification.QueryOption.EXPAND_CONTENT);
 
         sampleQueryWatchState.querySpec = spec;
@@ -96,6 +97,26 @@ public class TestSampleContinuousQueryWatchService {
 
         // Verify that creating service fails if CONTINUOUS option is not specified.
         sender.sendAndWaitFailure(post);
+
+        // Create child services before creating the Continuous query task and verify later that we get notified.
+        List<ExampleService.ExampleServiceState> exampleStates =
+                host.createExampleServices(host, this.serviceCount, null, ExampleService.FACTORY_LINK);
+        List<String> exampleLinks =
+                exampleStates.stream().map(state -> state.documentSelfLink).collect(Collectors.toList());
+
+        QueryTask.Query query = QueryTask.Query.Builder.create()
+                .addKindFieldClause(ExampleService.ExampleServiceState.class)
+                .build();
+
+        QueryTask queryTask = QueryTask.Builder.createDirectTask()
+                .setQuery(query)
+                .build();
+
+        // Simple query to with expectedResultCount in the query specification to keep query
+        // from completing until result count is satisfied.
+        queryTask.querySpec.expectedResultCount = (long)this.serviceCount;
+        Operation verifyPost = Operation.createPost(host, ServiceUriPaths.CORE_QUERY_TASKS).setBody(queryTask);
+        sender.sendAndWait(verifyPost, QueryTask.class);
 
         // Now create the service with CONTINUOUS option.
         spec.options.add(QueryTask.QuerySpecification.QueryOption.CONTINUOUS);
@@ -116,20 +137,6 @@ public class TestSampleContinuousQueryWatchService {
             return !(activeQueryStat == null || activeQueryStat.latestValue < 1.0);
         });
 
-        // create serviceCount instances of SamplePreviousEchoService
-        // and save the links to these services
-        List<String> samplePreviousEchoServicesLinks;
-        List<Operation> opList = new ArrayList<>(this.serviceCount);
-        EchoServiceState state = new EchoServiceState();
-        state.message = "hello";
-
-        for (int i = 0; i < this.serviceCount; i++) {
-            opList.add(Operation.createPost(host, SamplePreviousEchoService.FACTORY_LINK).setBody(state));
-        }
-
-        samplePreviousEchoServicesLinks = sender.sendAndWait(
-                opList, EchoServiceState.class).stream().map(s -> s.documentSelfLink).collect(toList());
-
         // get the continuous query watch service state and make sure that it was notified
         // for the new SamplePreviousEchoService that we created
         // the notification count should equal to the serviceCount
@@ -141,11 +148,25 @@ public class TestSampleContinuousQueryWatchService {
             return (this.serviceCount <= updatedWatchState.notificationsCounter);
         });
 
+        // Second set of child services
+        host.createExampleServices(host, this.serviceCount, null);
+
+        // get the continuous query watch service state and make sure that it was notified
+        // for the new SamplePreviousEchoService that we created
+        // the notification count should equal to the serviceCount
+        host.waitFor("Sample continuous query watch service did not received all the notifications", () -> {
+            Operation getQueryWatchState = Operation.createGet(host, queryWatchSelfLink);
+            SampleContinuousQueryWatchService.State updatedWatchState =
+                    sender.sendAndWait(getQueryWatchState, SampleContinuousQueryWatchService.State.class);
+            host.log("notification count: %d", updatedWatchState.notificationsCounter);
+            return (this.serviceCount * 2 <= updatedWatchState.notificationsCounter);
+        });
+
         // update the state of all the SamplePreviousEchoService we created
         List<Operation> puts = new ArrayList<>();
-        for (String selfLink: samplePreviousEchoServicesLinks) {
-            final EchoServiceState updatedState = new EchoServiceState();
-            updatedState.message = "hello world";
+        for (String selfLink: exampleLinks) {
+            final ExampleService.ExampleServiceState updatedState = new ExampleService.ExampleServiceState();
+            updatedState.name = "hello world";
             puts.add(Operation.createPut(host, selfLink)
                     .setBody(updatedState)
                     .setReferer(host.getUri()));
@@ -161,12 +182,12 @@ public class TestSampleContinuousQueryWatchService {
             SampleContinuousQueryWatchService.State updatedQueryWatchState =
                     sender.sendAndWait(getQueryWatchState, SampleContinuousQueryWatchService.State.class);
             host.log("notification count: %d", updatedQueryWatchState.notificationsCounter);
-            return (this.serviceCount * 2 <= updatedQueryWatchState.notificationsCounter);
+            return (this.serviceCount * 3 <= updatedQueryWatchState.notificationsCounter);
         });
 
         // delete all the services
         List<Operation> deletes = new ArrayList<>();
-        for (String selfLink: samplePreviousEchoServicesLinks) {
+        for (String selfLink: exampleLinks) {
             deletes.add(Operation.createDelete(host, selfLink));
         }
         sender.sendAndWait(deletes);
@@ -181,7 +202,7 @@ public class TestSampleContinuousQueryWatchService {
             SampleContinuousQueryWatchService.State updatedQueryWatchState =
                     sender.sendAndWait(getQueryWatchState, SampleContinuousQueryWatchService.State.class);
             host.log("notification count: %d", updatedQueryWatchState.notificationsCounter);
-            return (this.serviceCount * 3 <= updatedQueryWatchState.notificationsCounter);
+            return (this.serviceCount * 4 <= updatedQueryWatchState.notificationsCounter);
         });
     }
 }
