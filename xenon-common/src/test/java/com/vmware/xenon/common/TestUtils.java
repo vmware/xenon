@@ -36,6 +36,7 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -46,7 +47,9 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TimeZone;
+import java.util.TreeMap;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ForkJoinPool;
@@ -61,7 +64,6 @@ import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
-
 import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
@@ -71,6 +73,7 @@ import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.Builder;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
 import com.vmware.xenon.common.SystemHostInfo.OsFamily;
+import com.vmware.xenon.common.serialization.GsonSerializers;
 import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
@@ -181,7 +184,6 @@ public class TestUtils {
         Logger.getAnonymousLogger().info("Throughput: " + thpt);
         Logger.getAnonymousLogger().info("Collisions: " + collisionCount);
     }
-
 
     private static String computeHash(byte[] content, int offset, int length) {
         return Long.toHexString(FNVHash.compute(content, offset, length));
@@ -429,7 +431,7 @@ public class TestUtils {
                             outDocumentImplicitDefault.position());
             ExampleServiceState stDeserialized = (ExampleServiceState) KryoSerializers
                     .deserializeDocument(
-                    outDocumentDefault.getBuffer(), 0, outDocumentDefault.position());
+                            outDocumentDefault.getBuffer(), 0, outDocumentDefault.position());
             assertEquals(st.id, stDeserializedFromObject.id);
             assertEquals(st.id, stDeserializedImplicit.id);
             assertEquals(st.id, stDeserialized.id);
@@ -1199,5 +1201,35 @@ public class TestUtils {
         assertEquals(ExampleServiceState.VERSION_RETENTION_FLOOR, config.versionRetentionFloor);
         assertEquals(exampleService.getPeerNodeSelectorPath(), config.peerNodeSelectorPath);
         assertEquals(exampleService.getDocumentIndexPath(), config.documentIndexPath);
+    }
+
+    @Test
+    public void hashJsonMaps() {
+        Map<String, String> asc = new TreeMap<>();
+        for (int i = 0; i < 50; i++) {
+            asc.put(UUID.randomUUID().toString(), UUID.randomUUID().toString());
+        }
+
+        Map<String, String> desc = new TreeMap<>(Comparator.reverseOrder());
+        desc.putAll(asc);
+
+        Map<String, String> juh = new HashMap<>();
+        juh.putAll(asc);
+
+        Map<String, String> chm = new ConcurrentHashMap<>();
+        chm.putAll(juh);
+
+        assertNotEquals(asc.toString(), desc.toString());
+        assertNotEquals(asc.toString(), juh.toString());
+        assertNotEquals(asc.toString(), chm.toString());
+
+        long ascH = GsonSerializers.hashJson(asc, 0);
+        long descH = GsonSerializers.hashJson(desc, 0);
+        long juhH = GsonSerializers.hashJson(juh, 0);
+        long chmH = GsonSerializers.hashJson(chm, 0);
+
+        assertEquals(ascH, descH);
+        assertEquals(ascH, juhH);
+        assertEquals(ascH, chmH);
     }
 }

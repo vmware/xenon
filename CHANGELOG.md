@@ -2,6 +2,10 @@
 
 ## 1.5.3-SNAPSHOT
 
+* Deterministic document signature calculation for documents that contain
+  `Map`s. This eliminates false conflicts when reconsiling state caused by a
+  map unorderedness.
+
 ## 1.5.2
 
 * "offset" parameter is added to QueryTask. This enables pagination logic to
