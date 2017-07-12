@@ -3016,6 +3016,7 @@ public class ServiceHost implements ServiceRequestSender {
                         return;
                     }
 
+                    this.serviceResourceTracker.updateCachedServiceState(s, st, op);
                     op.linkState(st).complete();
                 });
 
