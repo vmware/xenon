@@ -43,6 +43,7 @@ public class JsonMapper {
     private static final String JSON_INDENT = "  ";
 
     private final Gson compact;
+    private final Gson hashing;
     private final Gson compactSensitive;
 
     /**
@@ -70,6 +71,21 @@ public class JsonMapper {
     public JsonMapper(Gson compact, Gson compactSensitive) {
         this.compact = compact;
         this.compactSensitive = compactSensitive;
+        this.hashing = createHashingGson(null);
+    }
+
+    private Gson createHashingGson(Consumer<GsonBuilder> gsonConfigCallback) {
+        GsonBuilder bldr = new GsonBuilder();
+
+        registerCommonGsonTypeAdapters(bldr);
+
+        bldr.disableHtmlEscaping();
+
+        bldr.registerTypeAdapterFactory(new SortedKeysMapViewAdapterFactory());
+        if (gsonConfigCallback != null) {
+            gsonConfigCallback.accept(bldr);
+        }
+        return bldr.create();
     }
 
     /**
@@ -90,7 +106,7 @@ public class JsonMapper {
      * Outputs a JSON representation of the given object in compact JSON.
      */
     public String toJson(Object body) {
-        for (int i = 1;; i++) {
+        for (int i = 1; ; i++) {
             try {
                 return this.compact.toJson(body);
             } catch (IllegalStateException e) {
@@ -100,7 +116,7 @@ public class JsonMapper {
     }
 
     public void toJson(Object body, Appendable appendable) {
-        for (int i = 1;; i++) {
+        for (int i = 1; ; i++) {
             try {
                 this.compact.toJson(body, appendable);
                 return;
@@ -120,7 +136,7 @@ public class JsonMapper {
             return null;
         }
 
-        for (int i = 1;; i++) {
+        for (int i = 1; ; i++) {
             try {
                 JsonTreeWriter writer = new JsonTreeWriter();
                 this.compact.toJson(body, body.getClass(), writer);
@@ -139,7 +155,7 @@ public class JsonMapper {
             return this.compact.toJson(null);
         }
 
-        for (int i = 1;; i++) {
+        for (int i = 1; ; i++) {
             try {
                 StringBuilder appendable = new StringBuilder();
                 this.toJsonHtml(body, appendable);
@@ -156,7 +172,7 @@ public class JsonMapper {
      * with the annotation {@link com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption#SENSITIVE}.
      */
     public void toJson(boolean hideSensitiveFields, boolean useHtmlFormatting, Object body, Appendable appendable) {
-        for (int i = 1;; i++) {
+        for (int i = 1; ; i++) {
             try {
                 if (hideSensitiveFields) {
                     if (useHtmlFormatting) {
@@ -268,7 +284,7 @@ public class JsonMapper {
             return;
         }
 
-        for (int i = 1;; i++) {
+        for (int i = 1; ; i++) {
             try {
                 JsonWriter jsonWriter = makePrettyJsonWriter(appendable);
                 this.compact.toJson(body, body.getClass(), jsonWriter);
@@ -291,7 +307,9 @@ public class JsonMapper {
         }
 
         HashingJsonWriter w = new HashingJsonWriter(seed);
-        this.compact.toJson(body, body.getClass(), w);
+
+        this.hashing.toJson(body, body.getClass(), w);
+
         return w.getHash();
     }
 
@@ -307,7 +325,7 @@ public class JsonMapper {
             for (Annotation a : annotations) {
                 if (ServiceDocument.UsageOptions.class.equals(a.annotationType())) {
                     ServiceDocument.UsageOptions usageOptions = (ServiceDocument.UsageOptions) a;
-                    for (ServiceDocument.UsageOption usageOption: usageOptions.value()) {
+                    for (ServiceDocument.UsageOption usageOption : usageOptions.value()) {
                         if (usageOption.option().equals(ServiceDocumentDescription.PropertyUsageOption.SENSITIVE)) {
                             return true;
                         }
