@@ -843,6 +843,23 @@ public class NettyHttpServiceClient implements ServiceClient {
             if (!forceExpiration && !o.hasOption(OperationOption.SOCKET_ACTIVE)) {
                 continue;
             }
+            //HTTP1
+            if (!o.isConnectionSharing()) {
+                NettyChannelContext ctx = (NettyChannelContext) o.getSocketContext();
+                if (ctx != null) {
+                    // channel is still associated with the operation, and set it as null
+                    boolean compareAndSet =
+                            ctx.getChannel().attr(NettyChannelContext.OPERATION_KEY).compareAndSet(o,null);
+                    if (compareAndSet) {
+                        // close the channel associated with timeout operation
+                        o.setKeepAlive(false);
+                    } else {
+                        // server responded
+                        LOGGER.warning(String.format("Server responded for Operation %d", o.getId()));
+                        continue;
+                    }
+                }
+            }
             o.fail(Operation.STATUS_CODE_TIMEOUT);
             expiredCount++;
             if (forceExpiration) {
