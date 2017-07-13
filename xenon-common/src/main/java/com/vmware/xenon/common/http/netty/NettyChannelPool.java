@@ -616,13 +616,6 @@ public class NettyChannelPool {
                 isClose = isClose || !ch.isOpen() || !context.hasRemainingStreamIds();
             } else {
                 isClose = isClose || !ch.isWritable() || !ch.isOpen();
-
-                // When a client-side timeout occurs, the channel must be closed rather than reused
-                // since the server may still send a response on this channel even though the
-                // operation has been failed from the caller's perspective. If the channel still
-                // has a pending operation, then close it.
-                Operation pendingOp = ch.attr(NettyChannelContext.OPERATION_KEY).getAndSet(null);
-                isClose = isClose || (pendingOp != null);
             }
         }
 
@@ -661,8 +654,11 @@ public class NettyChannelPool {
         if (isClose) {
             connectOrReuse(context.getKey(), pendingOp);
         } else {
-            context.setOperation(pendingOp);
-            pendingOp.complete();
+            if(context.compareAndSetOperation(null, pendingOp)) {
+                pendingOp.complete();
+            } else {
+                connectOrReuse(context.getKey(), pendingOp);
+            }
         }
     }
 

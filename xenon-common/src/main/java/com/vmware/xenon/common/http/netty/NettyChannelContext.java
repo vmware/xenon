@@ -156,6 +156,20 @@ public class NettyChannelContext extends SocketContext {
         return this;
     }
 
+    public boolean compareAndSetOperation(Operation oldOp, Operation newOp) {
+        boolean compareAndSet = false;
+        if (this.channel == null) {
+            return compareAndSet;
+        }
+        if (this.streamIdMap == null) {
+            compareAndSet = this.channel.attr(OPERATION_KEY).compareAndSet(oldOp, newOp);
+        }
+        if (compareAndSet && newOp != null) {
+            newOp.setSocketContext(this);
+        }
+        return compareAndSet;
+    }
+
     public Operation getOperation() {
         Channel ch = this.channel;
         if (ch == null) {
