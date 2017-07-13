@@ -855,11 +855,17 @@ public class TestStatefulService extends BasicReusableHostTestCase {
     @Test
     public void patchDeleteThenPost() throws Throwable {
         int nodeCount = 3;
+        this.serviceCount = 1000;
 
         this.host.setPeerSynchronizationEnabled(true);
+
         this.host.setUpPeerHosts(nodeCount);
         this.host.joinNodesAndVerifyConvergence(nodeCount, true);
         this.host.setNodeGroupQuorum(nodeCount);
+
+        // this.host.setTimeoutSeconds(1000);
+        this.host.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(20));
+        // this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(10));
 
         for (VerificationHost host : this.host.getInProcessHostMap().values()) {
             host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
