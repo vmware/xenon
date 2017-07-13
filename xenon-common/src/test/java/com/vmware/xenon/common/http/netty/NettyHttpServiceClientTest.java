@@ -971,6 +971,51 @@ public class NettyHttpServiceClientTest {
     }
 
     @Test
+    public void testNonSharingChannel() throws Throwable {
+        List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
+                MinimalTestService.class,
+                this.host.buildMinimalTestState(),
+                null, null);
+
+        this.host.connectionTag = "nonSharingChannelTag";
+        this.host.getClient().setConnectionLimitPerTag(this.host.connectionTag, ServiceClient.DEFAULT_CONNECTION_LIMIT_PER_HOST);
+        this.host.setMaintenanceIntervalMicros(10);
+        for (int i = 0; i < this.iterationCount; i++) {
+            doConnectionToggleOperationTimeout(services);
+        }
+    }
+
+    private void doConnectionToggleOperationTimeout(List<Service> services) {
+        int totalRequests = this.requestCount * services.size();
+        this.host.testStart(totalRequests);
+        int i = 0;
+        while (i < totalRequests) {
+            Service service = services.get(i % services.size());
+            Operation getOp = Operation.createGet(service.getUri())
+                    .setContextId(String.valueOf(i))
+                    .setReferer(this.host.getReferer())
+                    .setConnectionTag(this.host.connectionTag)
+                    .forceRemote()
+                    // Ignore timeout failures
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            // opId should be odd number with INFINITE expiration time
+                            assertTrue(o.getStatusCode() == Operation.STATUS_CODE_TIMEOUT && o.getId() % 2 == 0);
+                        }
+                        this.host.completeIteration();
+                    });
+            if (getOp.getId() % 2 == 0) {
+                getOp.setExpiration(Utils.getNowMicrosUtc() + 10);
+            } else {
+                getOp.setExpiration(Long.MAX_VALUE);
+            }
+            this.host.run(() -> this.host.send(getOp));
+            i++;
+        }
+        this.host.testWait();
+    }
+
+    @Test
     public void throughputNonPersistedServiceGetSingleConnection() throws Throwable {
         long serviceCount = 256;
         MinimalTestServiceState body = (MinimalTestServiceState) this.host.buildMinimalTestState();

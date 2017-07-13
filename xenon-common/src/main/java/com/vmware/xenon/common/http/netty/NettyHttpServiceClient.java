@@ -681,6 +681,7 @@ public class NettyHttpServiceClient implements ServiceClient {
                 r = () -> pool.returnOrClose(nettyCtx, false);
             } else {
                 op.setSocketContext(null);
+                nettyCtx.getChannel().attr(NettyChannelContext.OPERATION_KEY).getAndSet(null);
                 if (this.sslChannelPool != null
                         && this.sslChannelPool.isContextInUse(nettyCtx)) {
                     pool = this.sslChannelPool;
