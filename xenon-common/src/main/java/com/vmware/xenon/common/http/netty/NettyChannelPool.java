@@ -151,6 +151,9 @@ public class NettyChannelPool {
         // Available channels are for when we have an HTTP/1.1 connection
         public Queue<NettyChannelContext> availableChannels = new ConcurrentLinkedQueue<>();
 
+        // channels to be closed
+        public Queue<NettyChannelContext> closingChannels = new ConcurrentLinkedQueue<>();
+
         public List<NettyChannelContext> inUseChannels = new ArrayList<>();
         public OperationQueue pendingRequests;
     }
@@ -335,6 +338,7 @@ public class NettyChannelPool {
                 return;
             }
 
+            LOGGER.info(String.format("Establish connection to %s:%d for Operation %d", key.host, key.port, request.getId()));
             // Connect, then wait for the connection to complete before either
             // sending data (HTTP/1.1) or negotiating settings (HTTP/2)
             ChannelFuture connectFuture = this.bootStrap.connect(key.host, key.port);
@@ -350,6 +354,7 @@ public class NettyChannelPool {
                         channel.attr(NettyChannelContext.HTTP2_KEY).set(true);
                         waitForSettings(channel, context, request, group);
                     } else {
+                        channel.attr(NettyChannelContext.HTTP1_TIMEOUT).getAndSet(false);
                         context.setOpenInProgress(false);
                         context.setChannel(channel).setOperation(request);
                         sendAfterConnect(request);
@@ -506,7 +511,7 @@ public class NettyChannelPool {
             context = group.availableChannels.poll();
             if (context == null) {
                 int limit = getConnectionLimitPerTag(group.getKey().connectionTag);
-                if (group.inUseChannels.size() >= limit) {
+                if (group.inUseChannels.size() + group.closingChannels.size() >= limit) {
                     queuePendingRequest(request, group);
                     return null;
                 }
@@ -616,13 +621,6 @@ public class NettyChannelPool {
                 isClose = isClose || !ch.isOpen() || !context.hasRemainingStreamIds();
             } else {
                 isClose = isClose || !ch.isWritable() || !ch.isOpen();
-
-                // When a client-side timeout occurs, the channel must be closed rather than reused
-                // since the server may still send a response on this channel even though the
-                // operation has been failed from the caller's perspective. If the channel still
-                // has a pending operation, then close it.
-                Operation pendingOp = ch.attr(NettyChannelContext.OPERATION_KEY).getAndSet(null);
-                isClose = isClose || (pendingOp != null);
             }
         }
 
@@ -640,18 +638,27 @@ public class NettyChannelPool {
             boolean isClose) {
         Operation pendingOp = null;
         synchronized (group) {
+            if (!group.closingChannels.isEmpty()) {
+                closeOrReuseChannelContexts(group);
+            }
             pendingOp = group.pendingRequests.poll();
             if (isClose) {
-                group.inUseChannels.remove(context);
+                if (group.inUseChannels.remove(context)) {
+                    group.closingChannels.add(context);
+                }
             } else if (!this.isHttp2Only && pendingOp == null) {
                 if (group.inUseChannels.remove(context)) {
                     group.availableChannels.add(context);
                 }
             }
-        }
-
-        if (isClose) {
-            context.close();
+            if (pendingOp != null) {
+                LOGGER.info(String.format("Operation %d pending", pendingOp.getId()));
+            }
+            int limit = getConnectionLimitPerTag(group.getKey().connectionTag);
+            int openingChannels = group.inUseChannels.size() + group.closingChannels.size() + group.availableChannels.size();
+            LOGGER.info(String.format("inUseChannels: %d, closingChannels: %d, availableChannels: %d, openingChannel %d, limit: %d, pendingRequests: %d",
+                    group.inUseChannels.size(), group.closingChannels.size(),
+                    group.availableChannels.size(), openingChannels, limit, group.pendingRequests.size() + (pendingOp == null ? 0 : 1)));
         }
 
         if (pendingOp == null) {
@@ -676,8 +683,12 @@ public class NettyChannelPool {
                     for (NettyChannelContext c : g.inUseChannels) {
                         c.close(true);
                     }
+                    for (NettyChannelContext c : g.closingChannels) {
+                        c.close(true);
+                    }
                     g.availableChannels.clear();
                     g.inUseChannels.clear();
+                    g.closingChannels.clear();
                 }
             }
             this.eventGroup.shutdownGracefully();
@@ -747,14 +758,44 @@ public class NettyChannelPool {
                     } catch (Exception e) {
                     }
                 }
-
                 it.remove();
                 LOGGER.warning("Closing expired channel " + c.getKey());
                 c.close();
             }
+
         }
 
         checkPendingOperations(group);
+    }
+
+    /**
+     * Scan HTTP/1.1 contexts should be closed
+     */
+    private void closeOrReuseChannelContexts(NettyChannelGroup group) {
+        Iterator<NettyChannelContext> it = group.closingChannels.iterator();
+        int reuse = 0;
+        while (it.hasNext()) {
+            NettyChannelContext c = it.next();
+            if (c.getChannel() == null) {
+                it.remove();
+                continue;
+            }
+            // time out confirmed from server response, ready for reuse
+            if (c.getChannel().hasAttr(NettyChannelContext.HTTP1_TIMEOUT)) {
+                if (c.getChannel().attr(NettyChannelContext.HTTP1_TIMEOUT)
+                        .compareAndSet(true, false)) {
+                    it.remove();
+                    group.availableChannels.add(c);
+                    reuse += 1;
+                    continue;
+                }
+            }
+            if (group.availableChannels.size() < group.closingChannels.size()) {
+                it.remove();
+                c.close();
+            }
+        }
+        LOGGER.info(String.format("reuse %d timeout channels", reuse));
     }
 
     /**

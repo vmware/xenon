@@ -104,6 +104,8 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
         } else {
             request = ctx.channel().attr(NettyChannelContext.OPERATION_KEY).getAndSet(null);
             if (request == null) {
+                // mark http1 channel as timeout
+                ctx.channel().attr(NettyChannelContext.HTTP1_TIMEOUT).compareAndSet(false,true);
                 this.logger.warning("Can't find operation for channel " + ctx.channel().id().asLongText());
                 return null;
             }
