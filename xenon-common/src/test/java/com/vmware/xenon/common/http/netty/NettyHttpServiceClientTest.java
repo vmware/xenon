@@ -971,6 +971,63 @@ public class NettyHttpServiceClientTest {
     }
 
     @Test
+    public void testCloseTimeoutChannels() throws Throwable {
+        List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
+                MinimalTestService.class,
+                this.host.buildMinimalTestState(),
+                null, null);
+
+        this.host.connectionTag = "testCloseTimeoutChannels";
+        this.host.getClient().setConnectionLimitPerTag(this.host.connectionTag, ServiceClient.DEFAULT_CONNECTION_LIMIT_PER_HOST);
+        for (int i = 0; i < this.iterationCount; i++) {
+            doConnectionToggleOperationTimeout(services);
+        }
+    }
+
+    private void doConnectionToggleOperationTimeout(List<Service> services) {
+        int totalRequests = this.requestCount * services.size();
+        this.host.testStart(totalRequests);
+        int i = 0;
+        while (i < totalRequests) {
+            Service service = services.get(i % services.size());
+            Operation getOp = Operation.createGet(service.getUri())
+                    .setReferer(this.host.getReferer())
+                    .setConnectionTag(this.host.connectionTag)
+                    .forceRemote()
+                    .setCompletion((o, e) -> {
+                        if ( e != null ) {
+                            this.host.log(String.format("Operation %d failed, Status: %d", o.getId(), o.getStatusCode()));
+                            if (o.getStatusCode() == Operation.STATUS_CODE_INTERNAL_ERROR) {
+                                this.host.failIteration(e);
+                                return;
+                            }
+                            this.host.completeIteration();
+                            return;
+                        }
+                        try {
+                            MinimalTestServiceState body = o.getBody(MinimalTestServiceState.class);
+                            assertEquals(service.getSelfLink(), body.documentSelfLink);
+                            this.host.log("Operation %d, Status: %d, body validated", o.getId(), o.getStatusCode());
+                        } catch (Throwable ex) {
+                            this.host.failIteration(ex);
+                            return;
+                        }
+                        this.host.completeIteration();
+                    });
+
+            if (getOp.getId() % 2 == 0) {
+                getOp.setExpiration(Utils.getNowMicrosUtc() + 10);
+            } else {
+                getOp.setExpiration(Long.MAX_VALUE);
+            }
+
+            this.host.run(() -> this.host.send(getOp));
+            i++;
+        }
+        this.host.testWait();
+    }
+
+    @Test
     public void throughputNonPersistedServiceGetSingleConnection() throws Throwable {
         long serviceCount = 256;
         MinimalTestServiceState body = (MinimalTestServiceState) this.host.buildMinimalTestState();

@@ -151,6 +151,9 @@ public class NettyChannelPool {
         // Available channels are for when we have an HTTP/1.1 connection
         public Queue<NettyChannelContext> availableChannels = new ConcurrentLinkedQueue<>();
 
+        // channels to be closed
+        public Queue<NettyChannelContext> closingChannels = new ConcurrentLinkedQueue<>();
+
         public List<NettyChannelContext> inUseChannels = new ArrayList<>();
         public OperationQueue pendingRequests;
     }
@@ -506,7 +509,7 @@ public class NettyChannelPool {
             context = group.availableChannels.poll();
             if (context == null) {
                 int limit = getConnectionLimitPerTag(group.getKey().connectionTag);
-                if (group.inUseChannels.size() >= limit) {
+                if (group.inUseChannels.size() + group.closingChannels.size() >= limit) {
                     queuePendingRequest(request, group);
                     return null;
                 }
@@ -616,13 +619,6 @@ public class NettyChannelPool {
                 isClose = isClose || !ch.isOpen() || !context.hasRemainingStreamIds();
             } else {
                 isClose = isClose || !ch.isWritable() || !ch.isOpen();
-
-                // When a client-side timeout occurs, the channel must be closed rather than reused
-                // since the server may still send a response on this channel even though the
-                // operation has been failed from the caller's perspective. If the channel still
-                // has a pending operation, then close it.
-                Operation pendingOp = ch.attr(NettyChannelContext.OPERATION_KEY).getAndSet(null);
-                isClose = isClose || (pendingOp != null);
             }
         }
 
@@ -642,16 +638,20 @@ public class NettyChannelPool {
         synchronized (group) {
             pendingOp = group.pendingRequests.poll();
             if (isClose) {
-                group.inUseChannels.remove(context);
+                if (group.inUseChannels.remove(context)) {
+                    group.closingChannels.add(context);
+                }
             } else if (!this.isHttp2Only && pendingOp == null) {
                 if (group.inUseChannels.remove(context)) {
                     group.availableChannels.add(context);
                 }
             }
-        }
-
-        if (isClose) {
-            context.close();
+            int limit = getConnectionLimitPerTag(group.getKey().connectionTag);
+            LOGGER.info(String.format("inUseChannels: %d, closingChannels: %d, availableChannels: %d, limit: %d",
+                    group.inUseChannels.size(), group.closingChannels.size(), group.availableChannels.size(), limit));
+            if (!group.closingChannels.isEmpty() && group.availableChannels.isEmpty()) {
+                closeChannelContexts(group);
+            }
         }
 
         if (pendingOp == null) {
@@ -676,8 +676,12 @@ public class NettyChannelPool {
                     for (NettyChannelContext c : g.inUseChannels) {
                         c.close(true);
                     }
+                    for (NettyChannelContext c : g.closingChannels) {
+                        c.close(true);
+                    }
                     g.availableChannels.clear();
                     g.inUseChannels.clear();
+                    g.closingChannels.clear();
                 }
             }
             this.eventGroup.shutdownGracefully();
@@ -752,9 +756,27 @@ public class NettyChannelPool {
                 LOGGER.warning("Closing expired channel " + c.getKey());
                 c.close();
             }
+            if (!group.closingChannels.isEmpty() && group.availableChannels.isEmpty()) {
+                closeChannelContexts(group);
+            }
         }
 
         checkPendingOperations(group);
+    }
+
+    /**
+     * Scan HTTP/1.1 contexts should be closed
+     */
+    private void closeChannelContexts(NettyChannelGroup group) {
+        Iterator<NettyChannelContext> it = group.closingChannels.iterator();
+        final int closeLimit = this.getConnectionLimitPerTag(group.getKey().connectionTag);
+        int i = 0;
+        while (it.hasNext() && i < closeLimit) {
+            NettyChannelContext c = it.next();
+            it.remove();
+            c.close();
+            i++;
+        }
     }
 
     /**
