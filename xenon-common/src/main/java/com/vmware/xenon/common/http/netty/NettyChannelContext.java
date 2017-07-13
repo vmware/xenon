@@ -50,6 +50,9 @@ public class NettyChannelContext extends SocketContext {
     // The presence attribute tell us that a channel is using HTTP/2
     static final AttributeKey<Boolean> HTTP2_KEY = AttributeKey.valueOf("http2");
 
+    // The presence attribute tell us that a channel using HTTP/1 timeout
+    static final AttributeKey<Boolean> HTTP1_TIMEOUT = AttributeKey.valueOf("http1-timeout");
+
     public static final int BUFFER_SIZE = 4096 * 16;
     public static final int MAX_INITIAL_LINE_LENGTH = 4096;
     public static final int MAX_HEADER_SIZE = 65536;
