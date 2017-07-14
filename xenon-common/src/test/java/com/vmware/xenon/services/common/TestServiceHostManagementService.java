@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import org.junit.Rule;
@@ -429,6 +430,9 @@ public class TestServiceHostManagementService extends BasicTestCase {
         this.host.toggleServiceOptions(this.host.getDocumentIndexServiceUri(),
                 EnumSet.of(Service.ServiceOption.INSTRUMENTATION),
                 null);
+
+        this.host.setServiceMaintenanceIntervalMicros(this.host.getDocumentIndexServiceUri(),
+                TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
 
         int serviceVersion = 10;
         int snapshotServiceVersion = serviceVersion / 2;
