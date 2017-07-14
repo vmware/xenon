@@ -3016,6 +3016,10 @@ public class ServiceHost implements ServiceRequestSender {
                         return;
                     }
 
+                    if (isDocumentOwner(s)) {
+                        this.serviceResourceTracker.updateCachedServiceState(s, st, op);
+                    }
+
                     op.linkState(st).complete();
                 });
 
