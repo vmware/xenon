@@ -65,8 +65,10 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 import org.objenesis.strategy.StdInstantiatorStrategy;
 
 import com.vmware.xenon.common.Service.ServiceOption;
@@ -93,6 +95,14 @@ public class TestUtils {
 
     @Rule
     public TestResults testResults = new TestResults();
+
+    @Rule
+    public ExpectedException expectedEx = ExpectedException.none();
+
+    @Before
+    public void setup() {
+        System.setProperty("xenon.json.suppressGsonSerializationErrors", "true");
+    }
 
     @Test
     public void registerKind() {
@@ -868,6 +878,13 @@ public class TestUtils {
 
         Instant actual = Utils.fromJson("\"2013-05-30T23:38:27.085Z\"", Instant.class);
         assertEquals(expected, actual);
+    }
+
+    @Test
+    public void testGsonParserErrorSuppressed() throws JsonSyntaxException {
+        this.expectedEx.expect(JsonSyntaxException.class);
+        this.expectedEx.expectMessage("JSON body could not be parsed");
+        Utils.fromJson("TEST", ExampleServiceState.class);
     }
 
     @Test
