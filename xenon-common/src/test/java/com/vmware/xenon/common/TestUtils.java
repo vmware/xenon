@@ -870,6 +870,12 @@ public class TestUtils {
         assertEquals(expected, actual);
     }
 
+    @Test(expected = JsonSyntaxException.class)
+    public void testGsonParserErrorSuppressed() throws Exception {
+        System.setProperty("xenon.json.suppressGsonSerializationErrors", "true");
+        Utils.fromJson("TEST", ExampleServiceState.class);
+    }
+
     @Test
     public void testParseZonedDateTime() throws Exception {
         Calendar cal = Calendar.getInstance();
