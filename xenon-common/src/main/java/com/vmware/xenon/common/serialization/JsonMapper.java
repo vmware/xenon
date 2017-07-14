@@ -24,6 +24,7 @@ import com.google.gson.FieldAttributes;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonSyntaxException;
 import com.google.gson.internal.Streams;
 import com.google.gson.internal.bind.JsonTreeWriter;
 import com.google.gson.stream.JsonWriter;
@@ -39,12 +40,25 @@ import com.vmware.xenon.common.Utils;
  */
 public class JsonMapper {
 
+    public static final String PROPERTY_JSON_SUPPRESS_GSON_SERIALIZATION_ERRORS
+            = Utils.PROPERTY_NAME_PREFIX + "json.suppressGsonSerializationErrors";
+
+    private static boolean JSON_SUPPRESS_GSON_SERIALIZATION_ERRORS = false;
+
+    static {
+        String v = System.getProperty(PROPERTY_JSON_SUPPRESS_GSON_SERIALIZATION_ERRORS);
+        if (v != null) {
+            JSON_SUPPRESS_GSON_SERIALIZATION_ERRORS = Boolean.valueOf(v);
+        }
+    }
+
     private static final int MAX_SERIALIZATION_ATTEMPTS = 100;
     private static final String JSON_INDENT = "  ";
 
     private final Gson compact;
     private Gson hashing;
     private final Gson compactSensitive;
+    private boolean jsonSuppressGsonSerializationErrors = JSON_SUPPRESS_GSON_SERIALIZATION_ERRORS;
 
     /**
      * Instantiates a mapper with default GSON configurations.
@@ -234,11 +248,23 @@ public class JsonMapper {
      * Deserializes the given JSON to the target {@link Type}.
      */
     public <T> T fromJson(Object json, Type type) {
-        if (json instanceof JsonElement) {
-            return this.compact.fromJson((JsonElement) json, type);
-        } else {
-            return this.compact.fromJson(json.toString(), type);
+        try {
+            if (json instanceof JsonElement) {
+                return this.compact.fromJson((JsonElement) json, type);
+            } else {
+                return this.compact.fromJson(json.toString(), type);
+            }
+        } catch (RuntimeException e) {
+            if (this.jsonSuppressGsonSerializationErrors) {
+                throw new JsonSyntaxException("JSON body could not be parsed");
+            } else {
+                throw e;
+            }
         }
+    }
+
+    public void setJsonSuppressGsonSerializationErrors(boolean suppressErrors) {
+        this.jsonSuppressGsonSerializationErrors = suppressErrors;
     }
 
     private static Gson createDefaultGson(boolean isCompact, boolean isSensitive) {
