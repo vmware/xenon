@@ -1277,7 +1277,7 @@ public class StatefulService implements Service {
         getHost().loadServiceState(this, op);
     }
 
-    private void processPending(Operation op) {
+    protected void processPending(Operation op) {
         if (hasOption(ServiceOption.CONCURRENT_UPDATE_HANDLING)) {
             return;
         }
