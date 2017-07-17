@@ -3152,6 +3152,10 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
+        for (MetadataUpdateInfo info : entries.values()) {
+            logInfo("Processing self-link %s with version %d", info.selfLink, info.version);
+        }
+
         Collection<MetadataUpdateInfo> entriesToProcess = entries.values();
         int queueDepth = entriesToProcess.size();
         Iterator<MetadataUpdateInfo> it = entriesToProcess.iterator();
@@ -3161,7 +3165,11 @@ public class LuceneDocumentIndexService extends StatelessService {
             if (wr == null) {
                 break;
             }
-            updateCount += applyMetadataIndexingUpdate(searcher, wr, it.next());
+
+            MetadataUpdateInfo info = it.next();
+            long linksProcessed = applyMetadataIndexingUpdate(searcher, wr, info);
+            logInfo("Processed %d documents for self-link %s", linksProcessed, info.selfLink);
+            updateCount += linksProcessed;
         }
 
         while (it.hasNext() && Utils.getSystemNowMicrosUtc() < deadline) {
@@ -3169,7 +3177,11 @@ public class LuceneDocumentIndexService extends StatelessService {
             if (wr == null) {
                 break;
             }
-            updateCount += applyMetadataIndexingUpdate(searcher, wr, it.next());
+
+            MetadataUpdateInfo info = it.next();
+            long linksProcessed = applyMetadataIndexingUpdate(searcher, wr, info);
+            logInfo("Processed %d documents for self-link %s", linksProcessed, info.selfLink);
+            updateCount += linksProcessed;
         }
 
         if (it.hasNext()) {
