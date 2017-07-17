@@ -67,6 +67,7 @@ import com.google.gson.reflect.TypeToken;
 import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 import org.objenesis.strategy.StdInstantiatorStrategy;
 
 import com.vmware.xenon.common.Service.ServiceOption;
@@ -74,6 +75,7 @@ import com.vmware.xenon.common.ServiceDocumentDescription.Builder;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
 import com.vmware.xenon.common.SystemHostInfo.OsFamily;
 import com.vmware.xenon.common.serialization.GsonSerializers;
+import com.vmware.xenon.common.serialization.JsonMapper;
 import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
@@ -93,6 +95,9 @@ public class TestUtils {
 
     @Rule
     public TestResults testResults = new TestResults();
+
+    @Rule
+    public ExpectedException expectedEx = ExpectedException.none();
 
     @Test
     public void registerKind() {
@@ -868,6 +873,23 @@ public class TestUtils {
 
         Instant actual = Utils.fromJson("\"2013-05-30T23:38:27.085Z\"", Instant.class);
         assertEquals(expected, actual);
+    }
+
+    @Test
+    public void testGsonParserErrorSuppressed() throws JsonSyntaxException {
+        this.expectedEx.expect(JsonSyntaxException.class);
+        this.expectedEx.expectMessage("JSON body could not be parsed");
+        JsonMapper jsonMapper = new JsonMapper();
+        jsonMapper.setJsonSuppressGsonSerializationErrors(true);
+        jsonMapper.fromJson("TEST", ExampleServiceState.class);
+    }
+
+    @Test
+    public void testGsonParserError() throws JsonSyntaxException {
+        this.expectedEx.expect(JsonSyntaxException.class);
+        this.expectedEx.expectMessage("Expected BEGIN_OBJECT but was STRING");
+        JsonMapper jsonMapper = new JsonMapper();
+        jsonMapper.fromJson("TEST", ExampleServiceState.class);
     }
 
     @Test

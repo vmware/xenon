@@ -35,10 +35,22 @@ import java.util.Set;
 import java.util.concurrent.CancellationException;
 
 import org.apache.lucene.document.LongPoint;
+import org.apache.lucene.document.NumericDocValuesField;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexCommit;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.SnapshotDeletionPolicy;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.search.BooleanClause.Occur;
+import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.Sort;
+import org.apache.lucene.search.SortField;
+import org.apache.lucene.search.SortedNumericSortField;
+import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.MMapDirectory;
@@ -457,11 +469,9 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                 }
             }
 
-            // perform time snapshot recovery which means deleting all docs updated after given time
+            // perform time snapshot recovery
             if (timeSnapshotBoundaryMicros != null) {
-                Query luceneQuery = LongPoint.newRangeQuery(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS,
-                        timeSnapshotBoundaryMicros + 1, Long.MAX_VALUE);
-                newWriter.deleteDocuments(luceneQuery);
+                performTimeSnapshotRecovery(timeSnapshotBoundaryMicros, newWriter);
             }
 
             this.indexService.setWriterUpdateTimeMicros(Utils.getNowMicrosUtc());
@@ -483,8 +493,106 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
         }
     }
 
+    private void performTimeSnapshotRecovery(Long timeSnapshotBoundaryMicros, IndexWriter newWriter)
+            throws IOException {
+
+        // For documents with metadata indexing enabled, the version which was current at
+        // the restore time may have subsequently been marked as not current. Update the
+        // current field for any such documents.
+
+        IndexSearcher searcher = new IndexSearcher(
+                DirectoryReader.open(newWriter, true, true));
+
+        Query updateTimeClause = LongPoint.newRangeQuery(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS,
+                timeSnapshotBoundaryMicros + 1, Long.MAX_VALUE);
+        Query currentClause = NumericDocValuesField.newExactQuery(
+                LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 1L);
+
+        Query booleanQuery = new BooleanQuery.Builder()
+                .add(updateTimeClause, Occur.MUST)
+                .add(currentClause, Occur.MUST)
+                .build();
+
+        Sort selfLinkSort = new Sort(new SortField(
+                LuceneIndexDocumentHelper.createSortFieldPropertyName(
+                        ServiceDocument.FIELD_NAME_SELF_LINK),
+                SortField.Type.STRING));
+
+        final int pageSize = 10000;
+
+        Set<String> prevPageLinks = new HashSet<>();
+        ScoreDoc after = null;
+        while (true) {
+            TopDocs results = searcher.searchAfter(after, booleanQuery, pageSize, selfLinkSort,
+                    false, false);
+            if (results == null || results.scoreDocs == null || results.scoreDocs.length == 0) {
+                break;
+            }
+
+            Set<String> pageLinks = new HashSet<>();
+            DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor();
+            for (ScoreDoc sd : results.scoreDocs) {
+                visitor.reset(ServiceDocument.FIELD_NAME_SELF_LINK);
+                searcher.doc(sd.doc, visitor);
+                if (prevPageLinks.contains(visitor.documentSelfLink)) {
+                    pageLinks.add(visitor.documentSelfLink);
+                    continue;
+                }
+
+                if (!pageLinks.add(visitor.documentSelfLink)) {
+                    continue;
+                }
+
+                updateCurrentAttributeForSelfLink(searcher, timeSnapshotBoundaryMicros,
+                        visitor.documentSelfLink, newWriter);
+            }
+
+            if (results.scoreDocs.length < pageSize) {
+                break;
+            }
+
+            after = results.scoreDocs[results.scoreDocs.length - 1];
+            prevPageLinks = pageLinks;
+        }
+
+        // Now that metadata indexing attributes have been updated appropriately, delete any
+        // documents which were created after the restore point.
+        Query luceneQuery = LongPoint.newRangeQuery(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS,
+                timeSnapshotBoundaryMicros + 1, Long.MAX_VALUE);
+        newWriter.deleteDocuments(luceneQuery);
+    }
+
+    private void updateCurrentAttributeForSelfLink(IndexSearcher searcher,
+            long timeSnapshotBoundaryMicros, String selfLink, IndexWriter newWriter)
+            throws IOException {
+
+        Query selfLinkClause = new TermQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK,
+                selfLink));
+        Query updateTimeClause = LongPoint.newRangeQuery(
+                ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS, 0, timeSnapshotBoundaryMicros);
+        Query booleanQuery = new BooleanQuery.Builder()
+                .add(selfLinkClause, Occur.MUST)
+                .add(updateTimeClause, Occur.MUST)
+                .build();
+
+        Sort versionSort = new Sort(new SortedNumericSortField(ServiceDocument.FIELD_NAME_VERSION,
+                SortField.Type.LONG, true));
+
+        TopDocs results = searcher.search(booleanQuery, 1, versionSort, false, false);
+        if (results == null || results.scoreDocs == null || results.scoreDocs.length == 0) {
+            return;
+        }
+
+        DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor();
+        visitor.reset(LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ID);
+        searcher.doc(results.scoreDocs[0].doc, visitor);
+        Term indexingIdTerm = new Term(LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ID,
+                visitor.documentIndexingId);
+        newWriter.updateNumericDocValue(indexingIdTerm,
+                LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 1L);
+    }
+
     private boolean isInMemoryIndex() {
         return this.indexService.indexDirectory == null;
     }
-
 }

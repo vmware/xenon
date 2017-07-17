@@ -53,12 +53,8 @@ import com.vmware.xenon.common.http.netty.NettyChannelContext.Protocol;
  */
 public class NettyChannelPool {
 
-    static ThreadLocal<NettyChannelGroupKey> lookupChannelKeyPerThread = new ThreadLocal<NettyChannelGroupKey>() {
-        @Override
-        public NettyChannelGroupKey initialValue() {
-            return new NettyChannelGroupKey();
-        }
-    };
+    private static final ThreadLocal<NettyChannelGroupKey> lookupChannelKeyPerThread = ThreadLocal
+            .withInitial(NettyChannelGroupKey::new);
 
     static NettyChannelGroupKey buildLookupKey(String tag, String host, int port, boolean isHttp2) {
         NettyChannelGroupKey key = lookupChannelKeyPerThread.get();

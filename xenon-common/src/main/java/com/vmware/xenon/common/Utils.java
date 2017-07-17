@@ -108,12 +108,8 @@ public final class Utils {
      */
     private static final long PING_LAUNCH_TOLERANCE_MS = 50;
 
-    private static final ThreadLocal<CharsetDecoder> decodersPerThread = new ThreadLocal<CharsetDecoder>() {
-        @Override
-        public CharsetDecoder initialValue() {
-            return CHARSET_OBJECT.newDecoder();
-        }
-    };
+    private static final ThreadLocal<CharsetDecoder> decodersPerThread = ThreadLocal
+            .withInitial(CHARSET_OBJECT::newDecoder);
 
     private static final AtomicLong previousTimeValue = new AtomicLong();
     private static long timeComparisonEpsilon = initializeTimeEpsilon();

@@ -5445,14 +5445,8 @@ public class ServiceHost implements ServiceRequestSender {
         nss.selectAndForward(request, req);
     }
 
-    private ThreadLocal<SelectAndForwardRequest> selectOwnerRequests = new ThreadLocal<SelectAndForwardRequest>() {
-
-        @Override
-        public SelectAndForwardRequest initialValue() {
-            return new SelectAndForwardRequest();
-        }
-
-    };
+    private ThreadLocal<SelectAndForwardRequest> selectOwnerRequests = ThreadLocal
+            .withInitial(SelectAndForwardRequest::new);
 
     /**
      * Convenience method that issues a {@code SelectOwnerRequest} to the node selector service. If
