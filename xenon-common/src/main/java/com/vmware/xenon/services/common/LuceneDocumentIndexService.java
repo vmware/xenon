@@ -2807,6 +2807,10 @@ public class LuceneDocumentIndexService extends StatelessService {
                 }
 
                 info.version = Math.max(info.version, sd.documentVersion);
+
+                logInfo("Updated metadata info: self-link %s update time %d version %d",
+                        info.selfLink, info.updateTimeMicros, info.version);
+
                 return;
             }
 
@@ -2815,6 +2819,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             info.kind = sd.documentKind;
             info.updateTimeMicros = updateTimeMicros;
             info.version = sd.documentVersion;
+
+            logInfo("Added new metadata info: self-link %s update time %d version %d",
+                    info.selfLink, info.updateTimeMicros, info.version);
 
             this.metadataUpdatesPerLink.put(sd.documentSelfLink, info);
             this.metadataUpdates.add(info);
@@ -3123,6 +3130,9 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private void applyMetadataIndexingUpdates(IndexSearcher searcher, long searcherCreationTime,
             long deadline) throws IOException {
+
+        logInfo("Processing metadata updates with creation time %d", searcherCreationTime);
+
         Map<String, MetadataUpdateInfo> entries = new HashMap<>();
         synchronized (this.metadataUpdates) {
             Iterator<MetadataUpdateInfo> it = this.metadataUpdates.iterator();
@@ -3148,6 +3158,10 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
+        for (MetadataUpdateInfo info : entries.values()) {
+            logInfo("Processing self-link %s with version %d", info.selfLink, info.version);
+        }
+
         Collection<MetadataUpdateInfo> entriesToProcess = entries.values();
         int queueDepth = entriesToProcess.size();
         Iterator<MetadataUpdateInfo> it = entriesToProcess.iterator();
@@ -3157,7 +3171,11 @@ public class LuceneDocumentIndexService extends StatelessService {
             if (wr == null) {
                 break;
             }
-            updateCount += applyMetadataIndexingUpdate(searcher, wr, it.next());
+
+            MetadataUpdateInfo info = it.next();
+            long linksProcessed = applyMetadataIndexingUpdate(searcher, wr, info);
+            logInfo("Processed %d documents for self-link %s", linksProcessed, info.selfLink);
+            updateCount += linksProcessed;
         }
 
         while (it.hasNext() && Utils.getSystemNowMicrosUtc() < deadline) {
@@ -3165,7 +3183,11 @@ public class LuceneDocumentIndexService extends StatelessService {
             if (wr == null) {
                 break;
             }
-            updateCount += applyMetadataIndexingUpdate(searcher, wr, it.next());
+
+            MetadataUpdateInfo info = it.next();
+            long linksProcessed = applyMetadataIndexingUpdate(searcher, wr, info);
+            logInfo("Processed %d documents for self-link %s", linksProcessed, info.selfLink);
+            updateCount += linksProcessed;
         }
 
         if (it.hasNext()) {
