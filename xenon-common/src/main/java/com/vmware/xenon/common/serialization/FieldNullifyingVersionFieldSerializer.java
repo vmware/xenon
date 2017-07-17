@@ -14,8 +14,11 @@
 package com.vmware.xenon.common.serialization;
 
 import java.lang.reflect.Field;
+import java.util.HashMap;
+import java.util.Map;
 
 import com.esotericsoftware.kryo.Kryo;
+import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
 
@@ -27,16 +30,21 @@ public final class FieldNullifyingVersionFieldSerializer<T> extends VersionField
 
     private int indexSelfLink = -1;
     private int indexKind = -1;
+
+    private final Map<String, String> kinds;
+
     private static final ServiceDocument TEMPLATE = new ServiceDocument();
 
     public FieldNullifyingVersionFieldSerializer(Kryo kryo, Class<?> type) {
         super(kryo, type);
         ignoreFields();
+        this.kinds = new HashMap<>(3);
     }
 
     public FieldNullifyingVersionFieldSerializer(Kryo kryo, Class<?> type, boolean compatible) {
         super(kryo, type, compatible);
         ignoreFields();
+        this.kinds = new HashMap<>(3);
     }
 
     private void ignoreFields() {
@@ -90,5 +98,28 @@ public final class FieldNullifyingVersionFieldSerializer<T> extends VersionField
                 fields[i].write(output, object);
             }
         }
+    }
+
+    @Override
+    public T read(Kryo kryo, Input input, Class<T> type) {
+        T res = super.read(kryo, input, type);
+        if (res instanceof ServiceDocument) {
+            ServiceDocument sd = (ServiceDocument) res;
+            if (sd.documentKind != null) {
+                sd.documentKind = dedupKind(sd.documentKind);
+            }
+        }
+
+        return res;
+    }
+
+    private String dedupKind(String documentKind) {
+        String res = this.kinds.get(documentKind);
+        if (res == null) {
+            res = documentKind;
+            this.kinds.put(documentKind, documentKind);
+        }
+
+        return res;
     }
 }
