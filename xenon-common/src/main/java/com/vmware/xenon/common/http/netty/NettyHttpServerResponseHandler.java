@@ -94,13 +94,12 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
                                 + streamId);
                 return null;
             }
-            request = channelContext.getOperationForStream(streamId);
+            request = channelContext.removeOperationForStream(streamId);
             if (request == null) {
                 this.logger.warning("Can't find operation for stream " + streamId);
                 return null;
             }
-            // We only have one request/response per stream, so remove the association.
-            channelContext.removeOperationForStream(streamId);
+            this.logger.info(String.format("Find Operation %d with stream %d and status %d", request.getId(), streamId, request.getStatusCode()));
         } else {
             request = ctx.channel().attr(NettyChannelContext.OPERATION_KEY).getAndSet(null);
             if (request == null) {
