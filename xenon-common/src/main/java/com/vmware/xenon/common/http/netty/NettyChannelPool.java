@@ -553,6 +553,9 @@ public class NettyChannelPool {
 
                 // trigger pending operations
                 for (Operation pendingOp : pendingOps) {
+                    if (pendingOp.getStatusCode() == Operation.STATUS_CODE_TIMEOUT) {
+                        continue;
+                    }
                     pendingOp.setSocketContext(context);
                     pendingOp.complete();
                 }
@@ -568,6 +571,9 @@ public class NettyChannelPool {
      * the request.
      */
     private void sendAfterConnect(Operation request) {
+        if (request.getStatusCode() == Operation.STATUS_CODE_TIMEOUT) {
+            return;
+        }
         if (request.getStatusCode() < Operation.STATUS_CODE_FAILURE_THRESHOLD) {
             request.complete();
         } else {
