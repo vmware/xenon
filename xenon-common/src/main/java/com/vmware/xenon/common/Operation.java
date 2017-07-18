@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.function.Consumer;
@@ -932,8 +933,10 @@ public class Operation implements Cloneable {
     }
 
     public Operation setStatusCode(int code) {
-        this.statusCode = code;
-        return this;
+        synchronized (this) {
+            this.statusCode = code;
+            return this;
+        }
     }
 
     /**
@@ -1212,7 +1215,9 @@ public class Operation implements Cloneable {
     }
 
     public int getStatusCode() {
-        return this.statusCode;
+        synchronized (this) {
+            return this.statusCode;
+        }
     }
 
     public void complete() {
