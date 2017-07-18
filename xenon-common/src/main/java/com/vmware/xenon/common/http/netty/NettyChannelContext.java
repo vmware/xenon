@@ -187,12 +187,12 @@ public class NettyChannelContext extends SocketContext {
         }
     }
 
-    public void removeOperationForStream(int streamId) {
+    public Operation removeOperationForStream(int streamId) {
         if (this.streamIdMap == null) {
-            return;
+            return null;
         }
         synchronized (this.streamIdMap) {
-            this.streamIdMap.remove(streamId);
+            return this.streamIdMap.remove(streamId);
         }
     }
 
@@ -206,9 +206,9 @@ public class NettyChannelContext extends SocketContext {
      *
      * @param op Supplies an {@link Operation} object.
      */
-    public void removeStreamForOperation(Operation op) {
+    public boolean removeStreamForOperation(Operation op) {
         if (this.streamIdMap == null) {
-            return;
+            return true;
         }
         synchronized (this.streamIdMap) {
             Iterator<Map.Entry<Integer, Operation>> it = this.streamIdMap.entrySet().iterator();
@@ -216,9 +216,10 @@ public class NettyChannelContext extends SocketContext {
                 Map.Entry<Integer, Operation> entry = it.next();
                 if (entry.getValue() == op) {
                     it.remove();
-                    return;
+                    return true;
                 }
             }
+            return false;
         }
     }
 
