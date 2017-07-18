@@ -51,6 +51,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.logging.Level;
+
 import javax.xml.bind.DatatypeConverter;
 
 import org.apache.lucene.search.IndexSearcher;
@@ -91,6 +92,7 @@ import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.common.test.VerificationHost;
+import com.vmware.xenon.services.common.ExampleService.ExampleImmutableService;
 import com.vmware.xenon.services.common.ExampleService.ExampleODLService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService.BackupResponse;
@@ -161,20 +163,6 @@ class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexServic
 }
 
 public class TestLuceneDocumentIndexService {
-
-    public static class ImmutableExampleService extends ExampleService {
-        public ImmutableExampleService() {
-            super();
-            super.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
-            super.toggleOption(ServiceOption.IMMUTABLE, true);
-            // toggle instrumentation off so service stops, instead of pausing
-            super.toggleOption(ServiceOption.INSTRUMENTATION, false);
-        }
-
-        public static FactoryService createFactory() {
-            return FactoryService.create(ImmutableExampleService.class);
-        }
-    }
 
     public static class InMemoryExampleService extends ExampleService {
         public static final String FACTORY_LINK = "test/in-memory-examples";
@@ -1953,6 +1941,87 @@ public class TestLuceneDocumentIndexService {
     }
 
     @Test
+    public void queryImmutableDocsAfterDeletion() throws Throwable {
+
+        LuceneDocumentIndexService indexService = new LuceneDocumentIndexService();
+        indexService.toggleOption(ServiceOption.INSTRUMENTATION, true);
+        this.host = VerificationHost.create(0);
+        this.host.setDocumentIndexingService(indexService);
+        this.host.start();
+
+        LuceneDocumentIndexService.setExpiredDocumentSearchThreshold(10);
+
+        this.host.startFactory(new ExampleImmutableService());
+        this.host.waitForServiceAvailable(ExampleImmutableService.FACTORY_LINK);
+
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+        // create a set of immutable service documents
+        List<Operation> posts = new ArrayList<>();
+        for (int i = 0; i < this.serviceCount; i++) {
+            ExampleServiceState state = new ExampleServiceState();
+            state.name = "foo-" + i;
+            state.documentSelfLink = state.name;
+            state.documentExpirationTimeMicros = Utils.getNowMicrosUtc();
+
+            posts.add(Operation.createPost(this.host, ExampleImmutableService.FACTORY_LINK).setBody(state));
+        }
+        sender.sendAndWait(posts, ExampleServiceState.class);
+
+        // wait for the services to expire and removed from the index
+        this.host.waitFor("Timeout waiting for services to be deleted", () -> {
+            Map<String, ServiceStat> statMap = this.host.getServiceStats(
+                    this.host.getDocumentIndexServiceUri());
+            ServiceStat maintExpiredCount = statMap
+                    .get(LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_COUNT
+                            + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+            if (maintExpiredCount != null && maintExpiredCount.latestValue >= this.serviceCount) {
+                return true;
+            }
+            return false;
+        });
+
+        QueryTask queryTask = QueryTask.Builder.createDirectTask()
+                .setQuery(QueryTask.Query.Builder.create()
+                        .addKindFieldClause(ExampleServiceState.class)
+                        .build())
+                .addOption(QueryOption.INCLUDE_ALL_VERSIONS)
+                .setResultLimit(10)
+                .build();
+
+        // invoke a new paginated query to create a searcher
+        this.host.waitFor("Timeout waiting for service to be deleted", () -> {
+            QueryTask returnTask = sender.sendPostAndWait(
+                    UriUtils.buildUri(this.host.getUri(), ServiceUriPaths.CORE_LOCAL_QUERY_TASKS),
+                    queryTask, QueryTask.class);
+            if (returnTask.results.nextPageLink == null) {
+                return true;
+            }
+            return false;
+        });
+
+        // create a set of new instances
+        posts = new ArrayList<>();
+        for (int i = 0; i < this.serviceCount; i++) {
+            ExampleServiceState state = new ExampleServiceState();
+            state.name = "new-foo-" + i;
+            state.documentSelfLink = state.name;
+            posts.add(Operation.createPost(this.host, ExampleImmutableService.FACTORY_LINK).setBody(state));
+        }
+        sender.sendAndWait(posts, ExampleServiceState.class);
+        // invoke another query; we should see the newly created documents
+        this.host.waitFor("Timeout waiting for service to be queried", () -> {
+            QueryTask returnTask = sender.sendPostAndWait(
+                    UriUtils.buildUri(this.host.getUri(), ServiceUriPaths.CORE_LOCAL_QUERY_TASKS),
+                    queryTask, QueryTask.class);
+            if (returnTask.results.nextPageLink != null) {
+                return true;
+            }
+            return false;
+        });
+    }
+
+    @Test
     public void interleavedUpdatesWithQueries() throws Throwable {
         setUpHost(false);
         this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
@@ -2311,7 +2380,7 @@ public class TestLuceneDocumentIndexService {
     }
 
     URI createImmutableFactoryService(VerificationHost h) throws Throwable {
-        Service immutableFactory = ImmutableExampleService.createFactory();
+        Service immutableFactory = ExampleImmutableService.createFactory();
         immutableFactory = h.startServiceAndWait(immutableFactory,
                 "immutable-examples", null);
 
