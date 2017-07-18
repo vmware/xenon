@@ -311,6 +311,10 @@ public class NettyChannelPool {
             throw new IllegalArgumentException("request is required");
         }
 
+        if (request.getStatusCode() == Operation.STATUS_CODE_TIMEOUT) {
+            return;
+        }
+
         if (key == null) {
             request.fail(new IllegalArgumentException("connection key is required"));
             return;
@@ -553,6 +557,9 @@ public class NettyChannelPool {
 
                 // trigger pending operations
                 for (Operation pendingOp : pendingOps) {
+                    if (pendingOp.getStatusCode() == Operation.STATUS_CODE_TIMEOUT) {
+                        continue;
+                    }
                     pendingOp.setSocketContext(context);
                     pendingOp.complete();
                 }

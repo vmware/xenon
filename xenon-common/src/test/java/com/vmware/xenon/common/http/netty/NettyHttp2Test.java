@@ -18,6 +18,7 @@ import static org.junit.Assert.assertTrue;
 import java.net.URI;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -379,6 +380,61 @@ public class NettyHttp2Test {
         assertTrue(context.getLargestStreamId() >
                 2 * (1 + this.iterationCount * this.requestCount));
         assertTrue(!context.hasActiveStreams());
+    }
+
+    @Test
+    public void validateHttp2NonSharedStream() throws Throwable {
+        setUpHost(false);
+        List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
+                MinimalTestService.class,
+                this.host.buildMinimalTestState(),
+                null, null);
+        this.host.setMaintenanceIntervalMicros(10);
+        for (int i = 0; i < this.iterationCount; i++) {
+            doConnectionOperationTimeout(services);
+        }
+    }
+
+    private void doConnectionOperationTimeout(List<Service> services) {
+        int totalRequests = this.requestCount * services.size();
+        this.host.testStart(totalRequests);
+        Random r = new Random();
+        int i = 0;
+        while (i < totalRequests) {
+            long deltaMicros = r.nextLong() % 20;
+            deltaMicros = deltaMicros < 0L ? -deltaMicros : deltaMicros;
+            Service service = services.get(i % services.size());
+            Operation getOp = Operation.createGet(service.getUri())
+                    .setReferer(this.host.getReferer())
+                    .setConnectionSharing(true)
+                    .setExpiration(deltaMicros)
+                    .forceRemote()
+                    .setCompletion((o, e) -> {
+                        if ( e != null ) {
+                            this.host.log(String.format("Operation %d failed, Status: %d", o.getId(), o.getStatusCode()));
+                            if (o.getStatusCode() == Operation.STATUS_CODE_TIMEOUT) {
+                                this.host.completeIteration();
+                                return;
+                            }
+                            this.host.failIteration(e);
+                            return;
+                        }
+                        try {
+                            MinimalTestServiceState body = o.getBody(MinimalTestServiceState.class);
+                            assertTrue(service.getSelfLink().equals(body.documentSelfLink));
+                            this.host.log("Operation %d, Status: %d, body validated", o.getId(), o.getStatusCode());
+                        } catch (Throwable ex) {
+                            ServiceErrorResponse rsp = o.getErrorResponseBody();
+                            this.host.log("Operation %d, Status: %d, error rsp: %s", o.getId(), o.getStatusCode(), Utils.toJsonHtml(rsp));
+                            this.host.failIteration(ex);
+                            return;
+                        }
+                        this.host.completeIteration();
+                    });
+            this.host.run(() -> this.host.send(getOp));
+            i++;
+        }
+        this.host.testWait();
     }
 
     /**
