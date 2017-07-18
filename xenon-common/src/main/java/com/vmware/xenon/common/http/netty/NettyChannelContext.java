@@ -187,12 +187,12 @@ public class NettyChannelContext extends SocketContext {
         }
     }
 
-    public void removeOperationForStream(int streamId) {
+    public Operation removeOperationForStream(int streamId) {
         if (this.streamIdMap == null) {
-            return;
+            return null;
         }
         synchronized (this.streamIdMap) {
-            this.streamIdMap.remove(streamId);
+            return this.streamIdMap.remove(streamId);
         }
     }
 
@@ -206,19 +206,23 @@ public class NettyChannelContext extends SocketContext {
      *
      * @param op Supplies an {@link Operation} object.
      */
-    public void removeStreamForOperation(Operation op) {
+    public boolean removeStreamForOperation(Operation op) {
         if (this.streamIdMap == null) {
-            return;
+            return false;
         }
         synchronized (this.streamIdMap) {
             Iterator<Map.Entry<Integer, Operation>> it = this.streamIdMap.entrySet().iterator();
             while (it.hasNext()) {
                 Map.Entry<Integer, Operation> entry = it.next();
+                long opId = entry.getValue().getId();
+                int streamId = entry.getKey();
                 if (entry.getValue() == op) {
+                    this.logger.info(String.format("Remove Operation %d with stream %d", opId, streamId));
                     it.remove();
-                    return;
+                    return true;
                 }
             }
+            return false;
         }
     }
 
