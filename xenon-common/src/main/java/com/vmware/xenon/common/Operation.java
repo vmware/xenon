@@ -932,8 +932,10 @@ public class Operation implements Cloneable {
     }
 
     public Operation setStatusCode(int code) {
-        this.statusCode = code;
-        return this;
+        synchronized (this) {
+            this.statusCode = code;
+            return this;
+        }
     }
 
     /**
@@ -1212,7 +1214,9 @@ public class Operation implements Cloneable {
     }
 
     public int getStatusCode() {
-        return this.statusCode;
+        synchronized (this) {
+            return this.statusCode;
+        }
     }
 
     public void complete() {
