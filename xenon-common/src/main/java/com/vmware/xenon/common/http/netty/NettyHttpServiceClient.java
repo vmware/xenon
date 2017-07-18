@@ -332,7 +332,6 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     private void sendRemote(Operation op) {
         startTracking(op);
-
         // Determine the remote host address, port number
         // and uri scheme (http or https)
         String remoteHost = op.getUri().getHost();
@@ -423,7 +422,6 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
             sendHttpRequest(op);
         });
-
         NettyChannelGroupKey key = NettyChannelPool.buildLookupKey(
                 op.getConnectionTag(), remoteHost, port, pool.isHttp2Only());
         pool.connectOrReuse(key, op);
@@ -843,6 +841,33 @@ public class NettyHttpServiceClient implements ServiceClient {
             if (!forceExpiration && !o.hasOption(OperationOption.SOCKET_ACTIVE)) {
                 continue;
             }
+
+            NettyChannelContext ctx = (NettyChannelContext) o.getSocketContext();
+            // operation associated with an established connection
+            if (ctx != null && ctx.getChannel() != null) {
+                boolean timeout;
+                if (!o.isConnectionSharing()) {
+                    //http1
+                    timeout = ctx.getChannel().attr(NettyChannelContext.OPERATION_KEY).compareAndSet(o, null);
+                    if (timeout) {
+                        // timeout channel should be closed
+                        LOGGER.info(String.format("Operation %d timeout", o.getId()));
+                        o.setKeepAlive(false);
+                    } else {
+                        LOGGER.warning(String.format("Server responded for Operation %d with HTTP1 connection", o.getId()));
+                        continue;
+                    }
+                } else {
+                    //http2
+                    timeout = ctx.removeStreamForOperation(o);
+                    if (!timeout) {
+                        LOGGER.warning(String.format("Server responded for Operation %d with HTTP2 connection", o.getId()));
+                        continue;
+                    }
+                    LOGGER.info(String.format("Operation %d timeout", o.getId()));
+                }
+            }
+
             o.fail(Operation.STATUS_CODE_TIMEOUT);
             expiredCount++;
             if (forceExpiration) {
