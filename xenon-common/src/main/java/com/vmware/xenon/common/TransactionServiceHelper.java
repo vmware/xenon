@@ -176,7 +176,7 @@ public final class TransactionServiceHelper {
         // yet set at the point we're intercepting the POST, so we need to set them here
         childService.setHost(factoryService.getHost());
         URI childServiceUri = op.getUri().normalize();
-        String childServicePath = UriUtils.normalizeUriPath(childServiceUri.getPath()).intern();
+        String childServicePath = UriUtils.normalizeUriPath(childServiceUri.getPath());
         childService.setSelfLink(childServicePath);
 
         // TODO: remove cast by changing childService type at the origin (FactoryService)

@@ -821,7 +821,7 @@ public class StatelessService implements Service {
         if (request.getInstrumentationContext() == null) {
             return;
         }
-        setStat(request.getAction() + STAT_NAME_OPERATION_DURATION,
+        setStat(ServiceStatUtils.getPerActionDurationName(request.getAction()),
                 (System.nanoTime() / 1000)
                         - request.getInstrumentationContext().handleInvokeTimeMicros);
 

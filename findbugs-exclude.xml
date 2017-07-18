@@ -25,4 +25,11 @@
        <Class name="com.vmware.xenon.services.common.ServiceHostManagementService"/>
        <Method name="handleDelete"/>
      </Match>
+
+     <!-- bug in findbugs -->
+     <Match>
+       <Bug pattern="NP_NONNULL_PARAM_VIOLATION"/>
+       <Class name="com.vmware.xenon.common.ServiceHost"/>
+       <Method name="allocateExecutors"/>
+     </Match>
 </FindBugsFilter>

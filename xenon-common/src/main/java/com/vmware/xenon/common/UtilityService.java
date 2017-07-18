@@ -26,6 +26,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -57,6 +58,81 @@ public class UtilityService implements Service {
     private ServiceStats stats;
     private ServiceSubscriptionState subscriptions;
     private UiContentService uiService;
+
+    /**
+     * Dedupes most well-known strings used as stat names.
+     */
+    private static class StatsKeyDeduper {
+        private final Map<String, String> map = new HashMap<>();
+
+        StatsKeyDeduper() {
+            register(Service.STAT_NAME_REQUEST_COUNT);
+            register(Service.STAT_NAME_PRE_AVAILABLE_OP_COUNT);
+            register(Service.STAT_NAME_AVAILABLE);
+            register(Service.STAT_NAME_FAILURE_COUNT);
+            register(Service.STAT_NAME_REQUEST_OUT_OF_ORDER_COUNT);
+            register(Service.STAT_NAME_REQUEST_FAILURE_QUEUE_LIMIT_EXCEEDED_COUNT);
+            register(Service.STAT_NAME_STATE_PERSIST_LATENCY);
+            register(Service.STAT_NAME_OPERATION_QUEUEING_LATENCY);
+            register(Service.STAT_NAME_SERVICE_HANDLER_LATENCY);
+            register(Service.STAT_NAME_CREATE_COUNT);
+            register(Service.STAT_NAME_OPERATION_DURATION);
+            register(Service.STAT_NAME_SERVICE_HOST_MAINTENANCE_COUNT);
+            register(Service.STAT_NAME_MAINTENANCE_COUNT);
+            register(Service.STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT);
+            register(Service.STAT_NAME_NODE_GROUP_SYNCH_DELAYED_COUNT);
+            register(Service.STAT_NAME_MAINTENANCE_COMPLETION_DELAYED_COUNT);
+            register(Service.STAT_NAME_DOCUMENT_OWNER_TOGGLE_ON_MAINT_COUNT);
+            register(Service.STAT_NAME_DOCUMENT_OWNER_TOGGLE_OFF_MAINT_COUNT);
+            register(Service.STAT_NAME_CACHE_MISS_COUNT);
+            register(Service.STAT_NAME_CACHE_CLEAR_COUNT);
+            register(Service.STAT_NAME_VERSION_CONFLICT_COUNT);
+            register(Service.STAT_NAME_VERSION_IN_CONFLICT);
+            register(Service.STAT_NAME_PAUSE_COUNT);
+            register(Service.STAT_NAME_RESUME_COUNT);
+            register(Service.STAT_NAME_MAINTENANCE_DURATION);
+            register(Service.STAT_NAME_SYNCH_TASK_RETRY_COUNT);
+            register(Service.STAT_NAME_CHILD_SYNCH_FAILURE_COUNT);
+
+            register(ServiceStatUtils.GET_DURATION);
+            register(ServiceStatUtils.POST_DURATION);
+            register(ServiceStatUtils.PATCH_DURATION);
+            register(ServiceStatUtils.PUT_DURATION);
+            register(ServiceStatUtils.DELETE_DURATION);
+            register(ServiceStatUtils.OPTIONS_DURATION);
+
+            register(ServiceStatUtils.GET_REQUEST_COUNT);
+            register(ServiceStatUtils.POST_REQUEST_COUNT);
+            register(ServiceStatUtils.PATCH_REQUEST_COUNT);
+            register(ServiceStatUtils.PUT_REQUEST_COUNT);
+            register(ServiceStatUtils.DELETE_REQUEST_COUNT);
+            register(ServiceStatUtils.OPTIONS_REQUEST_COUNT);
+
+            register(ServiceStatUtils.GET_QLATENCY);
+            register(ServiceStatUtils.POST_QLATENCY);
+            register(ServiceStatUtils.PATCH_QLATENCY);
+            register(ServiceStatUtils.PUT_QLATENCY);
+            register(ServiceStatUtils.DELETE_QLATENCY);
+            register(ServiceStatUtils.OPTIONS_QLATENCY);
+
+            register(ServiceStatUtils.GET_HANDLER_LATENCY);
+            register(ServiceStatUtils.POST_HANDLER_LATENCY);
+            register(ServiceStatUtils.PATCH_HANDLER_LATENCY);
+            register(ServiceStatUtils.PUT_HANDLER_LATENCY);
+            register(ServiceStatUtils.DELETE_HANDLER_LATENCY);
+            register(ServiceStatUtils.OPTIONS_HANDLER_LATENCY);
+        }
+
+        private void register(String s) {
+            this.map.put(s, s);
+        }
+
+        public String getStatKey(String s) {
+            return this.map.getOrDefault(s, s);
+        }
+    }
+
+    private static final StatsKeyDeduper STATS_KEY_DICT = new StatsKeyDeduper();
 
     public UtilityService() {
     }
@@ -720,15 +796,7 @@ public class UtilityService implements Service {
             stat.version++;
             stat.accumulatedValue += newValue;
             stat.latestValue = newValue;
-            if (stat.logHistogram != null) {
-                int binIndex = 0;
-                if (newValue > 0.0) {
-                    binIndex = (int) Math.log10(newValue);
-                }
-                if (binIndex >= 0 && binIndex < stat.logHistogram.bins.length) {
-                    stat.logHistogram.bins[binIndex]++;
-                }
-            }
+            addHistogram(stat, newValue);
             stat.lastUpdateMicrosUtc = Utils.getNowMicrosUtc();
             if (stat.timeSeriesStats != null) {
                 if (stat.sourceTimeMicrosUtc != null) {
@@ -740,21 +808,25 @@ public class UtilityService implements Service {
         }
     }
 
+    private void addHistogram(ServiceStat stat, double newValue) {
+        if (stat.logHistogram != null) {
+            int binIndex = 0;
+            if (newValue > 0.0) {
+                binIndex = (int) Math.log10(newValue);
+            }
+            if (binIndex >= 0 && binIndex < stat.logHistogram.bins.length) {
+                stat.logHistogram.bins[binIndex]++;
+            }
+        }
+    }
+
     @Override
     public void adjustStat(ServiceStat stat, double delta) {
         allocateStats();
         synchronized (stat) {
             stat.latestValue += delta;
             stat.version++;
-            if (stat.logHistogram != null) {
-                int binIndex = 0;
-                if (delta > 0.0) {
-                    binIndex = (int) Math.log10(delta);
-                }
-                if (binIndex >= 0 && binIndex < stat.logHistogram.bins.length) {
-                    stat.logHistogram.bins[binIndex]++;
-                }
-            }
+            addHistogram(stat, stat.latestValue);
             stat.lastUpdateMicrosUtc = Utils.getNowMicrosUtc();
             if (stat.timeSeriesStats != null) {
                 if (stat.sourceTimeMicrosUtc != null) {
@@ -817,7 +889,7 @@ public class UtilityService implements Service {
             ServiceStat st = this.stats.entries.get(name);
             if (st == null && create) {
                 st = initialStat != null ? initialStat : new ServiceStat();
-                name = name.intern();
+                name = STATS_KEY_DICT.getStatKey(name);
                 st.name = name;
                 this.stats.entries.put(name, st);
             }
@@ -893,12 +965,10 @@ public class UtilityService implements Service {
 
     @Override
     public void adjustStat(String name, double delta) {
-        return;
     }
 
     @Override
     public void setStat(String name, double newValue) {
-        return;
     }
 
     @Override

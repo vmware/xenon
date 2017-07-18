@@ -51,6 +51,8 @@ import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ForkJoinWorkerThread;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
@@ -733,9 +735,16 @@ public class ServiceHost implements ServiceRequestSender {
         if (this.serviceScheduledExecutor != null) {
             this.serviceScheduledExecutor.shutdownNow();
         }
-        this.executor = Executors.newWorkStealingPool(Utils.DEFAULT_THREAD_COUNT);
+
+        this.executor = new ForkJoinPool(Utils.DEFAULT_THREAD_COUNT, (pool) -> {
+            ForkJoinWorkerThread res = ForkJoinPool.defaultForkJoinWorkerThreadFactory.newThread(pool);
+            res.setName(getUri() + "/" + res.getName());
+            return res;
+        }, null, false);
+
         this.scheduledExecutor = Executors.newScheduledThreadPool(Utils.DEFAULT_THREAD_COUNT,
                 r -> new Thread(r, getUri().toString() + "/scheduled/" + this.state.id));
+
         this.serviceScheduledExecutor = Executors.newScheduledThreadPool(
                 Utils.DEFAULT_THREAD_COUNT / 2,
                 r -> new Thread(r, getUri().toString() + "/service-scheduled/" + this.state.id));

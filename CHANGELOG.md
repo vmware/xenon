@@ -25,6 +25,9 @@
   `Map`s. This eliminates false conflicts when reconsiling state caused by a
   map unorderedness.
 
+* ForkJoinPool threads owned by a ServiceHost are named like the host uri +
+  the default name.
+
 ## 1.5.2
 
 * "offset" parameter is added to QueryTask. This enables pagination logic to
