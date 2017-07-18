@@ -46,6 +46,7 @@ import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 
@@ -57,6 +58,7 @@ import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceClient.ConnectionPoolMetrics;
 import com.vmware.xenon.common.ServiceDocument;
+import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.StatelessService;
@@ -448,6 +450,61 @@ public class NettyHttpServiceClientTest {
             this.host.setOperationTimeOutMicros(
                     TimeUnit.SECONDS.toMicros(ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS));
         }
+    }
+
+    @Ignore
+    @Test
+    public void testCloseTimeoutNonSharedChannel() throws Throwable {
+        List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
+                MinimalTestService.class,
+                this.host.buildMinimalTestState(),
+                null, null);
+        this.host.setMaintenanceIntervalMicros(10);
+        this.host.setOperationTimeOutMicros(10);
+        this.host.connectionTag = "testTimeoutNonSharedChannel";
+        this.host.getClient().setConnectionLimitPerTag(this.host.connectionTag, 1);
+        this.iterationCount = 100;
+        for (int i = 0; i < this.iterationCount; i++) {
+            doConnectionToggleOperationTimeout(services);
+        }
+    }
+
+    private void doConnectionToggleOperationTimeout(List<Service> services) {
+        int totalRequests = this.requestCount * services.size();
+        this.host.testStart(totalRequests);
+        int i = 0;
+        while (i < totalRequests) {
+            Service service = services.get(i % services.size());
+            Operation getOp = Operation.createGet(service.getUri())
+                    .setReferer(this.host.getReferer())
+                    .setConnectionTag(this.host.connectionTag)
+                    .forceRemote()
+                    .setCompletion((o, e) -> {
+                        if ( e != null ) {
+                            this.host.log(String.format("Operation %d failed, Status: %d", o.getId(), o.getStatusCode()));
+                            if (o.getStatusCode() == Operation.STATUS_CODE_INTERNAL_ERROR) {
+                                this.host.failIteration(e);
+                                return;
+                            }
+                            this.host.completeIteration();
+                            return;
+                        }
+                        try {
+                            MinimalTestServiceState body = o.getBody(MinimalTestServiceState.class);
+                            assertTrue(service.getSelfLink().equals(body.documentSelfLink));
+                            this.host.log("Operation %d, Status: %d, body validated", o.getId(), o.getStatusCode());
+                        } catch (Throwable ex) {
+                            ServiceErrorResponse rsp = o.getErrorResponseBody();
+                            this.host.log("Operation %d, Status: %d, error rsp: %s", o.getId(), o.getStatusCode(), Utils.toJsonHtml(rsp));
+                            this.host.failIteration(ex);
+                            return;
+                        }
+                        this.host.completeIteration();
+                    });
+            this.host.run(() -> this.host.send(getOp));
+            i++;
+        }
+        this.host.testWait();
     }
 
     @Test
@@ -969,6 +1026,8 @@ public class NettyHttpServiceClientTest {
         validateTagInfo(this.host, this.host.getClient(), this.host.connectionTag,
                 ServiceClient.DEFAULT_CONNECTION_LIMIT_PER_HOST);
     }
+
+
 
     @Test
     public void throughputNonPersistedServiceGetSingleConnection() throws Throwable {
