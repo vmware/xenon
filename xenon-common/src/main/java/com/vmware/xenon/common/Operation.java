@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.function.Consumer;
@@ -1342,7 +1343,11 @@ public class Operation implements Cloneable {
      */
     public Operation nestCompletion(CompletionHandler h) {
         CompletionHandler existing = this.completion;
+        AtomicBoolean done = new AtomicBoolean();
         this.completion = (o, e) -> {
+            if (!done.compareAndSet(false, true)) {
+                return;
+            }
             this.statusCode = o.statusCode;
             this.completion = existing;
             h.handle(o, e);
