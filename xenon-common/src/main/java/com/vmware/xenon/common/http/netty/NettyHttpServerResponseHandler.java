@@ -62,6 +62,11 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
                 this.logger.warning("No request in channel " + ctx.channel().id().asLongText());
                 return;
             }
+            if (request.getStatusCode() == Operation.STATUS_CODE_TIMEOUT) {
+                this.logger.warning(String.format("Operation %d timeout with %s",
+                        request.getId(), request.isConnectionSharing() ? "HTTP1" : "HTTP2"));
+                return;
+            }
             request.setStatusCode(response.status().code());
             parseResponseHeaders(request, response);
             completeRequest(ctx, request, response.content());
@@ -94,13 +99,11 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
                                 + streamId);
                 return null;
             }
-            request = channelContext.getOperationForStream(streamId);
+            request = channelContext.removeOperationForStream(streamId);
             if (request == null) {
                 this.logger.warning("Can't find operation for stream " + streamId);
                 return null;
             }
-            // We only have one request/response per stream, so remove the association.
-            channelContext.removeOperationForStream(streamId);
         } else {
             request = ctx.channel().attr(NettyChannelContext.OPERATION_KEY).getAndSet(null);
             if (request == null) {
