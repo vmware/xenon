@@ -1055,6 +1055,24 @@ public class TestQueryTaskService {
         }
     }
 
+    @Test
+    public void throughputCountApproximate() throws Throwable {
+        setUpHost();
+
+        this.host.toggleServiceOptions(this.host.getDocumentIndexServiceUri(),
+                EnumSet.of(ServiceOption.INSTRUMENTATION), null);
+
+        LuceneDocumentIndexService.setMetadataUpdateMaxQueueDepth(0);
+        try {
+            doThroughputCountQuery(QueryValidationTestServiceWithIndexedMetadata.class,
+                    EnumSet.of(QueryOption.APPROXIMATE, QueryOption.COUNT,
+                            QueryOption.INDEXED_METADATA));
+        } finally {
+            LuceneDocumentIndexService.setMetadataUpdateMaxQueueDepth(
+                    LuceneDocumentIndexService.DEFAULT_METADATA_UPDATE_MAX_QUEUE_DEPTH);
+        }
+    }
+
     private void doThroughputCountQuery(Class<? extends Service> type,
             EnumSet<QueryOption> queryOptions) throws Throwable {
         List<URI> services = createQueryTargetServices(this.serviceCount, type);

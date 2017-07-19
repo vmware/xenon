@@ -208,6 +208,14 @@ public class QueryTask extends ServiceDocument {
              * metadata.
              */
             INDEXED_METADATA,
+
+            /**
+             * Query should return an approximate value for the result instead of an exact value,
+             * optimizing for speed.
+             *
+             * Requires {@link QueryOption#INDEXED_METADATA} and {@link QueryOption#COUNT}.
+             */
+            APPROXIMATE,
         }
 
         public enum SortOrder {
