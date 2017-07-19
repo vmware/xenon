@@ -1682,7 +1682,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             long queryStartTimeMicros)
             throws Exception {
 
-        if (queryOptions.contains(QueryOption.INCLUDE_ALL_VERSIONS)) {
+        if (queryOptions.contains(QueryOption.INCLUDE_ALL_VERSIONS)
+                || queryOptions.contains(QueryOption.APPROXIMATE)) {
             // Special handling for queries which include all versions in order to avoid allocating
             // a large, unnecessary ScoreDocs array.
             response.documentCount = (long) searcher.count(termQuery);

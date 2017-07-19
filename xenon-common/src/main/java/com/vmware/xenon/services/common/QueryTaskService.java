@@ -164,6 +164,17 @@ public class QueryTaskService extends StatefulService {
             // block, since that option must be combined with this one
         }
 
+        if (initState.querySpec.options.contains(QueryOption.APPROXIMATE)) {
+            if (!initState.querySpec.options.contains(QueryOption.COUNT) ||
+                    !initState.querySpec.options.contains(QueryOption.INDEXED_METADATA)) {
+                final String errFmt = "%s must be combined with %s and %s";
+                startPost.fail(new IllegalArgumentException(
+                        String.format(errFmt, QueryOption.APPROXIMATE, QueryOption.COUNT,
+                                QueryOption.INDEXED_METADATA)));
+                return false;
+            }
+        }
+
         if (initState.querySpec.options.contains(QueryOption.GROUP_BY)) {
             final String errFmt = QueryOption.GROUP_BY + " is not compatible with %s";
             if (initState.querySpec.options.contains(QueryOption.COUNT)) {

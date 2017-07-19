@@ -4335,4 +4335,58 @@ public class TestLuceneDocumentIndexService {
             assertEquals("nameWithForcedIndexUpdate", state.name);
         }
     }
+
+    @Test
+    public void testApproximate() throws Throwable {
+        setUpHost(false);
+        URI indexedMetadataFactoryUri = createIndexedMetadataFactoryService(this.host);
+
+        ExampleServiceState initialState = new ExampleServiceState();
+        initialState.name = "name";
+
+        Map<URI, ExampleServiceState> services = this.host.doFactoryChildServiceStart(null,
+                this.serviceCount, ExampleServiceState.class, (o) -> o.setBody(initialState),
+                indexedMetadataFactoryUri);
+
+        TestContext ctx = this.host.testCreate(services.size() * this.updateCount);
+        for (int i = 0; i < this.updateCount; i++) {
+            initialState.counter = (long) i;
+            for (URI serviceUri : services.keySet()) {
+                Operation patch = Operation.createPatch(serviceUri).setBody(initialState)
+                        .setCompletion(ctx.getCompletion());
+                this.host.send(patch);
+            }
+        }
+        this.host.testWait(ctx);
+
+        QueryTask queryTask = QueryTask.Builder.createDirectTask()
+                .setQuery(Query.Builder.create().addKindFieldClause(ExampleServiceState.class)
+                        .build())
+                .addOption(QueryOption.APPROXIMATE)
+                .addOption(QueryOption.COUNT)
+                .addOption(QueryOption.INDEXED_METADATA)
+                .build();
+
+        this.host.waitFor("Approximate count value failed to converge", () -> {
+            QueryTask result = new QueryTask();
+            this.host.createQueryTaskService(queryTask, false, true, result, null);
+            this.host.log(Level.INFO, "Count value was %d", result.results.documentCount);
+            return (result.results.documentCount == services.size());
+        });
+
+        ctx = this.host.testCreate(services.size());
+        for (URI serviceUri : services.keySet()) {
+            Operation delete = Operation.createDelete(serviceUri)
+                    .setCompletion(ctx.getCompletion());
+            this.host.send(delete);
+        }
+        this.host.testWait(ctx);
+
+        this.host.waitFor("Approximate count value failed to converge", () -> {
+            QueryTask result = new QueryTask();
+            this.host.createQueryTaskService(queryTask, false, true, result, null);
+            this.host.log(Level.INFO, "Count value was %d", result.results.documentCount);
+            return (result.results.documentCount == 0);
+        });
+    }
 }
