@@ -94,7 +94,7 @@ public class MigrationStressTest {
             int nodeCount = Integer.getInteger(SYSTEM_PROP_HOST_NODE_COUNT, 0);
 
             Logger.getAnonymousLogger().log(Level.INFO, String.format("port=%d, nodeCount=%d, sandbox=%s", port, nodeCount, sandboxDir));
-            VerificationHost parentHost = prepareHost(0, port, sandboxDir);
+            VerificationHost parentHost = prepareHost(0, port, sandboxDir, args);
             parentHost.setProcessOwner(true);
         }
     }
@@ -120,7 +120,7 @@ public class MigrationStressTest {
     private Logger logger = Logger.getLogger(MigrationStressTest.class.getName());
 
 
-    private static VerificationHost prepareHost(int nodeCount, int port, String sandboxDir) throws Throwable {
+    private static VerificationHost prepareHost(int nodeCount, int port, String sandboxDir, String[] commandLineArgs) throws Throwable {
         Utils.setTimeDriftThreshold(TimeUnit.SECONDS.toMicros(120));
 
         Arguments args = new Arguments();
@@ -132,6 +132,10 @@ public class MigrationStressTest {
             args.sandbox = Paths.get(sandboxDir);
         }
 
+        // bind command line args if provided
+        if (commandLineArgs != null) {
+            CommandLineArgumentParser.parse(args, commandLineArgs);
+        }
 
         VerificationHost parentHost = VerificationHost.create(args);
         parentHost.start();
@@ -168,10 +172,10 @@ public class MigrationStressTest {
         // if not started with ci profile, start source/dest hosts
         if (this.startHost) {
             this.logger.log(Level.INFO, "Starting source server");
-            VerificationHost sourceHost = prepareHost(0, 0, null);
+            VerificationHost sourceHost = prepareHost(0, 0, null, null);
 
             this.logger.log(Level.INFO, "Starting dest server");
-            VerificationHost destHost = prepareHost(0, 0, null);
+            VerificationHost destHost = prepareHost(0, 0, null, null);
 
             this.hostToClean.addAll(Arrays.asList(sourceHost, destHost));
 

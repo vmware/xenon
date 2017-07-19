@@ -2664,12 +2664,16 @@ public class LuceneDocumentIndexService extends StatelessService {
             this.writerUpdateTimeMicros = now;
             this.serviceRemovalDetectedTimeMicros = now;
         }
+        updateLinkInfoCache(getHost().buildDocumentDescription(sd.documentSelfLink),
+                sd.documentSelfLink, sd.documentKind, 0, Utils.getNowMicrosUtc());
     }
 
     private void deleteAllDocumentsForSelfLink(Operation postOrDelete, String link,
             ServiceDocument state)
             throws Exception {
-        deleteDocumentsFromIndex(postOrDelete, link, state != null ? state.documentKind : null, 0, Long.MAX_VALUE);
+        deleteDocumentsFromIndex(postOrDelete,
+                state != null ? getHost().buildDocumentDescription(state.documentSelfLink) : null,
+                link, state != null ? state.documentKind : null, 0, Long.MAX_VALUE);
         synchronized (this.searchSync) {
             // Remove previous cached entry
             this.updatesPerLink.remove(link);
@@ -2691,7 +2695,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE));
     }
 
-    private void deleteDocumentsFromIndex(Operation delete, String link, String kind, long oldestVersion,
+    private void deleteDocumentsFromIndex(Operation delete, ServiceDocumentDescription desc, String link, String kind, long oldestVersion,
             long newestVersion) throws Exception {
 
         IndexWriter wr = this.writer;
@@ -2707,7 +2711,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         // be reflected in the new searcher. If the start time would be used,
         // it is possible to race with updating the searcher and NOT have this
         // change be reflected in the searcher.
-        updateLinkInfoCache(null, link, kind, newestVersion, Utils.getNowMicrosUtc());
+        updateLinkInfoCache(desc, link, kind, newestVersion, Utils.getNowMicrosUtc());
         delete.complete();
     }
 
@@ -2848,16 +2852,16 @@ public class LuceneDocumentIndexService extends StatelessService {
                     }
                     return entry;
                 });
+            }
 
-                if (kind != null) {
-                    this.documentKindUpdateInfo.compute(kind, (k, entry) -> {
-                        if (entry == null) {
-                            entry = 0L;
-                        }
-                        entry = Math.max(entry, lastAccessTime);
-                        return entry;
-                    });
-                }
+            if (kind != null) {
+                this.documentKindUpdateInfo.compute(kind, (k, entry) -> {
+                    if (entry == null) {
+                        entry = 0L;
+                    }
+                    entry = Math.max(entry, lastAccessTime);
+                    return entry;
+                });
             }
 
             // The index update time may only be increased.
@@ -3363,7 +3367,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 if (wr == null) {
                     return;
                 }
-                deleteDocumentsFromIndex(dummyDelete, e.getKey(), null,  0, e.getValue());
+                deleteDocumentsFromIndex(dummyDelete, null, e.getKey(), null,  0, e.getValue());
             }
 
             links.clear();
@@ -3500,8 +3504,6 @@ public class LuceneDocumentIndexService extends StatelessService {
                     continue;
                 }
 
-                adjustTimeSeriesStat(STAT_NAME_DOCUMENT_EXPIRATION_COUNT, AGGREGATION_TYPE_SUM, 1);
-
                 // update document with one that has all fields, including binary state
                 augmentDoc(s, visitor, scoreDoc.doc, LUCENE_FIELD_NAME_BINARY_SERIALIZED_STATE);
                 ServiceDocument serviceDocument = null;
@@ -3517,6 +3519,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                 }
 
                 deleteAllDocumentsForSelfLink(dummyDelete, documentSelfLink, serviceDocument);
+
+                adjustTimeSeriesStat(STAT_NAME_DOCUMENT_EXPIRATION_COUNT, AGGREGATION_TYPE_SUM, 1);
             }
         } while (Utils.getSystemNowMicrosUtc() < deadline);
     }

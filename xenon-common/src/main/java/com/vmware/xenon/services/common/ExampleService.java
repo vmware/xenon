@@ -59,6 +59,21 @@ public class ExampleService extends StatefulService {
         }
     }
 
+    public static class ExampleImmutableService extends ExampleService {
+        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/immutable-examples";
+
+        public static FactoryService createFactory() {
+            return FactoryService.create(ExampleImmutableService.class);
+        }
+
+        public ExampleImmutableService() {
+            super();
+            super.toggleOption(ServiceOption.IMMUTABLE, true);
+            super.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
+            super.toggleOption(ServiceOption.INSTRUMENTATION, false);
+        }
+    }
+
     /**
      * Request for strict update version check of a service.  This shows an example of implementing
      * compareAndSet operation in a service.  We implement handler that will check the supplied documentVersion
