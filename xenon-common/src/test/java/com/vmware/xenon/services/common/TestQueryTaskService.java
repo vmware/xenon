@@ -44,6 +44,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import com.google.gson.annotations.SerializedName;
+
 import org.junit.After;
 import org.junit.Rule;
 import org.junit.Test;
@@ -78,7 +79,6 @@ import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
-
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryTask.Builder;
 import com.vmware.xenon.services.common.QueryTask.NumericRange;
@@ -4732,6 +4732,69 @@ public class TestQueryTaskService {
         }
         assertTrue(totalPages == count);
 
+        deleteServices(services);
+    }
+
+    public static class QueryValidationServiceWithIndexedMetadata extends QueryValidationTestService {
+
+        @Override
+        public ServiceDocument getDocumentTemplate() {
+            ServiceDocument template = super.getDocumentTemplate();
+            template.documentDescription.documentIndexingOptions =
+                    EnumSet.of(ServiceDocumentDescription.DocumentIndexingOption.INDEX_METADATA);
+            return template;
+        }
+    }
+
+    @Test
+    public void testTimeSnapshotWithIndexedMetadata() throws Throwable {
+        int versions = 5;
+        setUpHost();
+        List<URI> services = createQueryTargetServices(1, QueryValidationServiceWithIndexedMetadata.class);
+
+        // update the doc that was just created
+        QueryValidationServiceState newState = new QueryValidationServiceState();
+        newState.id = UUID.randomUUID().toString();
+        putStateOnQueryTargetServices(services, versions, newState);
+
+        // Mark a time to query for
+        long timeSnapshotBoundaryMicros = Utils.getNowMicrosUtc();
+
+        // Update the documents few more times
+        newState.id = UUID.randomUUID().toString();
+        putStateOnQueryTargetServices(services, versions, newState);
+
+        this.host.waitFor("Metadata indexing failed to occur", () -> {
+            Map<String, ServiceStat> indexStats = this.host.getServiceStats(
+                    this.host.getDocumentIndexServiceUri());
+            ServiceStat stat = indexStats.get(
+                    LuceneDocumentIndexService.STAT_NAME_METADATA_INDEXING_UPDATE_COUNT
+                            + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+            if (stat == null) {
+                return false;
+            }
+
+            return (stat.accumulatedValue == versions * 2);
+        });
+
+        Query query = Query.Builder.create()
+                .addKindFieldClause(QueryValidationServiceState.class)
+                .build();
+        QueryTask queryTask = QueryTask.Builder.create().setQuery(query).build();
+        queryTask.querySpec.options = EnumSet.of(QueryOption.EXPAND_CONTENT,
+                QueryOption.TIME_SNAPSHOT, QueryOption.INDEXED_METADATA);
+        queryTask.querySpec.timeSnapshotBoundaryMicros = timeSnapshotBoundaryMicros;
+        URI u = this.host.createQueryTaskService(queryTask, false);
+        QueryTask finishedTaskState = this.host.waitForQueryTaskCompletion(queryTask.querySpec,
+                services.size(), versions, u, false, false);
+
+        QueryValidationServiceState finishedState = Utils.fromJson(
+                finishedTaskState.results.documents
+                        .get(finishedTaskState.results.documentLinks.get(0)),
+                QueryValidationServiceState.class);
+        assertTrue(finishedTaskState.results.documentLinks.size() == 1);
+        assertTrue(finishedTaskState.results.documents.size() == 1);
+        assertTrue(finishedState.documentVersion == versions);
         deleteServices(services);
     }
 

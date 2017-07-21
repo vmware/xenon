@@ -68,14 +68,16 @@ class LuceneIndexDocumentHelper {
 
     public static final String FIELD_NAME_INDEXING_ID = FIELD_NAME_INDEXING_PREFIX + ".id";
 
-    public static final String FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT =
-            FIELD_NAME_INDEXING_PREFIX + ".metadata.current";
+    public static final String FIELD_NAME_INDEXING_METADATA_VALUE_TOMBSTONE_TIME =
+            FIELD_NAME_INDEXING_PREFIX + ".metadata.tombstone.time";
 
     private static final String DISABLE_SORT_FIELD_NAMING_PROPERTY_NAME =
             Utils.PROPERTY_NAME_PREFIX + "LuceneIndexDocumentHelper.DISABLE_SORT_FIELD_NAMING";
 
     private static boolean DISABLE_SORT_FIELD_NAMING = Boolean.getBoolean(
             DISABLE_SORT_FIELD_NAMING_PROPERTY_NAME);
+
+    public static final long ACTIVE_DOC_EXPIRATION_TIME = Long.MAX_VALUE;
 
     private Document doc = new Document();
 
@@ -133,7 +135,7 @@ class LuceneIndexDocumentHelper {
         @Override
         public void initialize() {
             this.numericDocField = new NumericDocValuesField(
-                    FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 0L);
+                    FIELD_NAME_INDEXING_METADATA_VALUE_TOMBSTONE_TIME, ACTIVE_DOC_EXPIRATION_TIME);
         }
     };
 
@@ -253,7 +255,7 @@ class LuceneIndexDocumentHelper {
     }
 
     void addCurrentField() {
-        this.currentField.numericDocField.setLongValue(1L);
+        this.currentField.numericDocField.setLongValue(ACTIVE_DOC_EXPIRATION_TIME);
         this.doc.add(this.currentField.numericDocField);
     }
 
