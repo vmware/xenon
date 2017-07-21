@@ -565,6 +565,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         this.fieldToLoadIndexingIdLookup = new HashSet<>();
         this.fieldToLoadIndexingIdLookup.add(LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ID);
+        this.fieldToLoadIndexingIdLookup.add(ServiceDocument.FIELD_NAME_VERSION);
+        this.fieldToLoadIndexingIdLookup.add(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS);
 
         this.fieldToLoadVersionLookup = new HashSet<>();
         this.fieldToLoadVersionLookup.add(ServiceDocument.FIELD_NAME_VERSION);
@@ -1364,7 +1366,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         long queryStartTimeMicros = Utils.getNowMicrosUtc();
-        tq = updateQuery(op, tq, queryStartTimeMicros, options);
+        tq = updateQuery(op, qs, tq, queryStartTimeMicros, options);
         if (tq == null) {
             return false;
         }
@@ -1502,7 +1504,7 @@ public class LuceneDocumentIndexService extends StatelessService {
      *
      * @return Augmented query.
      */
-    private Query updateQuery(Operation op, Query tq, long now,
+    private Query updateQuery(Operation op, QuerySpecification qs, Query tq, long now,
             EnumSet<QueryOption> queryOptions) {
         Query expirationClause = LongPoint.newRangeQuery(
                 ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS, 1, now);
@@ -1511,13 +1513,19 @@ public class LuceneDocumentIndexService extends StatelessService {
                 .add(tq, Occur.FILTER);
 
         if (queryOptions.contains(QueryOption.INDEXED_METADATA)
-                && !queryOptions.contains(QueryOption.INCLUDE_ALL_VERSIONS)
-                && !queryOptions.contains(QueryOption.TIME_SNAPSHOT)) {
+                && !queryOptions.contains(QueryOption.INCLUDE_ALL_VERSIONS)) {
             Query currentClause = NumericDocValuesField.newExactQuery(
-                    LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 1L);
+                    LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_TOMBSTONE_TIME,
+                    LuceneIndexDocumentHelper.ACTIVE_DOC_EXPIRATION_TIME);
             builder.add(currentClause, Occur.MUST);
         }
-
+        if (queryOptions.contains(QueryOption.INDEXED_METADATA) &&
+                queryOptions.contains(QueryOption.TIME_SNAPSHOT)) {
+            Query tombstoneClause = LongPoint.newRangeQuery(
+                    LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_TOMBSTONE_TIME,
+                    qs.timeSnapshotBoundaryMicros, LuceneIndexDocumentHelper.ACTIVE_DOC_EXPIRATION_TIME);
+            builder.add(tombstoneClause, Occur.MUST);
+        }
         if (!getHost().isAuthorizationEnabled()) {
             return builder.build();
         }
@@ -3200,15 +3208,16 @@ public class LuceneDocumentIndexService extends StatelessService {
     private long applyMetadataIndexingUpdate(IndexSearcher searcher, IndexWriter wr,
             MetadataUpdateInfo info) throws IOException {
 
-        long maxVersion = (info.updateAction.equals(Action.DELETE.toString()))
-                ? info.version : info.version - 1;
+        boolean considerMaxVersion = (info.updateAction.equals(Action.DELETE.toString()))
+                ? true : false;
 
         Query selfLinkClause = new TermQuery(new Term(
                 ServiceDocument.FIELD_NAME_SELF_LINK, info.selfLink));
         Query versionClause = LongPoint.newRangeQuery(
-                ServiceDocument.FIELD_NAME_VERSION, 0, maxVersion);
+                ServiceDocument.FIELD_NAME_VERSION, 0, info.version);
         Query currentClause = NumericDocValuesField.newExactQuery(
-                LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 1L);
+                LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_TOMBSTONE_TIME,
+                LuceneIndexDocumentHelper.ACTIVE_DOC_EXPIRATION_TIME);
 
         BooleanQuery booleanQuery = new BooleanQuery.Builder()
                 .add(selfLinkClause, Occur.MUST)
@@ -3216,12 +3225,17 @@ public class LuceneDocumentIndexService extends StatelessService {
                 .add(currentClause, Occur.MUST)
                 .build();
 
+        Sort versionSort = new Sort(new SortedNumericSortField(ServiceDocument.FIELD_NAME_VERSION,
+                SortField.Type.LONG, true));
+
         final int pageSize = 10000;
 
         long updateCount = 0;
         ScoreDoc after = null;
+        Map<Long, Long> versionToUpdateTimeMap = new HashMap<>();
+        int docsWithNextVersionMissing = 0;
         while (true) {
-            TopDocs results = searcher.searchAfter(after, booleanQuery, pageSize);
+            TopDocs results = searcher.searchAfter(after, booleanQuery, pageSize, versionSort);
             if (results == null || results.scoreDocs == null || results.scoreDocs.length == 0) {
                 break;
             }
@@ -3229,13 +3243,28 @@ public class LuceneDocumentIndexService extends StatelessService {
             DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor();
             for (ScoreDoc scoreDoc : results.scoreDocs) {
                 loadDoc(searcher, visitor, scoreDoc.doc, this.fieldToLoadIndexingIdLookup);
-                Term indexingIdTerm = new Term(LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ID,
-                        visitor.documentIndexingId);
-                wr.updateNumericDocValue(indexingIdTerm,
-                        LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 0L);
+                versionToUpdateTimeMap.put(visitor.documentVersion, visitor.documentUpdateTimeMicros);
+                if (visitor.documentVersion == info.version && !considerMaxVersion) {
+                    continue;
+                }
+                Long nextVersionCreationTime = null;
+                if (visitor.documentVersion == info.version) {
+                    nextVersionCreationTime = versionToUpdateTimeMap.get(visitor.documentVersion);
+                } else {
+                    nextVersionCreationTime = versionToUpdateTimeMap.get(visitor.documentVersion + 1);
+                }
+                if (nextVersionCreationTime != null) {
+                    Term indexingIdTerm = new Term(LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ID,
+                            visitor.documentIndexingId);
+                    wr.updateNumericDocValue(indexingIdTerm,
+                            LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_TOMBSTONE_TIME,
+                            nextVersionCreationTime);
+                } else {
+                    docsWithNextVersionMissing++;
+                }
             }
 
-            updateCount += results.scoreDocs.length;
+            updateCount += considerMaxVersion ? results.scoreDocs.length : (results.scoreDocs.length - 1);
 
             if (results.scoreDocs.length < pageSize) {
                 break;
@@ -3244,6 +3273,10 @@ public class LuceneDocumentIndexService extends StatelessService {
             after = results.scoreDocs[results.scoreDocs.length - 1];
         }
 
+        if (docsWithNextVersionMissing != 0) {
+            logWarning(String.format("Metadata tombstone values"
+                    + " could not be applied for %d documents", docsWithNextVersionMissing));
+        }
         return updateCount;
     }
 
