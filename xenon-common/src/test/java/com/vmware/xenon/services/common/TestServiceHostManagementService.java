@@ -464,31 +464,37 @@ public class TestServiceHostManagementService extends BasicTestCase {
 
         doc.documentSelfLink = null;
         long snapshotTime = 0;
-        for (int i = 1; i <= serviceVersion; i++) {
+        for (int i = 1; i < serviceVersion; i++) {
             doc.name = "updated-v" + i;
             for (String selfLink : selfLinks) {
                 sender.sendAndWait(Operation.createPatch(this.host, selfLink).setBody(doc));
-                if (selfLink.startsWith(IndexedMetadataExampleService.FACTORY_LINK)) {
-                    final int indexValue = i;
-                    this.host.waitFor("Metadata indexing failed to occur", () -> {
-                        Map<String, ServiceStat> indexStats = this.host.getServiceStats(
-                                this.host.getDocumentIndexServiceUri());
-                        ServiceStat indexingStat = indexStats.get(
-                                LuceneDocumentIndexService.STAT_NAME_METADATA_INDEXING_UPDATE_COUNT
-                                        + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
-                        if (indexingStat == null) {
-                            return false;
-                        }
-                        if (indexingStat.accumulatedValue > indexValue) {
-                            throw new IllegalStateException("Stat value was " + indexingStat.accumulatedValue);
-                        }
-                        return indexingStat.accumulatedValue == indexValue;
-                    });
-                }
             }
 
             if (i == snapshotServiceVersion) {
                 snapshotTime = Utils.getNowMicrosUtc();
+            }
+        }
+
+        for (String selfLink : selfLinks) {
+            sender.sendAndWait(Operation.createDelete(this.host, selfLink));
+        }
+
+        for (String selfLink : selfLinks) {
+            if (selfLink.startsWith(IndexedMetadataExampleService.FACTORY_LINK)) {
+                this.host.waitFor("Metadata indexing failed to occur", () -> {
+                    Map<String, ServiceStat> indexStats = this.host.getServiceStats(
+                            this.host.getDocumentIndexServiceUri());
+                    ServiceStat indexingStat = indexStats.get(
+                            LuceneDocumentIndexService.STAT_NAME_METADATA_INDEXING_UPDATE_COUNT
+                                    + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+                    if (indexingStat == null) {
+                        return false;
+                    } else if (indexingStat.accumulatedValue > (serviceVersion + 1)) {
+                        throw new IllegalStateException("" + indexingStat.accumulatedValue);
+                    } else {
+                        return indexingStat.accumulatedValue == (serviceVersion + 1);
+                    }
+                });
             }
         }
 
@@ -497,7 +503,8 @@ public class TestServiceHostManagementService extends BasicTestCase {
         backupRequest.destination = backupFileServiceUri;
         backupRequest.kind = ServiceHostManagementService.BackupRequest.KIND;
 
-        sender.sendAndWait(Operation.createPatch(this.host, ServiceHostManagementService.SELF_LINK).setBody(backupRequest));
+        sender.sendAndWait(
+                Operation.createPatch(this.host, ServiceHostManagementService.SELF_LINK).setBody(backupRequest));
 
         this.host.tearDown();
 

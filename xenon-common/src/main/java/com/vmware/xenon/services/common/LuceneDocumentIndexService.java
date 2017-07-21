@@ -411,6 +411,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         public String kind;
         public long updateTimeMicros;
         public long version;
+        public String updateAction;
     }
 
     public static class DocumentUpdateInfo {
@@ -2810,7 +2811,11 @@ public class LuceneDocumentIndexService extends StatelessService {
                     this.metadataUpdates.add(info);
                 }
 
-                info.version = Math.max(info.version, sd.documentVersion);
+                if (sd.documentVersion > info.version) {
+                    info.version = sd.documentVersion;
+                    info.updateAction = sd.documentUpdateAction;
+                }
+
                 return;
             }
 
@@ -2819,6 +2824,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             info.kind = sd.documentKind;
             info.updateTimeMicros = updateTimeMicros;
             info.version = sd.documentVersion;
+            info.updateAction = sd.documentUpdateAction;
 
             this.metadataUpdatesPerLink.put(sd.documentSelfLink, info);
             this.metadataUpdates.add(info);
@@ -3194,10 +3200,13 @@ public class LuceneDocumentIndexService extends StatelessService {
     private long applyMetadataIndexingUpdate(IndexSearcher searcher, IndexWriter wr,
             MetadataUpdateInfo info) throws IOException {
 
+        long maxVersion = (info.updateAction.equals(Action.DELETE.toString()))
+                ? info.version : info.version - 1;
+
         Query selfLinkClause = new TermQuery(new Term(
                 ServiceDocument.FIELD_NAME_SELF_LINK, info.selfLink));
         Query versionClause = LongPoint.newRangeQuery(
-                ServiceDocument.FIELD_NAME_VERSION, 0, info.version - 1);
+                ServiceDocument.FIELD_NAME_VERSION, 0, maxVersion);
         Query currentClause = NumericDocValuesField.newExactQuery(
                 LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 1L);
 

@@ -35,7 +35,6 @@ import java.util.Set;
 import java.util.concurrent.CancellationException;
 
 import org.apache.lucene.document.LongPoint;
-import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexCommit;
 import org.apache.lucene.index.IndexWriter;
@@ -503,15 +502,8 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
         IndexSearcher searcher = new IndexSearcher(
                 DirectoryReader.open(newWriter, true, true));
 
-        Query updateTimeClause = LongPoint.newRangeQuery(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS,
+        Query updateTimeQuery = LongPoint.newRangeQuery(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS,
                 timeSnapshotBoundaryMicros + 1, Long.MAX_VALUE);
-        Query currentClause = NumericDocValuesField.newExactQuery(
-                LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 1L);
-
-        Query booleanQuery = new BooleanQuery.Builder()
-                .add(updateTimeClause, Occur.MUST)
-                .add(currentClause, Occur.MUST)
-                .build();
 
         Sort selfLinkSort = new Sort(new SortField(
                 LuceneIndexDocumentHelper.createSortFieldPropertyName(
@@ -523,7 +515,7 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
         Set<String> prevPageLinks = new HashSet<>();
         ScoreDoc after = null;
         while (true) {
-            TopDocs results = searcher.searchAfter(after, booleanQuery, pageSize, selfLinkSort,
+            TopDocs results = searcher.searchAfter(after, updateTimeQuery, pageSize, selfLinkSort,
                     false, false);
             if (results == null || results.scoreDocs == null || results.scoreDocs.length == 0) {
                 break;
@@ -586,6 +578,10 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
         DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor();
         visitor.reset(LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ID);
         searcher.doc(results.scoreDocs[0].doc, visitor);
+        if (visitor.documentIndexingId == null) {
+            return;
+        }
+
         Term indexingIdTerm = new Term(LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ID,
                 visitor.documentIndexingId);
         newWriter.updateNumericDocValue(indexingIdTerm,

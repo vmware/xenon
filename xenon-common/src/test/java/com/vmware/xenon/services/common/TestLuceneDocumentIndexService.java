@@ -4181,6 +4181,25 @@ public class TestLuceneDocumentIndexService {
         ServiceStat iterationCountStat = indexStats.get(
                 LuceneDocumentIndexService.STAT_NAME_ITERATIONS_PER_QUERY);
         assertEquals(1.0, iterationCountStat.latestValue, 0.01);
+
+        for (URI serviceUri : services.keySet()) {
+            Operation delete = Operation.createDelete(serviceUri);
+            this.host.send(delete);
+        }
+
+        this.host.waitFor("Metadata deletion failed to occur", () -> {
+            Map<String, ServiceStat> stats = this.host.getServiceStats(
+                    this.host.getDocumentIndexServiceUri());
+            ServiceStat stat = stats.get(
+                    LuceneDocumentIndexService.STAT_NAME_METADATA_INDEXING_UPDATE_COUNT
+                            + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+            if (stat == null) {
+                return false;
+            }
+
+            // Account for the initial POST and the final DELETE.
+            return (stat.accumulatedValue == (2 + this.updateCount) * this.serviceCount);
+        });
     }
 
     @Test
