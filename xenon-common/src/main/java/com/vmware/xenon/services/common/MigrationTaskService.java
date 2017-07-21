@@ -275,6 +275,11 @@ public class MigrationTaskService extends StatefulService {
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public EnumSet<MigrationOption> migrationOptions;
 
+        /**
+         * (Optional) Operation timeout value to be applied to operations created by the migration task.
+         */
+        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
+        public Long operationTimeoutMicros;
 
         // The following attributes are the outputs of the task.
         /**
@@ -551,7 +556,7 @@ public class MigrationTaskService extends StatefulService {
         if (currentState.sourceReferences.isEmpty()) {
 
             // resolve source node URIs
-            Operation.createGet(currentState.sourceNodeGroupReference)
+            createGet(currentState.sourceNodeGroupReference, currentState)
                     .setCompletion((os, ex) -> {
                         if (ex != null) {
                             sourceDeferred.fail(ex);
@@ -572,7 +577,7 @@ public class MigrationTaskService extends StatefulService {
 
         DeferredResult<Object> destDeferred = new DeferredResult<>();
         if (currentState.destinationReferences.isEmpty()) {
-            Operation.createGet(currentState.destinationNodeGroupReference)
+            createGet(currentState.destinationNodeGroupReference, currentState)
                     .setCompletion((os, ex) -> {
                         if (ex != null) {
                             destDeferred.fail(ex);
@@ -647,7 +652,7 @@ public class MigrationTaskService extends StatefulService {
         URI sourceHostUri = selectRandomUri(sourceURIs);
         URI factoryUri = UriUtils.buildUri(sourceHostUri, currentState.sourceFactoryLink);
         URI factoryConfigUri = UriUtils.buildConfigUri(factoryUri);
-        Operation configGet = Operation.createGet(factoryConfigUri);
+        Operation configGet = createGet(factoryConfigUri, currentState);
         this.sendWithDeferredResult(configGet)
                 .thenCompose(op -> {
                     FactoryServiceConfiguration factoryConfig = op.getBody(FactoryServiceConfiguration.class);
@@ -671,8 +676,10 @@ public class MigrationTaskService extends StatefulService {
 
                     if (currentState.migrationOptions.contains(MigrationOption.ESTIMATE_COUNT)) {
                         countQuery.documentExpirationTimeMicros = documentExpirationTimeMicros;
-                        Operation countOp = Operation.createPost(UriUtils.buildUri(sourceHostUri, ServiceUriPaths.CORE_QUERY_TASKS))
-                                .setBody(countQuery);
+                        Operation countOp =
+                                createPost(UriUtils.buildUri(sourceHostUri, ServiceUriPaths.CORE_QUERY_TASKS),
+                                        currentState)
+                                        .setBody(countQuery);
                         return this.sendWithDeferredResult(countOp);
                     } else {
                         // populate necessary fields in next step
@@ -710,7 +717,7 @@ public class MigrationTaskService extends StatefulService {
                     Set<Operation> queryOps = sourceURIs.stream()
                             .map(sourceUri -> {
                                 URI uri = UriUtils.buildUri(sourceUri, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
-                                return Operation.createPost(uri).setBody(queryTask);
+                                return createPost(uri, currentState).setBody(queryTask);
                             })
                             .collect(Collectors.toSet());
 
@@ -863,7 +870,7 @@ public class MigrationTaskService extends StatefulService {
             URI templateUri = UriUtils.buildUri(hostUri, selfLink, ServiceHost.SERVICE_URI_SUFFIX_TEMPLATE);
 
             // retrieve retentionLimit from template for the doc
-            Operation o = Operation.createGet(templateUri);
+            Operation o = createGet(templateUri, currentState);
             DeferredResult<List<Object>> deferredResult = this.sendWithDeferredResult(o)
                     .thenCompose(op -> {
                         // based on doc desc, create a query op that retrieves all versions
@@ -884,11 +891,11 @@ public class MigrationTaskService extends StatefulService {
 
                         URI postUri = UriUtils.buildUri(hostUri, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
 
-                        Operation queryOp = Operation.createPost(postUri).setBody(q);
+                        Operation queryOp = createPost(postUri, currentState).setBody(q);
                         return this.sendWithDeferredResult(queryOp);
                     })
                     .thenCompose(op -> {
-                        Operation getNextPageOp = Operation.createGet(getNextPageLinkUri(op));
+                        Operation getNextPageOp = createGet(getNextPageLinkUri(op), currentState);
                         return this.sendWithDeferredResult(getNextPageOp);
                     })
                     .thenApply(op -> {
@@ -919,10 +926,11 @@ public class MigrationTaskService extends StatefulService {
     private void transformUsingMap(State state, Collection<Object> cleanJson, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
         Collection<Operation> transformations = cleanJson.stream()
                 .map(doc -> {
-                    return Operation.createPost(
+                    return createPost(
                             UriUtils.buildUri(
                                     selectRandomUri(destinationURIs),
-                                    state.transformationServiceLink))
+                                    state.transformationServiceLink),
+                            state)
                             .setBody(Collections.singletonMap(doc, state.destinationFactoryLink));
                 })
                 .collect(Collectors.toList());
@@ -958,9 +966,10 @@ public class MigrationTaskService extends StatefulService {
                     transformRequest.originalDocument = Utils.toJson(doc);
                     transformRequest.destinationLink = state.destinationFactoryLink;
 
-                    return Operation.createPost(UriUtils.buildUri(
-                                    selectRandomUri(destinationURIs),
-                                    state.transformationServiceLink))
+                    return createPost(UriUtils.buildUri(
+                            selectRandomUri(destinationURIs),
+                            state.transformationServiceLink),
+                            state)
                             .setBody(transformRequest);
                 })
                 .collect(Collectors.toList());
@@ -1079,7 +1088,7 @@ public class MigrationTaskService extends StatefulService {
             String factoryLink = factoryLinkBySelfLink.get(selfLink);
             URI destinationUri = selectRandomUri(destinationURIs);
 
-            List<Operation> ops = createMigrateOpsWithAllVersions(destinationUri, factoryLink, selfLink, docs);
+            List<Operation> ops = createMigrateOpsWithAllVersions(state, destinationUri, factoryLink, selfLink, docs);
 
             // use dummy operation since findbugs complain if we give null.
             DeferredResult<Operation> deferredResult = DeferredResult.completed(new Operation());
@@ -1132,7 +1141,8 @@ public class MigrationTaskService extends StatefulService {
             String factoryLink = factoryLinkBySelfLink.get(failedSelfLink);
             URI destinationUri = selectRandomUri(destinationURIs);
 
-            List<Operation> ops = createRetryMigrateOpsWithAllVersions(destinationUri, factoryLink, failedSelfLink, docs);
+            List<Operation> ops = createRetryMigrateOpsWithAllVersions(state, destinationUri, factoryLink,
+                    failedSelfLink, docs);
 
             // start with dummy operation
             DeferredResult<Operation> deferredResult = DeferredResult.completed(new Operation());
@@ -1169,7 +1179,7 @@ public class MigrationTaskService extends StatefulService {
                     Object docJson = d.getKey();
                     String factoryLink = d.getValue();
                     URI uri = UriUtils.buildUri(selectRandomUri(destinationURIs), factoryLink);
-                    Operation op = Operation.createPost(uri).setBodyNoCloning(docJson);
+                    Operation op = createPost(uri, state).setBodyNoCloning(docJson);
                     op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK);
                     return new AbstractMap.SimpleEntry<>(op, docJson);
                 })
@@ -1196,17 +1206,18 @@ public class MigrationTaskService extends StatefulService {
                 .sendWith(this);
     }
 
-
-    private List<Operation> createRetryMigrateOpsWithAllVersions(URI destinationUri, String factoryLink, String selfLink, SortedSet<Object> docs) {
+    private List<Operation> createRetryMigrateOpsWithAllVersions(State currentState, URI destinationUri,
+            String factoryLink, String selfLink, SortedSet<Object> docs) {
 
         URI destinationFactoryUri = UriUtils.buildUri(destinationUri, factoryLink);
         URI destinationTargetUri = UriUtils.extendUri(destinationFactoryUri, selfLink);
 
-        Operation delete = Operation.createDelete(destinationTargetUri)
-                    .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER, Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL)
-                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK);
+        Operation delete = createDelete(destinationTargetUri, currentState)
+                .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER, Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK);
 
-        List<Operation> createOps = createMigrateOpsWithAllVersions(destinationUri, factoryLink, selfLink, docs);
+        List<Operation> createOps = createMigrateOpsWithAllVersions(currentState, destinationUri, factoryLink,
+                selfLink, docs);
 
         List<Operation> ops = new ArrayList<>();
         ops.add(delete);
@@ -1215,7 +1226,8 @@ public class MigrationTaskService extends StatefulService {
         return ops;
     }
 
-    private List<Operation> createMigrateOpsWithAllVersions(URI destinationUri, String factoryLink, String selfLink, SortedSet<Object> sortedDocs) {
+    private List<Operation> createMigrateOpsWithAllVersions(State currentState, URI destinationUri, String factoryLink,
+            String selfLink, SortedSet<Object> sortedDocs) {
         List<Object> docs = new ArrayList<>(sortedDocs);
         Object firstDoc = docs.remove(0);
 
@@ -1226,7 +1238,7 @@ public class MigrationTaskService extends StatefulService {
 
         // this post is used not only for initial creation in destination, but for creation after DELETE when
         // DELETE_AFTER is enabled. Therefore, PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE is specified.
-        Operation post = Operation.createPost(destinationFactoryUri)
+        Operation post = createPost(destinationFactoryUri, currentState)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK)
                 .setBodyNoCloning(firstDoc);
@@ -1239,20 +1251,19 @@ public class MigrationTaskService extends StatefulService {
             Operation operation;
             switch (action) {
             case PUT:
-                operation = Operation.createPut(destinationTargetUri)
-                        .setBodyNoCloning(doc);
+                operation = createPut(destinationTargetUri, currentState).setBodyNoCloning(doc);
                 break;
             case PATCH:
-                operation = Operation.createPatch(destinationTargetUri)
-                        .setBodyNoCloning(doc);
+                operation = createPatch(destinationTargetUri, currentState).setBodyNoCloning(doc);
                 break;
             case DELETE:
-                operation = Operation.createDelete(destinationTargetUri)
-                        .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER, Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL);
+                operation = createDelete(destinationTargetUri, currentState)
+                        .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
+                                Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL);
                 break;
             case POST:
                 // this means it was deleted then created again with same selflink
-                operation = Operation.createPost(destinationFactoryUri)
+                operation = createPost(destinationFactoryUri, currentState)
                         .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
                         .setBodyNoCloning(doc);
                 break;
@@ -1283,15 +1294,17 @@ public class MigrationTaskService extends StatefulService {
 
     private void useFallBack(State state, Map<Operation, Object> posts, Map<Long, Throwable> operationFailures, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
         Map<URI, Operation> entityDestinationUriTofailedOps = getFailedOperations(posts, operationFailures);
-        Collection<Operation> deleteOperations = createDeleteOperations(entityDestinationUriTofailedOps.keySet());
+        Collection<Operation> deleteOperations = createDeleteOperations(state,
+                entityDestinationUriTofailedOps.keySet());
 
         OperationJoin.create(deleteOperations)
-            .setCompletion((os ,ts) -> {
+            .setCompletion((os, ts) -> {
                 if (ts != null && !ts.isEmpty()) {
                     failTask(ts.values());
                     return;
                 }
-                Collection<Operation> postOperations = createPostOperations(entityDestinationUriTofailedOps, posts);
+                Collection<Operation> postOperations = createPostOperations(state,
+                        entityDestinationUriTofailedOps, posts);
 
                 OperationJoin
                     .create(postOperations)
@@ -1322,25 +1335,58 @@ public class MigrationTaskService extends StatefulService {
         return ops;
     }
 
-    private Collection<Operation> createDeleteOperations(Collection<URI> uris) {
-        return uris.stream().map(u -> Operation.createDelete(u)
+    private static Operation createDelete(URI uri, State currentState) {
+        Operation op = Operation.createDelete(uri);
+        return prepareOp(op, currentState);
+    }
+
+    private static Operation createGet(URI uri, State currentState) {
+        Operation op = Operation.createGet(uri);
+        return prepareOp(op, currentState);
+    }
+
+    private static Operation createPatch(URI uri, State currentState) {
+        Operation op = Operation.createPatch(uri);
+        return prepareOp(op, currentState);
+    }
+
+    private static Operation createPost(URI uri, State currentState) {
+        Operation op = Operation.createPost(uri);
+        return prepareOp(op, currentState);
+    }
+
+    private static Operation createPut(URI uri, State currentState) {
+        Operation op = Operation.createPut(uri);
+        return prepareOp(op, currentState);
+    }
+
+    private static Operation prepareOp(Operation op, State currentState) {
+        if (currentState.operationTimeoutMicros != null) {
+            op.setExpiration(Utils.fromNowMicrosUtc(currentState.operationTimeoutMicros));
+        }
+        return op;
+    }
+
+    private Collection<Operation> createDeleteOperations(State currentState, Collection<URI> uris) {
+        return uris.stream().map(u -> createDelete(u, currentState)
                 .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
                         Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK))
                 .collect(Collectors.toList());
     }
 
-    private Collection<Operation> createPostOperations(Map<URI, Operation> failedOps, Map<Operation, Object> posts) {
+    private Collection<Operation> createPostOperations(State currentState, Map<URI, Operation> failedOps,
+            Map<Operation, Object> posts) {
         return failedOps.values().stream()
-               .map(o -> {
-                   Object newBody = posts.get(o);
-                   return Operation.createPost(o.getUri())
-                           .setBodyNoCloning(newBody)
-                           .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK)
-                           .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE);
+                .map(o -> {
+                    Object newBody = posts.get(o);
+                    return createPost(o.getUri(), currentState)
+                            .setBodyNoCloning(newBody)
+                            .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK)
+                            .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE);
 
-               })
-               .collect(Collectors.toList());
+                })
+                .collect(Collectors.toList());
     }
 
     private boolean verifyPatchedState(State state, Operation operation) {

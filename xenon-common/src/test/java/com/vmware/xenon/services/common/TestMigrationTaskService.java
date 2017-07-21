@@ -343,6 +343,15 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
     @Test
     public void successMigrateDocuments() throws Throwable {
+        doMigrateDocuments(null);
+    }
+
+    @Test
+    public void successMigrateDocumentsWithCustomExpiration() throws Throwable {
+        doMigrateDocuments(TimeUnit.MINUTES.toMicros(10));
+    }
+
+    private void doMigrateDocuments(Long operationTimeoutMicros) throws Throwable {
         // create object in host
         List<ExampleServiceState> states = createExampleDocuments(this.exampleSourceFactory, getSourceHost(), this.serviceCount);
         for (ExampleServiceState state : states) {
@@ -358,6 +367,9 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
         // start migration
         MigrationTaskService.State migrationState = validMigrationState(ExampleService.FACTORY_LINK);
+        if (operationTimeoutMicros != null) {
+            migrationState.operationTimeoutMicros = operationTimeoutMicros;
+        }
 
         Operation op = Operation.createPost(this.destinationFactoryUri).setBody(migrationState);
         State state = this.sender.sendAndWait(op, State.class);
@@ -404,7 +416,6 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
             assertTrue("destination doc should have isFromMigration=false", destState.isFromMigration);
             assertEquals(sourceState.documentUpdateTimeMicros, destState.documentUpdateTimeMicros);
         }
-
     }
 
     @Test
