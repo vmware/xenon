@@ -77,6 +77,8 @@ class LuceneIndexDocumentHelper {
     private static boolean DISABLE_SORT_FIELD_NAMING = Boolean.getBoolean(
             DISABLE_SORT_FIELD_NAMING_PROPERTY_NAME);
 
+    public static final long ACTIVE_DOC_EXPIRATION_TIME = Long.MAX_VALUE;
+
     private Document doc = new Document();
 
     public Document getDoc() {
@@ -133,7 +135,7 @@ class LuceneIndexDocumentHelper {
         @Override
         public void initialize() {
             this.numericDocField = new NumericDocValuesField(
-                    FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 0L);
+                    FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, ACTIVE_DOC_EXPIRATION_TIME);
         }
     };
 
@@ -253,7 +255,7 @@ class LuceneIndexDocumentHelper {
     }
 
     void addCurrentField() {
-        this.currentField.numericDocField.setLongValue(1L);
+        this.currentField.numericDocField.setLongValue(ACTIVE_DOC_EXPIRATION_TIME);
         this.doc.add(this.currentField.numericDocField);
     }
 
