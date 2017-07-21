@@ -37,6 +37,7 @@ final class DocumentStoredFieldVisitor extends StoredFieldVisitor {
     public String documentSelfLink;
     public String documentIndexingId;
     public long documentVersion;
+    public long documentTombstoneTimeMicros;
     public long documentUpdateTimeMicros;
     public Long documentExpirationTimeMicros;
     public byte[] binarySerializedState;
@@ -100,6 +101,9 @@ final class DocumentStoredFieldVisitor extends StoredFieldVisitor {
         case ServiceDocument.FIELD_NAME_VERSION:
             this.documentVersion = value;
             break;
+        case LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_TOMBSTONE_TIME:
+            this.documentTombstoneTimeMicros = value;
+            break;
         default:
         }
         this.loadedFields++;
@@ -135,6 +139,7 @@ final class DocumentStoredFieldVisitor extends StoredFieldVisitor {
         this.documentExpirationTimeMicros = null;
         this.documentSelfLink = null;
         this.documentIndexingId = null;
+        this.documentTombstoneTimeMicros = LuceneIndexDocumentHelper.ACTIVE_DOCUMENT_TOMBSTONE_TIME;
         this.documentVersion = 0;
         this.binarySerializedState = null;
         this.jsonSerializedState = null;
