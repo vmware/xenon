@@ -70,14 +70,16 @@ class LuceneIndexDocumentHelper {
 
     public static final String FIELD_NAME_INDEXING_ID = FIELD_NAME_INDEXING_PREFIX + ".id";
 
-    public static final String FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT =
-            FIELD_NAME_INDEXING_PREFIX + ".metadata.current";
+    public static final String FIELD_NAME_INDEXING_METADATA_VALUE_TOMBSTONE_TIME =
+            FIELD_NAME_INDEXING_PREFIX + ".metadata.tombstone.time";
 
     private static final String DISABLE_SORT_FIELD_NAMING_PROPERTY_NAME =
             Utils.PROPERTY_NAME_PREFIX + "LuceneIndexDocumentHelper.DISABLE_SORT_FIELD_NAMING";
 
     private static boolean DISABLE_SORT_FIELD_NAMING = Boolean.getBoolean(
             DISABLE_SORT_FIELD_NAMING_PROPERTY_NAME);
+
+    public static final long ACTIVE_DOCUMENT_TOMBSTONE_TIME = Long.MAX_VALUE;
 
     private Document doc = new Document();
 
@@ -131,11 +133,11 @@ class LuceneIndexDocumentHelper {
         }
     };
 
-    private final LongFieldContext currentField = new LongFieldContext() {
+    private final LongFieldContext tombstoneTimeField = new LongFieldContext() {
         @Override
         public void initialize() {
             this.numericDocField = new NumericDocValuesField(
-                    FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 0L);
+                    FIELD_NAME_INDEXING_METADATA_VALUE_TOMBSTONE_TIME, ACTIVE_DOCUMENT_TOMBSTONE_TIME);
         }
     };
 
@@ -210,7 +212,7 @@ class LuceneIndexDocumentHelper {
         this.updateActionField.initialize();
         this.updateTimeField.initialize();
         this.versionField.initialize();
-        this.currentField.initialize();
+        this.tombstoneTimeField.initialize();
         this.indexingIdField.initialize();
     }
 
@@ -254,9 +256,9 @@ class LuceneIndexDocumentHelper {
         updateLongFieldContext(exp, this.expirationTimeField);
     }
 
-    void addCurrentField() {
-        this.currentField.numericDocField.setLongValue(1L);
-        this.doc.add(this.currentField.numericDocField);
+    void addTombstoneTimeField() {
+        this.tombstoneTimeField.numericDocField.setLongValue(ACTIVE_DOCUMENT_TOMBSTONE_TIME);
+        this.doc.add(this.tombstoneTimeField.numericDocField);
     }
 
     void addIndexingIdField(String selfLink, Long epoch, long version) {

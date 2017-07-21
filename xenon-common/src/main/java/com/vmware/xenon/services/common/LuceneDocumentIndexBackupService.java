@@ -681,7 +681,8 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
         Term indexingIdTerm = new Term(LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ID,
                 visitor.documentIndexingId);
         newWriter.updateNumericDocValue(indexingIdTerm,
-                LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 1L);
+                LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_TOMBSTONE_TIME,
+                LuceneIndexDocumentHelper.ACTIVE_DOCUMENT_TOMBSTONE_TIME);
     }
 
     private boolean isInMemoryIndex() {
