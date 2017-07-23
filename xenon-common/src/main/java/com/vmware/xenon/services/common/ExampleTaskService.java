@@ -59,6 +59,24 @@ import com.vmware.xenon.services.common.QueryTask.Query;
 public class ExampleTaskService
         extends TaskService<ExampleTaskService.ExampleTaskServiceState> {
 
+    public static class ExampleTaskODLService extends ExampleTaskService {
+        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/odl-task-examples";
+
+        /**
+         * Create a default factory service that starts instances of this service on POST.
+         * This method is optional, {@code FactoryService.create} can be used directly
+         */
+        public static FactoryService createFactory() {
+            return TaskFactoryService.create(ExampleTaskODLService.class, ServiceOption.IDEMPOTENT_POST,
+                    ServiceOption.INSTRUMENTATION);
+        }
+
+        public ExampleTaskODLService() {
+            super();
+            super.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
+        }
+    }
+
     /**
      * These substages are for tracking the stages unique to our task service. They are only
      * relevant to the STARTED TaskStage. If you create your own task service, these substages

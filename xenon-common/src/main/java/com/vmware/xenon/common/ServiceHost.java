@@ -2547,7 +2547,7 @@ public class ServiceHost implements ServiceRequestSender {
         if (!isIdempotent) {
             // check factory, its more likely to have the IDEMPOTENT option
             String parentPath = UriUtils.getParentPath(servicePath);
-            Service parent = parentPath != null ? findService(parentPath) : null;
+            Service parent = parentPath != null ? findParentService(parentPath) : null;
             isIdempotent = parent != null
                     && parent.hasOption(ServiceOption.IDEMPOTENT_POST);
         }
@@ -3319,6 +3319,26 @@ public class ServiceHost implements ServiceRequestSender {
 
     }
 
+    protected Service findParentService(String uriPath) {
+        Service parent = null;
+        while (uriPath != null) {
+            parent = findService(uriPath);
+            if (parent == null) {
+                // Skip this loop for core services.
+                if (uriPath.startsWith(ServiceUriPaths.CORE_SERVICE_PREFIX)) {
+                    break;
+                }
+                uriPath = UriUtils.getParentPath(uriPath);
+                if (uriPath.equals(UriUtils.URI_PATH_CHAR)) {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        return parent;
+    }
+
     protected Service findService(String uriPath) {
         return findService(uriPath, true);
     }
@@ -3816,7 +3836,11 @@ public class ServiceHost implements ServiceRequestSender {
                 return true;
             }
 
-            parent = findService(factoryPath);
+            // Find factoryPath in the attached services. If we cannot find it then
+            // we try the parent path of that factoryPath. We can have a link that has
+            // multiple '/' in its id. In those cases we have to try search again by removing
+            // those end parts until we find the right factory path of that link.
+            parent = findParentService(factoryPath);
             if (parent == null) {
                 Operation.failServiceNotFound(op);
                 return true;
@@ -4050,7 +4074,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         String parentPath = UriUtils.getParentPath(path);
         if (parentPath != null && !waitForService) {
-            Service parentService = this.findService(parentPath);
+            Service parentService = this.findParentService(parentPath);
             // Only wait for factory if the logical parent of this service
             // is a factory which itself is starting
             if (parentService != null) {
@@ -5717,7 +5741,7 @@ public class ServiceHost implements ServiceRequestSender {
             // checks on their documents
             if (s.hasOption(ServiceOption.FACTORY_ITEM) && s.getSelfLink() != null) {
                 String parentPath = UriUtils.getParentPath(s.getSelfLink());
-                Service factoryService = findService(parentPath);
+                Service factoryService = findParentService(parentPath);
                 if (factoryService != null && factoryService.hasOption(ServiceOption.FACTORY)) {
                     this.descriptionCachePerFactoryLink.put(parentPath, desc);
                 }

@@ -677,7 +677,7 @@ class ServiceResourceTracker {
         String factoryPath = UriUtils.getParentPath(key);
         FactoryService factoryService = null;
         if (factoryPath != null) {
-            Service parentService = this.host.findService(factoryPath);
+            Service parentService = this.host.findParentService(factoryPath);
             if (!(parentService instanceof FactoryService)) {
                 Operation.failServiceNotFound(inboundOp,
                         ServiceErrorResponse.ERROR_CODE_SERVICE_PARENT_NOT_A_FACTORY,
