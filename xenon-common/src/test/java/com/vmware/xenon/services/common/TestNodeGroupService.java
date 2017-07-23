@@ -657,6 +657,74 @@ public class TestNodeGroupService {
         return hostToRestart;
     }
 
+    /**
+     * This test validates that if the user created document links with multiple slashes in
+     * multi-node environment with quorum less then total number of nodes, then request forwarding
+     * and replication requests can find the factory service and do not fail these operations,
+     * which can happen if factory link was not correctly extracted from the child service link
+     * with multiple slashes.
+     *
+     * @throws Throwable
+     */
+    @Test
+    public void searchFactoryServiceOfServiceWithIrregularId() throws Throwable {
+        setUp(this.nodeCount);
+        this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+        this.host.setNodeGroupQuorum(1);
+        this.host.waitForNodeGroupConvergence(this.nodeCount);
+
+        // Use a non-core factory link for testing because in
+        // core services we do not expected to use irregular document ids.
+        String exampleTaskFactoryLink = "/test/example-tasks";
+
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            h.startServiceAndWait(ExampleTaskService.createFactory(), exampleTaskFactoryLink, null);
+        }
+
+        for (URI hostUri : this.host.getNodeGroupMap().keySet()) {
+            waitForReplicatedFactoryServiceAvailable(
+                    UriUtils.buildUri(hostUri, exampleTaskFactoryLink),
+                    ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+        }
+
+        searchFactoryServiceOfServiceWithIrregularIdDo(exampleTaskFactoryLink);
+    }
+
+    public void searchFactoryServiceOfServiceWithIrregularIdDo(String factoryLink) throws Throwable {
+        VerificationHost peerHost = this.host.getPeerHost();
+        createExampleServices(peerHost.getUri());
+        URI factoryUri = UriUtils.extendUri(peerHost.getUri(), factoryLink);
+        TestContext testContext = this.host.testCreate(this.serviceCount);
+        List<Operation> postOps = new ArrayList<>();
+
+        // We use ExampleTaskService for testing purpose because it creates more interesting scenarios
+        // then dump ExampleService for the case of searching factory link in attachedServices.
+        // These interesting scenarios are created because ExampleTaskService internally triggers
+        // the creation of subscription service and callback service. And because this
+        // is direct TaskService, the subscription/callback cycle would complete before we
+        // get the result of the POST operation.
+        ExampleTaskServiceState state = new ExampleTaskServiceState();
+        state.taskInfo = TaskState.createDirect();
+        for (int i = 0; i < this.serviceCount; i++) {
+            state.documentSelfLink =  "document/id/with/slashes/" + UUID.randomUUID().toString();
+            postOps.add(Operation
+                    .createPost(factoryUri)
+                    .setBody(state)
+                    .setReferer(this.host.getUri())
+                    .setCompletion(
+                            (o, e) -> {
+                                assertEquals(e, null);
+                                testContext.complete();
+                            }));
+        }
+
+        OperationJoin.create(postOps)
+                .setCompletion((o, failures) -> assertEquals(failures, null))
+                .sendWith(peerHost);
+
+        testContext.await();
+    }
+
     @Test
     public void synchronizationCollisionWithPosts() throws Throwable {
         // POST requests go through the FactoryService
