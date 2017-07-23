@@ -3816,7 +3816,26 @@ public class ServiceHost implements ServiceRequestSender {
                 return true;
             }
 
-            parent = findService(factoryPath);
+            // Find factoryPath in the attached services. If we cannot find it then
+            // we try the parent path of that factoryPath. We can have a link that has
+            // multiple '/' in its id. In those cases we have to try search again by removing
+            // those end parts until we find the right factory path of that link.
+            while (factoryPath != null) {
+                parent = findService(factoryPath);
+                if (parent == null) {
+                    // Skip this loop for core services.
+                    if (factoryPath.startsWith(ServiceUriPaths.CORE_SERVICE_PREFIX)) {
+                        break;
+                    }
+                    factoryPath = UriUtils.getParentPath(factoryPath);
+                    if (factoryPath.equals(UriUtils.URI_PATH_CHAR)) {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+
             if (parent == null) {
                 Operation.failServiceNotFound(op);
                 return true;

@@ -25,6 +25,7 @@ public final class ServiceUriPaths {
     public static final String SERVICE_URI_SUFFIX_REPLICATION = "replication";
 
     public static final String CORE = "/core";
+    public static final String CORE_SERVICE_PREFIX = CORE + "/";
     public static final String UI_PATH_SUFFIX = "/ui";
 
     public static final String CORE_WEB_SOCKET_ENDPOINT = CORE + "/ws-endpoint";
