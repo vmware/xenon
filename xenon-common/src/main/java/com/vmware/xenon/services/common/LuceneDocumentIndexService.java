@@ -314,6 +314,14 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final String STAT_NAME_SINGLE_QUERY_BY_FACTORY_COUNT_FORMAT = "singleQueryByFactoryCount-%s";
 
+    public static final String STAT_NAME_PREFIX_UPDATE_QUEUE_DEPTH = "updateQueueDepth";
+
+    public static final String STAT_NAME_FORMAT_UPDATE_QUEUE_DEPTH = STAT_NAME_PREFIX_UPDATE_QUEUE_DEPTH + "-%s";
+
+    public static final String STAT_NAME_PREFIX_QUERY_QUEUE_DEPTH = "queryQueueDepth";
+
+    public static final String STAT_NAME_FORMAT_QUERY_QUEUE_DEPTH = STAT_NAME_PREFIX_QUERY_QUEUE_DEPTH + "-%s";
+
     private static final String STAT_NAME_MAINTENANCE_MEMORY_LIMIT_DURATION_MICROS =
             "maintenanceMemoryLimitDurationMicros";
 
@@ -392,9 +400,9 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private Sort versionSort;
 
-    private ExecutorService privateIndexingExecutor;
+    ExecutorService privateIndexingExecutor;
 
-    private ExecutorService privateQueryExecutor;
+    ExecutorService privateQueryExecutor;
 
     private Set<String> fieldsToLoadIndexingIdLookup;
     private Set<String> fieldToLoadVersionLookup;
@@ -3109,6 +3117,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             if (this.hasOption(ServiceOption.INSTRUMENTATION)) {
                 setStat(LuceneDocumentIndexService.STAT_NAME_INDEXED_DOCUMENT_COUNT, w.numDocs());
+                logQueueDepthStat(this.updateQueue, STAT_NAME_FORMAT_UPDATE_QUEUE_DEPTH);
+                logQueueDepthStat(this.queryQueue, STAT_NAME_FORMAT_QUERY_QUEUE_DEPTH);
             }
 
             op.complete();
@@ -3120,6 +3130,14 @@ public class LuceneDocumentIndexService extends StatelessService {
             logWarning("Attempting recovery due to error: %s", Utils.toString(e));
             applyFileLimitRefreshWriter(true);
             op.fail(e);
+        }
+    }
+
+    private void logQueueDepthStat(RoundRobinOperationQueue queue, String format) {
+        Map<String, Integer> sizes = queue.sizesByKey();
+        for (Entry<String, Integer> e : sizes.entrySet()) {
+            String statName = String.format(format, e.getKey());
+            setTimeSeriesStat(statName, AGGREGATION_TYPE_AVG_MAX, e.getValue());
         }
     }
 
