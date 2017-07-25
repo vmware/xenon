@@ -21,6 +21,8 @@ import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.net.URI;
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -486,8 +488,20 @@ public class ServiceDocumentDescription {
             } else if (String.class.equals(clazz)) {
                 pd.typeName = TypeName.STRING;
                 pd.exampleValue = "example string";
-            } else if (Date.class.equals(clazz)) {
+            } else if (UUID.class.equals(clazz)) {
+                pd.typeName = TypeName.STRING;
+                pd.exampleValue = UUID.randomUUID();
+            } else if (Date.class.equals(clazz) ) {
                 pd.exampleValue = new Date();
+                pd.typeName = TypeName.DATE;
+            } else if (Instant.class.isAssignableFrom(clazz)) {
+                pd.exampleValue = Instant.now();
+                pd.typeName = TypeName.DATE;
+            } else if (ZonedDateTime.class.isAssignableFrom(clazz)) {
+                pd.exampleValue = ZonedDateTime.now();
+                pd.typeName = TypeName.DATE;
+            } else if (LocalDateTime.class.isAssignableFrom(clazz)) {
+                pd.exampleValue = LocalDateTime.now();
                 pd.typeName = TypeName.DATE;
             } else if (URI.class.equals(clazz)) {
                 pd.exampleValue = URI.create("http://localhost:1234/some/service");
