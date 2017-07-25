@@ -24,6 +24,8 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.net.URI;
+import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -34,6 +36,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -41,6 +44,7 @@ import com.google.gson.annotations.SerializedName;
 import org.junit.Assert;
 import org.junit.Test;
 
+import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.Utils.MergeResult;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryValidationTestService;
@@ -679,6 +683,12 @@ public class TestServiceDocument {
         public String _podoField;
     }
 
+    public static class TestDoc extends ServiceDocument {
+        public UUID id;
+        public ZonedDateTime zonedDateTime;
+        public Instant instant;
+    }
+
     @Test
     @SuppressWarnings("unchecked")
     public void testAnnotationOnFields() {
@@ -831,6 +841,18 @@ public class TestServiceDocument {
 
         // handle generic classes where the type parameter is Enum
         assertNull(justEnum.enumValues);
+    }
+
+    @Test
+    public void primitiveFields() {
+        ServiceDocumentDescription.PropertyDescription desc = ServiceDocumentDescription.Builder
+                .create()
+                .buildPodoPropertyDescription(TestDoc.class);
+
+        assertEquals(desc.fieldDescriptions.get("id").typeName, TypeName.STRING);
+        assertEquals(desc.fieldDescriptions.get("zonedDateTime").typeName, TypeName.DATE);
+        assertEquals(desc.fieldDescriptions.get("instant").typeName, TypeName.DATE);
+
     }
 
     @Test
