@@ -396,7 +396,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private ExecutorService privateQueryExecutor;
 
-    private Set<String> fieldToLoadIndexingIdLookup;
+    private Set<String> fieldsToLoadIndexingIdLookup;
     private Set<String> fieldToLoadVersionLookup;
     private Set<String> fieldsToLoadNoExpand;
     private Set<String> fieldsToLoadWithExpand;
@@ -410,8 +410,6 @@ public class LuceneDocumentIndexService extends StatelessService {
         public String selfLink;
         public String kind;
         public long updateTimeMicros;
-        public long version;
-        public String updateAction;
     }
 
     public static class DocumentUpdateInfo {
@@ -563,8 +561,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         this.versionSort = new Sort(new SortedNumericSortField(ServiceDocument.FIELD_NAME_VERSION,
                 SortField.Type.LONG, true));
 
-        this.fieldToLoadIndexingIdLookup = new HashSet<>();
-        this.fieldToLoadIndexingIdLookup.add(LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ID);
+        this.fieldsToLoadIndexingIdLookup = new HashSet<>();
+        this.fieldsToLoadIndexingIdLookup.add(ServiceDocument.FIELD_NAME_VERSION);
+        this.fieldsToLoadIndexingIdLookup.add(ServiceDocument.FIELD_NAME_UPDATE_ACTION);
+        this.fieldsToLoadIndexingIdLookup.add(LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ID);
 
         this.fieldToLoadVersionLookup = new HashSet<>();
         this.fieldToLoadVersionLookup.add(ServiceDocument.FIELD_NAME_VERSION);
@@ -2785,9 +2785,9 @@ public class LuceneDocumentIndexService extends StatelessService {
         long updateTime = Utils.getNowMicrosUtc();
         updateLinkInfoCache(desc, sd.documentSelfLink, sd.documentKind, sd.documentVersion,
                 updateTime);
-        checkDocumentIndexingMetadata(sd, desc, updateTime);
         op.setBody(null).complete();
         checkDocumentRetentionLimit(sd, desc);
+        checkDocumentIndexingMetadata(sd, desc, updateTime);
         applyActiveQueries(op, sd, desc);
     }
 
@@ -2810,12 +2810,6 @@ public class LuceneDocumentIndexService extends StatelessService {
                     info.updateTimeMicros = updateTimeMicros;
                     this.metadataUpdates.add(info);
                 }
-
-                if (sd.documentVersion > info.version) {
-                    info.version = sd.documentVersion;
-                    info.updateAction = sd.documentUpdateAction;
-                }
-
                 return;
             }
 
@@ -2823,8 +2817,6 @@ public class LuceneDocumentIndexService extends StatelessService {
             info.selfLink = sd.documentSelfLink;
             info.kind = sd.documentKind;
             info.updateTimeMicros = updateTimeMicros;
-            info.version = sd.documentVersion;
-            info.updateAction = sd.documentUpdateAction;
 
             this.metadataUpdatesPerLink.put(sd.documentSelfLink, info);
             this.metadataUpdates.add(info);
@@ -3142,14 +3134,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                     break;
                 }
 
-                entries.compute(info.selfLink, (selfLink, entry) -> {
-                    if (entry == null) {
-                        return info;
-                    }
-                    entry.version = Math.max(entry.version, info.version);
-                    return entry;
-                });
-
+                entries.put(info.selfLink, info);
                 it.remove();
             }
         }
@@ -3200,21 +3185,27 @@ public class LuceneDocumentIndexService extends StatelessService {
     private long applyMetadataIndexingUpdate(IndexSearcher searcher, IndexWriter wr,
             MetadataUpdateInfo info) throws IOException {
 
-        long maxVersion = (info.updateAction.equals(Action.DELETE.toString()))
-                ? info.version : info.version - 1;
-
-        Query selfLinkClause = new TermQuery(new Term(
-                ServiceDocument.FIELD_NAME_SELF_LINK, info.selfLink));
-        Query versionClause = LongPoint.newRangeQuery(
-                ServiceDocument.FIELD_NAME_VERSION, 0, maxVersion);
+        Query selfLinkClause = new TermQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK,
+                info.selfLink));
         Query currentClause = NumericDocValuesField.newExactQuery(
                 LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 1L);
 
-        BooleanQuery booleanQuery = new BooleanQuery.Builder()
+        Query booleanQuery = new BooleanQuery.Builder()
                 .add(selfLinkClause, Occur.MUST)
-                .add(versionClause, Occur.MUST)
                 .add(currentClause, Occur.MUST)
                 .build();
+
+        //
+        // In a perfect world, we'd sort the results here and examine the first result to determine
+        // whether the document has been deleted. Unfortunately, Lucene 6.5 has a bug where, for
+        // queries which specify sorts, NumericDocValuesField query clauses are ignored (these
+        // queries are new and experimental in 6.5). As a result, we must traverse the unordered
+        // results and track the highest result that we've seen.
+        //
+
+        long highestVersion = -1;
+        String lastUpdateAction = null;
+        String lastIndexingId = null;
 
         final int pageSize = 10000;
 
@@ -3228,14 +3219,23 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor();
             for (ScoreDoc scoreDoc : results.scoreDocs) {
-                loadDoc(searcher, visitor, scoreDoc.doc, this.fieldToLoadIndexingIdLookup);
-                Term indexingIdTerm = new Term(LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ID,
-                        visitor.documentIndexingId);
-                wr.updateNumericDocValue(indexingIdTerm,
-                        LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 0L);
-            }
+                loadDoc(searcher, visitor, scoreDoc.doc, this.fieldsToLoadIndexingIdLookup);
 
-            updateCount += results.scoreDocs.length;
+                String indexingId;
+                if (visitor.documentVersion > highestVersion) {
+                    highestVersion = visitor.documentVersion;
+                    indexingId = lastIndexingId;
+                    lastIndexingId = visitor.documentIndexingId;
+                    lastUpdateAction = visitor.documentUpdateAction;
+                } else {
+                    indexingId = visitor.documentIndexingId;
+                }
+
+                if (indexingId != null) {
+                    clearIndexingId(wr, indexingId);
+                    updateCount++;
+                }
+            }
 
             if (results.scoreDocs.length < pageSize) {
                 break;
@@ -3244,7 +3244,19 @@ public class LuceneDocumentIndexService extends StatelessService {
             after = results.scoreDocs[results.scoreDocs.length - 1];
         }
 
+        if (Action.DELETE.toString().equals(lastUpdateAction)) {
+            clearIndexingId(wr, lastIndexingId);
+            updateCount++;
+        }
+
         return updateCount;
+    }
+
+    private void clearIndexingId(IndexWriter wr, String indexingId) throws IOException {
+        Term indexingIdTerm = new Term(LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_ID,
+                indexingId);
+        wr.updateNumericDocValue(indexingIdTerm,
+                LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 0L);
     }
 
     private void applyFileLimitRefreshWriter(boolean force) {

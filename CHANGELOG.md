@@ -1,6 +1,8 @@
 # CHANGELOG
 
-## 1.5.3-SNAPSHOT
+## 1.5.4-SNAPSHOT
+
+## 1.5.3
 
 * Addition of new "indexed metadata" document indexing and query options.
 
