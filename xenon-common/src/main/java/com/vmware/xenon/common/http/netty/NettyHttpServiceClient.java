@@ -304,7 +304,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         if (existingCookies == null) {
             clone.setCookies(cookies);
         } else {
-            existingCookies.putAll(cookies);
+            cookies.forEach(existingCookies::putIfAbsent);
         }
     }
 
