@@ -129,6 +129,7 @@ public class AuthorizationSetupHelper {
     private URI referer;
     private String userSelfLink;
     private String userGroupSelfLink;
+    private String credentialsSelfLink;
     private String resourceGroupSelfLink;
     private String roleSelfLink;
     private Query userGroupQuery;
@@ -154,6 +155,11 @@ public class AuthorizationSetupHelper {
 
     public AuthorizationSetupHelper setUserSelfLink(String userSelfLink) {
         this.userSelfLink = userSelfLink;
+        return this;
+    }
+
+    public AuthorizationSetupHelper setCredentialsSelfLink(String credentialsSelfLink) {
+        this.credentialsSelfLink = credentialsSelfLink;
         return this;
     }
 
@@ -425,6 +431,9 @@ public class AuthorizationSetupHelper {
         AuthCredentialsServiceState auth = new AuthCredentialsServiceState();
         auth.userEmail = this.userEmail;
         auth.privateKey = this.userPassword;
+        if (this.credentialsSelfLink != null) {
+            auth.documentSelfLink = this.credentialsSelfLink;
+        }
 
         URI credentialFactoryUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_CREDENTIALS);
         Operation postCreds = Operation.createPost(credentialFactoryUri)
