@@ -13,7 +13,7 @@ export * from './process-log/process-log.component';
 export * from './query/query-clause-nested.component';
 export * from './query/query-clause.component';
 export * from './query/query-nested.component';
-export * from './query/query-result-detail.component'
+export * from './query/query-result-detail.component';
 export * from './query/query-spec-reference.component';
 export * from './query/query.component';
 export * from './service/service-card.component';

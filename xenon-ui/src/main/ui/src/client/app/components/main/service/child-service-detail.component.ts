@@ -1,33 +1,29 @@
 // angular
-import { AfterViewChecked, ChangeDetectionStrategy, Input,
-    SimpleChange, OnChanges, OnDestroy,
-    trigger, state, style, animate, transition } from '@angular/core';
+import { AfterViewChecked, Component, Input,
+    SimpleChange, OnChanges, OnDestroy } from '@angular/core';
+import { animate, state, style, transition, trigger } from '@angular/animations';
 import { Subscription } from 'rxjs/Subscription';
 import * as _ from 'lodash';
 
-declare var Chart: any;
-
 // app
-import { BaseComponent } from '../../../frameworks/core/index';
-
 import { ModalContext, ServiceDocument, ServiceDocumentQueryResult,
-    ServiceStats, ServiceStatsEntry } from '../../../frameworks/app/interfaces/index';
-import { StringUtil } from '../../../frameworks/app/utils/index';
+    ServiceStats, ServiceStatsEntry } from '../../../modules/app/interfaces/index';
+import { StringUtil } from '../../../modules/app/utils/index';
+import { BaseService, NotificationService } from '../../../modules/app/services/index';
 
-import { BaseService, NotificationService } from '../../../frameworks/app/services/index';
+declare var Chart: any;
 
 const OPERATIONS: string[] = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'];
 
-@BaseComponent({
+@Component({
     selector: 'xe-child-service-detail',
     moduleId: module.id,
     templateUrl: './child-service-detail.component.html',
     styleUrls: ['./child-service-detail.component.css'],
-    changeDetection: ChangeDetectionStrategy.Default,
     animations: [
         trigger('statsState', [
             state('expand', style({
-                width: '432px',
+                width: '384px',
                 padding: '24px 36px'
             })),
             state('collapse', style({
@@ -79,47 +75,47 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
     /**
      * Selected child service document
      */
-    private _selectedChildService: ServiceDocumentQueryResult;
+    private selectedChildService: ServiceDocumentQueryResult;
 
     /**
      * Selected child service stats document
      */
-    private _selectedChildServiceStats: ServiceStats;
+    private selectedChildServiceStats: ServiceStats;
 
     /**
      * Canvas for rendering operation count chart
      */
-    private _operationCountChartCanvas: any;
+    private operationCountChartCanvas: any;
 
     /**
      * The operation count chart
      */
-    private _operationCountChart: any;
+    private operationCountChart: any;
 
     /**
      * Canvas for rendering operation duration chart
      */
-    private _operationDurationChartCanvas: any;
+    private operationDurationChartCanvas: any;
 
     /**
      * The operation duration chart
      */
-    private _operationDurationChart: any;
+    private operationDurationChart: any;
 
     /**
      * Flag indicates whether the view has been initialized
      */
-    private _isViewInitialized: boolean = false;
+    private isViewInitialized: boolean = false;
 
     /**
      * Subscriptions to services.
      */
-    private _baseServiceGetChildServiceSubscription: Subscription;
-    private _baseServiceGetChildServiceStatsSubscription: Subscription;
+    private baseServiceGetChildServiceSubscription: Subscription;
+    private baseServiceGetChildServiceStatsSubscription: Subscription;
 
     constructor(
-        private _baseService: BaseService,
-        private _notificationService: NotificationService) {}
+        private baseService: BaseService,
+        private notificationService: NotificationService) {}
 
     ngOnChanges(changes: {[propertyName: string]: SimpleChange}): void {
         var selectedChildServiceIdChanges = changes['selectedChildServiceId'];
@@ -132,53 +128,53 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
 
         this.selectedChildServiceId = selectedChildServiceIdChanges.currentValue;
 
-        this._getData();
+        this.getData();
     }
 
     ngAfterViewChecked(): void {
-        if (this._isViewInitialized) {
+        if (this.isViewInitialized) {
             return;
         }
 
-        this._operationCountChartCanvas = document.getElementById('operationCountChart');
-        this._operationDurationChartCanvas = document.getElementById('operationDurationChart');
+        this.operationCountChartCanvas = document.getElementById('operationCountChart');
+        this.operationDurationChartCanvas = document.getElementById('operationDurationChart');
 
-        if (_.isNull(this._operationCountChartCanvas) || _.isNull(this._operationDurationChartCanvas)) {
+        if (_.isNull(this.operationCountChartCanvas) || _.isNull(this.operationDurationChartCanvas)) {
             return;
         }
 
-        this._isViewInitialized = true;
-        this._renderChart();
+        this.isViewInitialized = true;
+        this.renderChart();
     }
 
     ngOnDestroy(): void {
-        if (!_.isUndefined(this._operationCountChart)) {
-            this._operationCountChart.destroy();
+        if (!_.isUndefined(this.operationCountChart)) {
+            this.operationCountChart.destroy();
         }
 
-        if (!_.isUndefined(this._operationDurationChart)) {
-            this._operationDurationChart.destroy();
+        if (!_.isUndefined(this.operationDurationChart)) {
+            this.operationDurationChart.destroy();
         }
 
-        if (!_.isUndefined(this._baseServiceGetChildServiceSubscription)) {
-            this._baseServiceGetChildServiceSubscription.unsubscribe();
+        if (!_.isUndefined(this.baseServiceGetChildServiceSubscription)) {
+            this.baseServiceGetChildServiceSubscription.unsubscribe();
         }
 
-        if (!_.isUndefined(this._baseServiceGetChildServiceStatsSubscription)) {
-            this._baseServiceGetChildServiceStatsSubscription.unsubscribe();
+        if (!_.isUndefined(this.baseServiceGetChildServiceStatsSubscription)) {
+            this.baseServiceGetChildServiceStatsSubscription.unsubscribe();
         }
     }
 
     getSelectedChildService(): ServiceDocumentQueryResult {
-        return this._selectedChildService;
+        return this.selectedChildService;
     }
 
     getTimeline(): any[] {
-        if (_.isUndefined(this._selectedChildServiceStats)) {
+        if (_.isUndefined(this.selectedChildServiceStats)) {
             return [];
         }
 
-        var operationEntries: {[key: string]: ServiceStatsEntry} = this._selectedChildServiceStats.entries;
+        var operationEntries: {[key: string]: ServiceStatsEntry} = this.selectedChildServiceStats.entries;
         var timeline: any[] = [];
 
         _.each(OPERATIONS, (operation: string) => {
@@ -207,8 +203,8 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
     onEditChildServiceMethodChanged(event: MouseEvent, method: string) {
         this.editChildServiceModalContext.data['method'] = method;
 
-        if (method === 'PATCH' && !_.isUndefined(this._selectedChildService)) {
-            this.editChildServiceModalContext.data['body'] = this._getPatchMethodDefaultBody();
+        if (method === 'PATCH' && !_.isUndefined(this.selectedChildService)) {
+            this.editChildServiceModalContext.data['body'] = this.getPatchMethodDefaultBody();
         } else {
             this.editChildServiceModalContext.data['body'] = '';
         }
@@ -224,9 +220,9 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
         }
 
         if (method === 'PATCH') {
-            this._baseService.patch(selectedServiceId, body).subscribe(
+            this.baseService.patch(selectedServiceId, body).subscribe(
                 (document: ServiceDocument) => {
-                    this._notificationService.set([{
+                    this.notificationService.set([{
                         type: 'SUCCESS',
                         messages: [`Child Service ${document.documentSelfLink} Updated`]
                     }]);
@@ -236,15 +232,15 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
                 },
                 (error) => {
                     // TODO: Better error handling
-                    this._notificationService.set([{
+                    this.notificationService.set([{
                         type: 'ERROR',
                         messages: [`[${error.statusCode}] ${error.message}`]
                     }]);
                 });
         } else if (method === 'PUT') {
-            this._baseService.put(selectedServiceId, body).subscribe(
+            this.baseService.put(selectedServiceId, body).subscribe(
                 (document: ServiceDocument) => {
-                    this._notificationService.set([{
+                    this.notificationService.set([{
                         type: 'SUCCESS',
                         messages: [`Child Service ${document.documentSelfLink} Updated`]
                     }]);
@@ -254,13 +250,13 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
                 },
                 (error) => {
                     // TODO: Better error handling
-                    this._notificationService.set([{
+                    this.notificationService.set([{
                         type: 'ERROR',
                         messages: [`[${error.statusCode}] ${error.message}`]
                     }]);
                 });
         } else {
-            this._notificationService.set([{
+            this.notificationService.set([{
                 type: 'ERROR',
                 messages: [`Unknown method ${method} used to modify the child service`]
             }]);
@@ -274,16 +270,16 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
             return;
         }
 
-        this._baseService.delete(selectedServiceId).subscribe(
+        this.baseService.delete(selectedServiceId).subscribe(
             (document: ServiceDocument) => {
-                this._notificationService.set([{
+                this.notificationService.set([{
                     type: 'SUCCESS',
                     messages: [`Child Service ${document.documentSelfLink} Deleted`]
                 }]);
             },
             (error) => {
                 // TODO: Better error handling
-                this._notificationService.set([{
+                this.notificationService.set([{
                     type: 'ERROR',
                     messages: [`[${error.statusCode}] ${error.message}`]
                 }]);
@@ -294,63 +290,63 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
         this.statsState = this.statsState === 'expand' ? 'collapse' : 'expand';
     }
 
-    private _getData(): void {
+    private getData(): void {
         var link: string = this.selectedServiceId + '/' + this.selectedChildServiceId;
 
-        this._baseServiceGetChildServiceSubscription =
-            this._baseService.getDocument(link).subscribe(
+        this.baseServiceGetChildServiceSubscription =
+            this.baseService.getDocument(link).subscribe(
                 (childService: ServiceDocumentQueryResult) => {
-                    this._selectedChildService = childService;
+                    this.selectedChildService = childService;
 
                     // Set modal context
                     this.editChildServiceModalContext.name = link;
                     this.editChildServiceModalContext.data['documentSelfLink'] = link;
                     this.editChildServiceModalContext.data['method'] = 'PATCH';
-                    this.editChildServiceModalContext.data['body'] = this._getPatchMethodDefaultBody();
+                    this.editChildServiceModalContext.data['body'] = this.getPatchMethodDefaultBody();
 
                     this.deleteChildServiceModalContext.name = link;
                     this.deleteChildServiceModalContext.data['documentSelfLink'] = link;
                 },
                 (error) => {
                     // TODO: Better error handling
-                    this._notificationService.set([{
+                    this.notificationService.set([{
                         type: 'ERROR',
                         messages: [`Failed to retrieve factory child service details: [${error.statusCode}] ${error.message}`]
                     }]);
                 });
 
-        this._baseServiceGetChildServiceStatsSubscription =
-            this._baseService.getDocumentStats(link).subscribe(
+        this.baseServiceGetChildServiceStatsSubscription =
+            this.baseService.getDocumentStats(link).subscribe(
                 (childServiceStats: ServiceStats) => {
-                    this._selectedChildServiceStats = childServiceStats;
+                    this.selectedChildServiceStats = childServiceStats;
 
-                    this._renderChart();
+                    this.renderChart();
                 },
                 (error) => {
                     // TODO: Better error handling
-                    this._notificationService.set([{
+                    this.notificationService.set([{
                         type: 'ERROR',
                         messages: [`Failed to retrieve factory child service details: [${error.statusCode}] ${error.message}`]
                     }]);
                 });
     }
 
-    private _renderChart(): void {
-        if (_.isUndefined(this._selectedChildServiceStats)
-            || _.isNull(this._operationCountChartCanvas)
-            || _.isNull(this._operationDurationChartCanvas)) {
+    private renderChart(): void {
+        if (_.isUndefined(this.selectedChildServiceStats)
+            || _.isNull(this.operationCountChartCanvas)
+            || _.isNull(this.operationDurationChartCanvas)) {
             return;
         }
 
-        if (!_.isUndefined(this._operationCountChart)) {
-            this._operationCountChart.destroy();
+        if (!_.isUndefined(this.operationCountChart)) {
+            this.operationCountChart.destroy();
         }
 
-        if (!_.isUndefined(this._operationDurationChart)) {
-            this._operationDurationChart.destroy();
+        if (!_.isUndefined(this.operationDurationChart)) {
+            this.operationDurationChart.destroy();
         }
 
-        var operationEntries: {[key: string]: ServiceStatsEntry} = this._selectedChildServiceStats.entries;
+        var operationEntries: {[key: string]: ServiceStatsEntry} = this.selectedChildServiceStats.entries;
 
         var operationsCounts: number[] = _.map(OPERATIONS, (operation: string) => {
             var property: string = `${operation}requestCount`;
@@ -362,7 +358,7 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
         });
 
         // Render operation count chart
-        this._operationCountChart = new Chart(this._operationCountChartCanvas, {
+        this.operationCountChart = new Chart(this.operationCountChartCanvas, {
             type: 'radar',
             data: {
                 labels: OPERATIONS,
@@ -400,7 +396,7 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
             }
         });
 
-        this._operationDurationChart = new Chart(this._operationDurationChartCanvas, {
+        this.operationDurationChart = new Chart(this.operationDurationChartCanvas, {
             type: 'bar',
             data: {
                 labels: OPERATIONS,
@@ -438,12 +434,12 @@ export class ChildServiceDetailComponent implements AfterViewChecked, OnChanges,
         });
     }
 
-    private _getPatchMethodDefaultBody(): string {
-        if (_.isUndefined(this._selectedChildService)) {
+    private getPatchMethodDefaultBody(): string {
+        if (_.isUndefined(this.selectedChildService)) {
             return '';
         }
 
-        return JSON.stringify(_.omitBy(this._selectedChildService, (value: any, key: string) => {
+        return JSON.stringify(_.omitBy(this.selectedChildService, (value: any, key: string) => {
             return key.search(/^document[^s]?[A-Z][\w]*/) !== -1;
         }), null, 4);
     }

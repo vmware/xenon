@@ -1,24 +1,21 @@
 // angular
-import { ChangeDetectionStrategy, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Subscription } from 'rxjs/Subscription';
 import * as _ from 'lodash';
 
 // app
-import { BaseComponent } from '../../../frameworks/core/index';
-
-import { URL } from '../../../frameworks/app/enums/index';
-import { Node, ProcessLog } from '../../../frameworks/app/interfaces/index';
-import { BaseService, NodeSelectorService, NotificationService } from '../../../frameworks/app/services/index';
-import { ODataUtil, StringUtil } from '../../../frameworks/app/utils/index';
+import { URL } from '../../../modules/app/enums/index';
+import { Node, ProcessLog } from '../../../modules/app/interfaces/index';
+import { BaseService, NodeSelectorService, NotificationService } from '../../../modules/app/services/index';
+import { ODataUtil, StringUtil } from '../../../modules/app/utils/index';
 
 import { ProcessLogTypeUtil } from './process-log-type.util';
 
-@BaseComponent({
+@Component({
     selector: 'xe-process-log',
     moduleId: module.id,
     templateUrl: './process-log.component.html',
-    styleUrls: ['./process-log.component.css'],
-    changeDetection: ChangeDetectionStrategy.Default
+    styleUrls: ['./process-log.component.css']
 })
 
 export class ProcessLogComponent implements OnInit, OnDestroy {
@@ -31,57 +28,57 @@ export class ProcessLogComponent implements OnInit, OnDestroy {
     /**
      * The log in the view.
      */
-    private _log: ProcessLog;
+    private log: ProcessLog;
 
     /**
      * Cached the log items that are info.
      */
-    private _infoLogItems: string[] = [];
+    private infoLogItems: string[] = [];
 
     /**
      * Cached the log items that are warning.
      */
-    private _warningLogItems: string[] = [];
+    private warningLogItems: string[] = [];
 
     /**
      * Cached the log items that are severe.
      */
-    private _severeLogItems: string[] = [];
+    private severeLogItems: string[] = [];
 
     /**
      * Subscriptions to services.
      */
-    private _baseServiceSubscription: Subscription;
-    private _nodeSelectorServiceGetSelectedSubscription: Subscription;
+    private baseServiceSubscription: Subscription;
+    private nodeSelectorServiceGetSelectedSubscription: Subscription;
 
     constructor(
-        private _baseService: BaseService,
-        private _nodeSelectorService: NodeSelectorService,
-        private _notificationService: NotificationService) {}
+        private baseService: BaseService,
+        private nodeSelectorService: NodeSelectorService,
+        private notificationService: NotificationService) {}
 
     ngOnInit(): void {
-        this._getData();
+        this.getData();
 
         // Update data when selected node changes
-        this._nodeSelectorServiceGetSelectedSubscription =
-            this._nodeSelectorService.getSelectedNode().subscribe(
+        this.nodeSelectorServiceGetSelectedSubscription =
+            this.nodeSelectorService.getSelectedNode().subscribe(
                 (selectedNode: Node) => {
-                    this._getData();
+                    this.getData();
                 });
     }
 
     ngOnDestroy(): void {
-        if (!_.isUndefined(this._baseServiceSubscription)) {
-            this._baseServiceSubscription.unsubscribe();
+        if (!_.isUndefined(this.baseServiceSubscription)) {
+            this.baseServiceSubscription.unsubscribe();
         }
 
-        if (!_.isUndefined(this._nodeSelectorServiceGetSelectedSubscription)) {
-            this._nodeSelectorServiceGetSelectedSubscription.unsubscribe();
+        if (!_.isUndefined(this.nodeSelectorServiceGetSelectedSubscription)) {
+            this.nodeSelectorServiceGetSelectedSubscription.unsubscribe();
         }
     }
 
     getLogItems(filter: string): string[] {
-        if (_.isEmpty(this._log)) {
+        if (_.isEmpty(this.log)) {
             return [];
         }
 
@@ -89,16 +86,16 @@ export class ProcessLogComponent implements OnInit, OnDestroy {
 
         switch(filter) {
             case 'all':
-                logItems = this._log.items;
+                logItems = this.log.items;
                 break;
             case 'info':
-                logItems = this._infoLogItems;
+                logItems = this.infoLogItems;
                 break;
             case 'warning':
-                logItems = this._warningLogItems;
+                logItems = this.warningLogItems;
                 break;
             case 'severe':
-                logItems = this._severeLogItems;
+                logItems = this.severeLogItems;
                 break;
             default:
                 // do nothing
@@ -108,7 +105,7 @@ export class ProcessLogComponent implements OnInit, OnDestroy {
     }
 
     getFullLogLink(): string {
-        return this._baseService.getForwardingLink(URL.Log);
+        return this.baseService.getForwardingLink(URL.Log);
     }
 
     getLogItemType(logItem: string): string {
@@ -159,7 +156,7 @@ export class ProcessLogComponent implements OnInit, OnDestroy {
     }
 
     isPartialLog(): boolean {
-        return this._log ? this._log.items.length === ODataUtil.DEFAULT_LOG_SIZE : false;
+        return this.log ? this.log.items.length === ODataUtil.DEFAULT_LOG_SIZE : false;
     }
 
     onFilterApplied(event: MouseEvent, filter: string): void {
@@ -168,28 +165,28 @@ export class ProcessLogComponent implements OnInit, OnDestroy {
         this.activeFilter = filter;
     }
 
-    private _getData(): void {
+    private getData(): void {
         // Reset the arrays
-        this._infoLogItems = [];
-        this._warningLogItems = [];
-        this._severeLogItems = [];
+        this.infoLogItems = [];
+        this.warningLogItems = [];
+        this.severeLogItems = [];
 
-        this._baseServiceSubscription =
+        this.baseServiceSubscription =
             // Get the logs that limit to the most recent 1000 lines
-            this._baseService.getDocument(URL.Log, `lineCount=${ODataUtil.DEFAULT_LOG_SIZE}`).subscribe(
+            this.baseService.getDocument(URL.Log, `lineCount=${ODataUtil.DEFAULT_LOG_SIZE}`).subscribe(
                 (log: ProcessLog) => {
-                    this._log = log;
+                    this.log = log;
 
                     // Cache log items by type
-                    _.each(this._log.items, (logItem) => {
+                    _.each(this.log.items, (logItem) => {
                         var logItemType = this.getLogItemType(logItem);
 
                         switch(logItemType) {
                             case 'INFO':
-                                this._infoLogItems.push(logItem);
+                                this.infoLogItems.push(logItem);
                                 break;
                             case 'WARNING':
-                                this._warningLogItems.push(logItem);
+                                this.warningLogItems.push(logItem);
                                 break;
                             case 'SEVERE':
                                 // TODO: Right now only push the line items
@@ -197,15 +194,16 @@ export class ProcessLogComponent implements OnInit, OnDestroy {
                                 // are printed as seprate line items. Need to figure out
                                 // how to add them to the cache as part of the severe
                                 // message.
-                                this._severeLogItems.push(logItem);
+                                this.severeLogItems.push(logItem);
                                 break;
                             default:
                                 // do nothing
                         }
                     });
                 },
-                (error) => {// TODO: Better error handling
-                    this._notificationService.set([{
+                (error) => {
+                    // TODO: Better error handling
+                    this.notificationService.set([{
                         type: 'ERROR',
                         messages: [`Failed to retrieve logs: [${error.statusCode}] ${error.message}`]
                     }]);

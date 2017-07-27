@@ -78,68 +78,68 @@ npm install -g typescript
 
 ```bash
 # install the project's dependencies
-npm install
+$ npm install
+# fast install (via Yarn, https://yarnpkg.com)
+$ yarn install  # or yarn
+
 # watches your files and uses livereload by default
-npm start
+$ npm start
 # api document for the app
-npm run serve.docs
+# npm run build.docs
+
+# generate api documentation
+$ npm run compodoc
+$ npm run serve.compodoc
 
 # to start deving with livereload site and coverage as well as continuous testing
-npm run start.deving
+$ npm run start.deving
 
 # dev build
-npm run build.dev
+$ npm run build.dev
 # prod build
-npm run build.prod
-# prod build with AoT compilation
-npm run build.prod.exp
+$ npm run build.prod
 ```
 
 ## Special Note About AoT
 
-When using `npm run build.prod.exp` for AoT builds, please consider the following:
+**Note** that AoT compilation requires **node v6.5.0 or higher** and **npm 3.10.3 or higher**.
 
-Currently you cannot use custom component decorators with AoT compilation. This may change in the future but for now you can use this pattern for when you need to create AoT builds for the web:
+In order to start the seed with AoT use:
 
-```
-import { Component } from '@angular/core';
-import { BaseComponent } from '../frameworks/core/index';
-
-// @BaseComponent({   // just comment this out and use Component from 'angular/core'
-@Component({
-  // etc.
+```bash
+# prod build with AoT compilation, will output the production application in `dist/prod`
+# the produced code can be deployed (rsynced) to a remote server
+$ npm run build.prod.aot
 ```
 
-After doing the above, running AoT build via `npm run build.prod.exp` will succeed. :)
+## NativeScript/Mobile App
 
-`BaseComponent` custom component decorator does the auto `templateUrl` switching to use {N} views when running in the {N} app therefore you don't need it when creating AoT builds for the web. However just note that when going back to run your {N} app, you should comment back in the `BaseComponent`. Again this temporary inconvenience may be unnecessary in the future.
-
-## NativeScript App
+The mobile app is provided via [NativeScript](https://www.nativescript.org/), an open source framework for building truly native mobile apps.
 
 #### Setup
 
-```bash
+```
 npm install -g nativescript
 ```
 
 #### Dev Workflow
 
-You can make changes to files in `src/client` or `nativescript` folders. A symbolic link exists between the web `src/client` and the `nativescript` folder so changes in either location are mirrored because they are the same directory inside.
+You can make changes to files in `src/client/app` or `nativescript/src/app` folders. A symbolic link exists between the web `src/client/app` and the `nativescript/src/app` folder so changes in either location are mirrored because they are the same directory inside.
 
-Create `.tns.html` and `.tns.css` NativeScript view files for every web component view file you have.
+Create `.tns.html` and `.tns.scss` NativeScript view files for every web component view file you have. You will see an example of the `app.component.html` as a [NativeScript view file here](https://github.com/NathanWalker/angular-seed-advanced/blob/master/src/client/app/components/app.component.tns.html).
+
+The root module for the mobile app is `nativescript/src/native.module.ts`: `NativeModule`.
 
 #### Run
 
 ```
-iOS:                      npm run start.ios
-iOS (livesync emulator):  npm run start.livesync.ios
-iOS (livesync device):    npm run start.livesync.ios.device
+iOS:                      npm run start.ios   
+iOS (device):             npm run start.ios.device
 
 // or...
 
 Android:                      npm run start.android
-Android (livesync emulator):  npm run start.livesync.android
-Android (livesync device):    npm run start.livesync.android.device
+Android (device):             npm run start.android.device
 ```
 
 * Requires an image setup via AVD Manager. [Learn more here](http://developer.android.com/intl/zh-tw/tools/devices/managing-avds.html) and [here](https://github.com/NativeScript/nativescript-cli#the-commands).
@@ -150,45 +150,17 @@ OR...
 
 ##### Building with Webpack for release builds
 
-You can greatly reduce the final size of your NativeScript app by the following:
+Create AoT builds for deployment to App Store and Google Play.
 
 ```
-cd nativescript
-npm i nativescript-dev-webpack --save-dev
+Android:   npm run build.android
+iOS:       npm run build.ios
 ```
-Then you will need to modify your components to *not* use `moduleId: module.id` and change `templateUrl` to true relative app, for example:
-
-before:
-
-```
-@BaseComponent({
-  moduleId: module.id,
-  selector: 'sd-home',
-  templateUrl: 'home.component.html',
-  styleUrls: ['home.component.css']
-})
-```
-after:
-
-```
-@BaseComponent({
-  // moduleId: module.id,
-  selector: 'sd-home',
-  templateUrl: './app/components/home/home.component.html',
-  styleUrls: ['./app/components/home/home.component.css']
-})
-```
-
-Then to build:
-
-Ensure you are in the `nativescript` directory when running these commands.
-
-* iOS: `WEBPACK_OPTS="--display-error-details" tns build ios --bundle`
-* Android: `WEBPACK_OPTS="--display-error-details" tns build android --bundle`
-
-Notice your final build will be drastically smaller. In some cases 120 MB -> ~28 MB.
 
 ## Electron App
+
+The desktop app is provided via [Electron](http://electron.atom.io/), cross platform desktop apps
+with JavaScript, HTML, and CSS.
 
 #### Develop
 
@@ -211,7 +183,7 @@ Windows:  npm run build.desktop.windows
 Linux:    npm run build.desktop.linux
 ```
 
-## Testing
+## Running tests
 
 ```bash
 $ npm test
@@ -265,75 +237,35 @@ npm start -- --port 8080 --reload-port 4000 --base /my-app/
 
 ## Directory Structure
 
-```
-.
-├── src                        <- source code of the application
-│   └── client
-│       ├── app
-│       │   ├── components     <- application specific components
-│       │   └── frameworks     <- shared components and services
-│       │   │   ├── analytics  <- analytics provided by Segment(https://segment.com/)
-│       │   │   ├── app        <- shared application architecture code
-│       │   │   ├── core       <- foundation layer (decorators and low-level services)
-│       │   │   ├── electron   <- electron(http://electron.atom.io/) specific code
-│       │   │   ├── i18n       <- internationalization features
-│       │   │   └── test       <- test specific code providing conveniences
-│       ├── assets             <- application assets, fonts, images, etc.
-│       ├── css                <- application level css
-│       ├── testing
-│       ├── index.html
-│       ├── main.desktop.ts    <- main ts for building desktop application
-│       ├── main.web.prod.ts   <- main ts for building web application in production
-│       ├── main.web.ts        <- main ts for building web application
-│       ├── package.json       <- package.json for building desktop application
-│       ├── system.config.ts
-│       ├── tsconfig.json
-│       ├── typings.d.ts
-│       └── web.modules.ts
-├── tools
-│   ├── README.md              <- build documentation
-│   ├── config
-│   │   ├── project.config.ts  <- configuration specific to xenon
-│   │   ├── seed-advanced.config.ts
-│   │   ├── seed.config.interfaces.ts
-│   │   └── seed.config.ts     <- generic configuration of the project
-│   ├── config.ts              <- exported configuration
-│   ├── debug.ts
-│   ├── env                    <- environment configuration
-│   ├── manual_typings
-│   │   ├── project            <- manual ambient typings specific to xenon
-│   │   │   └── sample.package.d.ts
-│   │   └── seed               <- generic manual ambient typings
-│   ├── tasks                  <- gulp tasks
-│   │   ├── project            <- xenon specific gulp tasks
-│   │   │   └── sample.task.ts
-│   │   └── seed               <- generic gulp tasks. They can be overriden by the xenon specific gulp tasks
-│   ├── utils                  <- build utils
-│   │   ├── project            <- xenon specific gulp utils
-│   │   │   └── sample_util.ts
-│   │   ├── project.utils.ts
-│   │   ├── seed               <- generic gulp utils
-│   │   │   ├── clean.ts
-│   │   │   ├── code_change_tools.ts
-│   │   │   ├── server.ts
-│   │   │   ├── tasks_tools.ts
-│   │   │   ├── template_locals.ts
-│   │   │   ├── tsproject.ts
-│   │   │   └── watch.ts
-│   │   └── seed.utils.ts
-│   └── utils.ts
-├── README.md
-├── gulpfile.ts                <- configuration of the gulp tasks
-├── karma.conf.js              <- configuration of the test runner
-├── package.json               <- dependencies of the project
-├── protractor.conf.js         <- e2e tests configuration
-├── test-main.js               <- testing configuration
-├── tsconfig.json              <- configuration of the typescript project (ts-node, which runs the tasks defined in gulpfile.ts)
-├── tslint.json                <- tslint configuration
-├── typings                    <- typings directory. Contains all the external typing definitions defined with typings
-├── typings.json
-└── appveyor.yml
-```
+- `nativescript`: Root of this directory is reserved for mobile app.
+  - `src`: mobile app src.
+    - `app`: Symbolic link of shared code from web app.
+    - `App_Resources`: iOS and Android platform specific config files and images.
+    - `mobile`: Mobile specific services, etc. Build out mobile specific services here as well as overrides for web services that need to be provided for in the mobile app. **Safe to import {N} modules here.**
+    - [native.module.ts](https://github.com/NathanWalker/angular-seed-advanced/blob/master/nativescript/src/native.module.ts): Root module for the mobile app provided by NativeScript. Override/provide native mobile implementations of services here.
+- `src/client`: Root of this directory is reserved for web and desktop.
+  - `app`: All the code in this directory is shared with the mobile app via a symbolic link.
+    - `components`: Reserved for primary routing components. Since each app usually has it's own set of unique routes, you can provide the app's primary routing components here.
+    - `shared`: Shared code across all platforms. Reusable sub components, services, utilities, etc.
+      - `analytics`: Provides services for analytics. Out of the box, [Segment](https://segment.com/) is configured.
+      - `core`: Low level services. Foundational layer.
+      - `electron`: Services specific to electron integration. Could be refactored out in the future since this is not needed to be shared with the mobile app.
+      - `i18n`: Various localization features.
+      - `ngrx`: Central ngrx coordination. Brings together state from any other feature modules etc. to setup the initial app state.
+      - `sample`: Just a sample module pre-configured with a scalable ngrx setup.
+      - `test`: Testing utilities. This could be refactored into a different location in the future.
+  - `assets`: Various locale files, images and other assets the app needs to load.
+  - `css`: List of the main style files to be created via the SASS compilation (enabled by default).
+  - `scss`: Partial SASS files - reserved for things like `_variables.scss` and other imported partials for styling.
+  - [index.html](https://github.com/NathanWalker/angular-seed-advanced/blob/master/src/client/index.html): The index file for the web and desktop app (which share the same setup).
+  - [main.desktop.ts](https://github.com/NathanWalker/angular-seed-advanced/blob/master/src/client/main.desktop.ts): The  file used by Electron to start the desktop app.
+  - [main.web.prod.ts](https://github.com/NathanWalker/angular-seed-advanced/blob/master/src/client/main.web.prod.ts): Bootstraps the AoT web build. *Generally won't modify anything here*
+  - [main.web.ts](https://github.com/NathanWalker/angular-seed-advanced/blob/master/src/client/main.web.ts): Bootstraps the development web build. *Generally won't modify anything here*
+  - [package.json](https://github.com/NathanWalker/angular-seed-advanced/blob/master/src/client/package.json): Used by Electron to start the desktop app.
+  - [system-config.ts](https://github.com/NathanWalker/angular-seed-advanced/blob/master/src/client/system-config.ts): This loads the SystemJS configuration defined [here](https://github.com/NathanWalker/angular-seed-advanced/blob/master/tools/config/seed.config.ts#L397) and extended in your own app's customized [project.config.ts](https://github.com/NathanWalker/angular-seed-advanced/blob/master/tools/config/project.config.ts).
+  - [tsconfig.json](https://github.com/NathanWalker/angular-seed-advanced/blob/master/src/client/tsconfig.json): Used by [compodoc](https://compodoc.github.io/compodoc/) - The missing documentation tool for your Angular application - to generate api docs for your code.
+  - [web.module.ts](https://github.com/NathanWalker/angular-seed-advanced/blob/master/src/client/web.module.ts): The root module for the web and desktop app.
+- `src/e2e`: Integration/end-to-end tests for the web app.
 
 ## Dependencies & Integrations
 
@@ -365,9 +297,9 @@ This is an [Angular 2](https://angular.io/) application built on top of [Nathan 
 
 #### Sync to the latest seed project changes
 
-Due to the amount of breaking changes introduced in each Angular 2 release, please be super careful when you decide to sync to the latest changes from the [seed project](https://github.com/NathanWalker/angular2-seed-advanced), which will most likely bump up the Angular version and the underlying dependencies.
+Due to the amount of changes introduced in each Angular 2/4 release, please be super careful when you decide to sync to the latest changes from the [seed project](https://github.com/NathanWalker/angular2-seed-advanced), which will most likely bump up the Angular version and the underlying dependencies.
 
-Last Change Sync'd: 7a412db93af0606b23267b0aca4b8fca62738ce2 on 12/23/2016
+Last Change Sync'd: 6e7a949e60194abfe3e8fe7c059e97774338bf04 on 07/26/2017
 
 # Cut a Release
 

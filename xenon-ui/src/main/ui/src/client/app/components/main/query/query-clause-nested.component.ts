@@ -1,19 +1,16 @@
 // angular
-import { EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 // import * as _ from 'lodash';
 
 // app
-import { BaseComponent } from '../../../frameworks/core/index';
+import { BooleanClause, EventContext, NumericRange } from '../../../modules/app/interfaces/index';
 
-// import { URL } from '../../../frameworks/app/enums/index';
-import { BooleanClause, EventContext, NumericRange } from '../../../frameworks/app/interfaces/index';
-// import { BaseService, NotificationService } from '../../../frameworks/app/services/index';
-
-@BaseComponent({
+@Component({
     selector: 'xe-query-clause-nested',
     moduleId: module.id,
     templateUrl: './query-clause-nested.component.html',
-    styleUrls: ['./query-clause-nested.component.css']
+    styleUrls: ['./query-clause-nested.component.css'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 
 export class QueryClauseNestedComponent {
@@ -74,9 +71,9 @@ export class QueryClauseNestedComponent {
     getClause(): BooleanClause {
         switch(this.type) {
             case 'string':
-                return this._getStringClause();
+                return this.getStringClause();
             case 'range':
-                return this._getRangeClause();
+                return this.getRangeClause();
         }
 
         return null;
@@ -95,7 +92,7 @@ export class QueryClauseNestedComponent {
         });
     }
 
-    private _getStringClause(): BooleanClause {
+    private getStringClause(): BooleanClause {
         return {
             term: {
                 matchType: this.propertyMatchType,
@@ -106,7 +103,7 @@ export class QueryClauseNestedComponent {
         };
     }
 
-    private _getRangeClause(): BooleanClause {
+    private getRangeClause(): BooleanClause {
         return {
             term: {
                 propertyName: this.propertyName,

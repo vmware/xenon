@@ -1,0 +1,103 @@
+$baseline: 24px;
+$rem-denominator: 16;
+
+$default-font-family: "Helvetica Neue", "Arial", sans-serif;
+$default-font-for-icons: "FontAwesome";
+$default-font-size: 16px;
+$default-line-height: 1.5;
+$default-navbar-height: baselinerem(2.5);
+$default-subnav-height: baselinerem(1.5);
+
+$highest-z-index: 2200;
+$higher-z-index: 2100;
+$high-z-index: 2000;
+
+$default-font-for-tech-icons: "FontMfizz";
+
+$table-font-size: 13px;
+$table-line-height: 16px;
+
+@function rem($remSize) {
+    @return $remSize * $default-font-size;
+}
+
+@function baselinerem($remSize) {
+    @return $remSize * $baseline;
+}
+
+@function rpx($size) {
+    @return rem($size) / $rem-denominator;
+}
+
+@mixin transition($properties) {
+    -webkit-transition: $properties ease .2s;
+    -moz-transition: $properties ease .2s;
+    -o-transition: $properties ease .2s;
+    transition: $properties ease .2s;
+}
+
+@mixin text-selectable($property) {
+    -webkit-touch-callout: $property; /* iOS Safari */
+    -webkit-user-select: $property;   /* Chrome/Safari/Opera */
+    -khtml-user-select: $property;    /* Konqueror */
+    -moz-user-select: $property;      /* Firefox */
+    -ms-user-select: $property;       /* IE/Edge */
+    user-select: $property;
+}
+
+@mixin break-word() {
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+// Single text line truncation with ellipsis
+@mixin text-singleline-ellipsis() {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+// Multiple text line truncation with ellipsis
+@mixin text-multiline-ellipsis($lineToShow: 3, $lineHeight: 1.1, $fontSize: 14px) {
+    display: flex; // Fallback for non-webkit
+    display: -webkit-box;
+    max-width: 100%;
+    max-height: $fontSize * $lineHeight * $lineToShow; // Fallback for non-webkit
+    font-size: $fontSize;
+    line-height: $lineHeight;
+    -webkit-line-clamp: $lineToShow;
+    -webkit-box-orient: vertical;
+    -webkit-box-align: start;
+    flex-direction: row;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+@mixin gradient-background() {
+    background: $light-blue-600;
+    background: -moz-linear-gradient(-45deg, $light-blue-900 0%, $light-blue-500 50%, $light-blue-100 100%);    /* FF3.6-15 */
+    background: -webkit-linear-gradient(-45deg, $light-blue-900 0%, $light-blue-500 50%, $light-blue-100 100%); /* Chrome10-25,Safari5.1-6 */
+    background: linear-gradient(-45deg, $light-blue-900 0%, $light-blue-500 50%, $light-blue-100 100%);         /* W3C, IE10+, FF16+, Chrome26+, Opera12+, Safari7+ */
+}
+
+@mixin flexbox() {
+    display: -webkit-box;
+    display: -moz-box;
+    display: -ms-flexbox;
+    display: -webkit-flex;
+    display: flex;
+}
+@mixin flex($values) {
+    -webkit-box-flex: $values;
+    -moz-box-flex: $values;
+    -webkit-flex: $values;
+    -ms-flex: $values;
+    flex: $values;
+}
+@mixin flex-order($value) {
+    -webkit-box-ordinal-group: $value;
+    -moz-box-ordinal-group: $value;
+    -ms-flex-order: $value;
+    -webkit-order: $value;
+    order: $value;
+}

@@ -1,20 +1,40 @@
 import { argv } from 'yargs';
 import { SeedConfig } from './seed.config';
+import * as path from 'path';
 import { ExtendPackages } from './seed.config.interfaces';
 
 export class SeedAdvancedConfig extends SeedConfig {
+    /**
+     * The base folder of the nativescript applications source files.
+     * @type {string}
+     */
+    TNS_BASE_DIR = 'nativescript';
+
+    srcSubdir = 'src';
+    destSubdir = 'app';
+
+    TNS_APP_SRC = `${this.TNS_BASE_DIR}/${this.srcSubdir}`;
+
+    TNS_APP_DEST = `${this.TNS_BASE_DIR}/${this.destSubdir}`;
+
+    TNS_CONFIG = {
+        ANALYTICS_TRACKING_ID: '',
+    };
+
+    /**
+    * Holds added packages for desktop build.
+    */
+    DESKTOP_PACKAGES: ExtendPackages[] = [];
 
     constructor() {
         super();
-        let arg: string;
         if (argv && argv._) {
-            arg = argv._[0];
-            if (arg.indexOf('desktop') > -1) {
+            if (argv['desktop']) {
                 this.TARGET_DESKTOP = true;
-                if (arg.indexOf('.mac') > -1 || arg.indexOf('.windows') > -1 || arg.indexOf('.linux') > -1) {
+                if (argv['desktopBuild']) {
                     this.TARGET_DESKTOP_BUILD = true;
                 }
-            } else if (arg.indexOf('hybrid') > -1) {
+            } else if (argv['hybrid']) {
                 this.TARGET_MOBILE_HYBRID = true;
             }
         }
@@ -25,6 +45,10 @@ export class SeedAdvancedConfig extends SeedConfig {
             bootstrap = 'main.mobile.hybrid';
         }
 
+        if (argv['analytics']) {
+            this.TNS_CONFIG.ANALYTICS_TRACKING_ID = argv['analytics'];
+        }
+
         // Override seed defaults
         this.BOOTSTRAP_DIR = argv['app'] ? (argv['app'] + '/') : '';
         this.BOOTSTRAP_MODULE = `${this.BOOTSTRAP_DIR}${bootstrap}`;
@@ -33,13 +57,12 @@ export class SeedAdvancedConfig extends SeedConfig {
         this.BOOTSTRAP_FACTORY_PROD_MODULE = `${this.BOOTSTRAP_DIR}${bootstrap}.prod`;
 
         this.APP_TITLE = 'Xenon | Decentralized Control Plane';
-        this.APP_BASE = ''; // paths must remain relative
 
         // Advanced seed packages
         let additionalPackages: ExtendPackages[] = [
             {
                 name: 'lodash',
-                path: `${this.APP_BASE}node_modules/lodash/lodash.js`,
+                path: 'node_modules/lodash/lodash.js',
                 packageMeta: {
                     main: 'index.js',
                     defaultExtension: 'js'
@@ -68,7 +91,7 @@ export class SeedAdvancedConfig extends SeedConfig {
             },
             {
                 name: '@ngrx/effects/testing',
-                path: `${this.APP_BASE}node_modules/@ngrx/effects/testing/index.js`
+                path: 'node_modules/@ngrx/effects/testing/index.js'
             },
             {
                 name: '@ngrx/store-devtools',
@@ -78,54 +101,40 @@ export class SeedAdvancedConfig extends SeedConfig {
                 }
             },
             {
-                name: 'ng2-config',
+                name: '@ngx-translate/core',
                 packageMeta: {
-                    main: 'bundles/ng2-config.umd.min.js',
+                    main: 'bundles/core.umd.js',
                     defaultExtension: 'js'
                 }
             },
             {
-                name: 'ng2-translate',
+                name: '@ngx-translate/http-loader',
                 packageMeta: {
-                    main: 'bundles/index.js',
+                    main: 'bundles/http-loader.umd.js',
                     defaultExtension: 'js'
                 }
             },
             {
                 name: 'angulartics2',
                 packageMeta: {
-                    main: 'dist/index.js',
-                    defaultExtension: 'js'
-                }
-            },
-            {
-                name: 'angulartics2/dist/providers',
-                packageMeta: {
-                    main: 'index.js',
+                    main: 'dist/core.umd.js',
                     defaultExtension: 'js'
                 }
             },
             {
                 name: 'ngrx-store-freeze',
-                path: `${this.APP_BASE}node_modules/ngrx-store-freeze/dist/index.js`
+                path: 'node_modules/ngrx-store-freeze/dist/index.js'
             },
             {
-                name: 'deep-freeze',
-                path: `${this.APP_BASE}node_modules/deep-freeze/index.js`
+                name: 'deep-freeze-strict',
+                path: 'node_modules/deep-freeze-strict/index.js'
             },
 
             // Custom libs
             {
-                name: 'angular2-cookie',
+                name: 'ngx-infinite-scroll',
                 packageMeta: {
-                    main: 'core.js',
-                    defaultExtension: 'js'
-                }
-            },
-            {
-                name: 'angular2-infinite-scroll',
-                packageMeta: {
-                    main: 'angular2-infinite-scroll.js',
+                    main: 'bundles/ngx-infinite-scroll.umd.js',
                     defaultExtension: 'js'
                 }
             },
@@ -145,7 +154,35 @@ export class SeedAdvancedConfig extends SeedConfig {
             }
         ];
 
+        /**
+         * Need to duplicate this in the project.config.ts to
+         * pick up packages there too.
+         */
+        this.DESKTOP_PACKAGES = [
+            ...this.DESKTOP_PACKAGES,
+            ...additionalPackages,
+        ];
+
         this.addPackagesBundles(additionalPackages);
+
+        // Settings for building sass (include ./srs/client/scss in includes)
+        // Needed because for components you cannot use ../../../ syntax
+        this.PLUGIN_CONFIGS['gulp-sass'] = {
+            includePaths: [
+                './src/client/scss/',
+                './node_modules/',
+                './'
+            ]
+        };
+
+        // Settings for building sass for tns modules
+        this.PLUGIN_CONFIGS['gulp-sass-tns'] = {
+            includePaths: [
+                this.srcSubdir,
+                './node_modules/',
+                './node_modules/nativescript-theme-core/scss/'
+            ].map((dir) => path.resolve(this.TNS_BASE_DIR, dir)),
+        };
 
         // Fix up path to bootstrap module
         this.SYSTEM_CONFIG.paths[this.BOOTSTRAP_MODULE] = `${this.APP_BASE}${this.BOOTSTRAP_MODULE}`;

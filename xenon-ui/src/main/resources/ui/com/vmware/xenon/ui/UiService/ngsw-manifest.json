@@ -1,0 +1,43 @@
+{
+  "static": {
+    "urls": {
+      "/index.html": "c4b183f8255f9f6a8fbb94b8e1b4a8e95c03fc47",
+      "/package.json": "25271928e64c68f6b7ba6fa9d14ed09d602919a1",
+      "/assets/app.config.json": "4033f058f9e19bfa77dbe38fdaeb6a72088016ce",
+      "/assets/favicon.ico": "9a5c786c0e527f47db520bca897a5a3c349015e4",
+      "/css/main.css": "5941e4345b93be79c1d1d9ab7c89cf5009be8daa",
+      "/js/app.js": "d1aa95be40eaef6a6a3cc7029368c3341deda47d",
+      "/js/shims.js": "dabcb718a07be2634e1223baa38bd510722a7513",
+      "/assets/fonts/FontAwesome.otf": "048707bc52ac4b6563aaa383bfe8660a0ddc908c",
+      "/assets/fonts/font-mfizz.eot": "f1cadcff4bb20213fd14b6ae560632fd2de84a88",
+      "/assets/fonts/font-mfizz.svg": "094dc37299e8d0c68e8e22e8f72a7b1632d26cc3",
+      "/assets/fonts/font-mfizz.ttf": "e9c72484f9514c49260d6459a000317cc279d3c8",
+      "/assets/fonts/font-mfizz.woff": "db48a71fa8c5a397b4aa0652b2474bf718e250da",
+      "/assets/fonts/fontawesome-webfont.eot": "d980c2ce873dc43af460d4d572d441304499f400",
+      "/assets/fonts/fontawesome-webfont.svg": "98a8aa5cf7d62c2eff5f07ede8d844b874ef06ed",
+      "/assets/fonts/fontawesome-webfont.ttf": "13b1eab65a983c7a73bc7997c479d66943f7c6cb",
+      "/assets/fonts/fontawesome-webfont.woff": "28b782240b3e76db824e12c02754a9731a167527",
+      "/assets/fonts/fontawesome-webfont.woff2": "d6f48cba7d076fb6f2fd6ba993a75b9dc1ecbf0c",
+      "/assets/i18n/en.json": "961a7576306654f25ede576a61a1a269eeb3d483",
+      "/assets/images/ic_error_red_16x.svg": "6bc006b361409a1d09e08c4298048162ead6850f",
+      "/assets/images/ic_error_white_16x.svg": "a04ae1ff485b8675ec06f1d579590b1f8558cd30",
+      "/assets/images/ic_info_16x.svg": "e7bfd0238ebb4ffa1a920dd552a577fd211b65ff",
+      "/assets/images/ic_success_16x.svg": "5e7bd50aea00d7882386842ce0db916b3f48da2e",
+      "/assets/images/ic_warning_16x.svg": "a3000fe198b119da2c1c4640934b8a4a8a746c08",
+      "/assets/images/xenon-logo-white.svg": "dfb414b89b2f25c63bbc02d46fd9b83d34cb333c",
+      "/assets/images/xenon-logo.svg": "51919e51ed49a28796edc771bf6f3ab27d0959ff"
+    }
+  },
+  "routing": {
+    "index": "/index.html",
+    "routes": {
+      "/": {
+        "prefix": false
+      }
+    }
+  },
+  "push": {
+    "showNotifications": true,
+    "backgroundOnly": false
+  }
+}

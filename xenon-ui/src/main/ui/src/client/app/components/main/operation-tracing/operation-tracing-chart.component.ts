@@ -1,25 +1,22 @@
 // angular
-import { AfterViewInit, ChangeDetectionStrategy, EventEmitter, Input,
+import { AfterViewInit, Component, EventEmitter, Input,
     OnChanges, OnDestroy, Output, SimpleChange } from '@angular/core';
 import * as _ from 'lodash';
 import * as moment from 'moment';
 
 // app
-import { BaseComponent } from '../../../frameworks/core/index';
-
 import { EventContext, ModalContext, QueryTask, SerializedOperation,
-    Timeline, TimelineEvent } from '../../../frameworks/app/interfaces/index';
-import { StringUtil } from '../../../frameworks/app/utils/index';
+    Timeline, TimelineEvent } from '../../../modules/app/interfaces/index';
+import { StringUtil } from '../../../modules/app/utils/index';
 
 declare var jQuery: any;
 declare var d3: any;
 
-@BaseComponent({
+@Component({
     selector: 'xe-operation-tracing-chart',
     moduleId: module.id,
     templateUrl: './operation-tracing-chart.component.html',
-    styleUrls: ['./operation-tracing-chart.component.css'],
-    changeDetection: ChangeDetectionStrategy.Default
+    styleUrls: ['./operation-tracing-chart.component.css']
 })
 
 export class OperationTracingChartComponent implements OnChanges, AfterViewInit, OnDestroy {
@@ -45,7 +42,7 @@ export class OperationTracingChartComponent implements OnChanges, AfterViewInit,
     /**
      * The canvas to be rendered on
      */
-    private _canvas: any;
+    private canvas: any;
 
     ngOnChanges(changes: {[propertyName: string]: SimpleChange}): void {
         var traceResultChanges = changes['traceResult'];
@@ -55,25 +52,25 @@ export class OperationTracingChartComponent implements OnChanges, AfterViewInit,
             return;
         }
 
-        this._render();
+        this.render();
     }
 
     /**
      * Initiate the basic DOM related variables after DOM is fully rendered.
      */
     ngAfterViewInit(): void {
-        this._canvas = d3.select('#timeline').append('div');
+        this.canvas = d3.select('#timeline').append('div');
 
-        this._render();
+        this.render();
     }
 
     ngOnDestroy(): void {
         // Clear all the event handlers
-        this._canvas.selectAll('.timeline-pf-drop text')
+        this.canvas.selectAll('.timeline-pf-drop text')
             .on('click', null)
             .on('mouseover', null);
 
-        this._canvas.selectAll('rect')
+        this.canvas.selectAll('rect')
             .on('mouseover', null)
             .on('mouseout', null)
             .on('mousemove', null);
@@ -91,17 +88,17 @@ export class OperationTracingChartComponent implements OnChanges, AfterViewInit,
             + '%';
     }
 
-    private _render(): void {
-        if ( _.isUndefined(this._canvas)
+    private render(): void {
+        if ( _.isUndefined(this.canvas)
             || _.isUndefined(this.traceResult) || _.isEmpty(this.traceResult)
             || _.isEmpty(this.traceResult.results)
             || this.traceResult.results.documentCount === 0) {
             return;
         }
 
-        var data: Timeline[] = this._transformData();
-        var dataTimeRange: any = this._getDataTimeRange();
-
+        var data: Timeline[] = this.transformData();
+        var dataTimeRange: any = this.getDataTimeRange();
+        console.log(d3, d3.chart);
         var timeline = d3.chart.timeline({
                 labelWidth: 180,
                 tickFormat: [
@@ -190,7 +187,7 @@ export class OperationTracingChartComponent implements OnChanges, AfterViewInit,
                     this.operationDetailModalContext.data['operations'] = d.events;
                     this.operationDetailModalContext.data['operation'] = {};
 
-                    let groupOperationsTimeRange: any = this._getGroupOperationsTimeRange(d.events);
+                    let groupOperationsTimeRange: any = this.getGroupOperationsTimeRange(d.events);
                     this.operationDetailModalContext.data['operationsTimeRange'] = groupOperationsTimeRange;
                     this.operationDetailModalContext.data['selectedOperation'] = groupOperationsTimeRange.startOperation;
                 } else {
@@ -206,11 +203,11 @@ export class OperationTracingChartComponent implements OnChanges, AfterViewInit,
                 jQuery('#operationDetailModal').modal('show');
             });
 
-        if (this._countNames(data) <= 0) {
+        if (this.countNames(data) <= 0) {
             timeline.labelWidth(120);
         }
 
-        this._canvas.datum(data).call(timeline);
+        this.canvas.datum(data).call(timeline);
 
         jQuery('[data-toggle="popover"]').popover({
             container: '#timeline',
@@ -219,7 +216,7 @@ export class OperationTracingChartComponent implements OnChanges, AfterViewInit,
         });
     }
 
-    private _getDataTimeRange(): any {
+    private getDataTimeRange(): any {
         var dataTimeRange: any = {
             start: 0,
             end: 0
@@ -249,7 +246,7 @@ export class OperationTracingChartComponent implements OnChanges, AfterViewInit,
     /**
      * Transform trace result to a format that can be consumed by the chart
      */
-    private _transformData(): Timeline[] {
+    private transformData(): Timeline[] {
         var transformedData: Timeline[] = [];
 
         _.each(this.traceResult.results.documents, (document: SerializedOperation, key: string) => {
@@ -276,7 +273,7 @@ export class OperationTracingChartComponent implements OnChanges, AfterViewInit,
         return transformedData;
     }
 
-    private _countNames(data: Timeline[]): number {
+    private countNames(data: Timeline[]): number {
         var count: number = 0;
         for (let i: number = 0; i < data.length; i++) {
             if (!_.isUndefined(data[i].name) && data[i].name !== '') {
@@ -286,7 +283,7 @@ export class OperationTracingChartComponent implements OnChanges, AfterViewInit,
         return count;
     }
 
-    private _getGroupOperationsTimeRange(operations: TimelineEvent[]): any {
+    private getGroupOperationsTimeRange(operations: TimelineEvent[]): any {
         var groupOperationsTimeRange: any = {
             start: 0,
             startOperation: null,

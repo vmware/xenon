@@ -6,7 +6,7 @@
         <div class="card-header-with-badge">
             <h4 class="card-title">
                 <a [routerLink]="['./', getRouterId(service.documentSelfLink)]"
-                    preserveQueryParams="true">
+                    queryParamsHandling="preserve">
                     {{service.documentSelfLink}}
                 </a>
             </h4>

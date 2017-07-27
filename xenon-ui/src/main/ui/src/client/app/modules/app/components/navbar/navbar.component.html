@@ -1,0 +1,47 @@
+<div class="branding">
+    <a class="logo"
+        [routerLink]="['/']" queryParamsHandling="preserve">
+        <img src="assets/images/xenon-logo.svg"/>
+    </a>
+    <span class="title">XENON<span class="trademark">&trade;</span></span>
+</div>
+<div class="header-nav">
+    <a class="nav-link" title="{{ 'DASHBOARD_TITLE' | translate }}"
+        [routerLink]="['./dashboard']" queryParamsHandling="preserve" routerLinkActive="active">
+        <span class="nav-icon fa fa-bar-chart fa-fw"></span>
+    </a>
+    <a class="nav-link" title="{{ 'SERVICE_FACTORY_SERVICES_TITLE' | translate }}"
+        [routerLink]="['./service']" queryParamsHandling="preserve" routerLinkActive="active">
+        <span class="nav-icon fa fa-th fa-fw"></span>
+    </a>
+    <a class="nav-link" title="{{ 'PROCESS_LOG_TITLE' | translate }}"
+        [routerLink]="['./process-log']" queryParamsHandling="preserve" routerLinkActive="active">
+        <span class="nav-icon fa fa-file-text-o fa-fw"></span>
+    </a>
+    <a class="nav-link" title="{{ 'QUERY_TITLE' | translate }}"
+        [routerLink]="['./query']" queryParamsHandling="preserve" routerLinkActive="active">
+        <span class="nav-icon fa fa-asterisk fa-fw"></span>
+    </a>
+    <a class="nav-link" title="{{ 'OPERATION_TRACING_TITLE' | translate }}"
+        [routerLink]="['./operation-tracing']" queryParamsHandling="preserve" routerLinkActive="active">
+        <span class="nav-icon fa fa-tasks fa-fw"></span>
+    </a>
+</div>
+
+<div class="settings">
+    <a class="nav-link" title="About" target="_blank"
+        href="https://github.com/vmware/xenon/wiki">
+        <span class="nav-icon fa fa-question-circle-o"></span>
+    </a>
+    <a class="nav-link" title="Log Out" (click)="onLogout($event)">
+        <span class="nav-icon fa fa-sign-out"></span>
+    </a>
+    <div class="divider"></div>
+    <a class="nav-link node-selector" title="Switch Node"
+        [class.active]="isNodeSelectorActive"
+        (click)="onNodeSelectorClicked(event)">
+        <span [class]="getSelectedNodeStatusClass('status-indicator')"
+            [class.host]="isHostNode()"></span>
+        <span class="node-name">{{getSelectedNodeId()}}</span><i class="fa fa-angle-down"></i>
+    </a>
+</div>

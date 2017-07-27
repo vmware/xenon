@@ -1,21 +1,18 @@
 // angular
-import { EventEmitter, Input, Output, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, ViewChild } from '@angular/core';
 // import * as _ from 'lodash';
 
 // app
-import { BaseComponent } from '../../../frameworks/core/index';
-import { BooleanClause, EventContext, QueryTerm, NumericRange } from '../../../frameworks/app/interfaces/index';
-
-// import { URL } from '../../../frameworks/app/enums/index';
-// import { BaseService, NotificationService } from '../../../frameworks/app/services/index';
+import { BooleanClause, EventContext, QueryTerm, NumericRange } from '../../../modules/app/interfaces/index';
 
 import { QueryNestedComponent } from './query-nested.component';
 
-@BaseComponent({
+@Component({
     selector: 'xe-query-clause',
     moduleId: module.id,
     templateUrl: './query-clause.component.html',
-    styleUrls: ['./query-clause.component.css']
+    styleUrls: ['./query-clause.component.css'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 
 export class QueryClauseComponent {
@@ -84,15 +81,15 @@ export class QueryClauseComponent {
     getClause(): any {
         switch(this.type) {
             case 'string':
-                return this._getStringClause();
+                return this.getStringClause();
             case 'range':
-                return this._getRangeClause();
+                return this.getRangeClause();
             case 'sort':
-                return this._getSortClause();
+                return this.getSortClause();
             case 'group':
-                return this._getGroupClause();
+                return this.getGroupClause();
             case 'nested':
-                return this._getNestedClause();
+                return this.getNestedClause();
         }
 
         return null;
@@ -111,7 +108,7 @@ export class QueryClauseComponent {
         });
     }
 
-    private _getStringClause(): BooleanClause {
+    private getStringClause(): BooleanClause {
         return {
             term: {
                 matchType: this.propertyMatchType,
@@ -122,7 +119,7 @@ export class QueryClauseComponent {
         };
     }
 
-    private _getRangeClause(): BooleanClause {
+    private getRangeClause(): BooleanClause {
         return {
             term: {
                 propertyName: this.propertyName,
@@ -132,7 +129,7 @@ export class QueryClauseComponent {
         };
     }
 
-    private _getSortClause(): any {
+    private getSortClause(): any {
         // This can NOT be used directly in the final query spec
         return {
             sortOrder: this.sortOrder,
@@ -140,14 +137,14 @@ export class QueryClauseComponent {
         };
     }
 
-    private _getGroupClause(): QueryTerm {
+    private getGroupClause(): QueryTerm {
         return {
             propertyName: this.propertyName,
             propertyType: 'STRING' // Always use string
         };
     }
 
-    private _getNestedClause(): BooleanClause {
+    private getNestedClause(): BooleanClause {
         return {
             booleanClauses: this.queryNestedComponent.getClauses(),
             occurance: this.occurance

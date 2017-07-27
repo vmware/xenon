@@ -1,16 +1,16 @@
 // angular
-import { EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 // import * as _ from 'lodash';
 
 // app
-import { BaseComponent } from '../../../frameworks/core/index';
-import { BooleanClause, EventContext, NumericRange } from '../../../frameworks/app/interfaces/index';
+import { BooleanClause, EventContext, NumericRange } from '../../../modules/app/interfaces/index';
 
-@BaseComponent({
+@Component({
     selector: 'xe-operation-tracing-clause',
     moduleId: module.id,
     templateUrl: './operation-tracing-clause.component.html',
-    styleUrls: ['./operation-tracing-clause.component.css']
+    styleUrls: ['./operation-tracing-clause.component.css'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 
 export class OperationTracingClauseComponent {
@@ -82,9 +82,9 @@ export class OperationTracingClauseComponent {
     getClause(): any {
         switch(this.type) {
             case 'string':
-                return this._getStringClause();
+                return this.getStringClause();
             case 'range':
-                return this._getRangeClause();
+                return this.getRangeClause();
         }
 
         return null;
@@ -103,7 +103,7 @@ export class OperationTracingClauseComponent {
         });
     }
 
-    private _getStringClause(): BooleanClause {
+    private getStringClause(): BooleanClause {
         return {
             term: {
                 matchType: this.propertyMatchType,
@@ -114,7 +114,7 @@ export class OperationTracingClauseComponent {
         };
     }
 
-    private _getRangeClause(): BooleanClause {
+    private getRangeClause(): BooleanClause {
         return {
             term: {
                 propertyName: this.propertyName,

@@ -1,19 +1,18 @@
 // angular
-import { QueryList, ViewChildren } from '@angular/core';
+import { ChangeDetectionStrategy, Component, QueryList, ViewChildren } from '@angular/core';
 import * as _ from 'lodash';
 
 // app
-import { BaseComponent } from '../../../frameworks/core/index';
-
-import { BooleanClause, EventContext } from '../../../frameworks/app/interfaces/index';
+import { BooleanClause, EventContext } from '../../../modules/app/interfaces/index';
 
 import { QueryClauseNestedComponent } from './query-clause-nested.component';
 
-@BaseComponent({
+@Component({
     selector: 'xe-query-nested',
     moduleId: module.id,
     templateUrl: './query-nested.component.html',
-    styleUrls: ['./query-nested.component.css']
+    styleUrls: ['./query-nested.component.css'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 
 export class QueryNestedComponent {
@@ -33,7 +32,7 @@ export class QueryNestedComponent {
      * and will always increase even when some clauses are deleted along
      * the way.
      */
-    private _clauseIdTracker: number = 1;
+    private clauseIdTracker: number = 1;
 
     getClauses(): BooleanClause[] {
         var booleanClauses: BooleanClause[] = [];
@@ -47,7 +46,7 @@ export class QueryNestedComponent {
 
     onAddClause(event: MouseEvent): void {
         this.clauses.push({
-            id: ++this._clauseIdTracker
+            id: ++this.clauseIdTracker
         });
     }
 

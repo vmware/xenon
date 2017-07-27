@@ -1,0 +1,244 @@
+<div class="component-container vertical">
+    <main class="nav-area">
+        <h5 class="title">
+            <strong>{{highlightedNodeId}}</strong>
+            <small>
+                {{getStateSuffix()}}
+            </small>
+        </h5>
+    </main>
+    <main class="content-area info-panel">
+        <form>
+            <section class="charts">
+                <figure class="chart">
+                    <canvas id="memoryChart" class="canvas"></canvas>
+                    <figcaption class="doughnut-title">
+                        <label>
+                            <strong>{{getMemoryUsagePercentage()}}</strong> %<br>
+                            {{'MEMORY' | translate}}
+                        </label>
+                    </figcaption>
+                </figure>
+                <figure class="chart">
+                    <canvas id="diskChart" class="canvas"></canvas>
+                    <figcaption class="doughnut-title">
+                        <label>
+                            <strong>{{getDiskUsagePercentage()}}</strong> %<br>
+                            {{'DISK' | translate}}
+                        </label>
+                    </figcaption>
+                </figure>
+            </section>
+            <a class="collapse-title" data-toggle="collapse"
+                href="#summarySection" aria-expanded="true" aria-controls="summarySection">
+                {{'SUMMARY' | translate}}
+            </a>
+            <section id="summarySection" class="collapse in" aria-expanded="true">
+                <div class="form-group row">
+                    <label class="col-sm-5 col-form-label">
+                        {{'NODE_SELECTOR_FORM_OS' | translate}}
+                    </label>
+                    <div class="col-sm-7">
+                        <p class="form-control-static">
+                            <i [class]="getOsIconClass(getHighlightedNodeDetails()?.systemInfo?.osFamily)"></i>
+                            &nbsp;{{getHighlightedNodeDetails()?.systemInfo?.osName}}
+                        </p>
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label class="col-sm-5 col-form-label">
+                        {{'NODE_SELECTOR_FORM_ADDRESS' | translate}}
+                    </label>
+                    <div class="col-sm-7">
+                        <p class="form-control-static">{{getHighlightedNodeDetails()?.bindAddress}}</p>
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label class="col-sm-5 col-form-label">
+                        {{'NODE_SELECTOR_FORM_HTTP_PORT' | translate}}
+                    </label>
+                    <div class="col-sm-7">
+                        <p class="form-control-static">{{getHighlightedNodeDetails()?.httpPort}}</p>
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label class="col-sm-5 col-form-label">
+                        {{'NODE_SELECTOR_FORM_HTTPS_PORT' | translate}}
+                    </label>
+                    <div class="col-sm-7">
+                        <p class="form-control-static">
+                            {{getHighlightedNodeDetails()?.httpsPort === -1 ? 'N/A' : getHighlightedNodeDetails()?.httpsPort}}
+                        </p>
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label class="col-sm-5 col-form-label">
+                        {{'NODE_SELECTOR_FORM_AVAILABLE_PROCESSORS' | translate}}
+                    </label>
+                    <div class="col-sm-7">
+                        <p class="form-control-static">
+                            {{getHighlightedNodeDetails()?.systemInfo?.availableProcessorCount}}
+                        </p>
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label class="col-sm-5 col-form-label">
+                        {{'NODE_SELECTOR_FORM_MAINTENANCE_INTERVAL' | translate}}
+                    </label>
+                    <div class="col-sm-7">
+                        <p class="form-control-static">
+                            {{formatDurationInSeconds(getHighlightedNodeDetails()?.maintenanceIntervalMicros)}}
+                        </p>
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label class="col-sm-5 col-form-label">
+                        {{'NODE_SELECTOR_FORM_LAST_MAINTENANCE_TIME' | translate}}
+                    </label>
+                    <div class="col-sm-7">
+                        <p class="form-control-static">
+                            {{formatTimeStamp(getHighlightedNodeDetails()?.lastMaintenanceTimeUtcMicros)}}
+                        </p>
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label class="col-sm-5 col-form-label">
+                        {{'NODE_SELECTOR_FORM_OPERATION_TIMEOUT' | translate}}
+                    </label>
+                    <div class="col-sm-7">
+                        <p class="form-control-static">
+                            {{formatDurationInSeconds(getHighlightedNodeDetails()?.operationTimeoutMicros)}}
+                        </p>
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label class="col-sm-5 col-form-label">
+                        {{'NODE_SELECTOR_FORM_SERVICE_STATE_CACHING' | translate}}
+                    </label>
+                    <div class="col-sm-7">
+                        <p class="form-control-static">
+                            {{getHighlightedNodeDetails()?.isServiceStateCaching}}
+                        </p>
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label class="col-sm-5 col-form-label">
+                        {{'NODE_SELECTOR_FORM_SERVICE_CACHE_CLEAR' | translate}}
+                    </label>
+                    <div class="col-sm-7">
+                        <p class="form-control-static">
+                            {{formatDurationInSeconds(getHighlightedNodeDetails()?.serviceCacheClearDelayMicros)}}
+                        </p>
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label class="col-sm-5 col-form-label">
+                        {{'NODE_SELECTOR_FORM_SSL_AUTH_MODE' | translate}}
+                    </label>
+                    <div class="col-sm-7">
+                        <p class="form-control-static">
+                            {{getHighlightedNodeDetails()?.sslClientAuthMode}}
+                        </p>
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label class="col-sm-5 col-form-label">
+                        {{'NODE_SELECTOR_FORM_RESPONSE_SIZE_LIMIT' | translate}}
+                    </label>
+                    <div class="col-sm-7">
+                        <p class="form-control-static">
+                            {{formatDataSize(getHighlightedNodeDetails()?.responsePayloadSizeLimit)}}
+                        </p>
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label class="col-sm-5 col-form-label">
+                        {{'NODE_SELECTOR_FORM_REQUEST_SIZE_LIMIT' | translate}}
+                    </label>
+                    <div class="col-sm-7">
+                        <p class="form-control-static">
+                            {{formatDataSize(getHighlightedNodeDetails()?.requestPayloadSizeLimit)}}
+                        </p>
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label class="col-sm-5 col-form-label"
+                        [title]="'NODE_SELECTOR_FORM_STORAGE_SANDBOX_FILE' | translate">
+                        {{'NODE_SELECTOR_FORM_STORAGE_SANDBOX_FILE' | translate}}
+                    </label>
+                    <div class="col-sm-7">
+                        <p class="form-control-static">
+                            {{getHighlightedNodeDetails()?.storageSandboxFileReference}}
+                        </p>
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label class="col-sm-5 col-form-label">
+                        {{'NODE_SELECTOR_FORM_PEER_SYNC_ENABLED' | translate}}
+                    </label>
+                    <div class="col-sm-7">
+                        <p class="form-control-static">
+                            {{getHighlightedNodeDetails()?.isPeerSynchronizationEnabled}}
+                        </p>
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label class="col-sm-5 col-form-label">
+                        {{'NODE_SELECTOR_FORM_PEER_SYNC_TIME_LIMIT' | translate}}
+                    </label>
+                    <div class="col-sm-7">
+                        <p class="form-control-static">
+                            {{getHighlightedNodeDetails()?.peerSynchronizationTimeLimitSeconds}}
+                            {{'UNIT_SECONDS' | translate}}
+                        </p>
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label class="col-sm-5 col-form-label">
+                        {{'NODE_SELECTOR_FORM_AUTH_ENABLED' | translate}}
+                    </label>
+                    <div class="col-sm-7">
+                        <p class="form-control-static">
+                            {{getHighlightedNodeDetails()?.isAuthorizationEnabled}}
+                        </p>
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label class="col-sm-5 col-form-label">
+                        {{'NODE_SELECTOR_FORM_IS_PROCESS_OWNER' | translate}}
+                    </label>
+                    <div class="col-sm-7">
+                        <p class="form-control-static">
+                            {{getHighlightedNodeDetails()?.isProcessOwner}}
+                        </p>
+                    </div>
+                </div>
+            </section>
+            <a class="collapse-title" data-toggle="collapse"
+                href="#systemPropertiesSection" aria-expanded="false" aria-controls="systemPropertiesSection">
+                {{'SYSTEM_PROPERTIES' | translate}}
+            </a>
+            <section id="systemPropertiesSection" class="collapse" aria-expanded="false">
+                <xe-property-table [properties]="getHighlightedNodeDetails()?.systemInfo?.properties"
+                    [bordered]="true">
+                </xe-property-table>
+            </section>
+            <a class="collapse-title" data-toggle="collapse"
+                href="#environmentVariablesSection" aria-expanded="false" aria-controls="environmentVariablesSection">
+                {{'ENVIRONMENT_VARIABLES' | translate}}
+            </a>
+            <section id="environmentVariablesSection" class="collapse" aria-expanded="false">
+                <xe-property-table [properties]="getHighlightedNodeDetails()?.systemInfo?.environmentVariables"
+                    [bordered]="true">
+                </xe-property-table>
+            </section>
+        </form>
+    </main>
+    <main class="toolbar-area">
+        <button type="button" class="btn btn-primary"
+            [disabled]="isSelectedNode() || !canSwitchToNode"
+            (click)="onSelectNodeBtnClicked($event)">
+            {{'SWITCH_TO_NODE_BTN' | translate}}
+        </button>
+    </main>
+</div>

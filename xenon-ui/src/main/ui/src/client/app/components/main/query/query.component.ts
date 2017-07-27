@@ -1,14 +1,13 @@
 // angular
-import { ChangeDetectionStrategy, OnDestroy, QueryList, ViewChildren } from '@angular/core';
+import { Component, OnDestroy, QueryList, ViewChildren } from '@angular/core';
 import { Subscription } from 'rxjs/Subscription';
 import * as _ from 'lodash';
 
 // app
-import { BaseComponent } from '../../../frameworks/core/index';
-import { URL } from '../../../frameworks/app/enums/index';
-import { BooleanClause, EventContext, QuerySpecification, QueryTask } from '../../../frameworks/app/interfaces/index';
-import { BaseService, NodeSelectorService, NotificationService } from '../../../frameworks/app/services/index';
-import { ODataUtil } from '../../../frameworks/app/utils/index';
+import { URL } from '../../../modules/app/enums/index';
+import { BooleanClause, EventContext, QuerySpecification, QueryTask } from '../../../modules/app/interfaces/index';
+import { BaseService, NotificationService } from '../../../modules/app/services/index';
+import { ODataUtil } from '../../../modules/app/utils/index';
 
 import { QueryClauseComponent } from './query-clause.component';
 
@@ -40,12 +39,11 @@ const sampleQueryTask: string = `{
     }
 }`;
 
-@BaseComponent({
+@Component({
     selector: 'xe-query',
     moduleId: module.id,
     templateUrl: './query.component.html',
-    styleUrls: ['./query.component.css'],
-    changeDetection: ChangeDetectionStrategy.Default
+    styleUrls: ['./query.component.css']
 })
 
 export class QueryComponent implements OnDestroy {
@@ -80,12 +78,12 @@ export class QueryComponent implements OnDestroy {
      * and will always increase even when some clauses are deleted along
      * the way.
      */
-    private _clauseIdTracker: number = 1;
+    private clauseIdTracker: number = 1;
 
     /**
      * Track the query options in interactive mode
      */
-    private _interactiveQueryOptions: any = {
+    private interactiveQueryOptions: any = {
         queryVersionsOption: '',
         deletedDocumentInclusionOption: '',
         ownerSelectionOption: ''
@@ -94,70 +92,69 @@ export class QueryComponent implements OnDestroy {
     /**
      * Object used for query
      */
-    private _queryTask: QueryTask;
+    private queryTask: QueryTask;
 
     /**
      * Array contains the documentLinks of the result
      */
-    private _queryResultLinks: string[];
+    private queryResultLinks: string[];
 
     /**
-     * Keep track of the total count of the query result. Can't rely on _queryResultLinks.length
+     * Keep track of the total count of the query result. Can't rely on queryResultLinks.length
      * since it's paginated.
      */
-    private _queryResultCount: number = 0;
+    private queryResultCount: number = 0;
 
     /**
      * Link to the selected result.
      */
-    private _selectedResultDocumentLink: string = '';
+    private selectedResultDocumentLink: string = '';
 
     /**
      * Link to the next page of the child services
      */
-    private _queryResultNextPageLink: string;
+    private queryResultNextPageLink: string;
 
     /**
      * A lock to prevent the same next page link from being requested multiple times when scrolling
      */
-    private _requestResultNextPageLinkRequestLocked: boolean = false;
+    private requestResultNextPageLinkRequestLocked: boolean = false;
 
     /**
      * Subscriptions to services.
      */
-    private _baseServiceSubscription: Subscription;
-    private _baseServiceGetQueryResultNextPageSubscription: Subscription;
+    private baseServiceSubscription: Subscription;
+    private baseServiceGetQueryResultNextPageSubscription: Subscription;
 
     constructor(
-        private _baseService: BaseService,
-        private _nodeSelectorService: NodeSelectorService,
-        private _notificationService: NotificationService) {}
+        private baseService: BaseService,
+        private notificationService: NotificationService) {}
 
     ngOnDestroy(): void {
-        if (!_.isUndefined(this._baseServiceSubscription)) {
-            this._baseServiceSubscription.unsubscribe();
+        if (!_.isUndefined(this.baseServiceSubscription)) {
+            this.baseServiceSubscription.unsubscribe();
         }
 
-        if (!_.isUndefined(this._baseServiceGetQueryResultNextPageSubscription)) {
-            this._baseServiceGetQueryResultNextPageSubscription.unsubscribe();
+        if (!_.isUndefined(this.baseServiceGetQueryResultNextPageSubscription)) {
+            this.baseServiceGetQueryResultNextPageSubscription.unsubscribe();
         }
     }
 
     getQueryResultLinks(): string[] {
-        return this._queryResultLinks;
+        return this.queryResultLinks;
     }
 
     getQueryResultCount(): number {
-        return this._queryResultCount;
+        return this.queryResultCount;
     }
 
     getSelectedResultDocumentLink(): string {
-        var link: string = this._selectedResultDocumentLink;
+        var link: string = this.selectedResultDocumentLink;
 
         // Process the selected result document link and make it a valid
         // url query parameter, for INCLUDE_ALL_VERSIONS case
-        if (this._queryTask && this._queryTask.querySpec
-                && this._queryTask.querySpec.options.indexOf('INCLUDE_ALL_VERSIONS') !== -1
+        if (this.queryTask && this.queryTask.querySpec
+                && this.queryTask.querySpec.options.indexOf('INCLUDE_ALL_VERSIONS') !== -1
                 && link.indexOf('?documentVersion') !== -1) {
             link = link.replace('?', '&');
         }
@@ -166,7 +163,7 @@ export class QueryComponent implements OnDestroy {
     }
 
     isResultLinkSelected(queryResultLink: string): boolean {
-        return this._selectedResultDocumentLink === queryResultLink;
+        return this.selectedResultDocumentLink === queryResultLink;
     }
 
     onQueryBuilderModeChanged(event: MouseEvent, mode: string): void {
@@ -176,20 +173,20 @@ export class QueryComponent implements OnDestroy {
     }
 
     onQueryVersionsOptionChanged(event: MouseEvent): void {
-        this._interactiveQueryOptions.queryVersionsOption = event.target['value'];
+        this.interactiveQueryOptions.queryVersionsOption = event.target['value'];
     }
 
     onDeletedDocumentInclusionOptionChanged(event: MouseEvent): void {
-        this._interactiveQueryOptions.deletedDocumentInclusionOption = event.target['value'];
+        this.interactiveQueryOptions.deletedDocumentInclusionOption = event.target['value'];
     }
 
     onOwnerSelectionOptionChanged(event: MouseEvent): void {
-        this._interactiveQueryOptions.ownerSelectionOption = event.target['value'];
+        this.interactiveQueryOptions.ownerSelectionOption = event.target['value'];
     }
 
     onAddClause(event: MouseEvent): void {
         this.interactiveQueryClauses.push({
-            id: ++this._clauseIdTracker
+            id: ++this.clauseIdTracker
         });
     }
 
@@ -203,37 +200,37 @@ export class QueryComponent implements OnDestroy {
 
     onClearQuery(event: MouseEvent): void {
         if (this.queryBuilderMode === 'interactive') {
-            this._clauseIdTracker = 1;
+            this.clauseIdTracker = 1;
             this.interactiveQueryClauses = [{ id: 1 }];
         } else if (this.queryBuilderMode === 'advanced') {
             this.advancedQueryTaskInput = '';
         }
 
         // Reset all the states
-        this._queryResultLinks = [];
-        this._queryResultCount = 0;
+        this.queryResultLinks = [];
+        this.queryResultCount = 0;
         this.isQueried = false;
     }
 
     onQuery(event: MouseEvent): void {
         try {
             // Reset
-            this._selectedResultDocumentLink = '';
-            this._queryResultLinks = [];
-            this._queryTask = undefined;
+            this.selectedResultDocumentLink = '';
+            this.queryResultLinks = [];
+            this.queryTask = undefined;
 
             if (this.queryBuilderMode === 'interactive') {
-                this._queryTask = this._buildInteractiveQueryTask();
+                this.queryTask = this.buildInteractiveQueryTask();
             } else if (this.queryBuilderMode === 'advanced') {
-                this._queryTask = this._buildAdvancedQueryTask();
+                this.queryTask = this.buildAdvancedQueryTask();
             }
 
-            if (_.isUndefined(this._queryTask) || _.isEmpty(this._queryTask)) {
+            if (_.isUndefined(this.queryTask) || _.isEmpty(this.queryTask)) {
                 throw new Error('The query is empty');
             }
 
             // Add a COUNT option to the spec to get count
-            var queryCountTask: QueryTask = _.cloneDeep(this._queryTask);
+            var queryCountTask: QueryTask = _.cloneDeep(this.queryTask);
             if (queryCountTask.querySpec.options) {
                 queryCountTask.querySpec.options.push('COUNT');
             } else {
@@ -243,27 +240,27 @@ export class QueryComponent implements OnDestroy {
             // Delete resultLimit for count quert since it's not necessary and will cause warnings in log
             delete queryCountTask.querySpec.resultLimit;
 
-            this._baseServiceSubscription = this._baseService.post(URL.Query, queryCountTask).subscribe(
+            this.baseServiceSubscription = this.baseService.post(URL.Query, queryCountTask).subscribe(
                 (result: QueryTask) => {
                     this.isQueried = true;
-                    this._queryResultCount = result.results.documentCount;
+                    this.queryResultCount = result.results.documentCount;
 
-                    if (this._queryResultCount === 0) {
+                    if (this.queryResultCount === 0) {
                         return;
                     }
 
                     // Only do query task if the count is not 0
-                    this._baseService.post(URL.Query, this._queryTask).subscribe((result: QueryTask) => {
-                            this._queryResultNextPageLink = result.results.nextPageLink;
-                            if (_.isUndefined(this._queryResultNextPageLink)) {
+                    this.baseService.post(URL.Query, this.queryTask).subscribe((result: QueryTask) => {
+                            this.queryResultNextPageLink = result.results.nextPageLink;
+                            if (_.isUndefined(this.queryResultNextPageLink)) {
                                 return;
                             }
 
-                            this._getNextPage();
+                            this.getNextPage();
                         },
                         (error) => {
                             // TODO: Better error handling
-                            this._notificationService.set([{
+                            this.notificationService.set([{
                                 type: 'ERROR',
                                 messages: [`Failed to query: [${error.statusCode}] ${error.message}`]
                             }]);
@@ -271,13 +268,13 @@ export class QueryComponent implements OnDestroy {
                 },
                 (error) => {
                     // TODO: Better error handling
-                    this._notificationService.set([{
+                    this.notificationService.set([{
                         type: 'ERROR',
                         messages: [`Failed to query: [${error.statusCode}] ${error.message}`]
                     }]);
                 });
         } catch (e) {
-            this._notificationService.set([{
+            this.notificationService.set([{
                 type: 'ERROR',
                 messages: [`Invalid query: ${e}`]
             }]);
@@ -285,65 +282,65 @@ export class QueryComponent implements OnDestroy {
     }
 
     onSelectQueryResult(event: MouseEvent, queryResultLink: string): void {
-        this._selectedResultDocumentLink = queryResultLink;
+        this.selectedResultDocumentLink = queryResultLink;
     }
 
     onLoadNextPage(): void {
-        if (_.isUndefined(this._queryResultNextPageLink) || this._requestResultNextPageLinkRequestLocked) {
+        if (_.isUndefined(this.queryResultNextPageLink) || this.requestResultNextPageLinkRequestLocked) {
             return;
         }
 
-        this._getNextPage();
+        this.getNextPage();
     }
 
-    private _getQueryOptions(): string[] {
+    private getQueryOptions(): string[] {
         var options: string[] = [];
 
-        if (this._interactiveQueryOptions.queryVersionsOption) {
+        if (this.interactiveQueryOptions.queryVersionsOption) {
             options.push('INCLUDE_ALL_VERSIONS');
         }
 
-        if (this._interactiveQueryOptions.deletedDocumentInclusionOption) {
+        if (this.interactiveQueryOptions.deletedDocumentInclusionOption) {
             options.push('INCLUDE_DELETED');
         }
 
-        if (this._interactiveQueryOptions.ownerSelectionOption) {
+        if (this.interactiveQueryOptions.ownerSelectionOption) {
             options.push('OWNER_SELECTION');
         }
 
         return options;
     }
 
-    private _getNextPage(): void {
-        this._requestResultNextPageLinkRequestLocked = true;
-        this._baseServiceGetQueryResultNextPageSubscription =
-            this._baseService.getDocument(this._queryResultNextPageLink, '', false).subscribe(
+    private getNextPage(): void {
+        this.requestResultNextPageLinkRequestLocked = true;
+        this.baseServiceGetQueryResultNextPageSubscription =
+            this.baseService.getDocument(this.queryResultNextPageLink, '', false).subscribe(
                 (document: QueryTask) => {
-                    if (_.isEmpty(document.results) || this._queryResultNextPageLink === document.results.nextPageLink) {
+                    if (_.isEmpty(document.results) || this.queryResultNextPageLink === document.results.nextPageLink) {
                         return;
                     }
 
-                    this._requestResultNextPageLinkRequestLocked = false;
-                    this._queryResultLinks = _.concat(this._queryResultLinks, document.results.documentLinks);
+                    this.requestResultNextPageLinkRequestLocked = false;
+                    this.queryResultLinks = _.concat(this.queryResultLinks, document.results.documentLinks);
 
                     // NOTE: Need to use forwarding link here since the paginated data is stored on a particular node
                     if (document.results.nextPageLink) {
-                        this._queryResultNextPageLink = this._baseService.getForwardingLink(document.results.nextPageLink);
+                        this.queryResultNextPageLink = this.baseService.getForwardingLink(document.results.nextPageLink);
                     }
                 },
                 (error) => {
                     // TODO: Better error handling
-                    this._notificationService.set([{
+                    this.notificationService.set([{
                         type: 'ERROR',
                         messages: [`Failed to query: [${error.statusCode}] ${error.message}`]
                     }]);
                 });
     }
 
-    private _buildInteractiveQueryTask(): QueryTask {
+    private buildInteractiveQueryTask(): QueryTask {
         // Build specs
         var spec: QuerySpecification = {
-            options: this._getQueryOptions(),
+            options: this.getQueryOptions(),
             resultLimit: ODataUtil.DEFAULT_PAGE_SIZE,
             query: {
                 booleanClauses: [],
@@ -390,7 +387,7 @@ export class QueryComponent implements OnDestroy {
         };
     }
 
-    private _buildAdvancedQueryTask(): QueryTask {
+    private buildAdvancedQueryTask(): QueryTask {
         return JSON.parse(this.advancedQueryTaskInput) as QueryTask;
     }
 }

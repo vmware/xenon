@@ -2,16 +2,17 @@
 import { NgModule } from '@angular/core';
 import { APP_BASE_HREF } from '@angular/common';
 import { BrowserModule } from '@angular/platform-browser';
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
+import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { Http } from '@angular/http';
 
 // libs
-import { InfiniteScrollModule } from 'angular2-infinite-scroll';
 import { StoreModule } from '@ngrx/store';
 import { EffectsModule } from '@ngrx/effects';
 import { StoreDevtoolsModule } from '@ngrx/store-devtools';
-import { ConfigLoader, ConfigService } from 'ng2-config';
-import { TranslateLoader } from 'ng2-translate';
+import { TranslateLoader } from '@ngx-translate/core';
+import { InfiniteScrollModule } from 'ngx-infinite-scroll';
 
 // app
 import { routes } from './app/components/app.routes';
@@ -27,41 +28,63 @@ import { AppComponent,
     QueryClauseNestedComponent, QueryClauseComponent, QueryNestedComponent,
     QueryResultDetailComponent, QuerySpecReferenceComponent, QueryComponent,
     ServiceCardComponent, ServiceDetailComponent, ServiceGridComponent,
-    ChildServiceDetailComponent, MainComponent } from './app/components/index/';
+    ChildServiceDetailComponent, MainComponent } from './app/components/index';
 
 // feature modules
-import { CoreModule, configFactory } from './app/frameworks/core/core.module';
-import { AppReducer } from './app/frameworks/ngrx/index';
-import { AnalyticsModule } from './app/frameworks/analytics/analytics.module';
-import { MultilingualEffects } from './app/frameworks/i18n/index';
-import { MultilingualModule, translateFactory } from './app/frameworks/i18n/multilingual.module';
-import { AppModule } from './app/frameworks/app/app.module';
+import { WindowService, StorageService, ConsoleService, createConsoleTarget, provideConsoleTarget,
+    LogTarget, LogLevel, ConsoleTarget } from './app/modules/core/services/index';
+import { CoreModule, Config } from './app/modules/core/index';
+import { AnalyticsModule } from './app/modules/analytics/index';
+import { MultilingualModule, Languages, translateLoaderFactory, MultilingualEffects } from './app/modules/i18n/index';
+import { AppReducer } from './app/modules/ngrx/index';
+import { AppModule } from './app/modules/app/app.module';
 
 // config
-import { Config, WindowService, ConsoleService } from './app/frameworks/core/index';
 Config.PLATFORM_TARGET = Config.PLATFORMS.WEB;
+if (String('<%= BUILD_TYPE %>') === 'dev') {
+    // only output console logging in dev mode
+    Config.DEBUG.LEVEL_4 = true;
+}
 
 if (String('<%= TARGET_DESKTOP %>') === 'true') {
     Config.PLATFORM_TARGET = Config.PLATFORMS.DESKTOP;
 }
 
-declare var window, console;
+declare var window, console, localStorage;
 
 // For AoT compilation to work:
 export function win() {
     return window;
 }
+export function storage() {
+    return localStorage;
+}
 export function cons() {
     return console;
+}
+export function consoleLogTarget(consoleService: ConsoleService) {
+    return new ConsoleTarget(consoleService, { minLogLevel: LogLevel.Debug });
+}
+
+let DEV_IMPORTS: any[] = [];
+
+if (String('<%= BUILD_TYPE %>') === 'dev') {
+    DEV_IMPORTS = [
+        ...DEV_IMPORTS,
+        StoreDevtoolsModule.instrumentOnlyWithExtension()
+    ];
 }
 
 @NgModule({
     imports: [
         BrowserModule,
+        BrowserAnimationsModule,
+        FormsModule,
         CoreModule.forRoot([
             { provide: WindowService, useFactory: (win) },
+            { provide: StorageService, useFactory: (storage) },
             { provide: ConsoleService, useFactory: (cons) },
-            { provide: ConfigLoader, useFactory: (configFactory) }
+            { provide: LogTarget, useFactory: (consoleLogTarget), deps: [ConsoleService], multi: true }
         ]),
         // Both web and desktop (electron) need to use hash
         RouterModule.forRoot(routes, { useHash: true }),
@@ -69,7 +92,7 @@ export function cons() {
         MultilingualModule.forRoot([{
             provide: TranslateLoader,
             deps: [Http],
-            useFactory: (translateFactory)
+            useFactory: (translateLoaderFactory)
         }]),
         StoreModule.provideStore(AppReducer),
         StoreDevtoolsModule.instrumentOnlyWithExtension(),
@@ -107,6 +130,11 @@ export function cons() {
         {
             provide: APP_BASE_HREF,
             useValue: '<%= APP_BASE %>'
+        },
+        // override with supported languages
+        {
+            provide: Languages,
+            useValue: Config.GET_SUPPORTED_LANGUAGES()
         }
     ],
     bootstrap: [AppComponent]
