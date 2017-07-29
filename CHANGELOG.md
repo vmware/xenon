@@ -2,6 +2,16 @@
 
 ## 1.5.4-SNAPSHOT
 
+* Add auto backup
+  When auto-backup is enabled, host performs incremental backup when underlying
+  document-index service persists document changes.
+  (for default `LuceneDocumentIndexService` service, it performs commit periodically)
+  The location is configurable by `autoBackup` host argument parameter.
+  To enable auto-backup, `isAutoBackupEnabled` argument is added for host start up.
+  Also, `/core/management` takes `AutoBackupConfiguration` patch request to toggle the
+  feature at run time.
+
+
 ## 1.5.3
 
 * Addition of new "indexed metadata" document indexing and query options.
@@ -29,15 +39,6 @@
 
 * ForkJoinPool threads owned by a ServiceHost are named like the host uri +
   the default name.
-
-* Add auto backup
-  When auto-backup is enabled, host performs incremental backup when underlying
-  document-index service persists document changes.
-  (for default `LuceneDocumentIndexService` service, it performs commit periodically)
-  The location is configurable by `autoBackup` host argument parameter.
-  To enable auto-backup, `isAutoBackupEnabled` argument is added for host start up.
-  Also, `/core/management` takes `AutoBackupConfiguration` patch request to toggle the
-  feature at run time.
 
 
 ## 1.5.2
