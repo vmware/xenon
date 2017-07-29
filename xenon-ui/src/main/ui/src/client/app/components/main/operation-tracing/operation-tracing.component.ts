@@ -1,23 +1,21 @@
 // angular
-import { ChangeDetectionStrategy, OnInit, OnDestroy, QueryList, ViewChildren } from '@angular/core';
+import { Component, OnInit, OnDestroy, QueryList, ViewChildren } from '@angular/core';
 import { Subscription } from 'rxjs/Subscription';
 import * as _ from 'lodash';
 
 // app
-import { BaseComponent } from '../../../frameworks/core/index';
-import { URL } from '../../../frameworks/app/enums/index';
+import { URL } from '../../../modules/app/enums/index';
 import { BooleanClause, EventContext, Node, QuerySpecification, QueryTask,
-    ServiceDocument } from '../../../frameworks/app/interfaces/index';
-import { BaseService, NodeSelectorService, NotificationService } from '../../../frameworks/app/services/index';
+    ServiceDocument } from '../../../modules/app/interfaces/index';
+import { BaseService, NodeSelectorService, NotificationService } from '../../../modules/app/services/index';
 
 import { OperationTracingClauseComponent } from './operation-tracing-clause.component';
 
-@BaseComponent({
+@Component({
     selector: 'xe-operation-tracing',
     moduleId: module.id,
     templateUrl: './operation-tracing.component.html',
-    styleUrls: ['./operation-tracing.component.css'],
-    changeDetection: ChangeDetectionStrategy.Default
+    styleUrls: ['./operation-tracing.component.css']
 })
 
 export class OperationTracingComponent implements OnInit, OnDestroy {
@@ -39,12 +37,12 @@ export class OperationTracingComponent implements OnInit, OnDestroy {
      * and will always increase even when some clauses are deleted along
      * the way.
      */
-    private _clauseIdTracker: number = 0;
+    private clauseIdTracker: number = 0;
 
     /**
      * Track the query options in interactive mode
      */
-    private _traceOptions: any = {
+    private traceOptions: any = {
         traceMethodsOption: 'GET',
         pathOption: '',
         refererOption: ''
@@ -54,80 +52,80 @@ export class OperationTracingComponent implements OnInit, OnDestroy {
      * The management service document for determining whether the operation
      * tracing is on or off
      */
-    private _management: ServiceDocument;
+    private management: ServiceDocument;
 
     /**
      * Object used for query
      */
-    private _traceTask: QueryTask;
+    private traceTask: QueryTask;
 
     /**
      * Object contains both the original query and the result
      */
-    private _traceResult: QueryTask;
+    private traceResult: QueryTask;
 
     /**
      * Subscriptions to services.
      */
-    private _baseServiceManagementSubscription: Subscription;
-    private _baseServiceManagementPatchSubscription: Subscription;
-    private _baseServiceQuerySubscription: Subscription;
-    private _nodeSelectorServiceGetSelectedSubscription: Subscription;
+    private baseServiceManagementSubscription: Subscription;
+    private baseServiceManagementPatchSubscription: Subscription;
+    private baseServiceQuerySubscription: Subscription;
+    private nodeSelectorServiceGetSelectedSubscription: Subscription;
 
     constructor(
-        private _baseService: BaseService,
-        private _nodeSelectorService: NodeSelectorService,
-        private _notificationService: NotificationService) {}
+        private baseService: BaseService,
+        private nodeSelectorService: NodeSelectorService,
+        private notificationService: NotificationService) {}
 
     ngOnInit(): void {
-        this._getData();
+        this.getData();
 
         // Update data when selected node changes
-        this._nodeSelectorServiceGetSelectedSubscription =
-            this._nodeSelectorService.getSelectedNode().subscribe(
+        this.nodeSelectorServiceGetSelectedSubscription =
+            this.nodeSelectorService.getSelectedNode().subscribe(
                 (selectedNode: Node) => {
-                    this._getData();
+                    this.getData();
                 });
     }
 
     ngOnDestroy(): void {
-        if (!_.isUndefined(this._baseServiceManagementSubscription)) {
-            this._baseServiceManagementSubscription.unsubscribe();
+        if (!_.isUndefined(this.baseServiceManagementSubscription)) {
+            this.baseServiceManagementSubscription.unsubscribe();
         }
 
-        if (!_.isUndefined(this._baseServiceManagementPatchSubscription)) {
-            this._baseServiceManagementPatchSubscription.unsubscribe();
+        if (!_.isUndefined(this.baseServiceManagementPatchSubscription)) {
+            this.baseServiceManagementPatchSubscription.unsubscribe();
         }
 
-        if (!_.isUndefined(this._baseServiceQuerySubscription)) {
-            this._baseServiceQuerySubscription.unsubscribe();
+        if (!_.isUndefined(this.baseServiceQuerySubscription)) {
+            this.baseServiceQuerySubscription.unsubscribe();
         }
     }
 
     getTraceResult(): QueryTask | any {
-        return this._traceResult ? this._traceResult : {};
+        return this.traceResult ? this.traceResult : {};
     }
 
     getTraceResultCount(): number {
-        if (_.isUndefined(this._traceResult) || _.isNull(this._traceResult)
-            || _.isUndefined(this._traceResult.results) || _.isEmpty(this._traceResult.results)) {
+        if (_.isUndefined(this.traceResult) || _.isNull(this.traceResult)
+            || _.isUndefined(this.traceResult.results) || _.isEmpty(this.traceResult.results)) {
             return 0;
         }
 
-        if (_.isUndefined(this._traceResult.results.documentCount)) {
-            return this._traceResult.results.documentLinks ?
-                this._traceResult.results.documentLinks.length : 0;
+        if (_.isUndefined(this.traceResult.results.documentCount)) {
+            return this.traceResult.results.documentLinks ?
+                this.traceResult.results.documentLinks.length : 0;
         }
 
-        return this._traceResult.results.documentCount;
+        return this.traceResult.results.documentCount;
     }
 
     onToggleTrace(event: MouseEvent): void {
         this.isRecordingOn = !this.isRecordingOn;
 
         // Do not subsribe since no body will be returned
-        this._baseServiceManagementPatchSubscription =
-            this._baseService.patch(URL.CoreManagement, {
+        this.baseServiceManagementPatchSubscription =
+            this.baseService.patch(URL.CoreManagement, {
                 enable: this.isRecordingOn ? 'START' : 'STOP',
                 kind: 'com:vmware:xenon:services:common:ServiceHostManagementService:ConfigureOperationTracingRequest'
             }).subscribe(() => {
@@ -138,20 +136,20 @@ export class OperationTracingComponent implements OnInit, OnDestroy {
     }
 
     onTraceMethodOptionChanged(event: MouseEvent) {
-        this._traceOptions.traceMethodsOption = event.target['value'];
+        this.traceOptions.traceMethodsOption = event.target['value'];
     }
 
     onTracePathOptionChanged(event: Event) {
-        this._traceOptions.pathOption = event.target['value'];
+        this.traceOptions.pathOption = event.target['value'];
     }
 
     onTraceRefererOptionChanged(event: Event) {
-        this._traceOptions.refererOption = event.target['value'];
+        this.traceOptions.refererOption = event.target['value'];
     }
 
     onAddClause(event: MouseEvent): void {
         this.traceClauses.push({
-            id: ++this._clauseIdTracker
+            id: ++this.clauseIdTracker
         });
     }
 
@@ -163,50 +161,50 @@ export class OperationTracingComponent implements OnInit, OnDestroy {
         });
 
         if (this.traceClauses.length === 0) {
-            this._clauseIdTracker = 0;
+            this.clauseIdTracker = 0;
         }
     }
 
     onClearTrace(event: MouseEvent): void {
-        this._clauseIdTracker = 0;
+        this.clauseIdTracker = 0;
         this.traceClauses = [];
 
-        this._traceResult = null;
+        this.traceResult = null;
     }
 
     onTrace(event: MouseEvent): void {
         try {
             // Reset
-            this._traceResult = null;
-            this._traceTask = null;
+            this.traceResult = null;
+            this.traceTask = null;
 
-            this._traceTask = this._buildInteractiveQueryTask();
+            this.traceTask = this.buildInteractiveQueryTask();
 
-            if (_.isUndefined(this._traceTask) || _.isNull(this._traceTask)
-                    || _.isEmpty(this._traceTask)) {
+            if (_.isUndefined(this.traceTask) || _.isNull(this.traceTask)
+                    || _.isEmpty(this.traceTask)) {
                 throw new Error('The query is empty');
             }
 
-            this._baseServiceQuerySubscription = this._baseService.post(URL.QueryLocal, this._traceTask).subscribe(
+            this.baseServiceQuerySubscription = this.baseService.post(URL.QueryLocal, this.traceTask).subscribe(
                 (result: QueryTask) => {
-                    this._traceResult = result;
+                    this.traceResult = result;
                 },
                 (error) => {
                     // TODO: Better error handling
-                    this._notificationService.set([{
+                    this.notificationService.set([{
                         type: 'ERROR',
                         messages: [`Failed to query: [${error.statusCode}] ${error.message}`]
                     }]);
                 });
         } catch (e) {
-            this._notificationService.set([{
+            this.notificationService.set([{
                 type: 'ERROR',
                 messages: [`Invalid query: ${e}`]
             }]);
         }
     }
 
-    private _buildInteractiveQueryTask(): QueryTask {
+    private buildInteractiveQueryTask(): QueryTask {
         // Build specs
         var spec: QuerySpecification = {
             options: ['EXPAND_CONTENT'],
@@ -215,21 +213,21 @@ export class OperationTracingComponent implements OnInit, OnDestroy {
                     occurance: 'MUST_OCCUR',
                     term: {
                         propertyName: 'referer',
-                        matchValue: this._traceOptions.refererOption,
+                        matchValue: this.traceOptions.refererOption,
                         matchType: 'WILDCARD'
                     }
                 }, {
                     occurance: 'MUST_OCCUR',
                     term: {
                         propertyName: 'action',
-                        matchValue: this._traceOptions.traceMethodsOption,
+                        matchValue: this.traceOptions.traceMethodsOption,
                         matchType: 'TERM'
                     }
                 }, {
                     occurance: 'MUST_OCCUR',
                     term: {
                         propertyName: 'path',
-                        matchValue: this._traceOptions.pathOption,
+                        matchValue: this.traceOptions.pathOption,
                         matchType: 'WILDCARD'
                     }
                 }],
@@ -255,14 +253,14 @@ export class OperationTracingComponent implements OnInit, OnDestroy {
         };
     }
 
-    private _getData(): void {
-        this._baseServiceManagementSubscription =
-            this._baseService.getDocument(URL.CoreManagement).subscribe(
+    private getData(): void {
+        this.baseServiceManagementSubscription =
+            this.baseService.getDocument(URL.CoreManagement).subscribe(
                 (management: ServiceDocument) => {
-                    this._management = management;
+                    this.management = management;
 
-                    if (this._management.hasOwnProperty('operationTracingLevel')
-                            && this._management['operationTracingLevel'] === 'ALL') {
+                    if (this.management.hasOwnProperty('operationTracingLevel')
+                            && this.management['operationTracingLevel'] === 'ALL') {
                         this.isRecordingOn = true;
                     } else {
                         this.isRecordingOn = false;
@@ -270,7 +268,7 @@ export class OperationTracingComponent implements OnInit, OnDestroy {
                 },
                 (error) => {
                     // TODO: Better error handling
-                    this._notificationService.set([{
+                    this.notificationService.set([{
                         type: 'ERROR',
                         messages: [`Failed to retrieve operation tracing recording status: [${error.statusCode}] ${error.message}`]
                     }]);

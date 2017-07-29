@@ -19,22 +19,28 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
+import static com.vmware.xenon.common.ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
+import static com.vmware.xenon.services.common.ServiceHostManagementService.STAT_NAME_AUTO_BACKUP_PERFORMED_COUNT;
 import static com.vmware.xenon.services.common.ServiceHostManagementService.STAT_NAME_THREAD_COUNT;
 
 import java.io.File;
 import java.net.URI;
+import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import org.junit.After;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -46,6 +52,7 @@ import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost;
+import com.vmware.xenon.common.ServiceHost.Arguments;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
@@ -57,7 +64,10 @@ import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.LocalFileService.LocalFileServiceState;
+import com.vmware.xenon.services.common.LuceneDocumentIndexService.MaintenanceRequest;
+import com.vmware.xenon.services.common.ServiceHostManagementService.AutoBackupConfiguration;
 import com.vmware.xenon.services.common.ServiceHostManagementService.BackupType;
+import com.vmware.xenon.services.common.ServiceHostManagementService.RestoreRequest;
 import com.vmware.xenon.services.common.TestLuceneDocumentIndexService.IndexedMetadataExampleService;
 
 public class TestServiceHostManagementService extends BasicTestCase {
@@ -66,6 +76,13 @@ public class TestServiceHostManagementService extends BasicTestCase {
 
     @Rule
     public TemporaryFolder tempDir = new TemporaryFolder();
+
+    private Set<VerificationHost> hostToCleanUp = new HashSet<>();
+
+    @After
+    public void cleanUpHosts() {
+        this.hostToCleanUp.forEach(VerificationHost::tearDown);
+    }
 
     @Test
     public void getStateAndDelete() throws Throwable {
@@ -575,4 +592,111 @@ public class TestServiceHostManagementService extends BasicTestCase {
         this.host.startService(post, new LocalFileService());
         this.host.waitForServiceAvailable(serviceLink);
     }
+
+
+    @Test
+    public void autoBackup() throws Throwable {
+
+        Path autoBackupPath = this.tempDir.newFolder("test-auto-backup").toPath();
+        String hostId = "my-test-host";
+
+        Arguments args = new Arguments();
+        args.isAutoBackupEnabled = true;
+        args.port = 0;
+        args.sandbox = this.tempDir.newFolder("test-sandbox").toPath();
+        args.autoBackupDirectory = autoBackupPath;
+        args.id = hostId;
+
+        VerificationHost host = VerificationHost.create(0);
+        host.initialize(args);
+        this.hostToCleanUp.add(host);
+
+        host.start();
+        host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
+
+        List<Operation> ops = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            ExampleServiceState state = new ExampleServiceState();
+            state.name = "foo-" + i;
+            state.documentSelfLink = state.name;
+            ops.add(Operation.createPost(host, ExampleService.FACTORY_LINK).setBody(state));
+        }
+
+        String autoBackupStatKey = STAT_NAME_AUTO_BACKUP_PERFORMED_COUNT + STAT_NAME_SUFFIX_PER_DAY;
+
+        TestRequestSender sender = this.host.getTestRequestSender();
+        ServiceStat autoBackupStat = sender.sendStatsGetAndWait(host.getManagementServiceUri()).entries.get(autoBackupStatKey);
+
+        // populate data
+        List<ExampleServiceState> states = sender.sendAndWait(ops, ExampleServiceState.class);
+
+        // perform lucene commit and triggers auto backup (needs to be a local operation)
+        Operation post = Operation.createPost(host, ServiceUriPaths.CORE_DOCUMENT_INDEX).setBody(new MaintenanceRequest());
+        host.getTestRequestSender().sendAndWait(post);
+
+        host.waitFor("AutoBackup needs to be performed.", () -> {
+            ServiceStat stat = sender.sendStatsGetAndWait(host.getManagementServiceUri()).entries.get(autoBackupStatKey);
+            return autoBackupStat.latestValue < stat.latestValue;
+        });
+
+        // sends auto-backup disable request
+        AutoBackupConfiguration autoBackupConfig = new AutoBackupConfiguration();
+        autoBackupConfig.kind = AutoBackupConfiguration.KIND;
+        autoBackupConfig.enable = false;
+        Operation disableAutoBackup = Operation.createPatch(host, ServiceUriPaths.CORE_MANAGEMENT).setBody(autoBackupConfig);
+        sender.sendAndWait(disableAutoBackup);
+
+        // populate more data which should not be part of backup because autobackup is disabled
+        ops = new ArrayList<>();
+        for (int i = 100; i < 120; i++) {
+            ExampleServiceState state = new ExampleServiceState();
+            state.name = "foo-" + i;
+            state.documentSelfLink = state.name;
+            ops.add(Operation.createPost(host, ExampleService.FACTORY_LINK).setBody(state));
+        }
+        List<ExampleServiceState> statesAfterDisabled = sender.sendAndWait(ops, ExampleServiceState.class);
+
+
+        // start new host. assign new sandbox to make sure it doesn't reuse the old one
+        Arguments restoreHostArgs = new Arguments();
+        restoreHostArgs.isAutoBackupEnabled = false;
+        restoreHostArgs.sandbox = this.tempDir.newFolder("new-test-sandbox").toPath();
+        restoreHostArgs.id = hostId;
+        restoreHostArgs.port = 0;
+
+        VerificationHost newHost = VerificationHost.create(0);
+        this.hostToCleanUp.add(newHost);
+        newHost.initialize(restoreHostArgs);
+        newHost.start();
+
+        RestoreRequest restoreRequest = new RestoreRequest();
+        restoreRequest.destination = autoBackupPath.toUri();
+        restoreRequest.kind = RestoreRequest.KIND;
+
+        // perform restore
+        URI restoreOpUri = UriUtils.buildUri(newHost, ServiceHostManagementService.SELF_LINK);
+        Operation restoreOp = Operation.createPatch(restoreOpUri).setBody(restoreRequest);
+        sender.sendAndWait(restoreOp);
+
+
+        // restart
+        newHost.stop();
+        newHost.setPort(0);
+        newHost.start();
+        newHost.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(newHost, ExampleService.FACTORY_LINK));
+
+
+        // verify data exists
+        List<Operation> gets = states.stream().map(state -> Operation.createGet(newHost, state.documentSelfLink)).collect(toList());
+        sender.sendAndWait(gets);
+
+        // verify data that have generated after auto-backup is disabled should not exist
+        for (ExampleServiceState state : statesAfterDisabled) {
+            FailureResponse failure = sender.sendAndWaitFailure(Operation.createGet(newHost, state.documentSelfLink));
+            String message = String.format("%s should not find on restored host", state.documentSelfLink);
+            assertEquals(message, Operation.STATUS_CODE_NOT_FOUND, failure.op.getStatusCode());
+        }
+    }
+
+
 }

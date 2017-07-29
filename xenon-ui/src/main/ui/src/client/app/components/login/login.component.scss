@@ -4,7 +4,7 @@
 .background-logo {
     position: absolute;
     top: -290px;
-    right: -200px;
+    left: -200px;
     width: 560px;
     opacity: .15;
 }
@@ -31,5 +31,5 @@
 .star-canvas {
     @include flexbox();
     @include flex(1 1 auto);
-    background: $white-base;
+    background: transparentize($light-blue-50, .3);
 }

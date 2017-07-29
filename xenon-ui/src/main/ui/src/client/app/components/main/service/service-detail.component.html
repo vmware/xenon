@@ -2,7 +2,7 @@
     <nav class="nav-area">
         <ol class="title">
             <li>
-                <a [routerLink]="['/main/service']" preserveQueryParams="true">
+                <a [routerLink]="['/main/service']" queryParamsHandling="preserve">
                     {{ 'SERVICE_FACTORY_SERVICES_TITLE' | translate }}
                 </a>
             </li>
@@ -24,7 +24,7 @@
                                 *ngFor="let serviceLink of getServiceLinks() | filterByName: filter.value"
                                 [class.active]="getSelectedServiceId() === serviceLink"
                                 [routerLink]="['/main/service', getSelectedServiceRouterId(serviceLink)]"
-                                preserveQueryParams="true">
+                                queryParamsHandling="preserve">
                                 {{ serviceLink }}
                             </a>
                         </li>

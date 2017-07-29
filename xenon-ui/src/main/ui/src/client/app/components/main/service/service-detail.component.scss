@@ -44,6 +44,7 @@
                 cursor: pointer;
                 background: transparent;
                 color: $grey-500;
+                display: block;
                 @include break-word();
                 @include transition(all);
 

@@ -1,19 +1,18 @@
 // angular
-import { OnDestroy } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs/Subscription';
 import * as _ from 'lodash';
 
 // app
-import { BaseComponent } from '../../frameworks/core/index';
+import { AuthenticationService } from '../../modules/app/services/index';
 
-import { AuthenticationService } from '../../frameworks/app/services/index';
-
-@BaseComponent({
+@Component({
     selector: 'xe-login',
     moduleId: module.id,
     templateUrl: './login.component.html',
-    styleUrls: ['./login.component.css']
+    styleUrls: ['./login.component.css'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 
 export class LoginComponent implements OnDestroy {
@@ -41,35 +40,35 @@ export class LoginComponent implements OnDestroy {
     /**
      * Subscriptions to services.
      */
-    private _loginServiceSubscription: Subscription;
+    private loginServiceSubscription: Subscription;
 
     constructor(
-        private _authenticationService: AuthenticationService,
-        private _router: Router) {}
+        private authenticationService: AuthenticationService,
+        private router: Router) {}
 
     ngOnDestroy(): void {
-        if (!_.isUndefined(this._loginServiceSubscription)) {
-            this._loginServiceSubscription.unsubscribe();
+        if (!_.isUndefined(this.loginServiceSubscription)) {
+            this.loginServiceSubscription.unsubscribe();
         }
     }
 
     onLogin(): void {
-        if (!this._validate()) {
+        if (!this.validate()) {
             return;
         }
 
         this.isLoading = true;
 
-        this._loginServiceSubscription =
-            this._authenticationService.login(this.username, this.password).subscribe(
+        this.loginServiceSubscription =
+            this.authenticationService.login(this.username, this.password).subscribe(
                 (data) => {
                     this.validationErrorMessage = '';
                     this.isLoading = false;
 
-                    var redirectUrl = this._authenticationService.redirectUrl ?
-                        this._authenticationService.redirectUrl : '/main/dashboard';
+                    var redirectUrl = this.authenticationService.redirectUrl ?
+                        this.authenticationService.redirectUrl : '/main/dashboard';
 
-                    this._router.navigate([redirectUrl]);
+                    this.router.navigate([redirectUrl]);
                 },
                 (error) => {
                     if (error.statusCode === 401 || error.statusCode === 403) {
@@ -81,7 +80,7 @@ export class LoginComponent implements OnDestroy {
                 });
     }
 
-    private _validate(): boolean {
+    private validate(): boolean {
         if (!this.username) {
             this.validationErrorMessage = 'Username can not be empty';
             return false;

@@ -28,6 +28,7 @@ export class ProjectConfig extends SeedAdvancedConfig {
             { src: 'bootstrap/dist/js/bootstrap.min.js', inject: 'libs' },
             { src: 'd3/d3.min.js', inject: 'libs' },
             { src: 'd3-tip/index.js', inject: 'libs' },
+            { src: `patternfly-timeline/dist/timeline.js`, inject: 'libs' },
             { src: 'chart.js/dist/Chart.bundle.min.js', inject: 'libs' },
 
             { src: 'codemirror/lib/codemirror.js', inject: 'libs' },
@@ -36,18 +37,39 @@ export class ProjectConfig extends SeedAdvancedConfig {
             { src: 'codemirror/addon/selection/active-line.js', inject: 'libs' },
             { src: 'codemirror/mode/javascript/javascript.js', inject: 'libs' },
 
+            { src: `patternfly-timeline/dist/timeline.css`, inject: true },
             { src: 'codemirror/lib/codemirror.css', inject: true }
         ];
 
         // Add `local` third-party libraries to be injected/bundled.
         this.APP_ASSETS = [
-            ...this.APP_ASSETS,
-            { src: `${this.ASSETS_SRC}/libs/patternfly-timeline.min.js`, inject: 'libs' },
-            { src: `${this.ASSETS_SRC}/libs/patternfly-timeline.min.css`, inject: true }
+            ...this.APP_ASSETS
+        ];
+
+        this.ROLLUP_INCLUDE_DIR = [
+            ...this.ROLLUP_INCLUDE_DIR,
+            //'node_modules/moment/**'
+        ];
+
+        this.ROLLUP_NAMED_EXPORTS = [
+            ...this.ROLLUP_NAMED_EXPORTS,
+            //{'node_modules/immutable/dist/immutable.js': [ 'Map' ]},
+        ];
+
+        /* Add proxy middleware */
+        this.PROXY_MIDDLEWARE = [
+            require('http-proxy-middleware')('/api', {
+                target: 'http://localhost:8000',
+                changeOrigin: true,
+                ws: true,
+                pathRewrite: {
+                    '^/api': ''
+                }
+            })
         ];
 
         /* Add to or override NPM module configurations: */
-        // this.mergeObject(this.PLUGIN_CONFIGS['browser-sync'], { ghostMode: false });
+        // this.PLUGIN_CONFIGS['browser-sync'] = { ghostMode: false };
     }
 
 }

@@ -275,10 +275,16 @@ export class SeedConfig {
     VERSION = appVersion();
 
     /**
+     * The banner string to print when starting the server.
+     * @type {string}
+     */
+    SERVER_STARTUP_BANNER = 'Starting the server..';
+
+    /**
      * The name of the bundle file to includes all CSS files.
      * @type {string}
      */
-    CSS_PROD_BUNDLE = 'main.css';
+    CSS_BUNDLE_NAME = 'main';
 
     /**
      * The name of the bundle file to include all JavaScript shims.
@@ -312,12 +318,25 @@ export class SeedConfig {
     ENABLE_SCSS = ['true', '1'].indexOf(`${process.env.ENABLE_SCSS}`.toLowerCase()) !== -1 || argv['scss'] || true;
 
     /**
+     * Enable tslint emit error by setting env variable FORCE_TSLINT_EMIT_ERROR
+     * @type {boolean}
+     */
+    FORCE_TSLINT_EMIT_ERROR = !!process.env.FORCE_TSLINT_EMIT_ERROR;
+
+    /**
+     * Extra paths for the gulp process to watch for to trigger compilation.
+     * @type {string[]}
+     */
+    EXTRA_WATCH_PATHS: string[] = [];
+
+    /**
      * The list of NPM dependcies to be injected in the `index.html`.
      * @type {InjectableDependency[]}
      */
     NPM_DEPENDENCIES: InjectableDependency[] = [
-        { src: 'zone.js/dist/zone.js', inject: 'libs' },
         { src: 'core-js/client/shim.min.js', inject: 'shims' },
+        { src: 'zone.js/dist/zone.js', inject: 'libs' },
+        { src: 'zone.js/dist/long-stack-trace-zone.js', inject: 'libs', buildType: BUILD_TYPES.DEVELOPMENT },
         { src: 'intl/dist/Intl.min.js', inject: 'shims' },
         { src: 'systemjs/dist/system.src.js', inject: 'shims', buildType: BUILD_TYPES.DEVELOPMENT },
         // Temporary fix. See https://github.com/angular/angular/issues/9359
@@ -328,9 +347,7 @@ export class SeedConfig {
      * The list of local files to be injected in the `index.html`.
      * @type {InjectableDependency[]}
      */
-    APP_ASSETS: InjectableDependency[] = [
-        { src: `${this.CSS_SRC}/main.${this.getInjectableStyleExtension()}`, inject: true, vendor: false },
-    ];
+    APP_ASSETS: InjectableDependency[] = [];
 
     /**
      * The list of editor temporary files to ignore in watcher and asset builder.
@@ -339,7 +356,27 @@ export class SeedConfig {
     TEMP_FILES: string[] = [
         '**/*___jb_tmp___',
         '**/*~',
+
+        // tns-files are ignored aswell
+        '**/*.tns.scss',
+        '**/*.tns.css',
+        '**/*.tns.html',
+        'src/**/*.js',
+        'src/**/*.js.map',
     ];
+
+    /**
+     * List of directories to include in commonjs
+     * @type {string[]}
+     */
+    ROLLUP_INCLUDE_DIR: string[] = ['node_modules/**'];
+
+    /**
+     * List of named export Object key value pairs
+     * key: dependencie file
+     * value: exported Objects
+     */
+    ROLLUP_NAMED_EXPORTS: any[] = [];
 
     /**
      * Returns the array of injectable dependencies (npm dependencies and assets).
@@ -347,7 +384,7 @@ export class SeedConfig {
      */
     get DEPENDENCIES(): InjectableDependency[] {
         return normalizeDependencies(this.NPM_DEPENDENCIES.filter(filterDependency.bind(null, this.BUILD_TYPE)))
-            .concat(this.APP_ASSETS.filter(filterDependency.bind(null, this.BUILD_TYPE)));
+            .concat(this._APP_ASSETS.filter(filterDependency.bind(null, this.BUILD_TYPE)));
     }
 
     /**
@@ -358,6 +395,8 @@ export class SeedConfig {
         defaultJSExtensions: true,
         paths: {
             [this.BOOTSTRAP_MODULE]: `${this.APP_BASE}${this.BOOTSTRAP_MODULE}`,
+            '@angular/animations': 'node_modules/@angular/animations/bundles/animations.umd.js',
+            '@angular/platform-browser/animations': 'node_modules/@angular/platform-browser/bundles/platform-browser-animations.umd.js',
             '@angular/common': 'node_modules/@angular/common/bundles/common.umd.js',
             '@angular/compiler': 'node_modules/@angular/compiler/bundles/compiler.umd.js',
             '@angular/core': 'node_modules/@angular/core/bundles/core.umd.js',
@@ -366,6 +405,7 @@ export class SeedConfig {
             '@angular/platform-browser': 'node_modules/@angular/platform-browser/bundles/platform-browser.umd.js',
             '@angular/platform-browser-dynamic': 'node_modules/@angular/platform-browser-dynamic/bundles/platform-browser-dynamic.umd.js',
             '@angular/router': 'node_modules/@angular/router/bundles/router.umd.js',
+            '@angular/animations/browser': 'node_modules/@angular/animations/bundles/animations-browser.umd.js',
 
             '@angular/common/testing': 'node_modules/@angular/common/bundles/common-testing.umd.js',
             '@angular/compiler/testing': 'node_modules/@angular/compiler/bundles/compiler-testing.umd.js',
@@ -403,51 +443,65 @@ export class SeedConfig {
         packageConfigPaths: [
             join('node_modules', '*', 'package.json'),
             join('node_modules', '@angular', '*', 'package.json')
+            // for other modules like @ngx-translate the package.json path needs to updated here
+            // otherwise npm run build.prod would fail
+            // join('node_modules', '@ngx-translate', '*', 'package.json')
         ],
         paths: {
             // Note that for multiple apps this configuration need to be updated
             // You will have to include entries for each individual application in
             // `src/client`.
             [join(this.TMP_DIR, '*')]: `${this.TMP_DIR}/*`,
+            // [join(this.TMP_DIR, this.BOOTSTRAP_DIR, '*')]: `${this.TMP_DIR}/${this.BOOTSTRAP_DIR}/*`,
+            '@angular/platform-browser/animations': 'node_modules/@angular/platform-browser/bundles/platform-browser-animations.umd.js',
+            '@angular/animations/browser': 'node_modules/@angular/animations/bundles/animations-browser.umd.js',
             'dist/tmp/node_modules/*': 'dist/tmp/node_modules/*',
             'node_modules/*': 'node_modules/*',
             '*': 'node_modules/*'
         },
         packages: {
+            '@angular/animations': {
+                main: 'bundles/animations.umd.js',
+                defaultExtension: 'js'
+            },
             '@angular/common': {
-                main: 'index.js',
+                main: 'bundles/common.umd.js',
                 defaultExtension: 'js'
             },
             '@angular/compiler': {
-                main: 'index.js',
+                main: 'bundles/compiler.umd.js',
                 defaultExtension: 'js'
             },
             '@angular/core/testing': {
-                main: 'index.js',
+                main: 'bundles/core-testing.umd.js',
                 defaultExtension: 'js'
             },
             '@angular/core': {
-                main: 'index.js',
+                main: 'bundles/core.umd.js',
                 defaultExtension: 'js'
             },
             '@angular/forms': {
-                main: 'index.js',
+                main: 'bundles/forms.umd.js',
                 defaultExtension: 'js'
             },
             '@angular/http': {
-                main: 'index.js',
+                main: 'bundles/http.umd.js',
                 defaultExtension: 'js'
             },
             '@angular/platform-browser': {
-                main: 'index.js',
+                main: 'bundles/platform-browser.umd.js',
                 defaultExtension: 'js'
             },
             '@angular/platform-browser-dynamic': {
-                main: 'index.js',
+                main: 'bundles/platform-browser-dynamic.umd.js',
                 defaultExtension: 'js'
             },
             '@angular/router': {
-                main: 'index.js',
+                main: 'bundles/router.umd.js',
+                defaultExtension: 'js'
+            },
+            '@angular/service-worker': {
+                main: 'bundles/service-worker.umd.js',
                 defaultExtension: 'js'
             },
             'rxjs': {
@@ -480,119 +534,95 @@ export class SeedConfig {
     COLOR_GUARD_WHITE_LIST: [string, string][] = [
     ];
 
-    protected DEV_REWRITE_RULES = [
-        {
-            from: /^\/node_modules\/.*$/,
-            to: (context: any) => context.parsedUrl.pathname
-        },
-        {
-            from: /^\/app\/.*$/,
-            to: (context: any) => context.parsedUrl.pathname
-        },
-        {
-            from: /^\/assets\/.*$/,
-            to: (context: any) => context.parsedUrl.pathname
-        },
-        {
-            from: /^\/css\/.*$/,
-            to: (context: any) => context.parsedUrl.pathname
-        }
-    ];
+    /**
+    * Browser-sync middleware configurations array.
+    * @type {Array}
+    */
+    PROXY_MIDDLEWARE: any[] = [];
 
     /**
      * Configurations for NPM module configurations. Add to or override in project.config.ts.
-     * If you like, use the mergeObject() method to assist with this.
+     * @type {any}
      */
-    PLUGIN_CONFIGS: any = {
+    PLUGIN_CONFIGS: any = {};
+
+    /**
+     * Generates the query string which should be appended to the end of the URLs in dev mode.
+     */
+    QUERY_STRING_GENERATOR = () => {
+        return Date.now().toString();
+    }
+
+    /**
+     * Returns the array of injectable dependencies (the list of local files to be injected in the `index.html`).
+     * @return {InjectableDependency[]}
+     */
+    private get _APP_ASSETS(): InjectableDependency[] {
+        return [
+            { src: `${this.CSS_SRC}/${this.CSS_BUNDLE_NAME}.${this.getInjectableStyleExtension()}`, inject: true, vendor: false },
+            ...this.APP_ASSETS,
+        ];
+    }
+
+    /**
+     * Returns the configuration object for NPM module configurations.
+     */
+    private get _PLUGIN_CONFIGS(): any {
         /**
          * The BrowserSync configuration of the application.
          * The default open behavior is to open the browser. To prevent the browser from opening use the `--b`  flag when
          * running `npm start` (tested with serve.dev).
          * Example: `npm start -- --b`
-         * @type {any}
+         * @return {any}
          */
-        'browser-sync': {
-            middleware: [require('connect-history-api-fallback')({
-                index: `${this.APP_BASE}index.html`
-            })],
-            port: this.PORT,
-            startPath: this.APP_BASE,
-            open: argv['b'] ? false : true,
-            injectChanges: false,
-            server: {
-                baseDir: `${this.DIST_DIR}/empty/`,
-                routes: {
-                    [`${this.APP_BASE}${this.APP_SRC}`]: this.APP_SRC,
-                    [`${this.APP_BASE}${this.APP_DEST}`]: this.APP_DEST,
-                    [`${this.APP_BASE}node_modules`]: 'node_modules',
-                    [`${this.APP_BASE.replace(/\/$/, '')}`]: this.APP_DEST
+        let defaults = {
+            'browser-sync': {
+                middleware: [require('connect-history-api-fallback')({
+                    index: `${this.APP_BASE}index.html`
+                }), ...this.PROXY_MIDDLEWARE],
+                port: this.PORT,
+                startPath: this.APP_BASE,
+                open: argv['b'] ? false : true,
+                injectChanges: false,
+                server: {
+                    baseDir: `${this.DIST_DIR}/empty/`,
+                    routes: {
+                        [`${this.APP_BASE}${this.APP_SRC}`]: this.APP_SRC,
+                        [`${this.APP_BASE}${this.APP_DEST}`]: this.APP_DEST,
+                        [`${this.APP_BASE}node_modules`]: 'node_modules',
+                        [`${this.APP_BASE.replace(/\/$/, '')}`]: this.APP_DEST
+                    }
                 }
-            }
-        },
+            },
 
-        // Note: you can customize the location of the file
-        'environment-config': join(this.PROJECT_ROOT, this.TOOLS_DIR, 'env'),
+            // Note: you can customize the location of the file
+            'environment-config': join(this.PROJECT_ROOT, this.TOOLS_DIR, 'env'),
 
-        /**
-         * The options to pass to gulp-sass (and then to node-sass).
-         * Reference: https://github.com/sass/node-sass#options
-         * @type {object}
-         */
-        'gulp-sass': {
-            includePaths: ['./node_modules/', './src/client/css']
-        },
-
-        /**
-         * The options to pass to gulp-concat-css
-         * Reference: https://github.com/mariocasciaro/gulp-concat-css
-         * @type {object}
-         */
-        'gulp-concat-css': {
-            targetFile: this.CSS_PROD_BUNDLE,
-            options: {
-                rebaseUrls: false
-            }
-        }
-    };
-
-    constructor() {
-        for (let proxy of this.getProxyMiddleware()) {
-            this.PLUGIN_CONFIGS['browser-sync'].middleware.push(proxy);
-        }
-    }
-
-    /**
-     * Get proxy middleware configuration. Add in your project config like:
-     * getProxyMiddleware(): Array<any> {
-     *   const proxyMiddleware = require('http-proxy-middleware');
-     *   return [
-     *     proxyMiddleware('/ws', {
-     *       ws: false,
-     *       target: 'http://localhost:3003'
-     *     })
-     *   ];
-     * }
-     */
-    getProxyMiddleware(): Array<any> {
-        const proxy = require('http-proxy-middleware');
-
-        return [
             /**
-            * A proxy is configured to facilitate development.
-            * By default the UI dev server is running on port 5000 while
-            * tekton server is running on port 9000. This proxy
-            * will forward any request to localhost:5000/api to
-            * localhost:8000/
-            */
-            proxy('/api', {
-                target: 'http://localhost:8000',
-                changeOrigin: true,
-                ws: true,
-                pathRewrite: {
-                    '^/api': ''
+             * The options to pass to gulp-sass (and then to node-sass).
+             * Reference: https://github.com/sass/node-sass#options
+             * @type {object}
+             */
+            'gulp-sass': {
+                includePaths: ['./node_modules/']
+            },
+
+            /**
+             * The options to pass to gulp-concat-css
+             * Reference: https://github.com/mariocasciaro/gulp-concat-css
+             * @type {object}
+             */
+            'gulp-concat-css': {
+                targetFile: `${this.CSS_BUNDLE_NAME}.css`,
+                options: {
+                    rebaseUrls: false
                 }
-            })
-        ];
+            }
+        };
+
+        this.mergeObject(defaults, this.PLUGIN_CONFIGS);
+
+        return defaults;
     }
 
     /**
@@ -617,7 +647,7 @@ export class SeedConfig {
                 }
             }
         };
-    };
+    }
 
     /**
      * Recursively merge source onto target.
@@ -634,8 +664,8 @@ export class SeedConfig {
      * @param {any} pluginKey The object key to look up in PLUGIN_CONFIGS.
      */
     getPluginConfig(pluginKey: string): any {
-        if (this.PLUGIN_CONFIGS[pluginKey]) {
-            return this.PLUGIN_CONFIGS[pluginKey];
+        if (this._PLUGIN_CONFIGS[pluginKey]) {
+            return this._PLUGIN_CONFIGS[pluginKey];
         }
         return null;
     }
@@ -665,6 +695,16 @@ export class SeedConfig {
 
     }
 
+    /**
+     * Convert named rollup array to object
+     */
+    getRollupNamedExports() {
+        let namedExports = {};
+        this.ROLLUP_NAMED_EXPORTS.map(namedExport => {
+            namedExports = Object.assign(namedExports, namedExport);
+        });
+        return namedExports;
+    }
 }
 
 /**

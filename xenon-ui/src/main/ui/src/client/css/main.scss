@@ -1,26 +1,26 @@
 // IMPORTANT: Have to apply override and bootstrap in this order to apply style override
-@import "./overrides";
+@import "../scss/overrides";
 @import "bootstrap/scss/bootstrap";
 @import "font-awesome/scss/font-awesome";
 
-@import "./variables";
-@import "./colors";
-@import "./fonts";
-@import "./reboot";
+@import "../scss/variables";
+@import "../scss/colors";
+@import "../scss/fonts";
+@import "../scss/reboot";
 
-@import "./components/card";
-@import "./components/chart";
-@import "./components/codeeditor";
-@import "./components/container";
-@import "./components/dropdown";
-@import "./components/infopanel";
-@import "./components/label";
-@import "./components/login";
-@import "./components/misc";
-@import "./components/modal";
-@import "./components/nav";
-@import "./components/query";
-@import "./components/stats";
-@import "./components/status";
-@import "./components/timeline";
-@import "./components/toggle";
+@import "../scss/components/card";
+@import "../scss/components/chart";
+@import "../scss/components/codeeditor";
+@import "../scss/components/container";
+@import "../scss/components/dropdown";
+@import "../scss/components/infopanel";
+@import "../scss/components/label";
+@import "../scss/components/login";
+@import "../scss/components/misc";
+@import "../scss/components/modal";
+@import "../scss/components/nav";
+@import "../scss/components/query";
+@import "../scss/components/stats";
+@import "../scss/components/status";
+@import "../scss/components/timeline";
+@import "../scss/components/toggle";

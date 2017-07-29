@@ -63,6 +63,7 @@
                     border: none;
                     padding-left: baselinerem(1.5);
                     cursor: pointer;
+                    display: block;
 
                     &:hover {
                         box-shadow: rpx(4) 0 0 $light-blue-300 inset;

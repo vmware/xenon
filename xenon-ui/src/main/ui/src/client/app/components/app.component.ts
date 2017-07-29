@@ -1,32 +1,25 @@
-// angular
-import { ChangeDetectionStrategy, OnInit } from '@angular/core';
-
 // libs
-import { ConfigService } from 'ng2-config';
+import { Component, OnInit } from '@angular/core';
 
 // app
-import { AnalyticsService } from '../frameworks/analytics/index';
-import { MultilingualService } from '../frameworks/i18n/index';
-import { BaseComponent, Config, LogService } from '../frameworks/core/index';
+import { AnalyticsService } from '../modules/analytics/services/index';
+import { LogService, AppService } from '../modules/core/services/index';
+import { Config } from '../modules/core/utils/index';
 
 /**
  * This class represents the main application component.
  */
-@BaseComponent({
+@Component({
     moduleId: module.id,
     selector: 'xe-app',
-    templateUrl: 'app.component.html',
-    changeDetection: ChangeDetectionStrategy.Default // Everything else uses OnPush
+    templateUrl: 'app.component.html'
 })
-export class AppComponent implements OnInit {
-  constructor(public analytics: AnalyticsService,
-              public log: LogService,
-              public config: ConfigService,
-              public multilang: MultilingualService) {
-    log.debug(`Config env: ${Config.ENVIRONMENT().ENV}`);
-  }
-
-  ngOnInit(): void {
-    this.multilang.init(this.config.getSettings().i18n);
-  }
+export class AppComponent {
+    constructor(
+        public analytics: AnalyticsService,
+        public log: LogService,
+        private appService: AppService
+    ) {
+        log.debug(`Config env: ${Config.ENVIRONMENT().ENV}`);
+    }
 }

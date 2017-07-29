@@ -1,24 +1,19 @@
 // angular
-import { ChangeDetectionStrategy, OnInit, OnDestroy } from '@angular/core';
-import { Router } from '@angular/router';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Subscription } from 'rxjs/Subscription';
 import * as _ from 'lodash';
 
 // app
-import { BaseComponent } from '../../../frameworks/core/index';
+import { URL } from '../../../modules/app/enums/index';
+import { EventContext, ModalContext, Node, ServiceDocument, ServiceDocumentQueryResult } from '../../../modules/app/interfaces/index';
+import { ODataUtil, StringUtil } from '../../../modules/app/utils/index';
+import { BaseService, NodeSelectorService, NotificationService } from '../../../modules/app/services/index';
 
-import { URL } from '../../../frameworks/app/enums/index';
-import { EventContext, ModalContext, Node, ServiceDocument, ServiceDocumentQueryResult } from '../../../frameworks/app/interfaces/index';
-import { ODataUtil, StringUtil } from '../../../frameworks/app/utils/index';
-
-import { BaseService, NodeSelectorService, NotificationService } from '../../../frameworks/app/services/index';
-
-@BaseComponent({
+@Component({
     selector: 'xe-service-grid',
     moduleId: module.id,
     templateUrl: './service-grid.component.html',
-    styleUrls: ['./service-grid.component.css'],
-    changeDetection: ChangeDetectionStrategy.Default
+    styleUrls: ['./service-grid.component.css']
 })
 
 export class ServiceGridComponent implements OnInit, OnDestroy {
@@ -36,63 +31,62 @@ export class ServiceGridComponent implements OnInit, OnDestroy {
     /**
      * The core factory services in the view.
      */
-    private _coreServices: ServiceDocument[] = [];
+    private coreServices: ServiceDocument[] = [];
 
     /**
      * The custom factory services in the view.
      */
-    private _customServices: ServiceDocument[] = [];
+    private customServices: ServiceDocument[] = [];
 
     /**
      * The regexp for checking if one is a core service based on
      * the service link.
      */
-    private _coreServiceRegExp: RegExp = /\/core\/[\S]*/i;
+    private coreServiceRegExp: RegExp = /\/core\/[\S]*/i;
 
     /**
      * Subscriptions to services.
      */
-    private _baseServiceGetLinksSubscription: Subscription;
-    private _baseServiceGetDocumentSubscription: Subscription;
-    private _nodeSelectorServiceGetSelectedSubscription: Subscription;
+    private baseServiceGetLinksSubscription: Subscription;
+    private baseServiceGetDocumentSubscription: Subscription;
+    private nodeSelectorServiceGetSelectedSubscription: Subscription;
 
     constructor(
-        private _baseService: BaseService,
-        private _nodeSelectorService: NodeSelectorService,
-        private _notificationService: NotificationService,
-        private _router: Router) {}
+        private baseService: BaseService,
+        private nodeSelectorService: NodeSelectorService,
+        private notificationService: NotificationService) {}
 
     ngOnInit(): void {
         this._getData();
 
         // Update data when selected node changes
-        this._nodeSelectorServiceGetSelectedSubscription =
-            this._nodeSelectorService.getSelectedNode().subscribe(
+        this.nodeSelectorServiceGetSelectedSubscription =
+            this.nodeSelectorService.getSelectedNode().subscribe(
                 (selectedNode: Node) => {
                     this._getData();
                 });
     }
 
     ngOnDestroy(): void {
-        if (!_.isUndefined(this._baseServiceGetLinksSubscription)) {
-            this._baseServiceGetLinksSubscription.unsubscribe();
+        if (!_.isUndefined(this.baseServiceGetLinksSubscription)) {
+            this.baseServiceGetLinksSubscription.unsubscribe();
         }
 
-        if (!_.isUndefined(this._baseServiceGetDocumentSubscription)) {
-            this._baseServiceGetDocumentSubscription.unsubscribe();
+        if (!_.isUndefined(this.baseServiceGetDocumentSubscription)) {
+            this.baseServiceGetDocumentSubscription.unsubscribe();
         }
 
-        if (!_.isUndefined(this._nodeSelectorServiceGetSelectedSubscription)) {
-            this._nodeSelectorServiceGetSelectedSubscription.unsubscribe();
+        if (!_.isUndefined(this.nodeSelectorServiceGetSelectedSubscription)) {
+            this.nodeSelectorServiceGetSelectedSubscription.unsubscribe();
         }
     }
 
     getCoreServices(): ServiceDocument[] {
-        return this._coreServices;
+        return this.coreServices;
     }
 
     getCustomServices(): ServiceDocument[] {
-        return this._customServices;
+        return this.customServices;
     }
 
     getServiceId(documentSelfLink: string): string {
@@ -113,16 +107,16 @@ export class ServiceGridComponent implements OnInit, OnDestroy {
             return;
         }
 
-        this._baseService.post(selectedServiceId, body).subscribe(
+        this.baseService.post(selectedServiceId, body).subscribe(
             (document: ServiceDocument) => {
-                this._notificationService.set([{
+                this.notificationService.set([{
                     type: 'SUCCESS',
                     messages: [`Child Service ${document.documentSelfLink} Created`]
                 }]);
             },
             (error) => {
                 // TODO: Better error handling
-                this._notificationService.set([{
+                this.notificationService.set([{
                     type: 'ERROR',
                     messages: [`[${error.statusCode}] ${error.message}`]
                 }]);
@@ -130,23 +124,23 @@ export class ServiceGridComponent implements OnInit, OnDestroy {
     }
 
     private _getData(): void {
-        this._baseServiceGetLinksSubscription =
-            this._baseService.post(URL.Root, URL.RootPostBody).subscribe(
+        this.baseServiceGetLinksSubscription =
+            this.baseService.post(URL.Root, URL.RootPostBody).subscribe(
                 (document: ServiceDocumentQueryResult) => {
-                    this._baseServiceGetDocumentSubscription =
-                        this._baseService.getDocuments(document.documentLinks, `${ODataUtil.count()}`).subscribe(
+                    this.baseServiceGetDocumentSubscription =
+                        this.baseService.getDocuments(document.documentLinks, `${ODataUtil.count()}`).subscribe(
                             (services: ServiceDocument[]) => {
-                                this._coreServices = _.sortBy(_.filter(services, (service: ServiceDocument) => {
-                                    return this._coreServiceRegExp.test(service.documentSelfLink);
+                                this.coreServices = _.sortBy(_.filter(services, (service: ServiceDocument) => {
+                                    return this.coreServiceRegExp.test(service.documentSelfLink);
                                 }), 'documentSelfLink');
 
-                                this._customServices = _.sortBy(_.filter(services, (service: ServiceDocument) => {
-                                    return !this._coreServiceRegExp.test(service.documentSelfLink);
+                                this.customServices = _.sortBy(_.filter(services, (service: ServiceDocument) => {
+                                    return !this.coreServiceRegExp.test(service.documentSelfLink);
                                 }), 'documentSelfLink');
                             },
                             (error) => {
                                 // TODO: Better error handling
-                                this._notificationService.set([{
+                                this.notificationService.set([{
                                     type: 'ERROR',
                                     messages: [`Failed to retrieve factory service details: [${error.statusCode}] ${error.message}`]
                                 }]);
@@ -154,7 +148,7 @@ export class ServiceGridComponent implements OnInit, OnDestroy {
                 },
                 (error) => {
                     // TODO: Better error handling
-                    this._notificationService.set([{
+                    this.notificationService.set([{
                         type: 'ERROR',
                         messages: [`Failed to retrieve factory services: [${error.statusCode}] ${error.message}`]
                     }]);

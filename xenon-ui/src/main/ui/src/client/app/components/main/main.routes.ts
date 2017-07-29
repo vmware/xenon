@@ -1,6 +1,6 @@
 import { Route } from '@angular/router';
 
-import { AuthenticationGuard } from '../../frameworks/app/services/index';
+import { AuthenticationGuard } from '../../modules/app/services/index';
 
 import { MainComponent, DashboardGridComponent, OperationTracingComponent,
     ProcessLogComponent, QueryComponent, ServiceDetailComponent,

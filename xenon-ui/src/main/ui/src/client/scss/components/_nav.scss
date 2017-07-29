@@ -1,0 +1,334 @@
+@import "../colors";
+@import "../variables";
+
+%header-nav-appearance {
+    color: $black-base;
+    opacity: .7;
+
+    &:hover {
+        color: $black-base;
+        opacity: 1;
+        @include transition(opacity);
+    }
+}
+
+%no-text-decoration {
+    &:active, &:hover {
+        text-decoration: none;
+    }
+}
+
+%center-fields {
+    @include flexbox();
+    align-items: center;
+    height: 100%;
+}
+
+.header, header {
+    @include flexbox();
+    align-items: center;
+    padding: 0;
+    color: $white-base;
+    white-space: nowrap;
+    box-shadow: 0 rpx(-1) 0 $grey-300 inset;
+
+    // logo and product title
+    .branding {
+        min-width: baselinerem(12);
+        height: 100%;
+        padding-left: baselinerem(1.5);
+        line-height: $default-navbar-height; //to center the title and the logo
+        width: 20%;
+
+        .logo {
+            margin-right: baselinerem(.25);
+            height: 36px;
+            width: 36px;
+        }
+
+        //product title
+        .title {
+            font-size: rem(1);
+            color: $black-base;
+            text-decoration: none;
+        }
+
+        & > a {
+            @include flexbox();
+            align-items: center;
+            height: baselinerem(2.5);
+            @extend %no-text-decoration;
+        }
+
+        & > .nav-link {
+            @include flexbox();
+            align-items: center;
+            @extend %no-text-decoration;
+        }
+    }
+
+    .divider {
+        width: rpx(1);
+        height: baselinerem(1.5);
+        background: $grey-300;
+    }
+
+    .header-nav {
+        .nav-link {
+            display: inline-block;
+            padding: 0;
+            @extend %no-text-decoration;
+
+            //nav-icons
+            .nav-icon {
+                font-size: rpx(18);
+                height: $default-navbar-height;
+                width: $default-navbar-height;
+                text-align: center;
+                line-height: $default-navbar-height;
+                @extend %header-nav-appearance;
+            }
+
+            &.active {
+                background: $grey-50;
+                opacity: 1;
+                box-shadow: 0 rpx(-4) 0 $light-blue-400 inset;
+            }
+
+            &.active, &:active, &:focus {
+                outline: none;
+            }
+
+            &.active .nav-icon,
+            &.active .nav-text {
+                opacity: 1;
+            }
+
+            //text-link
+            .nav-text {
+                padding: 0 baselinerem(1.5);
+                line-height: $default-navbar-height;
+                @extend %header-nav-appearance;
+            }
+        }
+    }
+
+    //settings area
+    .settings {
+        @include flex(1 1 auto);
+        justify-content: flex-end;
+        @extend %center-fields;
+        padding-right: baselinerem(1.5);
+
+        .nav-link {
+            margin-left: baselinerem(.5);
+            padding: 0;
+            @extend %header-nav-appearance;
+            @extend %no-text-decoration;
+        }
+
+        //Can have span (for icon fonts) or image icons
+        .nav-icon {
+            @extend %header-nav-appearance;
+            font-size: 18px;
+            line-height: 60px;
+        }
+    }
+}
+
+.sub-nav {
+    @include flexbox();
+    justify-content: space-between; //nav to the first and aside to the very right
+    align-items: center;
+    background-color: $grey-50;
+    border-bottom: 1px solid $grey-300;
+
+    .nav {
+        @include flex(1 1 auto);
+        padding-left: baselinerem(1);
+    }
+
+    aside {
+        @include flex(1 1 auto);
+        padding-right: baselinerem(1);
+
+        & > :last-child {
+            margin-right: 0;
+            padding-right: 0;
+        }
+    }
+}
+
+ul.nav {
+    list-style-type: none;
+}
+
+.nav {
+    @include flexbox();
+    height: baselinerem(1.5);
+    align-items: center;
+    box-shadow: 0 rpx(-1) 0 $grey-300 inset;
+    margin: 0;
+    width: 100%;
+    white-space: nowrap;
+
+    .nav-item {
+        display: inline-block;
+        margin-right: baselinerem(.5);
+
+        &:active {
+            outline: none;
+        }
+    }
+
+    .nav-link {
+        display: inline-block;
+        color: $black-base;
+        opacity: .7;
+        padding: 0 baselinerem(.5);
+        box-shadow: none;
+        line-height: baselinerem(1.5);
+        font-size: rem(14 / $rem-denominator);
+
+        &:hover, &.active {
+            color: $black-base;
+            opacity: 1;
+            background: $grey-300;
+            @include transition(all);
+        }
+
+        &:hover, &:focus, &:active, &.active {
+            text-decoration: none;
+        }
+    }
+}
+
+.sidenav {
+    max-width: baselinerem(13);
+    min-width: baselinerem(11.5);
+    width: 20%;
+    box-shadow: rpx(-1) 0 0 $grey-300 inset;
+    line-height: baselinerem(1);
+    @include flexbox();
+    flex-direction: column;
+
+    .sidenav-header {
+        flex: 0 0 auto;
+        height: baselinerem(2);
+        padding-left: baselinerem(1.5);
+        width: 100%;
+        border-bottom: 1px solid $grey-400;
+
+        .select {
+            width: 100%;
+            font-weight: 600;
+            line-height: baselinerem(2);
+
+            select {
+                padding: 0; //Padding 0 as there is no border bottom in the sidenav
+                border: none;
+            }
+            //Adjust the selectbox arrow since padding has been set to 0 above;
+            //TODO: Replace with SVG or a pseudo element
+            &::after {
+                position: absolute;
+                bottom: .5px;
+                right: baselinerem(1);
+            }
+
+            select:hover {
+                background: none;
+            }
+        }
+    }
+
+    .sidenav-content {
+        @include flex(1 1 auto);
+        overflow: hidden;
+        margin-bottom: baselinerem(.5);
+
+        &:hover {
+            overflow-y: auto;
+        }
+    }
+
+    .nav-group {
+        position: relative;
+        margin-top: baselinerem(1);
+        width: 100%;
+        font-size: rem(14 / $rem-denominator);
+
+        .nav-list, label {
+            padding: 0 0 0 baselinerem(1.75);
+        }
+
+        .nav-list {
+            list-style: none;
+            margin-top: 0;
+            overflow: hidden;
+
+            .nav-link {
+                display: inline-block;
+                width: 100%;
+                color: inherit;
+                text-decoration: none;
+                cursor: pointer;
+                line-height: rem(1);
+                padding: 4px 0 4px baselinerem(.5);
+                border-radius: baselinerem(.125) 0 0 baselinerem(.125);
+
+                &:hover, &.active {
+                    background: transparentize($grey-400, .7);
+                }
+
+                &.active {
+                    color: $black-base;
+                }
+            }
+        }
+
+        label {
+            font-weight: bold;
+        }
+
+        input[type="checkbox"] {
+            display: none;
+        }
+    }
+
+    .collapsible {
+        label {
+            cursor: pointer;
+            position: relative;
+            display: inline-block;
+            width: 100%;
+
+            &::after {
+                position: absolute;
+                font-size: rem(1);
+                font-family: $default-font-for-icons;
+                color: $black-base;
+                opacity: .7;
+                content: "\f107";
+                bottom: 1px;
+                left: baselinerem(1);
+            }
+        }
+
+        .nav-list, ul {
+            overflow: hidden;
+        }
+
+        input[type="checkbox"]:checked ~ .nav-list, input[type="checkbox"]:checked ~ ul {
+            height: 0;
+        }
+
+        input[type="checkbox"] ~ .nav-list, input[type="checkbox"] ~ ul {
+            height: auto;
+        }
+
+        input[type="checkbox"]:checked ~ label::after {
+            transform: rotate(-90deg);
+        }
+    }
+}

@@ -1,11 +1,12 @@
 // app
-import { BaseComponent } from '../../../frameworks/core/index';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
 
-@BaseComponent({
+@Component({
     selector: 'xe-query-spec-reference',
     moduleId: module.id,
     templateUrl: './query-spec-reference.component.html',
-    styleUrls: ['./query-spec-reference.component.css']
+    styleUrls: ['./query-spec-reference.component.css'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 
 export class QuerySpecReferenceComponent {}

@@ -1,24 +1,20 @@
 // angular
-import { ChangeDetectionStrategy, EventEmitter, Input, Output,
+import { Component, EventEmitter, Input, Output,
     SimpleChange, OnChanges, OnDestroy } from '@angular/core';
 import { Subscription } from 'rxjs/Subscription';
 import * as _ from 'lodash';
 
 // app
-import { BaseComponent } from '../../../frameworks/core/index';
-
 import { EventContext, ServiceConfiguration, ServiceDocumentQueryResult,
-    ServiceStats } from '../../../frameworks/app/interfaces/index';
-import { StringUtil } from '../../../frameworks/app/utils/index';
+    ServiceStats } from '../../../modules/app/interfaces/index';
+import { StringUtil } from '../../../modules/app/utils/index';
+import { BaseService, NotificationService } from '../../../modules/app/services/index';
 
-import { BaseService, NotificationService } from '../../../frameworks/app/services/index';
-
-@BaseComponent({
+@Component({
     selector: 'xe-service-card',
     moduleId: module.id,
     templateUrl: './service-card.component.html',
-    styleUrls: ['./service-card.component.css'],
-    changeDetection: ChangeDetectionStrategy.Default
+    styleUrls: ['./service-card.component.css']
 })
 
 export class ServiceCardComponent implements OnChanges, OnDestroy {
@@ -37,27 +33,27 @@ export class ServiceCardComponent implements OnChanges, OnDestroy {
     /**
      * Flag indicating whether the service is currently available.
      */
-    private _isServiceAvailable: boolean = false;
+    private isServiceAvailable: boolean = false;
 
     /**
      * Stats of the service
      */
-    private _serviceStats: ServiceStats;
+    private serviceStats: ServiceStats;
 
     /**
      * Config of the service
      */
-    private _serviceConfig: ServiceConfiguration;
+    private serviceConfig: ServiceConfiguration;
 
     /**
      * Subscriptions to services.
      */
-    private _baseServiceStatsSubscription: Subscription;
-    private _baseServiceConfigSubscription: Subscription;
+    private baseServiceStatsSubscription: Subscription;
+    private baseServiceConfigSubscription: Subscription;
 
     constructor(
-        private _baseService: BaseService,
-        private _notificationService: NotificationService) {}
+        private baseService: BaseService,
+        private notificationService: NotificationService) {}
 
     ngOnChanges(changes: {[propertyName: string]: SimpleChange}): void {
         var serviceChanges = changes['service'];
@@ -70,16 +66,16 @@ export class ServiceCardComponent implements OnChanges, OnDestroy {
 
         this.service = serviceChanges.currentValue;
 
-        this._getData();
+        this.getData();
     }
 
     ngOnDestroy(): void {
-        if (!_.isUndefined(this._baseServiceStatsSubscription)) {
-            this._baseServiceStatsSubscription.unsubscribe();
+        if (!_.isUndefined(this.baseServiceStatsSubscription)) {
+            this.baseServiceStatsSubscription.unsubscribe();
         }
 
-        if (!_.isUndefined(this._baseServiceConfigSubscription)) {
-            this._baseServiceConfigSubscription.unsubscribe();
+        if (!_.isUndefined(this.baseServiceConfigSubscription)) {
+            this.baseServiceConfigSubscription.unsubscribe();
         }
     }
 
@@ -88,7 +84,7 @@ export class ServiceCardComponent implements OnChanges, OnDestroy {
     }
 
     getServiceAvailabilityTitle(): string {
-        var availability: string = this._isServiceAvailable ? 'AVAILABLE' : 'UNAVAILABLE';
+        var availability: string = this.isServiceAvailable ? 'AVAILABLE' : 'UNAVAILABLE';
         return `Status: ${availability}`;
     }
 
@@ -97,7 +93,7 @@ export class ServiceCardComponent implements OnChanges, OnDestroy {
             return baseClasses;
         }
 
-        var statusClass: string = this._isServiceAvailable ? 'available-status' : 'error-status';
+        var statusClass: string = this.isServiceAvailable ? 'available-status' : 'error-status';
         return `${baseClasses} ${statusClass}`;
     }
 
@@ -114,7 +110,7 @@ export class ServiceCardComponent implements OnChanges, OnDestroy {
     }
 
     getServiceConfiguration(): ServiceConfiguration {
-        return this._serviceConfig;
+        return this.serviceConfig;
     }
 
     getRouterId(id: string) {
@@ -135,30 +131,30 @@ export class ServiceCardComponent implements OnChanges, OnDestroy {
         this.createChildServiceClicked.emit(context);
     }
 
-    private _getData(): void {
-        this._baseServiceStatsSubscription =
-            this._baseService.getDocumentStats(this.service.documentSelfLink).subscribe(
+    private getData(): void {
+        this.baseServiceStatsSubscription =
+            this.baseService.getDocumentStats(this.service.documentSelfLink).subscribe(
                 (stats: ServiceStats) => {
-                    this._serviceStats = stats;
-                    this._isServiceAvailable = this._serviceStats.entries['isAvailable'] ?
+                    this.serviceStats = stats;
+                    this.isServiceAvailable = this.serviceStats.entries['isAvailable'] ?
                         stats.entries['isAvailable'].latestValue === 1 : false;
                 },
                 (error) => {
                     // TODO: Better error handling
-                    this._notificationService.set([{
+                    this.notificationService.set([{
                         type: 'ERROR',
                         messages: [`Failed to retrieve factory services: [${error.statusCode}] ${error.message}`]
                     }]);
                 });
 
-        this._baseServiceConfigSubscription =
-            this._baseService.getDocumentConfig(this.service.documentSelfLink).subscribe(
+        this.baseServiceConfigSubscription =
+            this.baseService.getDocumentConfig(this.service.documentSelfLink).subscribe(
                 (config: ServiceConfiguration) => {
-                    this._serviceConfig = config;
+                    this.serviceConfig = config;
                 },
                 (error) => {
                     // TODO: Better error handling
-                    this._notificationService.set([{
+                    this.notificationService.set([{
                         type: 'ERROR',
                         messages: [`Failed to retrieve factory services: [${error.statusCode}] ${error.message}`]
                     }]);

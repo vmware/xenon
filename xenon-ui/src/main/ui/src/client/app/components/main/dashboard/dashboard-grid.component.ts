@@ -1,27 +1,24 @@
 // angular
-import { ChangeDetectionStrategy, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Subscription } from 'rxjs/Subscription';
 import * as _ from 'lodash';
 
 // app
-import { BaseComponent } from '../../../frameworks/core/index';
-
-import { URL } from '../../../frameworks/app/enums/index';
+import { URL } from '../../../modules/app/enums/index';
 import { Node, ProcessLog, ServiceStats,
-    ServiceStatsTimeSeries } from '../../../frameworks/app/interfaces/index';
-import { BaseService, NodeSelectorService, NotificationService } from '../../../frameworks/app/services/index';
-import { StringUtil } from '../../../frameworks/app/utils/index';
+    ServiceStatsTimeSeries } from '../../../modules/app/interfaces/index';
+import { BaseService, NodeSelectorService, NotificationService } from '../../../modules/app/services/index';
+import { StringUtil } from '../../../modules/app/utils/index';
 
 const FILTER_PER_HOUR: string = 'PerHour';
 const FILTER_PER_DAY: string = 'PerDay';
 const FILTER_LOG_ALL: string = 'All';
 
-@BaseComponent({
+@Component({
     selector: 'xe-dashboard-grid',
     moduleId: module.id,
     templateUrl: './dashboard-grid.component.html',
-    styleUrls: ['./dashboard-grid.component.css'],
-    changeDetection: ChangeDetectionStrategy.Default
+    styleUrls: ['./dashboard-grid.component.css']
 })
 
 export class DashboardGridComponent implements OnInit, OnDestroy {
@@ -32,7 +29,7 @@ export class DashboardGridComponent implements OnInit, OnDestroy {
      * part of the key used in /core/management/stats and the filters are the
      * parts that indicate whether the stats are "PerHour" or "PerDay"
      */
-    private _cardData: any = {
+    private cardData: any = {
         cpuUsagePercent: {
             name: 'cpuUsagePercent',
             chartOptions: {
@@ -85,47 +82,47 @@ export class DashboardGridComponent implements OnInit, OnDestroy {
     /**
      * The service stats in the view.
      */
-    private _stats: ServiceStats;
+    private stats: ServiceStats;
 
     /**
      * The process logs in the view.
      */
-    private _log: ProcessLog;
+    private log: ProcessLog;
 
     /**
      * Subscriptions to services.
      */
-    private _baseServiceGetStatsSubscription: Subscription;
-    private _baseServiceGetLogSubscription: Subscription;
-    private _nodeSelectorServiceGetSelectedSubscription: Subscription;
+    private baseServiceGetStatsSubscription: Subscription;
+    private baseServiceGetLogSubscription: Subscription;
+    private nodeSelectorServiceGetSelectedSubscription: Subscription;
 
     constructor(
-        private _baseService: BaseService,
-        private _nodeSelectorService: NodeSelectorService,
-        private _notificationService: NotificationService) {}
+        private baseService: BaseService,
+        private nodeSelectorService: NodeSelectorService,
+        private notificationService: NotificationService) {}
 
     ngOnInit(): void {
-        this._getData();
+        this.getData();
 
         // Update data when selected node changes
-        this._nodeSelectorServiceGetSelectedSubscription =
-            this._nodeSelectorService.getSelectedNode().subscribe(
+        this.nodeSelectorServiceGetSelectedSubscription =
+            this.nodeSelectorService.getSelectedNode().subscribe(
                 (selectedNode: Node) => {
-                    this._getData();
+                    this.getData();
                 });
     }
 
     ngOnDestroy(): void {
-        if (!_.isUndefined(this._baseServiceGetStatsSubscription)) {
-            this._baseServiceGetStatsSubscription.unsubscribe();
+        if (!_.isUndefined(this.baseServiceGetStatsSubscription)) {
+            this.baseServiceGetStatsSubscription.unsubscribe();
         }
 
-        if (!_.isUndefined(this._baseServiceGetLogSubscription)) {
-            this._baseServiceGetLogSubscription.unsubscribe();
+        if (!_.isUndefined(this.baseServiceGetLogSubscription)) {
+            this.baseServiceGetLogSubscription.unsubscribe();
         }
 
-        if (!_.isUndefined(this._nodeSelectorServiceGetSelectedSubscription)) {
-            this._nodeSelectorServiceGetSelectedSubscription.unsubscribe();
+        if (!_.isUndefined(this.nodeSelectorServiceGetSelectedSubscription)) {
+            this.nodeSelectorServiceGetSelectedSubscription.unsubscribe();
         }
     }
 
@@ -139,19 +136,19 @@ export class DashboardGridComponent implements OnInit, OnDestroy {
      * }
      */
     getSystemChartData(id: string): {[key: string]: any} {
-        if (_.isUndefined(this._stats)) {
+        if (_.isUndefined(this.stats)) {
             return {};
         }
 
         var perHourStats: ServiceStatsTimeSeries =
-                this._stats.entries[`${id}${FILTER_PER_HOUR}`].timeSeriesStats;
-        var perHourData: number[] = this._getChartData(perHourStats);
-        var perHourLabels: string[] = this._getChartLabels(perHourStats, FILTER_PER_HOUR);
+                this.stats.entries[`${id}${FILTER_PER_HOUR}`].timeSeriesStats;
+        var perHourData: number[] = this.getChartData(perHourStats);
+        var perHourLabels: string[] = this.getChartLabels(perHourStats, FILTER_PER_HOUR);
 
         var perDayStats: ServiceStatsTimeSeries =
-                this._stats.entries[`${id}${FILTER_PER_DAY}`].timeSeriesStats;
-        var perDayData: number[] = this._getChartData(perDayStats);
-        var perDayLabels: string[] = this._getChartLabels(perDayStats, FILTER_PER_DAY);
+                this.stats.entries[`${id}${FILTER_PER_DAY}`].timeSeriesStats;
+        var perDayData: number[] = this.getChartData(perDayStats);
+        var perDayLabels: string[] = this.getChartLabels(perDayStats, FILTER_PER_DAY);
 
         var systemChartData: {[key: string]: any} = {};
         systemChartData[`${FILTER_PER_HOUR}`] = {
@@ -167,14 +164,14 @@ export class DashboardGridComponent implements OnInit, OnDestroy {
     }
 
     getLogChartData(): {[key: string]: any} {
-        if (_.isUndefined(this._log)) {
+        if (_.isUndefined(this.log)) {
             return {};
         }
 
         var infoLogCount: number = 0;
         var warningLogCount: number = 0;
         var errorLogCount: number = 0;
-        _.each(this._log.items, (logItem: string) => {
+        _.each(this.log.items, (logItem: string) => {
             var logItemTypeSegments = logItem.match(StringUtil.LOG_ITEM_TYPE_REGEX);
 
             if (!logItemTypeSegments || _.isEmpty(logItemTypeSegments)) {
@@ -207,29 +204,29 @@ export class DashboardGridComponent implements OnInit, OnDestroy {
     }
 
     getChartOptions(id: string): any {
-        return this._cardData[id].chartOptions;
+        return this.cardData[id].chartOptions;
     }
 
-    private _getData(): void {
-        this._baseServiceGetStatsSubscription =
-            this._baseService.getDocumentStats(URL.CoreManagement).subscribe(
+    private getData(): void {
+        this.baseServiceGetStatsSubscription =
+            this.baseService.getDocumentStats(URL.CoreManagement).subscribe(
                 (stats: ServiceStats) => {
-                    this._stats = stats;
+                    this.stats = stats;
                 },
                 (error) => {// TODO: Better error handling
-                    this._notificationService.set([{
+                    this.notificationService.set([{
                         type: 'ERROR',
                         messages: [`Failed to retrieve logs: [${error.statusCode}] ${error.message}`]
                     }]);
                 });
 
-        this._baseServiceGetLogSubscription =
-            this._baseService.getDocument(URL.Log).subscribe(
+        this.baseServiceGetLogSubscription =
+            this.baseService.getDocument(URL.Log).subscribe(
                 (log: ProcessLog) => {
-                    this._log = log;
+                    this.log = log;
                 },
                 (error) => {// TODO: Better error handling
-                    this._notificationService.set([{
+                    this.notificationService.set([{
                         type: 'ERROR',
                         messages: [`Failed to retrieve logs: [${error.statusCode}] ${error.message}`]
                     }]);
@@ -239,7 +236,7 @@ export class DashboardGridComponent implements OnInit, OnDestroy {
     /**
      * Returns labels for the chart
      */
-    private _getChartLabels(timeSeriesStats: ServiceStatsTimeSeries, filter: string): string[] {
+    private getChartLabels(timeSeriesStats: ServiceStatsTimeSeries, filter: string): string[] {
         if (_.isUndefined(timeSeriesStats)) {
             return [];
         }
@@ -256,7 +253,7 @@ export class DashboardGridComponent implements OnInit, OnDestroy {
     /**
      * Returns data for the chart
      */
-    private _getChartData(timeSeriesStats: ServiceStatsTimeSeries): number[] {
+    private getChartData(timeSeriesStats: ServiceStatsTimeSeries): number[] {
         if (_.isUndefined(timeSeriesStats)) {
             return [];
         }

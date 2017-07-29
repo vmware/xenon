@@ -1,22 +1,19 @@
 // angular
-import { AfterViewChecked, ChangeDetectionStrategy, EventEmitter, Input,
+import { AfterViewChecked, Component, EventEmitter, Input,
     OnChanges, OnDestroy, Output, SimpleChange } from '@angular/core';
 import * as _ from 'lodash';
 
 // app
-import { BaseComponent } from '../../../frameworks/core/index';
-
-import { EventContext } from '../../../frameworks/app/interfaces/index';
-import { StringUtil } from '../../../frameworks/app/utils/index';
+import { EventContext } from '../../../modules/app/interfaces/index';
+import { StringUtil } from '../../../modules/app/utils/index';
 
 declare var Chart: any;
 
-@BaseComponent({
+@Component({
     selector: 'xe-dashboard-card',
     moduleId: module.id,
     templateUrl: './dashboard-card.component.html',
-    styleUrls: ['./dashboard-card.component.css'],
-    changeDetection: ChangeDetectionStrategy.Default
+    styleUrls: ['./dashboard-card.component.css']
 })
 
 export class DashboardCardComponent implements OnChanges, AfterViewChecked, OnDestroy {
@@ -66,22 +63,22 @@ export class DashboardCardComponent implements OnChanges, AfterViewChecked, OnDe
     /**
      * The filter that is being applied to the view.
      */
-    private _currentFilter: any;
+    private currentFilter: any;
 
     /**
      * Canvas for rendering the chart
      */
-    private _canvas: any;
+    private canvas: any;
 
     /**
      * The chart
      */
-    private _chart: any;
+    private chart: any;
 
     /**
      * Flag indicates whether the view has been initialized
      */
-    private _isViewInitialized: boolean = false;
+    private isViewInitialized: boolean = false;
 
     ngOnChanges(changes: {[propertyName: string]: SimpleChange}): void {
         var chartDataChanges = changes['chartData'];
@@ -96,25 +93,25 @@ export class DashboardCardComponent implements OnChanges, AfterViewChecked, OnDe
 
         // Set currentFilter
         if (!_.isUndefined(this.chartOptions.filters) && !_.isEmpty(this.chartOptions.filters)) {
-            this._currentFilter = this._currentFilter
+            this.currentFilter = this.currentFilter
                 || _.find(this.chartOptions.filters, { current: true })
                 || this.chartOptions.filters[0];
         }
 
-        this._renderChart();
+        this.renderChart();
     }
 
     ngAfterViewChecked(): void {
-        if (this.cardId && !_.isUndefined(this._currentFilter) && !this._isViewInitialized) {
-            this._isViewInitialized = true;
-            this._canvas = document.getElementById(this.cardId);
-            this._renderChart();
+        if (this.cardId && !_.isUndefined(this.currentFilter) && !this.isViewInitialized) {
+            this.isViewInitialized = true;
+            this.canvas = document.getElementById(this.cardId);
+            this.renderChart();
         }
     }
 
     ngOnDestroy(): void {
-        if (!_.isUndefined(this._chart)) {
-            this._chart.destroy();
+        if (!_.isUndefined(this.chart)) {
+            this.chart.destroy();
         }
     }
 
@@ -123,7 +120,7 @@ export class DashboardCardComponent implements OnChanges, AfterViewChecked, OnDe
     }
 
     getCurrentFilter(): any {
-        return !_.isUndefined(this._currentFilter) ? this._currentFilter : {};
+        return !_.isUndefined(this.currentFilter) ? this.currentFilter : {};
     }
 
     getFilters(): any[] {
@@ -136,16 +133,16 @@ export class DashboardCardComponent implements OnChanges, AfterViewChecked, OnDe
             return '';
         }
 
-        var data: number[] = this.chartData[`${this._currentFilter.value}`].data;
-        var type: string = this.chartData[`${this._currentFilter.value}`].type;
-        var options: any = this.chartData[`${this._currentFilter.value}`].options
+        var data: number[] = this.chartData[`${this.currentFilter.value}`].data;
+        var type: string = this.chartData[`${this.currentFilter.value}`].type;
+        var options: any = this.chartData[`${this.currentFilter.value}`].options
             || this.chartOptions;
 
         switch (type || options.type) {
             case 'line':
-                return this._formatData(_.last(data), options.unit);
+                return this.formatData(_.last(data), options.unit);
             case 'bar':
-                return this._formatData(_.sum(data), options.unit);
+                return this.formatData(_.sum(data), options.unit);
             default:
                 return '';
         }
@@ -155,45 +152,45 @@ export class DashboardCardComponent implements OnChanges, AfterViewChecked, OnDe
         event.preventDefault();
 
         // Update currentFilter
-        this._currentFilter = _.find(this.chartOptions.filters, { value: value });
-        this._renderChart();
+        this.currentFilter = _.find(this.chartOptions.filters, { value: value });
+        this.renderChart();
     }
 
-    private _renderChart(): void {
-        if (_.isUndefined(this._canvas) || _.isNull(this._canvas)) {
+    private renderChart(): void {
+        if (_.isUndefined(this.canvas) || _.isNull(this.canvas)) {
             return;
         }
 
         // Destroy and recreate the chart if it has been created before
-        if (!_.isUndefined(this._chart)) {
-            this._chart.destroy();
+        if (!_.isUndefined(this.chart)) {
+            this.chart.destroy();
         }
 
         // Render the chart
-        this._chart = new Chart(this._canvas, this._getChartOptions());
+        this.chart = new Chart(this.canvas, this.getChartOptions());
     }
 
     /**
      * Returns options for rendering the chart, which also include labels
      * and data.
      */
-    private _getChartOptions(): any {
+    private getChartOptions(): any {
         if (_.isUndefined(this.chartData) || _.isEmpty(this.chartData)
             || _.isUndefined(this.chartOptions) || _.isEmpty(this.chartOptions)) {
             return {};
         }
 
-        var data: number[] = this.chartData[`${this._currentFilter.value}`].data;
-        var labels: string[] = this.chartData[`${this._currentFilter.value}`].labels;
-        var type: string = this.chartData[`${this._currentFilter.value}`].type;
-        var options: any = this.chartData[`${this._currentFilter.value}`].options
+        var data: number[] = this.chartData[`${this.currentFilter.value}`].data;
+        var labels: string[] = this.chartData[`${this.currentFilter.value}`].labels;
+        var type: string = this.chartData[`${this.currentFilter.value}`].type;
+        var options: any = this.chartData[`${this.currentFilter.value}`].options
             || this.chartOptions;
 
         switch (type || options.type) {
             case 'line':
-                return this._getLineChartOptions(data, labels, options);
+                return this.getLineChartOptions(data, labels, options);
             case 'bar':
-                return this._getBarChartOptions(data, labels, options);
+                return this.getBarChartOptions(data, labels, options);
             default:
                 return {};
         }
@@ -202,8 +199,8 @@ export class DashboardCardComponent implements OnChanges, AfterViewChecked, OnDe
     /**
      * Returns options specificly for rendering line charts.
      */
-    private _getLineChartOptions(data: number[], labels: string[], options: any): any {
-        var rgbColor: string = this._convertHexToRgb(options.color);
+    private getLineChartOptions(data: number[], labels: string[], options: any): any {
+        var rgbColor: string = this.convertHexToRgb(options.color);
 
         return {
             type: 'line',
@@ -254,7 +251,7 @@ export class DashboardCardComponent implements OnChanges, AfterViewChecked, OnDe
                             var dataIndex: number = tooltip.index;
                             var datasetIndex: number = tooltip.datasetIndex;
                             var formattedValue: string =
-                                this._formatData(data.datasets[datasetIndex].data[dataIndex], options.unit);
+                                this.formatData(data.datasets[datasetIndex].data[dataIndex], options.unit);
 
                             return `${formattedValue}`;
                         }
@@ -264,18 +261,18 @@ export class DashboardCardComponent implements OnChanges, AfterViewChecked, OnDe
         };
     }
 
-    private _getBarChartOptions(data: number[], labels: string[], options: any): any {
+    private getBarChartOptions(data: number[], labels: string[], options: any): any {
         var backgroundColor: string[] = [];
         var borderColor: string[] = [];
         if (_.isArray(options.color)) {
             _.each(options.color, (color: string) => {
-                let rgbColor: string = this._convertHexToRgb(color);
+                let rgbColor: string = this.convertHexToRgb(color);
 
                 backgroundColor.push(`rgba(${rgbColor}, .25)`);
                 borderColor.push(`rgba(${rgbColor}, 1)`);
             });
         } else {
-            let rgbColor: string = this._convertHexToRgb(options.color);
+            let rgbColor: string = this.convertHexToRgb(options.color);
 
             backgroundColor.push(`rgba(${rgbColor}, .25)`);
             borderColor.push(`rgba(${rgbColor}, 1)`);
@@ -311,7 +308,7 @@ export class DashboardCardComponent implements OnChanges, AfterViewChecked, OnDe
                             var dataIndex: number = tooltip.index;
                             var datasetIndex: number = tooltip.datasetIndex;
                             var formattedValue: string =
-                                this._formatData(data.datasets[datasetIndex].data[dataIndex], options.unit);
+                                this.formatData(data.datasets[datasetIndex].data[dataIndex], options.unit);
 
                             return `${formattedValue}`;
                         }
@@ -324,7 +321,7 @@ export class DashboardCardComponent implements OnChanges, AfterViewChecked, OnDe
     /**
      * Format the given data based on instructions provided through "chartOptions" input
      */
-    private _formatData(data: number, unit: string): string {
+    private formatData(data: number, unit: string): string {
         switch (unit) {
             case 'percentage':
                 return StringUtil.formatPercentage(data);
@@ -339,7 +336,7 @@ export class DashboardCardComponent implements OnChanges, AfterViewChecked, OnDe
     /**
      * Convert a given hex color string to a comma-separated rgb string
      */
-    private _convertHexToRgb(colorInHex: string): string {
+    private convertHexToRgb(colorInHex: string): string {
         // Expand shorthand form (e.g. "03F") to full form (e.g. "0033FF")
         var shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
         var hex = colorInHex.replace(shorthandRegex, function(m, r, g, b) {

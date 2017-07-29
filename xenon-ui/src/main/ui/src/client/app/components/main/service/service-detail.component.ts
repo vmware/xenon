@@ -1,26 +1,22 @@
 // angular
-import { ChangeDetectionStrategy, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Location } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription } from 'rxjs/Subscription';
 import * as _ from 'lodash';
 
 // app
-import { BaseComponent } from '../../../frameworks/core/index';
-
-import { URL } from '../../../frameworks/app/enums/index';
+import { URL } from '../../../modules/app/enums/index';
 import { ModalContext, Node, QueryTask, ServiceDocument,
-    ServiceDocumentQueryResult } from '../../../frameworks/app/interfaces/index';
-import { ODataUtil, StringUtil } from '../../../frameworks/app/utils/index';
+    ServiceDocumentQueryResult } from '../../../modules/app/interfaces/index';
+import { ODataUtil, StringUtil } from '../../../modules/app/utils/index';
+import { BaseService, NodeSelectorService, NotificationService } from '../../../modules/app/services/index';
 
-import { BaseService, NodeSelectorService, NotificationService } from '../../../frameworks/app/services/index';
-
-@BaseComponent({
+@Component({
     selector: 'xe-service-detail',
     moduleId: module.id,
     templateUrl: './service-detail.component.html',
-    styleUrls: ['./service-detail.component.css'],
-    changeDetection: ChangeDetectionStrategy.Default
+    styleUrls: ['./service-detail.component.css']
 })
 
 export class ServiceDetailComponent implements OnInit, OnDestroy {
@@ -38,111 +34,111 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
     /**
      * Links to all the available services.
      */
-    private _serviceLinks: string[] = [];
+    private serviceLinks: string[] = [];
 
     /**
      * Links to all the available child services within the specified service.
      */
-    private _childServicesLinks: string[] = [];
+    private childServicesLinks: string[] = [];
 
     /**
      * Link to the next page of the child services
      */
-    private _childServiceNextPageLink: string;
+    private childServiceNextPageLink: string;
 
     /**
      * A lock to prevent the same next page link from being requested multiple times when scrolling
      */
-    private _childServiceNextPageLinkRequestLocked: boolean = false;
+    private childServiceNextPageLinkRequestLocked: boolean = false;
 
     /**
      * Id for the selected service. E.g. /core/examples
      */
-    private _selectedServiceId: string;
+    private selectedServiceId: string;
 
     /**
      * Id for the selected child service.
      */
-    private _selectedChildServiceId: string;
+    private selectedChildServiceId: string;
 
     /**
      * Subscriptions to services.
      */
-    private _activatedRouteParamsSubscription: Subscription;
-    private _nodeSelectorServiceGetSelectedSubscription: Subscription;
-    private _baseServiceGetLinksSubscription: Subscription;
-    private _baseServiceGetChildServiceListSubscription: Subscription;
-    private _baseServiceGetChildServiceListNextPageSubscription: Subscription;
+    private activatedRouteParamsSubscription: Subscription;
+    private nodeSelectorServiceGetSelectedSubscription: Subscription;
+    private baseServiceGetLinksSubscription: Subscription;
+    private baseServiceGetChildServiceListSubscription: Subscription;
+    private baseServiceGetChildServiceListNextPageSubscription: Subscription;
 
     constructor(
-        private _baseService: BaseService,
-        private _nodeSelectorService: NodeSelectorService,
-        private _notificationService: NotificationService,
-        private _activatedRoute: ActivatedRoute,
-        private _router: Router,
-        private _browserLocation: Location) {}
+        private baseService: BaseService,
+        private nodeSelectorService: NodeSelectorService,
+        private notificationService: NotificationService,
+        private activatedRoute: ActivatedRoute,
+        private router: Router,
+        private browserLocation: Location) {}
 
     ngOnInit(): void {
         // Update data when selected node changes
-        this._nodeSelectorServiceGetSelectedSubscription =
-            this._nodeSelectorService.getSelectedNode().subscribe(
+        this.nodeSelectorServiceGetSelectedSubscription =
+            this.nodeSelectorService.getSelectedNode().subscribe(
                 (selectedNode: Node) => {
                     // Navigate to the parent service grid when selected node changes
-                    this._router.navigate(['/main/service'], {
-                        relativeTo: this._activatedRoute,
+                    this.router.navigate(['/main/service'], {
+                        relativeTo: this.activatedRoute,
                         queryParams: {
-                            'node': this._activatedRoute.snapshot.queryParams['node']
+                            'node': this.activatedRoute.snapshot.queryParams['node']
                         }
                     });
                 });
 
-        this._activatedRouteParamsSubscription =
-            this._activatedRoute.params.subscribe(
+        this.activatedRouteParamsSubscription =
+            this.activatedRoute.params.subscribe(
                 (params: {[key: string]: any}) => {
-                    this._selectedServiceId =
+                    this.selectedServiceId =
                         StringUtil.decodeFromId(params['id'] as string);
 
-                    this._selectedChildServiceId = params['childId'];
+                    this.selectedChildServiceId = params['childId'];
 
                     // Set modal context
-                    this.createChildServiceModalContext.name = this._selectedServiceId;
-                    this.createChildServiceModalContext.data['documentSelfLink'] = this._selectedServiceId;
+                    this.createChildServiceModalContext.name = this.selectedServiceId;
+                    this.createChildServiceModalContext.data['documentSelfLink'] = this.selectedServiceId;
                     this.createChildServiceModalContext.data['body'] = '';
 
-                    this._getData();
+                    this.getData();
                 });
     }
 
     ngOnDestroy(): void {
-        if (!_.isUndefined(this._baseServiceGetLinksSubscription)) {
-            this._baseServiceGetLinksSubscription.unsubscribe();
+        if (!_.isUndefined(this.baseServiceGetLinksSubscription)) {
+            this.baseServiceGetLinksSubscription.unsubscribe();
         }
 
-        if (!_.isUndefined(this._baseServiceGetChildServiceListSubscription)) {
-            this._baseServiceGetChildServiceListSubscription.unsubscribe();
+        if (!_.isUndefined(this.baseServiceGetChildServiceListSubscription)) {
+            this.baseServiceGetChildServiceListSubscription.unsubscribe();
         }
 
-        if (!_.isUndefined(this._nodeSelectorServiceGetSelectedSubscription)) {
-            this._nodeSelectorServiceGetSelectedSubscription.unsubscribe();
+        if (!_.isUndefined(this.nodeSelectorServiceGetSelectedSubscription)) {
+            this.nodeSelectorServiceGetSelectedSubscription.unsubscribe();
         }
 
-        if (!_.isUndefined(this._activatedRouteParamsSubscription)) {
-            this._activatedRouteParamsSubscription.unsubscribe();
+        if (!_.isUndefined(this.activatedRouteParamsSubscription)) {
+            this.activatedRouteParamsSubscription.unsubscribe();
         }
     }
 
     getServiceLinks(): string[] {
-        return this._serviceLinks;
+        return this.serviceLinks;
     }
 
     getChildServiceLinks(): string[] {
-        return _.map(this._childServicesLinks, (childServiceLink: string) => {
-            return StringUtil.parseDocumentLink(childServiceLink, this._selectedServiceId).id;
+        return _.map(this.childServicesLinks, (childServiceLink: string) => {
+            return StringUtil.parseDocumentLink(childServiceLink, this.selectedServiceId).id;
         });
     }
 
     getSelectedServiceId(): string {
-        return this._selectedServiceId;
+        return this.selectedServiceId;
     }
 
     getSelectedServiceRouterId(id: string): string {
@@ -150,7 +146,7 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
     }
 
     getSelectedChildServiceId(): string {
-        return this._selectedChildServiceId;
+        return this.selectedChildServiceId;
     }
 
     onCreateChildService(event: MouseEvent): void {
@@ -161,9 +157,9 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
             return;
         }
 
-        this._baseService.post(selectedServiceId, body).subscribe(
+        this.baseService.post(selectedServiceId, body).subscribe(
             (document: ServiceDocument) => {
-                this._notificationService.set([{
+                this.notificationService.set([{
                     type: 'SUCCESS',
                     messages: [`Child Service ${document.documentSelfLink} Created`]
                 }]);
@@ -173,7 +169,7 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
             },
             (error) => {
                 // TODO: Better error handling
-                this._notificationService.set([{
+                this.notificationService.set([{
                     type: 'ERROR',
                     messages: [`[${error.statusCode}] ${error.message}`]
                 }]);
@@ -186,81 +182,82 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
         // Manually update the url to represent the selected child service instead of
         // using router navigate, to prevent the page from flashing (thus all the child services
         // get reloaded and pagination get massed up), and offer better performance.
-        var serviceId: string = this._activatedRoute.snapshot.params['id'];
-        var basePath = this._browserLocation.path();
+        var serviceId: string = this.activatedRoute.snapshot.params['id'];
+        var basePath = this.browserLocation.path();
 
-        if (_.isUndefined(this._selectedChildServiceId)) {
-            this._browserLocation.replaceState(basePath.replace(serviceId, `${serviceId}/${childServiceId}`));
+        if (_.isUndefined(this.selectedChildServiceId)) {
+            this.browserLocation.replaceState(basePath.replace(serviceId, `${serviceId}/${childServiceId}`));
         } else {
-            this._browserLocation.replaceState(basePath.replace(this._selectedChildServiceId, childServiceId));
+            this.browserLocation.replaceState(basePath.replace(this.selectedChildServiceId, childServiceId));
         }
 
-        this._selectedChildServiceId = childServiceId;
+        this.selectedChildServiceId = childServiceId;
     }
 
     onLoadNextPage(): void {
-        if (_.isUndefined(this._childServiceNextPageLink) || this._childServiceNextPageLinkRequestLocked) {
+        if (_.isUndefined(this.childServiceNextPageLink) || this.childServiceNextPageLinkRequestLocked) {
             return;
         }
 
-        this._childServiceNextPageLinkRequestLocked = true;
-        this._baseServiceGetChildServiceListNextPageSubscription =
-            this._baseService.getDocument(this._childServiceNextPageLink, '', false).subscribe(
+        this.childServiceNextPageLinkRequestLocked = true;
+        this.baseServiceGetChildServiceListNextPageSubscription =
+            this.baseService.getDocument(this.childServiceNextPageLink, '', false).subscribe(
                 (document: QueryTask) => {
-                    if (_.isEmpty(document.results) || this._childServiceNextPageLink === document.results.nextPageLink) {
+                    if (_.isEmpty(document.results) || this.childServiceNextPageLink === document.results.nextPageLink) {
                         return;
                     }
 
-                    this._childServiceNextPageLinkRequestLocked = false;
-                    this._childServicesLinks = _.concat(this._childServicesLinks, document.results.documentLinks);
+                    this.childServiceNextPageLinkRequestLocked = false;
+                    this.childServicesLinks = _.concat(this.childServicesLinks, document.results.documentLinks);
 
                     // NOTE: Need to use forwarding link here since the paginated data is stored on a particular node
                     if (document.results.nextPageLink) {
-                        this._childServiceNextPageLink = this._baseService.getForwardingLink(document.results.nextPageLink);
+                        this.childServiceNextPageLink = this.baseService.getForwardingLink(document.results.nextPageLink);
                     }
                 },
                 (error) => {
                     // TODO: Better error handling
-                    this._notificationService.set([{
+                    this.notificationService.set([{
                         type: 'ERROR',
                         messages: [`Failed to retrieve factory service details: [${error.statusCode}] ${error.message}`]
                     }]);
                 });
     }
 
-    private _getData(): void {
-        // Only get _serviceLinks once
-        if (_.isEmpty(this._serviceLinks)) {
-            // Reset _childServicesLinks when the service itself changes
-            this._childServicesLinks = [];
+    private getData(): void {
+        // Only get serviceLinks once
+        if (_.isEmpty(this.serviceLinks)) {
+            // Reset childServicesLinks when the service itself changes
+            this.childServicesLinks = [];
 
-            this._baseServiceGetLinksSubscription =
-                this._baseService.post(URL.Root, URL.RootPostBody).subscribe(
+            this.baseServiceGetLinksSubscription =
+                this.baseService.post(URL.Root, URL.RootPostBody).subscribe(
                     (document: ServiceDocumentQueryResult) => {
-                        this._serviceLinks = _.sortBy(document.documentLinks);
+                        this.serviceLinks = _.sortBy(document.documentLinks);
                     },
                     (error) => {
                         // TODO: Better error handling
-                        this._notificationService.set([{
+                        this.notificationService.set([{
                             type: 'ERROR',
                             messages: [`Failed to retrieve factory services: [${error.statusCode}] ${error.message}`]
                         }]);
                     });
         }
 
-        this._baseServiceGetChildServiceListSubscription =
-            this._baseService.getDocument(this._selectedServiceId, `${ODataUtil.limit()}&${ODataUtil.orderBy('documentSelfLink')}`).subscribe(
+        this.baseServiceGetChildServiceListSubscription =
+            this.baseService.getDocument(this.selectedServiceId, `${ODataUtil.limit()}&${ODataUtil.orderBy('documentSelfLink')}`).subscribe(
                 (document: ServiceDocumentQueryResult) => {
-                    this._childServicesLinks = document.documentLinks;
+                    this.childServicesLinks = document.documentLinks;
+                    console.log(document);
 
                     // NOTE: Need to use forwarding link here since the paginated data is stored on a particular node
                     if (document.nextPageLink) {
-                        this._childServiceNextPageLink = this._baseService.getForwardingLink(document.nextPageLink);
+                        this.childServiceNextPageLink = this.baseService.getForwardingLink(document.nextPageLink);
                     }
                 },
                 (error) => {
                     // TODO: Better error handling
-                    this._notificationService.set([{
+                    this.notificationService.set([{
                         type: 'ERROR',
                         messages: [`Failed to retrieve factory service details: [${error.statusCode}] ${error.message}`]
                     }]);
