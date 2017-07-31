@@ -88,16 +88,16 @@ class DeleteVerificationTestService extends StatefulService {
         s.name = getSelfLink();
         s.latestValue = 1;
         URI factoryStats = UriUtils.buildStatsUri(UriUtils.buildUri(getHost(),
-                DeleteVerificationTestFactoryService.class));
+                UriUtils.getParentPath(getSelfLink())));
         sendRequest(Operation.createPost(factoryStats).setBody(s));
         delete.complete();
     }
 }
 
-class DeleteVerificationTestFactoryService extends FactoryService {
+class DeleteVerificationTestFactory extends FactoryService {
     public static final String SELF_LINK = ServiceUriPaths.CORE + "/tests/deleteverification";
 
-    public DeleteVerificationTestFactoryService() {
+    public DeleteVerificationTestFactory() {
         super(ExampleServiceState.class);
         super.toggleOption(ServiceOption.INSTRUMENTATION, true);
     }
@@ -105,6 +105,30 @@ class DeleteVerificationTestFactoryService extends FactoryService {
     @Override
     public Service createServiceInstance() throws Throwable {
         Service s = new DeleteVerificationTestService();
+        return s;
+    }
+}
+
+
+class DeleteVerificationNonPersistedTestService extends DeleteVerificationTestService {
+
+    public DeleteVerificationNonPersistedTestService() {
+        super();
+        super.toggleOption(ServiceOption.PERSISTENCE, false);
+    }
+}
+
+class DeleteVerificationNonPersistedTestFactory extends FactoryService {
+    public static final String SELF_LINK = ServiceUriPaths.CORE + "/tests/deleteverification-nonpersisted";
+
+    public DeleteVerificationNonPersistedTestFactory() {
+        super(ExampleServiceState.class);
+        super.toggleOption(ServiceOption.INSTRUMENTATION, true);
+    }
+
+    @Override
+    public Service createServiceInstance() throws Throwable {
+        Service s = new DeleteVerificationNonPersistedTestService();
         return s;
     }
 }
@@ -509,12 +533,26 @@ public class TestStatefulService extends BasicReusableHostTestCase {
     @Test
     public void expirationInducedDeleteHandlerVerification()
             throws Throwable {
+        DeleteVerificationTestFactory f = new DeleteVerificationTestFactory();
+        DeleteVerificationTestFactory factoryService = (DeleteVerificationTestFactory) this.host
+                .startServiceAndWait(f, DeleteVerificationTestFactory.SELF_LINK, null);
+        expirationInducedDeleteHandlerVerificationDo(factoryService, DeleteVerificationTestFactory.SELF_LINK);
+    }
+
+    @Test
+    public void expirationInducedDeleteHandlerNonPersistedServiceVerification()
+            throws Throwable {
+        DeleteVerificationNonPersistedTestFactory f = new DeleteVerificationNonPersistedTestFactory();
+        DeleteVerificationNonPersistedTestFactory factoryService =
+                (DeleteVerificationNonPersistedTestFactory) this.host.startServiceAndWait(
+                        f, DeleteVerificationNonPersistedTestFactory.SELF_LINK, null);
+        expirationInducedDeleteHandlerVerificationDo(
+                factoryService, DeleteVerificationNonPersistedTestFactory.SELF_LINK);
+    }
+
+    public void expirationInducedDeleteHandlerVerificationDo(StatelessService factoryService, String factoryLink)
+            throws Throwable {
         long count = 10;
-        DeleteVerificationTestFactoryService f = new DeleteVerificationTestFactoryService();
-
-        DeleteVerificationTestFactoryService factoryService = (DeleteVerificationTestFactoryService) this.host
-                .startServiceAndWait(f, DeleteVerificationTestFactoryService.SELF_LINK, null);
-
         Map<URI, ExampleServiceState> services = this.host.doFactoryChildServiceStart(null, count,
                 ExampleServiceState.class,
                 (o) -> {
@@ -535,7 +573,7 @@ public class TestStatefulService extends BasicReusableHostTestCase {
             ServiceStats factoryStats = this.host.getServiceState(null, ServiceStats.class,
                     UriUtils.buildStatsUri(factoryService.getUri()));
             for (String statName : factoryStats.entries.keySet()) {
-                if (statName.startsWith(DeleteVerificationTestFactoryService.SELF_LINK)) {
+                if (statName.startsWith(factoryLink)) {
                     deletedServiceStats.add(statName);
                 }
             }
