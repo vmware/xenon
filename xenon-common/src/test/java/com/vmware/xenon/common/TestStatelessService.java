@@ -15,6 +15,9 @@ package com.vmware.xenon.common;
 
 import java.net.URI;
 import java.time.Duration;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.logging.Level;
 
 import org.junit.Before;
 import org.junit.Rule;
@@ -36,6 +39,10 @@ class StatelessTestService extends StatelessService {
 
     @Override
     public void handlePost(Operation post) {
+        boolean test = true;
+        while (test) {
+            log(Level.INFO, "Slowing down the completion of the operation");
+        }
         ComputeSquare instructions = post.getBody(ComputeSquare.class);
         instructions.result = instructions.a * instructions.a + instructions.b * instructions.b;
         post.setBodyNoCloning(instructions);
@@ -56,59 +63,28 @@ public class TestStatelessService extends BasicReusableHostTestCase {
     public void setUp() {
         CommandLineArgumentParser.parseFromProperties(this);
     }
-
-    @Test (expected = IllegalArgumentException.class)
-    public void serviceOptionsTest() throws Throwable {
-
-        StatelessService service = new StatelessTestService();
-        service.options.add(Service.ServiceOption.PERSISTENCE);
-        service.options.add(Service.ServiceOption.REPLICATION);
-        service.options.add(Service.ServiceOption.OWNER_SELECTION);
-
-        this.host.startServiceAndWait(service, "bad-stateless/service", null);
-    }
-
+    
     @Test
-    public void throughputPost() throws Throwable {
+    public void testTimeout() throws Throwable {
+        LocalTime localTimeStart = LocalTime.now();
+        host.log(Level.INFO, "Starting the test: " + localTimeStart.toString());
         Service s = this.host.startServiceAndWait(new StatelessTestService(), "stateless/service",
                 null);
-        for (int i = 0; i < this.iterationCount; i++) {
-            doThroughputPost(s);
-            System.gc();
-        }
-    }
-
-    private void doThroughputPost(Service s) throws Throwable {
-
-        TestContext ctx = new TestContext(this.requestCount, Duration.ofSeconds(this.host
-                .getTimeoutSeconds()));
+        TestContext ctx = new TestContext(this.requestCount, Duration.ofSeconds(60000));
         ComputeSquare c = new ComputeSquare();
         c.a = 2;
         c.b = 3;
-        int expectedResult = c.a * c.a + c.b * c.b;
-        ctx.setTestName("Stateless service POST throughput").logBefore();
-        // cache service URI, Service.getUri() computes it each time, so its expensive
         URI uri = s.getUri();
-        for (int i = 0; i < this.requestCount; i++) {
-
-            this.host.send(Operation.createPost(uri)
+        this.host.send(Operation.createPost(uri)
                     .setBody(c)
                     .setCompletion((o, e) -> {
-                        if (e != null) {
-                            ctx.fail(e);
-                            return;
-                        }
-                        ComputeSquare res = o.getBody(ComputeSquare.class);
-                        if (res.result != expectedResult) {
-                            ctx.fail(new IllegalStateException("unexpected result"));
-                            return;
-                        }
-                        ctx.complete();
+                        LocalTime localTimeEnd = LocalTime.now();
+                        host.log(Level.INFO, "Start time: " + localTimeStart.toString());
+                        host.log(Level.INFO, "End time: " + localTimeEnd.toString());
                     }));
-        }
         ctx.await();
-        double tput = ctx.logAfter();
-        this.testResults.getReport().lastValue(TestResults.KEY_THROUGHPUT, tput);
+        
+        
 
     }
 }
