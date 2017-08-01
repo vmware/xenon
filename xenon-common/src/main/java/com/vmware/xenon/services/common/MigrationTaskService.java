@@ -38,10 +38,12 @@ import java.util.stream.Collectors;
 import com.vmware.xenon.common.DeferredResult;
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.FactoryService.FactoryServiceConfiguration;
+import com.vmware.xenon.common.NodeSelectorState;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.OperationJoin;
 import com.vmware.xenon.common.Service;
+import com.vmware.xenon.common.ServiceConfiguration;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
@@ -596,14 +598,20 @@ public class MigrationTaskService extends StatefulService {
         }
 
         DeferredResult.allOf(sourceDeferred, destDeferred)
-                .thenAccept(aVoid -> {
-                    computeFirstCurrentPageLinks(currentState, currentState.sourceReferences, currentState.destinationReferences);
-                })
+                .thenAccept(work -> whenNodeSelectorAvailableThenDoWork(
+                        currentState,
+                        currentState.sourceReferences,
+                        currentState.sourceFactoryLink,
+                        currentState.maximumConvergenceChecks,
+                        () -> computeFirstCurrentPageLinks(
+                                currentState,
+                                currentState.sourceReferences,
+                                currentState.destinationReferences)
+                ))
                 .exceptionally(throwable -> {
                     failTask(throwable);
                     return null;
                 });
-
     }
 
     private List<URI> filterAvailableNodeUris(NodeGroupState destinationGroup) {
@@ -617,7 +625,10 @@ public class MigrationTaskService extends StatefulService {
      * When node-group is converged, given DeferredResult will be marked as complete.
      * Otherwise, it will re-schedule the convergence check until it exceeds allowed convergence check count, then fail the DeferredResult.
      */
-    private void waitUntilNodeGroupsAreStable(State currentState, URI nodeGroupReference, int allowedConvergenceChecks, DeferredResult<Object> deferredResult) {
+    private void waitUntilNodeGroupsAreStable(State currentState,
+                                              URI nodeGroupReference,
+                                              int allowedConvergenceChecks,
+                                              DeferredResult<Object> deferredResult) {
         Operation callbackOp = new Operation()
                 .setCompletion((op, ex) -> {
                     if (ex != null) {
@@ -640,6 +651,80 @@ public class MigrationTaskService extends StatefulService {
         NodeGroupUtils.checkConvergence(getHost(), nodeGroupReference, callbackOp);
     }
 
+    /**
+     * When node-group is converged, given DeferredResult will be marked as complete.
+     * Otherwise, it will re-schedule the convergence check until it exceeds allowed convergence check count, then fail the DeferredResult.
+     */
+    private void findNodeSelectorLinkThenDoWork(List<URI> sourceURIs, String factoryLink, OperationJoin.JoinedCompletionHandler completion) {
+
+        Set<Operation> getOps = sourceURIs.stream()
+                .map(sourceUri -> {
+                    URI uri = UriUtils.buildUri(sourceUri, factoryLink);
+                    return Operation.createGet(UriUtils.buildConfigUri(uri));
+                })
+                .collect(Collectors.toSet());
+
+        OperationJoin.create(getOps)
+                .setCompletion((os, ts) -> {
+                    if (ts != null && !ts.isEmpty()) {
+                        logSevere("Failed to get factory config from all source nodes");
+                        failTask(ts.values());
+                        return;
+                    }
+                    completion.handle(os, ts);
+                })
+                .sendWith(this);
+    }
+
+    private void whenNodeSelectorAvailableThenDoWork(
+            State currentState, List<URI> sourceURIs, String factoryLink, int maxRetry, Runnable action) {
+        if (maxRetry <= 0) {
+            String message = String.format("Failed to contact all node selector paths after %s retries",
+                    currentState.maximumConvergenceChecks);
+            logSevere(message);
+            failTask(new RuntimeException(message));
+            return;
+        }
+
+        findNodeSelectorLinkThenDoWork(sourceURIs, factoryLink,
+                (o, f) -> {
+                    String peerNodeSelectorPath = o.values().stream()
+                            .map(operation -> operation.getBody(ServiceConfiguration.class).peerNodeSelectorPath)
+                            .filter(selectorPath -> selectorPath != null)
+                            .findFirst().get();
+
+                    Set<Operation> getOps = sourceURIs.stream()
+                            .map(sourceUri ->
+                                    Operation.createGet(UriUtils.buildUri(sourceUri, peerNodeSelectorPath)))
+                            .collect(Collectors.toSet());
+
+                    OperationJoin.create(getOps)
+                            .setCompletion((os, ts) -> {
+                                if (ts != null && !ts.isEmpty()) {
+                                    logInfo("Node Selectors are not converged, scheduling retry #%d.", maxRetry);
+                                    getHost().schedule(() -> whenNodeSelectorAvailableThenDoWork(currentState, sourceURIs, factoryLink, maxRetry - 1, action), currentState.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
+                                    return;
+                                }
+
+                                List<NodeSelectorState.Status> availableNodeSelectors = os.values().stream()
+                                        .map(operation -> operation.getBody(NodeSelectorState.class).status)
+                                        .filter(status -> status.equals(NodeSelectorState.Status.AVAILABLE))
+                                        .collect(Collectors.toList());
+
+                                if (availableNodeSelectors.size() != sourceURIs.size()) {
+                                    logInfo("Not all Node Selectors are available, scheduling retry #%d.", maxRetry);
+                                    getHost().schedule(() -> {
+                                        whenNodeSelectorAvailableThenDoWork(currentState, sourceURIs, factoryLink, maxRetry - 1, action);
+                                    }, currentState.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
+                                } else {
+                                    logInfo("Node Selectors are converged");
+
+                                    action.run();
+                                }
+                            })
+                            .sendWith(this);
+                });
+    }
 
     private void computeFirstCurrentPageLinks(State currentState, List<URI> sourceURIs, List<URI> destinationURIs) {
         logInfo("Node groups are stable. Computing pages to be migrated...");
@@ -743,6 +828,7 @@ public class MigrationTaskService extends StatefulService {
                                 }
                             })
                             .sendWith(this);
+
                 })
                 .exceptionally(throwable -> {
                     failTask(throwable);
@@ -764,8 +850,6 @@ public class MigrationTaskService extends StatefulService {
         Collection<Operation> gets = currentPageLinks.stream()
                 .map(Operation::createGet)
                 .collect(Collectors.toSet());
-        logFine("Migrating results using %d GET operations, which came from %d currentPageLinks",
-                gets.size(), currentPageLinks.size());
 
         long start = Utils.getSystemNowMicrosUtc();
         OperationJoin.create(gets)
