@@ -647,17 +647,11 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     @Test
     public void successMigrateOnlyDocumentsUpdatedAfterTime() throws Throwable {
         // create object in host
-        List<ExampleServiceState> states = createExampleDocuments(this.exampleSourceFactory, getSourceHost(),
-                this.serviceCount);
-        List<URI> uris = getFullUri(getSourceHost(), states);
+        createExampleDocuments(this.exampleSourceFactory, getSourceHost(), this.serviceCount);
 
-        long time = getSourceHost()
-                .getServiceState(EnumSet.noneOf(TestProperty.class), ExampleServiceState.class, uris)
-                .values()
-                .stream()
-                .mapToLong(d -> d.documentUpdateTimeMicros)
-                .max().orElse(0);
-        assertTrue("max upateTime should not be 0", time > 0);
+        // Save the current time after the first batch has been created and
+        // before moving towards the second batch.
+        long time = Utils.getNowMicrosUtc();
 
         List<ExampleServiceState> newStates = createExampleDocuments(this.exampleSourceFactory, getSourceHost(),
                 this.serviceCount, false);
