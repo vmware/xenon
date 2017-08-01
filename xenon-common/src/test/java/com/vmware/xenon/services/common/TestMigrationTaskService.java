@@ -39,6 +39,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import org.junit.After;
 import org.junit.AfterClass;
@@ -340,6 +341,70 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         assertEquals(initState.destinationNodeGroupReference, result.destinationNodeGroupReference);
         assertEquals(initState.sourceFactoryLink, result.sourceFactoryLink);
         assertEquals(initState.sourceNodeGroupReference, result.sourceNodeGroupReference);
+    }
+
+    @Test
+    public void failMigrationWhenNodeSelectorNotConverged() throws Throwable {
+        // create objects in the source node-group
+        createExampleDocuments(this.exampleSourceFactory, getSourceHost(), this.serviceCount);
+        try {
+            // disable peer synchronization on each source host.
+            Iterator<VerificationHost> peerIt = this.host.getInProcessHostMap().values().iterator();
+            VerificationHost peerNode = null;
+            while (peerIt.hasNext()) {
+                peerNode = peerIt.next();
+                peerNode.setPeerSynchronizationEnabled(false);
+            }
+            assertNotNull(peerNode);
+
+            // Stop the last peerNode and to make the node-selector check fail.
+            this.host.stopHost(peerNode);
+            final VerificationHost stoppedNode = peerNode;
+            final VerificationHost liveNode =
+                    this.host.getInProcessHostMap().values().stream().filter(node -> node != stoppedNode).findFirst().get();
+            this.host.waitFor("Node did not become unavailable!",
+                    () -> {
+                        Operation op = this.sender.sendAndWait(Operation.createGet(liveNode, ServiceUriPaths.DEFAULT_NODE_GROUP));
+                        NodeGroupState ns = op.getBody(NodeGroupState.class);
+                        return this.nodeCount - 1 == ns.nodes.values().stream()
+                                .filter(ngs -> !NodeState.isUnAvailable(ngs))
+                                .collect(Collectors.toList()).size();
+                    });
+
+            // Kick-off migration
+            MigrationTaskService.State migrationState = validMigrationState(
+                    ExampleService.FACTORY_LINK);
+            TestContext ctx = this.host.testCreate(1);
+            String[] out = new String[1];
+            Operation op = Operation.createPost(this.destinationFactoryUri)
+                    .setBody(migrationState)
+                    .setReferer(this.host.getUri())
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            this.host.log("Post service error: %s", Utils.toString(e));
+                            ctx.failIteration(e);
+                            return;
+                        }
+                        out[0] = o.getBody(State.class).documentSelfLink;
+                        ctx.completeIteration();
+                    });
+            getDestinationHost().send(op);
+            ctx.await();
+
+            // Wait for the migration task to fail
+            State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
+            assertEquals(waitForServiceCompletion.taskInfo.stage, TaskStage.FAILED);
+
+            // Verify that it failed because node selector availability check
+            assertTrue(waitForServiceCompletion.taskInfo.failure.message.contains(
+                    "Failed to verify availability of all node selector paths"));
+        } finally {
+            Iterator<VerificationHost> peerIt = this.host.getInProcessHostMap().values().iterator();
+            while (peerIt.hasNext()) {
+                VerificationHost peerNode = peerIt.next();
+                this.host.stopHost(peerNode);
+            }
+        }
     }
 
     @Test

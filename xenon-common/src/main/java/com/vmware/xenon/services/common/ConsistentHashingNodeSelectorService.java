@@ -216,6 +216,14 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
     @Override
     public void handleRequest(Operation op) {
         if (op.getAction() == Action.GET) {
+            // this.cachedState might be stale if NodeSelector status is UNAVAILABLE.
+            // Status gets actively updated if we are going from AVAILABLE TO UNAVAILABLE status.
+            // But transition to AVAILABLE is lazy so we update it on GET request.
+            if (!NodeSelectorState.isAvailable(this.cachedState)) {
+                synchronized (this.cachedState) {
+                    NodeSelectorState.updateStatus(getHost(), this.cachedGroupState, this.cachedState);
+                }
+            }
             op.setBody(this.cachedState).complete();
             return;
         }
