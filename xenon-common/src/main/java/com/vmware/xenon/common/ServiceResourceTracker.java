@@ -362,14 +362,14 @@ class ServiceResourceTracker {
         if (state.documentExpirationTimeMicros > 0
                 && state.documentExpirationTimeMicros < state.documentUpdateTimeMicros) {
             // state expired, clear from cache
-            stopService(s, true, op);
+            stopService(s, true, state);
             return null;
         }
 
         return state;
     }
 
-    private void stopService(Service s, boolean isExpired, Operation op) {
+    private void stopService(Service s, boolean isExpired, ServiceDocument state) {
         if (s == null) {
             return;
         }
@@ -379,6 +379,7 @@ class ServiceResourceTracker {
         }
         // Issue DELETE to stop the service
         Operation deleteExp = Operation.createDelete(this.host, s.getSelfLink())
+                .setBody(state)
                 .disableFailureLogging(true)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_FORWARDING)
@@ -473,7 +474,7 @@ class ServiceResourceTracker {
                     // we do not clear cache or stop in memory services but we do check expiration
                     if (s.documentExpirationTimeMicros > 0
                             && s.documentExpirationTimeMicros < now) {
-                        stopService(service, true, null);
+                        stopService(service, true, s);
                     }
                     continue;
                 }

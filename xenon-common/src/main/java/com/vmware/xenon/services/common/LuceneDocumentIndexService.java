@@ -3227,6 +3227,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                     indexingId = lastIndexingId;
                     lastIndexingId = visitor.documentIndexingId;
                     lastUpdateAction = visitor.documentUpdateAction;
+                } else if (visitor.documentVersion == highestVersion) {
+                    continue;
                 } else {
                     indexingId = visitor.documentIndexingId;
                 }
