@@ -39,10 +39,12 @@ import java.util.stream.Collectors;
 import com.vmware.xenon.common.DeferredResult;
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.FactoryService.FactoryServiceConfiguration;
+import com.vmware.xenon.common.NodeSelectorState;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.OperationJoin;
 import com.vmware.xenon.common.Service;
+import com.vmware.xenon.common.ServiceConfiguration;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
@@ -618,7 +620,16 @@ public class MigrationTaskService extends StatefulService {
             destDeferred.complete(DUMMY_OBJECT);
         }
 
+
+
         DeferredResult.allOf(sourceDeferred, destDeferred)
+                .thenCompose(aVoid -> {
+                    DeferredResult<Object> nodeSelectorAvailabilityDeferred = new DeferredResult<>();
+                    waitNodeSelectorAreStable(
+                            currentState, currentState.sourceReferences, currentState.sourceFactoryLink,
+                            currentState.maximumConvergenceChecks, nodeSelectorAvailabilityDeferred);
+                    return nodeSelectorAvailabilityDeferred;
+                })
                 .thenAccept(aVoid -> {
                     computeFirstCurrentPageLinks(currentState, currentState.sourceReferences, currentState.destinationReferences);
                 })
@@ -626,7 +637,6 @@ public class MigrationTaskService extends StatefulService {
                     failTask(throwable);
                     return null;
                 });
-
     }
 
     private List<URI> filterAvailableNodeUris(NodeGroupState destinationGroup) {
@@ -663,6 +673,76 @@ public class MigrationTaskService extends StatefulService {
         NodeGroupUtils.checkConvergence(getHost(), nodeGroupReference, callbackOp);
     }
 
+    private void waitNodeSelectorAreStable(State currentState, List<URI> sourceURIs, String factoryLink, int maxRetry, DeferredResult<Object> deferredResult) {
+        Set<Operation> getOps = sourceURIs.stream()
+                .map(sourceUri -> {
+                    URI uri = UriUtils.buildUri(sourceUri, factoryLink);
+                    return Operation.createGet(UriUtils.buildConfigUri(uri));
+                })
+                .collect(Collectors.toSet());
+
+        OperationJoin.create(getOps)
+                .setCompletion((os, ts) -> {
+                    if (ts != null && !ts.isEmpty()) {
+                        String msg = "Failed to get factory config from all source nodes";
+                        logSevere(msg);
+                        deferredResult.fail(new Exception(msg));
+                        return;
+                    }
+
+                    String peerNodeSelectorPath = os.values().stream()
+                            .map(operation -> operation.getBody(ServiceConfiguration.class).peerNodeSelectorPath)
+                            .filter(selectorPath -> selectorPath != null)
+                            .findFirst().get();
+
+                    waitNodeSelectorAreStableRetry(currentState, sourceURIs, maxRetry, peerNodeSelectorPath, deferredResult);
+                })
+                .sendWith(this);
+    }
+
+    private void waitNodeSelectorAreStableRetry(State currentState, List<URI> sourceURIs, int maxRetry, String peerNodeSelectorPath, DeferredResult<Object> deferredResult) {
+        if (maxRetry <= 0) {
+            String msg = String.format("Failed to verify availability of all node selector paths after %s retries",
+                    currentState.maximumConvergenceChecks);
+            logSevere(msg);
+            deferredResult.fail(new Exception(msg));
+            return;
+        }
+
+        Set<Operation> getOps = sourceURIs.stream()
+                .map(sourceUri ->
+                        Operation.createGet(UriUtils.buildUri(sourceUri, peerNodeSelectorPath)))
+                .collect(Collectors.toSet());
+
+        OperationJoin.create(getOps)
+                .setCompletion((os, ts) -> {
+                    if (ts != null && !ts.isEmpty()) {
+                        logInfo("Failed (%s) to get reply from all (%s) Node Selectors, scheduling retry #%d.",
+                                ts.size(), os.size(), maxRetry);
+                        getHost().schedule(() -> waitNodeSelectorAreStableRetry(
+                                currentState, sourceURIs, maxRetry - 1, peerNodeSelectorPath, deferredResult),
+                                currentState.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
+                        return;
+                    }
+
+                    List<NodeSelectorState.Status> availableNodeSelectors = os.values().stream()
+                            .map(operation -> operation.getBody(NodeSelectorState.class).status)
+                            .filter(status -> status.equals(NodeSelectorState.Status.AVAILABLE))
+                            .collect(Collectors.toList());
+
+                    if (availableNodeSelectors.size() != sourceURIs.size()) {
+                        logInfo("Not all (%d) Node Selectors are available (%d) , scheduling retry #%d.",
+                                sourceURIs.size(), availableNodeSelectors.size(), maxRetry);
+                        getHost().schedule(() -> waitNodeSelectorAreStableRetry(
+                                currentState, sourceURIs, maxRetry - 1, peerNodeSelectorPath, deferredResult),
+                                currentState.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
+                    } else {
+                        logInfo("Node Selectors are available.");
+                        deferredResult.complete(null);
+                    }
+                })
+                .sendWith(this);
+    }
 
     private void computeFirstCurrentPageLinks(State currentState, List<URI> sourceURIs, List<URI> destinationURIs) {
         logInfo("Node groups are stable. Computing pages to be migrated...");
