@@ -32,6 +32,7 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -339,6 +340,65 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         assertEquals(initState.destinationNodeGroupReference, result.destinationNodeGroupReference);
         assertEquals(initState.sourceFactoryLink, result.sourceFactoryLink);
         assertEquals(initState.sourceNodeGroupReference, result.sourceNodeGroupReference);
+    }
+
+    @Test
+    public void failMigrationWithNodeSelectorNotConverged() throws Throwable {
+        // create objects in the source node-group
+        createExampleDocuments(this.exampleSourceFactory, getSourceHost(), this.serviceCount);
+
+        try {
+            // disable peer synchronization on each source host.
+            Iterator<VerificationHost> peerIt = this.host.getInProcessHostMap().values().iterator();
+            VerificationHost peerNode = null;
+            while (peerIt.hasNext()) {
+                peerNode = peerIt.next();
+                peerNode.setPeerSynchronizationEnabled(false);
+            }
+            assertNotNull(peerNode);
+
+            // Stop the last peerNode and add a new node to the group
+            this.host.stopHost(peerNode);
+            VerificationHost newHost = VerificationHost.create(0);
+            newHost.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(
+                    VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
+            newHost.setPeerSynchronizationEnabled(false);
+            newHost.start();
+            newHost.waitForServiceAvailable(ExampleService.FACTORY_LINK);
+            this.host.addPeerNode(newHost);
+            this.host.joinNodesAndVerifyConvergence(this.nodeCount, true);
+
+            // Kick-off migration
+            MigrationTaskService.State migrationState = validMigrationState(
+                    ExampleService.FACTORY_LINK);
+            TestContext ctx = this.host.testCreate(1);
+            String[] out = new String[1];
+            Operation op = Operation.createPost(this.destinationFactoryUri)
+                    .setBody(migrationState)
+                    .setReferer(this.host.getUri())
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            this.host.log("Post service error: %s", Utils.toString(e));
+                            ctx.failIteration(e);
+                            return;
+                        }
+                        out[0] = o.getBody(State.class).documentSelfLink;
+                        ctx.completeIteration();
+                    });
+            getDestinationHost().send(op);
+            ctx.await();
+
+            // Wait for the migration task to fail
+            State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
+            assertEquals(waitForServiceCompletion.taskInfo.stage, TaskStage.FAILED);
+            waitForServiceCompletion.taskInfo.failure.message.contains("Failed to contact all node selector paths");
+        } finally {
+            Iterator<VerificationHost> peerIt = this.host.getInProcessHostMap().values().iterator();
+            while (peerIt.hasNext()) {
+                VerificationHost peerNode = peerIt.next();
+                this.host.stopHost(peerNode);
+            }
+        }
     }
 
     @Test
