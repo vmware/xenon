@@ -32,6 +32,7 @@ import java.util.TreeSet;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -287,6 +288,23 @@ public class MigrationTaskService extends StatefulService {
          * finished successfully.
          */
         public Long latestSourceUpdateTimeMicros = 0L;
+
+        /**
+         * Contains document Self that were selected for migration.
+         *
+         * This property is not indexed and is only used for book-keeping during
+         * the migratino process.
+         */
+        public Set<String> migratedSelfLinks = new ConcurrentSkipListSet<>();
+
+        /**
+         * Contains document Self that were not-selected for migration because
+         * of documentOwner mismatches.
+         *
+         * This property is not indexed and is only used for book-keeping during
+         * the migratino process.
+         */
+        public Set<String> nonMigratedSelfLinks = new ConcurrentSkipListSet<>();
 
         @Override
         public String toString() {
@@ -756,6 +774,22 @@ public class MigrationTaskService extends StatefulService {
         // will call here with empty currentPageLinks.
         // In that case, this has processed all entries, thus self patch to mark finish, then exit.
         if (currentPageLinks.isEmpty()) {
+            if (!currentState.nonMigratedSelfLinks.isEmpty()) {
+                logSevere("Some documents were not migrated due to ownership mismatches. SelfLinks: %s",
+                        Utils.toJson(currentState.nonMigratedSelfLinks));
+
+                failTask(new IllegalStateException(
+                        String.format("%d documents were not migrated due to ownership mismatches.",
+                                currentState.nonMigratedSelfLinks.size())));
+
+                // These fields are only used for bookkeeping. They don't need to be
+                // persisted, hence setting them to NULL so that they get garbage collected.
+                currentState.migratedSelfLinks = null;
+                currentState.nonMigratedSelfLinks = null;
+
+                return;
+            }
+
             patchToFinished(lastUpdateTimesPerOwner);
             return;
         }
@@ -823,8 +857,17 @@ public class MigrationTaskService extends StatefulService {
 
                             URI hostUri = getHostUri(op);
                             hostUriByResult.put(doc, hostUri);
+
+                            // save selfLinks that were selected for migration.
+                            currentState.nonMigratedSelfLinks.remove(document.documentSelfLink);
+                            currentState.migratedSelfLinks.add(document.documentSelfLink);
                         } else {
                             ownerMissMatched++;
+
+                            // save selfLinks that were not selected due to own mismatch.
+                            if (!currentState.migratedSelfLinks.contains(document.documentSelfLink)) {
+                                currentState.nonMigratedSelfLinks.add(document.documentSelfLink);
+                            }
                         }
                     }
 
