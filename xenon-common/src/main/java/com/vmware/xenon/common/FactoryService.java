@@ -52,7 +52,6 @@ public abstract class FactoryService extends StatelessService {
     // be tried after 2 ^ 8 * getMaintenanceIntervalMicros(), which is ~4 minutes if maintenance interval is 1 second.
     public static final int MAX_SYNCH_RETRY_COUNT = Integer.getInteger(
             PROPERTY_NAME_MAX_SYNCH_RETRY_COUNT, 8);
-
     /**
      * Creates a factory service instance that starts the specified child service
      * on POST
@@ -941,11 +940,16 @@ public abstract class FactoryService extends StatelessService {
     @Override
     public void handleNodeGroupMaintenance(Operation maintOp) {
         if (hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-            // on demand load child services are synchronized on first use, or when an explicit
-            // migration task runs
-            setAvailable(true);
-            maintOp.complete();
-            return;
+            boolean odlSync =
+                    Boolean.valueOf(System.getProperty(SynchronizationTaskService.PROPERTY_NAME_ENABLE_ODL_SYNCHRONIZATION));
+            if (!odlSync) {
+                // on demand load child services are synchronized on first use, or when an explicit
+                // migration task runs
+                logWarning("No sync during node-group maintenance for ON_DEMAND_LOAD service");
+                setAvailable(true);
+                maintOp.complete();
+                return;
+            }
         }
         synchronizeChildServicesIfOwner(maintOp);
     }
@@ -997,9 +1001,13 @@ public abstract class FactoryService extends StatelessService {
 
     private void startFactorySynchronizationTask(Operation parentOp, Long membershipUpdateTimeMicros) {
         if (this.childOptions.contains(ServiceOption.ON_DEMAND_LOAD)) {
-            setAvailable(true);
-            parentOp.complete();
-            return;
+            boolean odlSync =
+                    Boolean.valueOf(System.getProperty(SynchronizationTaskService.PROPERTY_NAME_ENABLE_ODL_SYNCHRONIZATION));
+            if (!odlSync) {
+                setAvailable(true);
+                parentOp.complete();
+                return;
+            }
         }
 
         SynchronizationTaskService.State task = createSynchronizationTaskState(
