@@ -99,7 +99,9 @@ public class StatefulService implements Service {
 
     @Override
     public Service.ProcessingStage getProcessingStage() {
-        return this.context.processingStage;
+        synchronized (this.context) {
+            return this.context.processingStage;
+        }
     }
 
     @Override

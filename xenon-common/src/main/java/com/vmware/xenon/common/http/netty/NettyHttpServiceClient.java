@@ -703,6 +703,13 @@ public class NettyHttpServiceClient implements ServiceClient {
             return;
         }
 
+        synchronized (this.startSync) {
+            if (this.isStarted == false) {
+                op.fail(new CancellationException());
+                return;
+            }
+        }
+
         boolean isRetryRequested = op.getRetryCount() > 0 && op.decrementRetriesRemaining() >= 0;
 
         if (isRetryRequested) {
