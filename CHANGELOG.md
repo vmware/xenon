@@ -1,6 +1,10 @@
 # CHANGELOG
 
 ## 1.5.5-SNAPSHOT
+* Added JVM property - enableOdlSynchronization. If set as true, then
+synchronization task will be triggered for ON_DEMAND_LOAD service.
+Otherwise, warning message - "No sync during node-group maintenance"
+will be shown. By default, the property set as false.
 
 * Removed service pause/resume, as the marginal value over stop/start does not
   justify the increased complexity. This includes a small change to the Service
