@@ -1,6 +1,13 @@
 # CHANGELOG
 
-## 1.5.4-SNAPSHOT
+## 1.5.5-SNAPSHOT
+
+## 1.5.4
+
+* Updates to migration task service to assert zero documentOwner mismatches 
+  while migrating services that don't use ServiceOption ON_DEMAND_LOAD.
+  This avoids cases when some stateful services fail to migrate due because
+  of pending synchronization.
 
 ## 1.5.3
 

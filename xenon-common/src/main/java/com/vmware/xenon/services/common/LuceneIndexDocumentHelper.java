@@ -14,6 +14,10 @@
 package com.vmware.xenon.services.common;
 
 import java.net.URI;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
@@ -24,7 +28,6 @@ import java.util.Map.Entry;
 
 import com.esotericsoftware.kryo.KryoException;
 import com.esotericsoftware.kryo.io.Output;
-
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.DoublePoint;
 import org.apache.lucene.document.Field;
@@ -48,7 +51,6 @@ import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.serialization.KryoSerializers;
-
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 
 /**
@@ -457,8 +459,20 @@ class LuceneIndexDocumentHelper {
             isSortedField = false;
         } else if (pd.typeName.equals(TypeName.DATE)) {
             // Index as microseconds since UNIX epoch
-            long value = ((Date) v).getTime() * 1000;
-            addNumericField(fieldName, value, isStored, isCollectionItem, false);
+            long micros = 0;
+            if (v instanceof Date) {
+                micros = ((Date) v).getTime() * 1000;
+            } else if (v instanceof ZonedDateTime) {
+                Instant inst = ((ZonedDateTime) v).toInstant();
+                micros = instantToMicros(inst);
+            } else if (v instanceof Instant) {
+                Instant inst = (Instant) v;
+                micros = instantToMicros(inst);
+            } else if (v instanceof LocalDateTime) {
+                Instant inst = ((LocalDateTime) v).atZone(ZoneId.systemDefault()).toInstant();
+                micros = instantToMicros(inst);
+            }
+            addNumericField(fieldName, micros, isStored, isCollectionItem, false);
             isSortedField = false;
         } else if (pd.typeName.equals(TypeName.DOUBLE)) {
             double value = ((Number) v).doubleValue();
@@ -503,6 +517,13 @@ class LuceneIndexDocumentHelper {
         if (luceneDocValuesField != null) {
             this.doc.add(luceneDocValuesField);
         }
+    }
+
+    private long instantToMicros(Instant inst) {
+        long micros;
+        micros = inst.getEpochSecond() * 1000 * 1000;
+        micros += inst.getNano() / 1000;
+        return micros;
     }
 
     private void addObjectIndexableFieldToDocument(Object v, PropertyDescription pd,

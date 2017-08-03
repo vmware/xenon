@@ -32,16 +32,19 @@ import java.util.TreeSet;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import com.vmware.xenon.common.DeferredResult;
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.FactoryService.FactoryServiceConfiguration;
+import com.vmware.xenon.common.NodeSelectorState;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.OperationJoin;
 import com.vmware.xenon.common.Service;
+import com.vmware.xenon.common.ServiceConfiguration;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
@@ -287,6 +290,28 @@ public class MigrationTaskService extends StatefulService {
          * finished successfully.
          */
         public Long latestSourceUpdateTimeMicros = 0L;
+
+        /**
+         * Child options used by the factory being migrated.
+         */
+        public EnumSet<ServiceOption> factoryChildOptions;
+
+        /**
+         * Contains self-links that were selected for migration.
+         *
+         * This property is not indexed and is only used for book-keeping during
+         * the migration process.
+         */
+        public Set<String> migratedSelfLinks = new ConcurrentSkipListSet<>();
+
+        /**
+         * Contains self-links that were not-selected for migration because
+         * of documentOwner mismatches.
+         *
+         * This property is not indexed and is only used for book-keeping during
+         * the migration process.
+         */
+        public Set<String> nonMigratedSelfLinks = new ConcurrentSkipListSet<>();
 
         @Override
         public String toString() {
@@ -595,7 +620,16 @@ public class MigrationTaskService extends StatefulService {
             destDeferred.complete(DUMMY_OBJECT);
         }
 
+
+
         DeferredResult.allOf(sourceDeferred, destDeferred)
+                .thenCompose(aVoid -> {
+                    DeferredResult<Object> nodeSelectorAvailabilityDeferred = new DeferredResult<>();
+                    waitNodeSelectorAreStable(
+                            currentState, currentState.sourceReferences, currentState.sourceFactoryLink,
+                            currentState.maximumConvergenceChecks, nodeSelectorAvailabilityDeferred);
+                    return nodeSelectorAvailabilityDeferred;
+                })
                 .thenAccept(aVoid -> {
                     computeFirstCurrentPageLinks(currentState, currentState.sourceReferences, currentState.destinationReferences);
                 })
@@ -603,7 +637,6 @@ public class MigrationTaskService extends StatefulService {
                     failTask(throwable);
                     return null;
                 });
-
     }
 
     private List<URI> filterAvailableNodeUris(NodeGroupState destinationGroup) {
@@ -640,6 +673,76 @@ public class MigrationTaskService extends StatefulService {
         NodeGroupUtils.checkConvergence(getHost(), nodeGroupReference, callbackOp);
     }
 
+    private void waitNodeSelectorAreStable(State currentState, List<URI> sourceURIs, String factoryLink, int maxRetry, DeferredResult<Object> deferredResult) {
+        Set<Operation> getOps = sourceURIs.stream()
+                .map(sourceUri -> {
+                    URI uri = UriUtils.buildUri(sourceUri, factoryLink);
+                    return Operation.createGet(UriUtils.buildConfigUri(uri));
+                })
+                .collect(Collectors.toSet());
+
+        OperationJoin.create(getOps)
+                .setCompletion((os, ts) -> {
+                    if (ts != null && !ts.isEmpty()) {
+                        String msg = "Failed to get factory config from all source nodes";
+                        logSevere(msg);
+                        deferredResult.fail(new Exception(msg));
+                        return;
+                    }
+
+                    String peerNodeSelectorPath = os.values().stream()
+                            .map(operation -> operation.getBody(ServiceConfiguration.class).peerNodeSelectorPath)
+                            .filter(selectorPath -> selectorPath != null)
+                            .findFirst().get();
+
+                    waitNodeSelectorAreStableRetry(currentState, sourceURIs, maxRetry, peerNodeSelectorPath, deferredResult);
+                })
+                .sendWith(this);
+    }
+
+    private void waitNodeSelectorAreStableRetry(State currentState, List<URI> sourceURIs, int maxRetry, String peerNodeSelectorPath, DeferredResult<Object> deferredResult) {
+        if (maxRetry <= 0) {
+            String msg = String.format("Failed to verify availability of all node selector paths after %s retries",
+                    currentState.maximumConvergenceChecks);
+            logSevere(msg);
+            deferredResult.fail(new Exception(msg));
+            return;
+        }
+
+        Set<Operation> getOps = sourceURIs.stream()
+                .map(sourceUri ->
+                        Operation.createGet(UriUtils.buildUri(sourceUri, peerNodeSelectorPath)))
+                .collect(Collectors.toSet());
+
+        OperationJoin.create(getOps)
+                .setCompletion((os, ts) -> {
+                    if (ts != null && !ts.isEmpty()) {
+                        logInfo("Failed (%s) to get reply from all (%s) Node Selectors, scheduling retry #%d.",
+                                ts.size(), os.size(), maxRetry);
+                        getHost().schedule(() -> waitNodeSelectorAreStableRetry(
+                                currentState, sourceURIs, maxRetry - 1, peerNodeSelectorPath, deferredResult),
+                                currentState.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
+                        return;
+                    }
+
+                    List<NodeSelectorState.Status> availableNodeSelectors = os.values().stream()
+                            .map(operation -> operation.getBody(NodeSelectorState.class).status)
+                            .filter(status -> status.equals(NodeSelectorState.Status.AVAILABLE))
+                            .collect(Collectors.toList());
+
+                    if (availableNodeSelectors.size() != sourceURIs.size()) {
+                        logInfo("Not all (%d) Node Selectors are available (%d) , scheduling retry #%d.",
+                                sourceURIs.size(), availableNodeSelectors.size(), maxRetry);
+                        getHost().schedule(() -> waitNodeSelectorAreStableRetry(
+                                currentState, sourceURIs, maxRetry - 1, peerNodeSelectorPath, deferredResult),
+                                currentState.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
+                    } else {
+                        logInfo("Node Selectors are available.");
+                        deferredResult.complete(null);
+                    }
+                })
+                .sendWith(this);
+    }
 
     private void computeFirstCurrentPageLinks(State currentState, List<URI> sourceURIs, List<URI> destinationURIs) {
         logInfo("Node groups are stable. Computing pages to be migrated...");
@@ -656,6 +759,7 @@ public class MigrationTaskService extends StatefulService {
         this.sendWithDeferredResult(configGet)
                 .thenCompose(op -> {
                     FactoryServiceConfiguration factoryConfig = op.getBody(FactoryServiceConfiguration.class);
+                    currentState.factoryChildOptions = factoryConfig.childOptions;
 
                     QueryTask countQuery = QueryTask.Builder.createDirectTask()
                             .addOption(QueryOption.COUNT)
@@ -756,6 +860,22 @@ public class MigrationTaskService extends StatefulService {
         // will call here with empty currentPageLinks.
         // In that case, this has processed all entries, thus self patch to mark finish, then exit.
         if (currentPageLinks.isEmpty()) {
+            if (!currentState.nonMigratedSelfLinks.isEmpty()) {
+                logSevere("Some documents were not migrated due to ownership mismatches. SelfLinks: %s",
+                        Utils.toJson(currentState.nonMigratedSelfLinks));
+
+                failTask(new IllegalStateException(
+                        String.format("%d documents were not migrated due to ownership mismatches.",
+                                currentState.nonMigratedSelfLinks.size())));
+
+                // These fields are only used for bookkeeping. They don't need to be
+                // persisted, hence setting them to NULL so that they get garbage collected.
+                currentState.migratedSelfLinks = null;
+                currentState.nonMigratedSelfLinks = null;
+
+                return;
+            }
+
             patchToFinished(lastUpdateTimesPerOwner);
             return;
         }
@@ -823,8 +943,20 @@ public class MigrationTaskService extends StatefulService {
 
                             URI hostUri = getHostUri(op);
                             hostUriByResult.put(doc, hostUri);
+
+                            if (!currentState.factoryChildOptions.contains(ServiceOption.ON_DEMAND_LOAD)) {
+                                // save selfLinks that were selected for migration.
+                                currentState.nonMigratedSelfLinks.remove(document.documentSelfLink);
+                                currentState.migratedSelfLinks.add(document.documentSelfLink);
+                            }
                         } else {
                             ownerMissMatched++;
+
+                            // save selfLinks that were not selected due to own mismatch.
+                            if (!currentState.factoryChildOptions.contains(ServiceOption.ON_DEMAND_LOAD) &&
+                                    !currentState.migratedSelfLinks.contains(document.documentSelfLink)) {
+                                currentState.nonMigratedSelfLinks.add(document.documentSelfLink);
+                            }
                         }
                     }
 

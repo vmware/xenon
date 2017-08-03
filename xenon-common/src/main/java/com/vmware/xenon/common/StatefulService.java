@@ -1821,10 +1821,10 @@ public class StatefulService implements Service {
                         "Cannot assign exampleValue: '%s' to field: %s of type: %s",
                         pd.exampleValue, pd.accessor.getName(), pd.accessor.getType());
                 logSevere(msg);
-                throw (new RuntimeException(msg, e));
+                throw new RuntimeException(msg, e);
             } catch (Exception e) {
                 logSevere(e);
-                throw (new RuntimeException(e));
+                throw new RuntimeException(e);
             }
         }
         // build true Kind
