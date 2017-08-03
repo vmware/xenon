@@ -53,6 +53,8 @@ public abstract class FactoryService extends StatelessService {
     public static final int MAX_SYNCH_RETRY_COUNT = Integer.getInteger(
             PROPERTY_NAME_MAX_SYNCH_RETRY_COUNT, 8);
 
+    public static boolean odlSync =
+            Boolean.valueOf(System.getProperty(SynchronizationTaskService.PROPERTY_NAME_ENABLE_ODL_SYNCHRONIZATION));
     /**
      * Creates a factory service instance that starts the specified child service
      * on POST
@@ -947,11 +949,14 @@ public abstract class FactoryService extends StatelessService {
     @Override
     public void handleNodeGroupMaintenance(Operation maintOp) {
         if (hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-            // on demand load child services are synchronized on first use, or when an explicit
-            // migration task runs
-            setAvailable(true);
-            maintOp.complete();
-            return;
+            if (!this.odlSync) {
+                // on demand load child services are synchronized on first use, or when an explicit
+                // migration task runs
+                logSevere(String.format("No sync during maintenance for ON_DEMAND_SERVICE"));
+                setAvailable(true);
+                maintOp.complete();
+                return;
+            }
         }
         synchronizeChildServicesIfOwner(maintOp);
     }
@@ -1003,9 +1008,13 @@ public abstract class FactoryService extends StatelessService {
 
     private void startFactorySynchronizationTask(Operation parentOp, Long membershipUpdateTimeMicros) {
         if (this.childOptions.contains(ServiceOption.ON_DEMAND_LOAD)) {
-            setAvailable(true);
-            parentOp.complete();
-            return;
+            boolean odlSync =
+                    Boolean.valueOf(System.getProperty(SynchronizationTaskService.PROPERTY_NAME_ENABLE_ODL_SYNCHRONIZATION));
+            if (!odlSync) {
+                setAvailable(true);
+                parentOp.complete();
+                return;
+            }
         }
 
         SynchronizationTaskService.State task = createSynchronizationTaskState(
