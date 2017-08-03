@@ -88,6 +88,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
     public int updateCount = 10;
     public int serviceCount = 10;
     public int nodeCount = 3;
+    public boolean enableODLSynchronization = true;
 
     private BiPredicate<ExampleServiceState, ExampleServiceState> exampleStateConvergenceChecker = (
             initial, current) -> {
@@ -119,6 +120,11 @@ public class TestSynchronizationTaskService extends BasicTestCase {
                 InMemoryLuceneDocumentIndexService.SELF_LINK);
 
         this.host.startFactory(InMemoryExampleService.class, InMemoryExampleService::createFactory);
+        this.host.startFactory(ExampleODLService.class, ExampleODLService::createFactory);
+        if (this.enableODLSynchronization) {
+            System.setProperty(
+                    SynchronizationTaskService.PROPERTY_NAME_ENABLE_ODL_SYNCHRONIZATION, "true");
+        }
     }
 
     @Before
@@ -126,8 +132,12 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         CommandLineArgumentParser.parseFromProperties(this);
         URI exampleFactoryUri = UriUtils.buildUri(
                 this.host.getUri(), ExampleService.FACTORY_LINK);
+        URI exampleODLFactoryUri = UriUtils.buildUri(
+                this.host.getUri(), ExampleODLService.FACTORY_LINK);
         this.host.waitForReplicatedFactoryServiceAvailable(
                 exampleFactoryUri);
+        this.host.waitForReplicatedFactoryServiceAvailable(
+                exampleODLFactoryUri);
     }
 
     private void setUpMultiNode() throws Throwable {
@@ -149,7 +159,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
                 this.host.getPeerServiceUri(InMemoryExampleService.FACTORY_LINK));
         this.host.waitForReplicatedFactoryServiceAvailable(inMemoryExampleFactoryUri);
         URI ODLExampleFactoryUri = UriUtils.buildUri(
-                this.host.getPeerServiceUri(InMemoryExampleService.FACTORY_LINK));
+                this.host.getPeerServiceUri(ExampleODLService.FACTORY_LINK));
         this.host.waitForReplicatedFactoryServiceAvailable(ODLExampleFactoryUri);
 
     }
@@ -167,13 +177,23 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         // is started on a non-owner node, the task should
         // self-cancel.
         setUpMultiNode();
+
         ownershipValidationDo(ExampleService.FACTORY_LINK);
         ownershipValidationDo(InMemoryExampleService.FACTORY_LINK);
+        ownershipValidationDo(ExampleODLService.FACTORY_LINK);
     }
 
     public void ownershipValidationDo(String factoryLink) throws Throwable {
-        this.host.createExampleServices(this.host.getPeerHost(), this.serviceCount, null, false, factoryLink);
-
+        boolean skipAvailabilityCheck = false;
+        if (factoryLink.equals(ExampleODLService.FACTORY_LINK)) {
+            if (this.enableODLSynchronization) {
+                // ODL Service is not cached
+                skipAvailabilityCheck = true;
+            } else {
+                return;
+            }
+        }
+        this.host.createExampleServices(this.host.getPeerHost(), this.serviceCount, null, skipAvailabilityCheck, factoryLink);
         long membershipUpdateTimeMicros = getLatestMembershipUpdateTime(this.host.getPeerHostUri());
 
         SynchronizationTaskService.State task = createSynchronizationTaskState(membershipUpdateTimeMicros, factoryLink);
@@ -187,7 +207,6 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         TestRequestSender sender = new TestRequestSender(this.host);
         List<SynchronizationTaskService.State> results = sender
                 .sendAndWait(ops, SynchronizationTaskService.State.class);
-
         int finishedCount = 0;
         for (SynchronizationTaskService.State r : results) {
             assertTrue(r.taskInfo.stage == TaskState.TaskStage.FINISHED ||
@@ -288,10 +307,20 @@ public class TestSynchronizationTaskService extends BasicTestCase {
     public void synchCounts() throws Throwable {
         synchCountsDo(ExampleService.FACTORY_LINK);
         synchCountsDo(InMemoryExampleService.FACTORY_LINK);
+        synchCountsDo(ExampleODLService.FACTORY_LINK);
     }
 
     public void synchCountsDo(String factoryLink) throws Throwable {
-        this.host.createExampleServices(this.host, this.serviceCount, null, false, factoryLink);
+        boolean skipAvailabilityCheck = false;
+        if (factoryLink.equals(ExampleODLService.FACTORY_LINK)) {
+            if (this.enableODLSynchronization) {
+                // ODL Service is not cached
+                skipAvailabilityCheck = true;
+            } else {
+                return;
+            }
+        }
+        this.host.createExampleServices(this.host, this.serviceCount, null, skipAvailabilityCheck, factoryLink);
         SynchronizationTaskService.State task = createSynchronizationTaskState(Long.MAX_VALUE, factoryLink);
 
         // Add pagination in query results.
@@ -382,6 +411,27 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         return newState;
     }
 
+    private VerificationHost restartHost(VerificationHost hostToRestart) throws Throwable {
+        this.host.stopHostAndPreserveState(hostToRestart);
+        this.host.waitForNodeGroupConvergence(this.nodeCount - 1, this.nodeCount - 1);
+
+        hostToRestart.setPort(0);
+        VerificationHost.restartStatefulHost(hostToRestart, false);
+
+        // Start in-memory index service, and in-memory example factory.
+        hostToRestart.addPrivilegedService(InMemoryLuceneDocumentIndexService.class);
+        hostToRestart.startFactory(InMemoryExampleService.class, InMemoryExampleService::createFactory);
+        hostToRestart.startServiceAndWait(InMemoryLuceneDocumentIndexService.class,
+                InMemoryLuceneDocumentIndexService.SELF_LINK);
+
+        hostToRestart.addPrivilegedService(ExampleODLService.class);
+        hostToRestart.startFactory(ExampleODLService.class, ExampleODLService::createFactory);
+
+        this.host.addPeerNode(hostToRestart);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+        return hostToRestart;
+    }
+
     @Test
     public void consistentStateAfterOwnerStops() throws Throwable {
         setUpMultiNode();
@@ -392,12 +442,6 @@ public class TestSynchronizationTaskService extends BasicTestCase {
     public void consistentStateAfterOwnerStopsInMemoryService() throws Throwable {
         setUpMultiNode();
         consistentStateAfterOwnerStop(InMemoryExampleService.FACTORY_LINK);
-    }
-
-    @Test
-    public void consistentStateAfterOwnerStopsODLService() throws Throwable {
-        setUpMultiNode();
-        consistentStateAfterOwnerStop(ExampleODLService.FACTORY_LINK);
     }
 
     public void consistentStateAfterOwnerStop(
@@ -458,25 +502,99 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         assertNotEquals(newState.documentOwner, state.documentOwner);
     }
 
-    private VerificationHost restartHost(VerificationHost hostToRestart) throws Throwable {
-        this.host.stopHostAndPreserveState(hostToRestart);
-        this.host.waitForNodeGroupConvergence(this.nodeCount - 1, this.nodeCount - 1);
+    @Test
+    public void consistentStateAfterOwnerStopsODLService() throws Throwable {
+        setUpMultiNode();
+        consistentOdlStateAfterOwnerStop(ExampleODLService.FACTORY_LINK);
+    }
 
-        hostToRestart.setPort(0);
-        VerificationHost.restartStatefulHost(hostToRestart, false);
+    public void consistentOdlStateAfterOwnerStop(
+            String factoryLink) throws Throwable {
+        long patchCount = 5;
+        TestRequestSender sender = new TestRequestSender(this.host);
+        this.host.setNodeGroupQuorum(this.nodeCount - 1);
+        this.host.waitForNodeGroupConvergence();
+        for (VerificationHost host : this.host.getInProcessHostMap().values()) {
+            this.host.log(String.format("%s:%d", host.getId(), host.getPort()));
+        }
 
-        // Start in-memory index service, and in-memory example factory.
-        hostToRestart.addPrivilegedService(InMemoryLuceneDocumentIndexService.class);
-        hostToRestart.startFactory(InMemoryExampleService.class, InMemoryExampleService::createFactory);
-        hostToRestart.startServiceAndWait(InMemoryLuceneDocumentIndexService.class,
-                InMemoryLuceneDocumentIndexService.SELF_LINK);
+        List<ExampleServiceState> exampleStates = this.host.createExampleServices(
+                this.host.getPeerHost(), this.serviceCount, null, factoryLink);
 
-        hostToRestart.addPrivilegedService(ExampleODLService.class);
-        hostToRestart.startFactory(ExampleODLService.class, ExampleODLService::createFactory);
+        Map<String, ExampleServiceState> exampleStatesMap =
+                exampleStates.stream().collect(Collectors.toMap(s -> s.documentSelfLink, s -> s));
 
-        this.host.addPeerNode(hostToRestart);
-        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
-        return hostToRestart;
+        ExampleServiceState state = exampleStatesMap.entrySet().iterator().next().getValue();
+
+        VerificationHost owner = this.host.getInProcessHostMap().values().stream()
+                .filter(host -> host.getId().contentEquals(state.documentOwner)).findFirst()
+                .orElseThrow(() -> new RuntimeException("couldn't find owner node"));
+
+        // Send updates to all services and check consistency after owner stops
+        for (ExampleServiceState st : exampleStates) {
+            for (int i = 1; i <= patchCount; i++) {
+                URI serviceUri = UriUtils.buildUri(owner, st.documentSelfLink);
+                ExampleServiceState s = new ExampleServiceState();
+                s.counter = (long) i + st.counter;
+                Operation patch = Operation.createPatch(serviceUri).setBody(s);
+                sender.sendAndWait(patch);
+            }
+        }
+        this.host.log(String.format("Patch done"));
+        this.host.waitForReplicatedFactoryChildServiceConvergence(
+                this.host.getNodeGroupToFactoryMap(factoryLink),
+                exampleStatesMap,
+                this.exampleStateConvergenceChecker,
+                exampleStatesMap.size(),
+                patchCount, this.nodeCount);
+
+        this.host.log(String.format("Patch converged"));
+        // Stop the current owner and make sure that new owner is selected and state is consistent
+        this.host.stopHost(owner);
+        VerificationHost peer = this.host.getPeerHost();
+        this.host.log(String.format("this.host %s:%d, peer %s:%d, stopped owner %s:%d, link %s",
+                this.host.getId(), this.host.getPort(), peer.getId(), peer.getPort(), owner.getId(), owner.getPort(), state.documentSelfLink));
+
+        this.host.waitForNodeGroupConvergence(this.nodeCount - 1);
+        URI ODLExampleFactoryUri = UriUtils.buildUri(
+                this.host.getPeerServiceUri(ExampleODLService.FACTORY_LINK));
+        this.host.waitForReplicatedFactoryServiceAvailable(ODLExampleFactoryUri);
+
+        this.host.log(String.format("Factory available"));
+        if (this.enableODLSynchronization) {
+            this.host.waitFor("Not converged", () -> {
+                URI factoryUri = UriUtils.buildUri(peer, factoryLink);
+                Operation queryFactory = Operation.createGet(UriUtils.buildExpandLinksQueryUri(factoryUri));
+                ServiceDocumentQueryResult result = sender.sendAndWait(queryFactory, ServiceDocumentQueryResult.class);
+                assertEquals(this.serviceCount, result.documentCount.longValue());
+
+                for (Object d : result.documents.values()) {
+                    ExampleServiceState s = Utils.fromJson(d, ExampleServiceState.class);
+                    // synchronization task triggered and owner reselected
+                    if (s.documentOwner.equals(state.documentOwner)) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+        } else {
+            // No synchronization
+            URI factoryUri = UriUtils.buildUri(peer, factoryLink);
+            Operation queryFactory = Operation.createGet(UriUtils.buildExpandLinksQueryUri(factoryUri));
+            ServiceDocumentQueryResult result = sender.sendAndWait(queryFactory, ServiceDocumentQueryResult.class);
+            assertEquals(this.serviceCount, result.documentCount.longValue());
+            ExampleServiceState oldState =
+                    Utils.fromJson(result.documents.get(state.documentSelfLink), ExampleServiceState.class);
+            assertEquals(state.documentOwner, oldState.documentOwner);
+        }
+        this.host.log("On demand get");
+        // On demand synchronization
+        Operation op = Operation.createGet(peer, state.documentSelfLink);
+        ExampleServiceState newState = sender.sendAndWait(op, ExampleServiceState.class);
+
+        assertNotNull(newState);
+        assertEquals((Long) (state.counter + patchCount), newState.counter);
+        assertNotEquals(newState.documentOwner, state.documentOwner);
     }
 
     @Test

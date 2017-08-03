@@ -703,6 +703,13 @@ public class NettyHttpServiceClient implements ServiceClient {
             return;
         }
 
+        synchronized (this.startSync) {
+            if (this.isStarted == false) {
+                op.fail(new CancellationException());
+                return;
+            }
+        }
+
         boolean isRetryRequested = op.getRetryCount() > 0 && op.decrementRetriesRemaining() >= 0;
 
         if (isRetryRequested) {
@@ -726,8 +733,8 @@ public class NettyHttpServiceClient implements ServiceClient {
             return;
         }
 
-        LOGGER.info(String.format("Retry %d of request %d from %s to %s due to %s",
-                op.getRetryCount() - op.getRetriesRemaining(), op.getId(), op.getRefererAsString(),
+        LOGGER.info(String.format("%s:%d Retry %d of request %d from %s to %s due to %s",
+                this.host.getId(), this.host.getPort(), op.getRetryCount() - op.getRetriesRemaining(), op.getId(), op.getRefererAsString(),
                 op.getUri(), e));
 
         int delaySeconds = op.getRetryCount() - op.getRetriesRemaining();
