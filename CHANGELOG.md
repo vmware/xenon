@@ -2,9 +2,14 @@
 
 ## 1.5.5-SNAPSHOT
 
+* Enable repeated @RouteDocumentation annotation. This enable richer Swagger
+  support for services marked as *URI_NAMESPACE_OWNER*.
+
+  https://www.pivotaltracker.com/n/projects/1471320/stories/143529775
+
 ## 1.5.4
 
-* Updates to migration task service to assert zero documentOwner mismatches 
+* Updates to migration task service to assert zero documentOwner mismatches
   while migrating services that don't use ServiceOption ON_DEMAND_LOAD.
   This avoids cases when some stateful services fail to migrate due because
   of pending synchronization.

@@ -27,6 +27,7 @@ import java.util.WeakHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.vmware.xenon.common.RequestRouter.ParamDef;
 import com.vmware.xenon.common.RequestRouter.Route.RouteDocumentation;
 import com.vmware.xenon.common.RequestRouter.Route.SupportLevel;
 
@@ -79,19 +80,22 @@ class ServiceDocumentDescriptionHelper {
 
                 Method method = s.getClass().getMethod(methodName, Operation.class);
 
-                RequestRouter.Route route = new RequestRouter.Route();
-                // if the request / response is not the default (used by stateless) ServiceDocument then enrich
-                if (entry.getValue() != null && !s.getStateType().equals(ServiceDocument.class)) {
-                    // Get, Post, Put all generate a document as response
-                    route.responseType = s.getStateType();
-                    if (entry.getValue().equals(Boolean.TRUE)) {
-                        // Post and Put also accept a document as a request parameter
-                        route.requestType = s.getStateType();
-                    }
-                }
                 // look up the route's documentation annotation if present
-                RouteDocumentation doc = method.getAnnotation(RouteDocumentation.class);
-                if (doc != null) {
+                RouteDocumentation[] docs = method.getAnnotationsByType(RouteDocumentation.class);
+
+                for (RouteDocumentation doc : docs) {
+                    RequestRouter.Route route = new RequestRouter.Route();
+                    route.path = doc.path();
+                    // if the request / response is not the default (used by stateless) ServiceDocument then enrich
+                    if (entry.getValue() != null && !s.getStateType().equals(ServiceDocument.class)) {
+                        // Get, Post, Put all generate a document as response
+                        route.responseType = s.getStateType();
+                        if (entry.getValue().equals(Boolean.TRUE)) {
+                            // Post and Put also accept a document as a request parameter
+                            route.requestType = s.getStateType();
+                        }
+                    }
+
                     // do not include unsupported routes at all
                     if (SupportLevel.NOT_SUPPORTED == doc.supportLevel()) {
                         continue;
@@ -105,59 +109,71 @@ class ServiceDocumentDescriptionHelper {
                     route.supportLevel = supportLevel;
                     route.description = lookupDocumentationDescription(s.getClass(), doc.description());
                     route.parameters = new ArrayList<>();
-                    if (doc.queryParams() != null) {
-                        for (RouteDocumentation.QueryParam qp : doc.queryParams()) {
-                            RequestRouter.Parameter p =
-                                    new RequestRouter.Parameter(
-                                            qp.name(),
-                                            lookupDocumentationDescription(s.getClass(), qp.description()),
-                                            qp.type(),
-                                            qp.required(),
-                                            qp.example().isEmpty() ? null : qp.example(),
-                                            RequestRouter.ParamDef.QUERY);
-                            route.parameters.add(p);
-                        }
+
+                    for (RouteDocumentation.QueryParam qp : doc.queryParams()) {
+                        RequestRouter.Parameter p =
+                                new RequestRouter.Parameter(
+                                        qp.name(),
+                                        lookupDocumentationDescription(s.getClass(), qp.description()),
+                                        qp.type(),
+                                        qp.required(),
+                                        qp.example().isEmpty() ? null : qp.example(),
+                                        ParamDef.QUERY);
+                        route.parameters.add(p);
                     }
-                    if (doc.responses() != null) {
-                        for (RouteDocumentation.ApiResponse response : doc.responses()) {
-                            RequestRouter.Parameter p =
-                                    new RequestRouter.Parameter(
-                                            Integer.toString(response.statusCode()),
-                                            lookupDocumentationDescription(s.getClass(), response.description()),
-                                            response.response().getName(), false, null, RequestRouter.ParamDef.RESPONSE);
-                            route.parameters.add(p);
-                        }
+
+                    for (RouteDocumentation.PathParam pp : doc.pathParams()) {
+                        RequestRouter.Parameter p =
+                                new RequestRouter.Parameter(
+                                        pp.name(),
+                                        lookupDocumentationDescription(s.getClass(), pp.description()),
+                                        pp.type(),
+                                        pp.required(),
+                                        pp.example().isEmpty() ? null : pp.example(),
+                                        ParamDef.PATH);
+                        route.parameters.add(p);
                     }
-                    if (doc.consumes() != null) {
-                        for (String mediaType : doc.consumes()) {
-                            RequestRouter.Parameter p =
-                                    new RequestRouter.Parameter(
-                                            mediaType,
-                                            null,
-                                            null,
-                                            false,
-                                            null,
-                                            RequestRouter.ParamDef.CONSUMES);
-                            route.parameters.add(p);
-                        }
+
+                    for (RouteDocumentation.ApiResponse response : doc.responses()) {
+                        RequestRouter.Parameter p =
+                                new RequestRouter.Parameter(
+                                        Integer.toString(response.statusCode()),
+                                        lookupDocumentationDescription(s.getClass(), response.description()),
+                                        response.response().getName(),
+                                        false,
+                                        null,
+                                        ParamDef.RESPONSE);
+                        route.parameters.add(p);
                     }
-                    if (doc.produces() != null) {
-                        for (String mediaType : doc.produces()) {
-                            RequestRouter.Parameter p =
-                                    new RequestRouter.Parameter(
-                                            mediaType,
-                                            null,
-                                            null,
-                                            false,
-                                            null,
-                                            RequestRouter.ParamDef.PRODUCES);
-                            route.parameters.add(p);
-                        }
+
+                    for (String mediaType : doc.consumes()) {
+                        RequestRouter.Parameter p =
+                                new RequestRouter.Parameter(
+                                        mediaType,
+                                        null,
+                                        null,
+                                        false,
+                                        null,
+                                        ParamDef.CONSUMES);
+                        route.parameters.add(p);
                     }
+
+                    for (String mediaType : doc.produces()) {
+                        RequestRouter.Parameter p =
+                                new RequestRouter.Parameter(
+                                        mediaType,
+                                        null,
+                                        null,
+                                        false,
+                                        null,
+                                        ParamDef.PRODUCES);
+                        route.parameters.add(p);
+                    }
+
+                    route.action = Service.Action.valueOf(actionName);
+                    route.matcher = new RequestRouter.RequestDefaultMatcher();
+                    requestRouter.register(route);
                 }
-                route.action = Service.Action.valueOf(actionName);
-                route.matcher = new RequestRouter.RequestDefaultMatcher();
-                requestRouter.register(route);
             } catch (NoSuchMethodException | SecurityException ex) {
                 logger.log(Level.WARNING, "Failure looking up handler method for %s: %s",
                                         new Object[] { entry.getKey(), Utils.toString(ex) });
