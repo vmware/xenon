@@ -60,10 +60,12 @@ import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
+import com.vmware.xenon.common.TestSynchronizationTaskService.SynchRetryExampleService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
+import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
@@ -341,6 +343,103 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         assertEquals(initState.destinationNodeGroupReference, result.destinationNodeGroupReference);
         assertEquals(initState.sourceFactoryLink, result.sourceFactoryLink);
         assertEquals(initState.sourceNodeGroupReference, result.sourceNodeGroupReference);
+    }
+
+    @Test
+    public void failMigrationWhenSourceFactoryNotAvailable() throws Throwable {
+        try {
+            // Start SynchRetryExampleService on each host which cannot be synchronized.
+            this.host.setNodeGroupQuorum(1);
+            Iterator<VerificationHost> peerIt = this.host.getInProcessHostMap().values().iterator();
+            VerificationHost peerNode = null;
+            while (peerIt.hasNext()) {
+                peerNode = peerIt.next();
+                peerNode.startFactory(new SynchRetryExampleService());
+                peerNode.waitForServiceAvailable(SynchRetryExampleService.FACTORY_LINK);
+            }
+
+            URI factoryUri = UriUtils.buildUri(
+                    getSourceHost(), SynchRetryExampleService.FACTORY_LINK);
+            this.host.waitForReplicatedFactoryServiceAvailable(factoryUri);
+            createExampleServices(
+                    this.sender, getSourceHost(), this.serviceCount, "fail", SynchRetryExampleService.FACTORY_LINK);
+
+            // Stop the last peerNode to kick synchronization
+            this.host.stopHost(peerNode);
+            this.host.joinNodesAndVerifyConvergence(this.nodeCount - 1, true);
+
+            // Wait for factory to be not available because synchronization would fail.
+            waitForReplicatedFactoryServiceNotAvailable(getSourceHost(), factoryUri, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+
+            // Kick-off migration
+            MigrationTaskService.State migrationState = validMigrationState(
+                    SynchRetryExampleService.FACTORY_LINK);
+            TestContext ctx = this.host.testCreate(1);
+            String[] out = new String[1];
+            Operation op = Operation.createPost(this.destinationFactoryUri)
+                    .setBody(migrationState)
+                    .setReferer(this.host.getUri())
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            this.host.log("Post service error: %s", Utils.toString(e));
+                            ctx.failIteration(e);
+                            return;
+                        }
+                        out[0] = o.getBody(State.class).documentSelfLink;
+                        ctx.completeIteration();
+                    });
+            getDestinationHost().send(op);
+            ctx.await();
+
+            // Wait for the migration task to fail
+            State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
+            assertEquals(waitForServiceCompletion.taskInfo.stage, TaskStage.FAILED);
+
+            // Verify that it failed because of factory service availability check
+            assertTrue("Invalid message received: " + waitForServiceCompletion.taskInfo.failure.message,
+                    waitForServiceCompletion.taskInfo.failure.message.contains(
+                    "Failed to verify availability of factory service"));
+        } finally {
+            Iterator<VerificationHost> peerIt = this.host.getInProcessHostMap().values().iterator();
+            while (peerIt.hasNext()) {
+                VerificationHost peerNode = peerIt.next();
+                this.host.stopHost(peerNode);
+            }
+        }
+    }
+
+    private void createExampleServices(
+            TestRequestSender sender, VerificationHost h, long serviceCount, String selfLinkPostfix, String factoryLink) {
+        // create example services
+        List<Operation> ops = new ArrayList<>();
+        for (int i = 0; i < serviceCount; i++) {
+            ServiceDocument initState = new ServiceDocument();
+            initState.documentSelfLink = i + selfLinkPostfix;
+
+            Operation post = Operation.createPost(
+                    UriUtils.buildUri(h, factoryLink)).setBody(initState);
+            ops.add(post);
+        }
+        sender.sendAndWait(ops, ServiceDocument.class);
+    }
+
+    public void waitForReplicatedFactoryServiceNotAvailable(VerificationHost host, URI u, String nodeSelectorPath) {
+        host.waitFor("replicated not available check time out for " + u, () -> {
+            boolean[] isReady = new boolean[1];
+            TestContext ctx = testCreate(1);
+            NodeGroupUtils.checkServiceAvailability((o, e) -> {
+                if (e != null) {
+                    isReady[0] = true;
+                    ctx.completeIteration();
+                    return;
+                }
+
+                isReady[0] = false;
+                ctx.completeIteration();
+            }, this.host, u, nodeSelectorPath);
+            ctx.await();
+            return isReady[0];
+        });
     }
 
     @Test
@@ -823,6 +922,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                     .size();
         } while (peersWithDocs != this.nodeCount);
 
+
         try {
             // disable peer synchronization on each source host.
             Iterator<VerificationHost> peerIt = this.host.getInProcessHostMap().values().iterator();
@@ -833,6 +933,11 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
             }
             assertNotNull(peerNode);
 
+            URI factoryUri = UriUtils.buildUri(
+                    getSourceHost(), ExampleService.FACTORY_LINK);
+            this.host.waitForReplicatedFactoryServiceAvailable(factoryUri);
+
+            
             // Stop the last peerNode and add a new node to the group
             this.host.stopHost(peerNode);
             VerificationHost newHost = VerificationHost.create(0);
@@ -841,8 +946,10 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
             newHost.setPeerSynchronizationEnabled(false);
             newHost.start();
             newHost.waitForServiceAvailable(ExampleService.FACTORY_LINK);
+
             this.host.addPeerNode(newHost);
             this.host.joinNodesAndVerifyConvergence(this.nodeCount, true);
+
 
             // Kick-off migration
             MigrationTaskService.State migrationState = validMigrationState(
