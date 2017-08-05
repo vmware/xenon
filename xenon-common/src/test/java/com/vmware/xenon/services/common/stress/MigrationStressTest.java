@@ -311,7 +311,7 @@ public class MigrationStressTest {
         state.destinationNodeGroupReference = UriUtils.buildUri(destHostUri, ServiceUriPaths.DEFAULT_NODE_GROUP);
         state.sourceFactoryLink = ExampleODLService.FACTORY_LINK;
         state.sourceNodeGroupReference = UriUtils.buildUri(sourceHostUri, ServiceUriPaths.DEFAULT_NODE_GROUP);
-
+        state.maintenanceIntervalMicros = TimeUnit.SECONDS.toMicros(1);
         state.querySpec = new QuerySpecification();
         state.querySpec.resultLimit = this.resultLimit;
 
