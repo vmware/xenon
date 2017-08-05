@@ -50,38 +50,39 @@ import com.vmware.xenon.services.common.NodeGroupService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.TestLuceneDocumentIndexService.InMemoryExampleService;
 
-class SynchRetryExampleService extends StatefulService {
-
-    public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/test-retry-examples";
-
-    public static FactoryService createFactory() {
-        return FactoryService.create(SynchRetryExampleService.class);
-    }
-
-    public SynchRetryExampleService() {
-        super(ServiceDocument.class);
-        toggleOption(ServiceOption.PERSISTENCE, true);
-    }
-
-    @Override
-    public boolean queueRequest(Operation op) {
-        return false;
-    }
-
-    @Override
-    public void handleRequest(Operation op) {
-        if (getSelfLink().endsWith("fail")) {
-            if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)) {
-                op.fail(500);
-                return;
-            }
-        }
-
-        super.handleRequest(op);
-    }
-}
 
 public class TestSynchronizationTaskService extends BasicTestCase {
+    public static class SynchRetryExampleService extends StatefulService {
+        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/test-retry-examples";
+
+        public static final FactoryService createFactory() {
+            return FactoryService.create(SynchRetryExampleService.class);
+        }
+
+        public SynchRetryExampleService() {
+            super(ServiceDocument.class);
+            toggleOption(ServiceOption.PERSISTENCE, true);
+            toggleOption(ServiceOption.OWNER_SELECTION, true);
+            toggleOption(ServiceOption.REPLICATION, true);
+        }
+
+        @Override
+        public boolean queueRequest(Operation op) {
+            return false;
+        }
+
+        @Override
+        public void handleRequest(Operation op) {
+            if (getSelfLink().endsWith("fail")) {
+                if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)) {
+                    op.fail(500);
+                    return;
+                }
+            }
+
+            super.handleRequest(op);
+        }
+    }
 
     public static final String STAT_NAME_PATCH_REQUEST_COUNT = "PATCHrequestCount";
 
@@ -213,6 +214,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
 
         SynchronizationTaskService.State task = createSynchronizationTaskState(
                 null, SynchRetryExampleService.FACTORY_LINK, ServiceDocument.class);
+        task.membershipUpdateTimeMicros = Utils.getNowMicrosUtc();
 
         // Add pagination in query results.
         task.queryResultLimit = this.serviceCount / 2;
