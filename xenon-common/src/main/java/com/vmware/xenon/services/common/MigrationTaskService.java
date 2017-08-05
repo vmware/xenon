@@ -630,6 +630,13 @@ public class MigrationTaskService extends StatefulService {
                             currentState.maximumConvergenceChecks, nodeSelectorAvailabilityDeferred);
                     return nodeSelectorAvailabilityDeferred;
                 })
+                .thenCompose(peerNodeSelectorPath -> {
+                    DeferredResult<Object> waitFactoryIsAvailableDeferred = new DeferredResult<>();
+                    waitFactoryIsAvailable(
+                            currentState, currentState.sourceReferences.get(0), (String)peerNodeSelectorPath, currentState.sourceFactoryLink,
+                            currentState.maximumConvergenceChecks, waitFactoryIsAvailableDeferred);
+                    return waitFactoryIsAvailableDeferred;
+                })
                 .thenAccept(aVoid -> {
                     computeFirstCurrentPageLinks(currentState, currentState.sourceReferences, currentState.destinationReferences);
                 })
@@ -671,6 +678,32 @@ public class MigrationTaskService extends StatefulService {
                 })
                 .setReferer(getUri());
         NodeGroupUtils.checkConvergence(getHost(), nodeGroupReference, callbackOp);
+    }
+
+    private void waitFactoryIsAvailable(
+            State currentState, URI hostUri, String nodeSelectorPath, String factoryLink, int maxRetry, DeferredResult<Object> deferredResult) {
+        if (maxRetry <= 0) {
+            String msg = String.format("Failed to verify availability of factory service %s after %s retries",
+                    factoryLink, currentState.maximumConvergenceChecks);
+            logSevere(msg);
+            deferredResult.fail(new Exception(msg));
+            return;
+        }
+
+        URI service = UriUtils.buildUri(hostUri, factoryLink);
+        NodeGroupUtils.checkServiceAvailability((o, e) -> {
+            if (e != null) {
+                logInfo("Factory service not available yet, scheduling retry #%d. Error message: %s ",
+                        maxRetry, e.getMessage());
+                getHost().schedule(() -> waitFactoryIsAvailable(
+                        currentState, hostUri, nodeSelectorPath, factoryLink, maxRetry - 1, deferredResult),
+                        currentState.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
+                return;
+            }
+
+            logInfo("Factory service is available.");
+            deferredResult.complete(null);
+        }, this.getHost(), service, nodeSelectorPath);
     }
 
     private void waitNodeSelectorAreStable(State currentState, List<URI> sourceURIs, String factoryLink, int maxRetry, DeferredResult<Object> deferredResult) {
@@ -738,7 +771,7 @@ public class MigrationTaskService extends StatefulService {
                                 currentState.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
                     } else {
                         logInfo("Node Selectors are available.");
-                        deferredResult.complete(null);
+                        deferredResult.complete(peerNodeSelectorPath);
                     }
                 })
                 .sendWith(this);
