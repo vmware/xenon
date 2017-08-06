@@ -25,6 +25,7 @@ import java.util.function.Supplier;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.services.common.NodeGroupService;
 import com.vmware.xenon.services.common.QueryTask;
+import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.TaskService;
 
@@ -827,6 +828,10 @@ public class SynchronizationTaskService
         ServiceStats.ServiceStat body = new ServiceStats.ServiceStat();
         body.name = Service.STAT_NAME_AVAILABLE;
         body.latestValue = isAvailable ? STAT_VALUE_TRUE : STAT_VALUE_FALSE;
+
+        this.getHost().getManagementService().setStat(
+                String.format(ServiceHostManagementService.STAT_NAME_SERVICE_AVAILABLE, task.factorySelfLink),
+                isAvailable ? STAT_VALUE_TRUE : STAT_VALUE_FALSE);
 
         Operation put = Operation.createPut(
                 UriUtils.buildAvailableUri(this.getHost(), task.factorySelfLink))

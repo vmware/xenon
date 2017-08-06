@@ -58,6 +58,7 @@ import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.InMemoryLuceneDocumentIndexService;
 import com.vmware.xenon.services.common.MinimalFactoryTestService;
 import com.vmware.xenon.services.common.MinimalTestService;
+import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.TaskService;
 import com.vmware.xenon.services.common.TestLuceneDocumentIndexService.InMemoryExampleService;
@@ -429,18 +430,30 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         MinimalFactoryTestService factoryService = (MinimalFactoryTestService) this.host
                 .startServiceAndWait(f, UUID.randomUUID().toString(), null);
         this.host.waitForServiceAvailable(factoryService.getUri());
+        Map<String, ServiceStats.ServiceStat> stats = this.host.getServiceStats(this.host.getManagementServiceUri());
+        assertEquals(stats.get(
+                String.format(ServiceHostManagementService.STAT_NAME_SERVICE_AVAILABLE,
+                        factoryService.getUri().getPath())).latestValue, 1, 0);
 
         f = new MinimalFactoryTestService();
         f.setChildServiceCaps(EnumSet.of(ServiceOption.PERSISTENCE, ServiceOption.ON_DEMAND_LOAD));
         factoryService = (MinimalFactoryTestService) this.host
                 .startServiceAndWait(f, UUID.randomUUID().toString(), null);
         this.host.waitForServiceAvailable(factoryService.getUri());
+        stats = this.host.getServiceStats(this.host.getManagementServiceUri());
+        assertEquals(stats.get(
+                String.format(ServiceHostManagementService.STAT_NAME_SERVICE_AVAILABLE,
+                        factoryService.getUri().getPath())).latestValue, 1, 0);
 
         f = new MinimalFactoryTestService();
         f.setChildServiceCaps(EnumSet.of(ServiceOption.ON_DEMAND_LOAD));
         factoryService = (MinimalFactoryTestService) this.host
                 .startServiceAndWait(f, UUID.randomUUID().toString(), null);
         this.host.waitForServiceAvailable(factoryService.getUri());
+        stats = this.host.getServiceStats(this.host.getManagementServiceUri());
+        assertEquals(stats.get(
+                String.format(ServiceHostManagementService.STAT_NAME_SERVICE_AVAILABLE,
+                        factoryService.getUri().getPath())).latestValue, 1, 0);
 
         f = new MinimalFactoryTestService();
         f.toggleOption(ServiceOption.REPLICATION, true);
@@ -448,6 +461,10 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         factoryService = (MinimalFactoryTestService) this.host
                 .startServiceAndWait(f, UUID.randomUUID().toString(), null);
         this.host.waitForServiceAvailable(factoryService.getUri());
+        stats = this.host.getServiceStats(this.host.getManagementServiceUri());
+        assertEquals(stats.get(
+                String.format(ServiceHostManagementService.STAT_NAME_SERVICE_AVAILABLE,
+                        factoryService.getUri().getPath())).latestValue, 1, 0);
 
         f = new MinimalFactoryTestService();
         f.toggleOption(ServiceOption.REPLICATION, true);
@@ -457,6 +474,10 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         factoryService = (MinimalFactoryTestService) this.host
                 .startServiceAndWait(f, UUID.randomUUID().toString(), null);
         this.host.waitForServiceAvailable(factoryService.getUri());
+        stats = this.host.getServiceStats(this.host.getManagementServiceUri());
+        assertEquals(stats.get(
+                String.format(ServiceHostManagementService.STAT_NAME_SERVICE_AVAILABLE,
+                        factoryService.getUri().getPath())).latestValue, 1, 0);
     }
 
     @Test

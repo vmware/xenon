@@ -72,6 +72,7 @@ public class ServiceHostManagementService extends StatefulService {
     public static final String STAT_NAME_HTTP11_PENDING_OP_COUNT = "http11PendingOperationCount";
     public static final String STAT_NAME_HTTP2_PENDING_OP_COUNT = "http2PendingOperationCount";
 
+    public static final String STAT_NAME_SERVICE_AVAILABLE = "isAvailable-%s";
     public static final String STAT_NAME_SERVICE_COUNT = "serviceCount";
     public static final String STAT_NAME_SERVICE_PAUSE_COUNT = "servicePauseCount";
     public static final String STAT_NAME_SERVICE_RESUME_COUNT = "serviceResumeCount";

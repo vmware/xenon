@@ -29,6 +29,7 @@ import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.QueryTaskUtils;
+import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
@@ -1166,4 +1167,11 @@ public abstract class FactoryService extends StatelessService {
     }
 
     public abstract Service createServiceInstance() throws Throwable;
+
+    public void setAvailable(boolean isAvailable) {
+        super.setAvailable(isAvailable);
+        this.getHost().getManagementService().setStat(
+                String.format(ServiceHostManagementService.STAT_NAME_SERVICE_AVAILABLE, this.getSelfLink()),
+                isAvailable ? STAT_VALUE_TRUE : STAT_VALUE_FALSE);
+    }
 }
