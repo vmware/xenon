@@ -563,6 +563,23 @@ public final class UriUtils {
     }
 
     /**
+     * Utility method to create query string from a map of individual query params.
+     * @param queryParams - Map consisting of individual query params.
+     * @return query string
+     */
+    public static String buildQueryStringFromParams(Map<String, String> queryParams) {
+        String query = "";
+        for (Map.Entry<String, String> param : queryParams.entrySet()) {
+            if (query.equals("")) {
+                query = String.format("%s=%s", param.getKey(), param.getValue());
+            } else {
+                query = String.format("%s&%s=%s", query, param.getKey(), param.getValue());
+            }
+        }
+        return query;
+    }
+
+    /**
      * Utility method to parse path parameters from a supplied template and URI
      * To be used with services with option {@link ServiceOption#URI_NAMESPACE_OWNER}
      *

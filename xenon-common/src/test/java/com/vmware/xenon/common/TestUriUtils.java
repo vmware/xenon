@@ -15,14 +15,18 @@ package com.vmware.xenon.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.Arrays;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.junit.Assert;
 import org.junit.Test;
 
 import com.vmware.xenon.common.Service.ServiceOption;
@@ -375,5 +379,25 @@ public class TestUriUtils {
         assertFalse(UriUtils.hasODataQueryParams(randomUri));
 
 
+    }
+
+    @Test
+    public void testBuildQueryStringFromParams() {
+        String scheme = "http";
+        String host = "host";
+        int port = 8080;
+        String path = "path/to/somewhere";
+        String query = "key1=value1&key2=value2";
+        String queryReverse = "key2=value2&key1=value2";
+
+        final List<String> VALID_VALUES = Arrays.asList(query, queryReverse);
+
+        URI u = UriUtils.buildUri(scheme, host, port, path, query);
+
+        Map<String, String> queryParams = UriUtils.parseUriQueryParams(u);
+        String resultQuery = UriUtils.buildQueryStringFromParams(queryParams);
+
+        assertNotNull(resultQuery);
+        Assert.assertTrue(VALID_VALUES.contains(resultQuery));
     }
 }
