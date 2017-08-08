@@ -480,6 +480,86 @@ public class TestSynchronizationTaskService extends BasicTestCase {
     }
 
     @Test
+    public void consistentOwnershipAfterOwnerStopsODLService() throws Throwable {
+        setUpMultiNode();
+        consistentOdlOwnershipAfterOwnerDown(ExampleODLService.FACTORY_LINK);
+    }
+
+    public void consistentOdlOwnershipAfterOwnerDown(
+            String factoryLink) throws Throwable {
+        long patchCount = 5;
+        TestRequestSender sender = new TestRequestSender(this.host);
+        this.host.setNodeGroupQuorum(this.nodeCount - 1);
+        this.host.waitForNodeGroupConvergence();
+
+        List<ExampleServiceState> exampleStates = this.host.createExampleServices(
+                this.host.getPeerHost(), this.serviceCount, null, factoryLink);
+
+        this.host.log(String.format("Create done"));
+        Map<String, ExampleServiceState> exampleStatesMap =
+                exampleStates.stream().collect(Collectors.toMap(s -> s.documentSelfLink, s -> s));
+
+        ExampleServiceState state = exampleStatesMap.entrySet().iterator().next().getValue();
+
+        VerificationHost owner = this.host.getInProcessHostMap().values().stream()
+                .filter(host -> host.getId().contentEquals(state.documentOwner)).findFirst()
+                .orElseThrow(() -> new RuntimeException("couldn't find owner node"));
+
+        // Send updates to all services and check consistency after owner stops
+        for (ExampleServiceState st : exampleStates) {
+            for (int i = 1; i <= patchCount; i++) {
+                this.host.log(String.format("patch " + i + " on " + st.documentSelfLink));
+                URI serviceUri = UriUtils.buildUri(owner, st.documentSelfLink);
+                ExampleServiceState s = new ExampleServiceState();
+                s.counter = (long) i + st.counter;
+                Operation patch = Operation.createPatch(serviceUri).setBody(s);
+                sender.sendAndWait(patch);
+            }
+        }
+
+        this.host.log(String.format("Patch done"));
+
+        this.host.waitForReplicatedFactoryChildServiceConvergence(
+                this.host.getNodeGroupToFactoryMap(factoryLink),
+                exampleStatesMap,
+                this.exampleStateConvergenceChecker,
+                exampleStatesMap.size(),
+                patchCount, this.nodeCount);
+
+        this.host.log(String.format("Patch converged"));
+
+        // Stop the current owner and make sure that new owner is selected and state is consistent
+        this.host.stopHost(owner);
+        VerificationHost peer = this.host.getPeerHost();
+        this.host.log(String.format("this.host %s, peer %s, stopped owner %s, link %s",
+                this.host.getId(), peer.getId(), owner.getId(), state.documentSelfLink));
+
+        this.host.waitForNodeGroupConvergence(this.nodeCount - 1);
+        URI ODLExampleFactoryUri = UriUtils.buildUri(
+                this.host.getPeerServiceUri(ExampleODLService.FACTORY_LINK));
+        this.host.waitForReplicatedFactoryServiceAvailable(ODLExampleFactoryUri);
+
+        this.host.log(String.format("Factory available"));
+
+        for(VerificationHost node : this.host.getInProcessHostMap().values()) {
+            URI factoryUri = UriUtils.buildUri(node, factoryLink);
+            Operation queryFactory = Operation.createGet(UriUtils.buildExpandLinksQueryUri(factoryUri));
+            ServiceDocumentQueryResult result = sender.sendAndWait(queryFactory, ServiceDocumentQueryResult.class);
+            assertEquals(this.serviceCount, result.documentCount.longValue());
+            for (String link : exampleStatesMap.keySet()) {
+                assertNotNull(result.documents.get(link));
+                String actualOwner =
+                        Utils.fromJson(result.documents.get(link), ExampleServiceState.class).documentOwner;
+                String expectedOwner =
+                        exampleStatesMap.get(link).documentOwner;
+                this.host.log(String.format("%s, %s, actualOwner: %s, expectedOwner: %s",
+                        node.getId(), link, actualOwner, expectedOwner));
+                assertEquals(expectedOwner, actualOwner);
+            }
+        }
+    }
+
+    @Test
     public void synchTaskStopsSelfPatchingOnFactoryDelete() throws Throwable {
         String factoryLink = ExampleService.FACTORY_LINK;
         this.host.createExampleServices(this.host, this.serviceCount, null, false, factoryLink);
