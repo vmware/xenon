@@ -71,6 +71,8 @@ public class DecentralizedControlPlaneHost extends ServiceHost {
 
         setAuthorizationContext(this.getSystemAuthorizationContext());
 
+        super.startService(new MyIngestionService());
+
         super.startService(new RootNamespaceService());
 
         // start an example factory for folks that want to experiment with service instances
