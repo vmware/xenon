@@ -1,0 +1,56 @@
+/*
+ * Copyright (c) 2014-2015 VMware, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License.  You may obtain a copy of
+ * the License at http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed
+ * under the License is distributed on an "AS IS" BASIS, without warranties or
+ * conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the License for the
+ * specific language governing permissions and limitations under the License.
+ */
+
+package com.vmware.xenon.services.common;
+
+import static org.junit.Assert.assertEquals;
+
+import java.net.URI;
+
+import org.junit.Before;
+import org.junit.Test;
+
+import com.vmware.xenon.common.BasicTestCase;
+import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.ServiceDocumentQueryResult;
+import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.services.common.SynchronizationManagementService.SynchronizationManagementState;
+
+
+public class TestServiceManagementSynchronization extends BasicTestCase {
+
+    @Before
+    public void prepare() throws Throwable {
+        this.host.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+    }
+
+    @Test
+    public void getManagementSynchronizationService() throws Throwable {
+        URI serviceUri = UriUtils.buildUri(this.host, SynchronizationManagementService.class);
+
+        // create a root service
+        this.host.sendAndWait(Operation
+                .createGet(serviceUri)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+                    ServiceDocumentQueryResult result = o.getBody(ServiceDocumentQueryResult.class);
+                    SynchronizationManagementState state = (SynchronizationManagementState)result.documents.get(ExampleService.FACTORY_LINK);
+                    assertEquals(state.factoryOwner, this.host.getId());
+                    assertEquals(state.status, SynchronizationManagementState.Status.AVAILABLE);
+                    this.host.completeIteration();
+                }));
+    }
+}
