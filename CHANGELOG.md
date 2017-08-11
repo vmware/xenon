@@ -2,9 +2,19 @@
 
 ## 1.5.5-SNAPSHOT
 
+* Enable repeated @RouteDocumentation annotation. This enable richer Swagger
+  support for services marked as *URI_NAMESPACE_OWNER*.
+
+  https://www.pivotaltracker.com/n/projects/1471320/stories/143529775
+
+* MigrationTaskService supports migrating deleted documents. When query spec includes 
+  "INCLUDE_DELETED" option, migration task first posts the document, then deletes
+  it in destination nodes.
+
+
 ## 1.5.4
 
-* Updates to migration task service to assert zero documentOwner mismatches 
+* Updates to migration task service to assert zero documentOwner mismatches
   while migrating services that don't use ServiceOption ON_DEMAND_LOAD.
   This avoids cases when some stateful services fail to migrate due because
   of pending synchronization.

@@ -14,6 +14,7 @@
 package com.vmware.xenon.services.common;
 
 import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.toSet;
 
 import java.net.URI;
 import java.util.AbstractMap;
@@ -22,6 +23,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -116,6 +118,8 @@ public class MigrationTaskService extends StatefulService {
     public static final String STAT_NAME_OWNER_MISMATCH_COUNT = "ownerMismatchDocumentCount";
     public static final String STAT_NAME_BEFORE_TRANSFORM_COUNT = "beforeTransformDocumentCount";
     public static final String STAT_NAME_AFTER_TRANSFORM_COUNT = "afterTransformDocumentCount";
+    public static final String STAT_NAME_DELETE_RETRY_COUNT = "deleteRetryCount";
+    public static final String STAT_NAME_DELETED_DOCUMENT_COUNT = "deletedDocumentCount";
     public static final String STAT_NAME_COUNT_QUERY_TIME_DURATION_MICRO = "countQueryTimeDurationMicros";
     public static final String STAT_NAME_RETRIEVAL_OPERATIONS_DURATION_MICRO = "retrievalOperationsDurationMicros";
     public static final String STAT_NAME_RETRIEVAL_QUERY_TIME_DURATION_MICRO_FORMAT = "retrievalQueryTimeDurationMicros-%s";
@@ -1305,14 +1309,26 @@ public class MigrationTaskService extends StatefulService {
             List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
 
         boolean performRetry = state.migrationOptions.contains(MigrationOption.DELETE_AFTER);
+        Set<Long> opIdsToDelete = new HashSet<>();
 
         Map<Operation, Object> posts = json.entrySet().stream()
-                .map(d -> {
-                    Object docJson = d.getKey();
-                    String factoryLink = d.getValue();
+                .map(entry -> {
+                    Object docJson = entry.getKey();
+                    String factoryLink = entry.getValue();
                     URI uri = UriUtils.buildUri(selectRandomUri(destinationURIs), factoryLink);
+
+                    // When query spec has INCLUDE_DELETED, entries contain deleted documents.
+                    // To migrate deleted documents, keeps track of POSTs for deleted documents, and delete them later.
+                    String action = Utils.getJsonMapValue(docJson, ServiceDocument.FIELD_NAME_UPDATE_ACTION, String.class);
+                    boolean toDelete = Action.DELETE.toString().equals(action);
+
                     Operation op = createPost(uri, state).setBodyNoCloning(docJson);
                     op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK);
+
+                    if (toDelete) {
+                        opIdsToDelete.add(op.getId());
+                    }
+
                     return new AbstractMap.SimpleEntry<>(op, docJson);
                 })
                 .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
@@ -1329,10 +1345,59 @@ public class MigrationTaskService extends StatefulService {
                             return;
                         }
                     } else {
+
                         logInfo("[source=%s][dest=%s] MigrationTask created %,d entries in destination.",
                                 state.sourceFactoryLink, state.destinationFactoryLink, posts.size());
                         adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
-                        migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+
+                        if (opIdsToDelete.isEmpty()) {
+                            migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                        } else {
+                            // Migrate deleted documents by performing DELETEs.
+                            Set<Operation> deletes = opIdsToDelete.stream()
+                                    .map(os::get)
+                                    .map(op -> {
+                                        String selfLink = op.getBody(ServiceDocument.class).documentSelfLink;
+                                        URI deleteUri = UriUtils.buildUri(selectRandomUri(destinationURIs), selfLink);
+
+                                        return createDelete(deleteUri, state)
+                                                .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER, Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL)
+                                                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK);
+                                    }).collect(toSet());
+
+                            OperationJoin.create(deletes)
+                                    .setCompletion((deleteOps, deleteExs) -> {
+
+                                                if (deleteExs != null && !deleteExs.isEmpty()) {
+                                                    // retry deletes
+                                                    Set<Operation> retryDeletes = deleteExs.keySet().stream()
+                                                            .map(deleteOps::get)
+                                                            .map(op -> UriUtils.buildUri(selectRandomUri(destinationURIs), op.getUri().getPath()))
+                                                            .map(uri -> createDelete(uri, state)
+                                                                    .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER, Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL)
+                                                                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK)
+                                                            ).collect(toSet());
+
+                                                    adjustStat(STAT_NAME_DELETE_RETRY_COUNT, retryDeletes.size());
+
+                                                    OperationJoin.create(retryDeletes)
+                                                            .setCompletion((retryOps, retryExs) -> {
+                                                                if (retryExs != null && !retryExs.isEmpty()) {
+                                                                    failTask(retryExs.values());
+                                                                    return;
+                                                                }
+                                                                adjustStat(STAT_NAME_DELETED_DOCUMENT_COUNT, retryOps.size());
+                                                                migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                                                            })
+                                                            .sendWith(this);
+                                                    return;
+                                                }
+
+                                                adjustStat(STAT_NAME_DELETED_DOCUMENT_COUNT, deleteOps.size());
+                                                migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                                            }
+                                    ).sendWith(this);
+                        }
                     }
                 })
                 .sendWith(this);
@@ -1425,9 +1490,8 @@ public class MigrationTaskService extends StatefulService {
     }
 
     private void useFallBack(State state, Map<Operation, Object> posts, Map<Long, Throwable> operationFailures, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
-        Map<URI, Operation> entityDestinationUriTofailedOps = getFailedOperations(posts, operationFailures);
-        Collection<Operation> deleteOperations = createDeleteOperations(state,
-                entityDestinationUriTofailedOps.keySet());
+        Map<URI, Operation> entityDestinationUriTofailedOps = getFailedOperations(posts, operationFailures.keySet());
+        Collection<Operation> deleteOperations = createDeleteOperations(state, entityDestinationUriTofailedOps.keySet());
 
         OperationJoin.create(deleteOperations)
             .setCompletion((os, ts) -> {
@@ -1453,11 +1517,11 @@ public class MigrationTaskService extends StatefulService {
             .sendWith(this);
     }
 
-    private Map<URI, Operation> getFailedOperations(Map<Operation, Object> posts, Map<Long, Throwable> operationFailures) {
+    private Map<URI, Operation> getFailedOperations(Map<Operation, Object> posts, Set<Long> failedOpIds) {
         Map<URI, Operation> ops = new HashMap<>();
         for (Map.Entry<Operation, Object> entry : posts.entrySet()) {
             Operation op = entry.getKey();
-            if (operationFailures.containsKey(op.getId())) {
+            if (failedOpIds.contains(op.getId())) {
                 Object jsonObject = entry.getValue();
                 String selfLink = Utils.getJsonMapValue(jsonObject, ServiceDocument.FIELD_NAME_SELF_LINK, String.class);
                 URI getUri = UriUtils.buildUri(op.getUri(), op.getUri().getPath(), selfLink);

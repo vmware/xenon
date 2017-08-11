@@ -169,6 +169,23 @@ public class TestRequestRouter {
         assertEquals(1, routeDeserialize.parameters.size());
     }
 
+    @Test
+    public void testSerializationWithPath() {
+        RequestRouter.Route route = new RequestRouter.Route();
+        route.action = Action.PATCH;
+        route.description = "Testing Empty Matcher";
+        route.path = "/subresource";
+
+        String routeSer = Utils.toJson(route);
+        assertTrue(routeSer.contains(route.description));
+        assertTrue(routeSer.contains("path"));
+
+        RequestRouter.Route routeDeserialize = Utils.fromJson(routeSer, RequestRouter.Route.class);
+        assertEquals(route.action, routeDeserialize.action);
+        assertEquals(route.description, routeDeserialize.description);
+        assertEquals(route.path, routeDeserialize.path);
+    }
+
     private void doX(Operation op) {
         this.xCount++;
     }

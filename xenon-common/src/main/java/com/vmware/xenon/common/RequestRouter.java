@@ -14,6 +14,7 @@
 package com.vmware.xenon.common;
 
 import java.lang.annotation.ElementType;
+import java.lang.annotation.Repeatable;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
@@ -67,7 +68,9 @@ public class RequestRouter implements Predicate<Operation> {
         /** Used to document the media types this route can produce */
         PRODUCES("produces"),
         /** Used to document the possible response codes from this route */
-        RESPONSE("response");
+        RESPONSE("response"),
+        /** Use to document path variables in case of a NAMESPACE_OWNER enabled service. */
+        PATH("path");
 
         String value;
 
@@ -99,6 +102,7 @@ public class RequestRouter implements Predicate<Operation> {
         }
 
         public Action action;
+        public String path;
         public Predicate<Operation> matcher;
         public Consumer<Operation> handler;
         public String description;
@@ -118,10 +122,19 @@ public class RequestRouter implements Predicate<Operation> {
         public Route() {
         }
 
+        @Retention(RetentionPolicy.RUNTIME)
+        @Target({ElementType.METHOD})
+        public @interface RouteDocumentations {
+            RouteDocumentation[] value();
+        }
+
         /**
          * Documentation annotations for Route handler methods (doGet, doPost, ...)
          * This annotation is placed on handler methods to document the
          * behavior of the http verb.
+         * This annotation can be repeated though this makes sense only in the case
+         * of {@link com.vmware.xenon.common.Service.ServiceOption#URI_NAMESPACE_OWNER} enabled
+         * services.
          * <p>
          * Note that the 'description' fields can either directly contain a description,
          * or can be used as a key to look up a more complete description in an HTML
@@ -166,6 +179,7 @@ public class RequestRouter implements Predicate<Operation> {
          */
         @Retention(RetentionPolicy.RUNTIME)
         @Target({ElementType.METHOD})
+        @Repeatable(RouteDocumentations.class)
         public @interface RouteDocumentation {
 
             /** defines API support level - default is APIs are public unless stated otherwise */
@@ -173,17 +187,24 @@ public class RequestRouter implements Predicate<Operation> {
 
             String description() default "";
 
+            /** Defines the path segment relative to the selfLink of a namespace
+             * owner service.*/
+            String path() default "";
+
             /** defines HTTP status statusCode responses */
-            public ApiResponse[] responses() default {};
+            ApiResponse[] responses() default {};
 
             /** defines optional query parameters */
-            public QueryParam[] queryParams() default {};
+            QueryParam[] queryParams() default {};
+
+            /** defines optional path parameters */
+            PathParam[] pathParams() default {};
 
             /** List of supported media types, defaults to application/json */
-            public String[] consumes() default {};
+            String[] consumes() default {};
 
             /** List of supported media types, defaults to application/json */
-            public String[] produces() default {};
+            String[] produces() default {};
 
             /**
              * Documentation of HTTP response codes for Route handler methods.
@@ -192,11 +213,12 @@ public class RequestRouter implements Predicate<Operation> {
              */
             @Target(value = {ElementType.METHOD})
             @Retention(value = RetentionPolicy.RUNTIME)
-            public @interface ApiResponse {
+            @interface ApiResponse {
+                int statusCode();
 
-                public int statusCode();
-                public String description();
-                public Class<?> response() default Void.class;
+                String description();
+
+                Class<?> response() default Void.class;
             }
 
             /**
@@ -206,12 +228,35 @@ public class RequestRouter implements Predicate<Operation> {
              */
             @Target(value = {ElementType.METHOD})
             @Retention(value = RetentionPolicy.RUNTIME)
-            public @interface QueryParam {
-                public String name();
-                public String description() default "";
-                public String example() default "";
-                public String type() default "string";
-                public boolean required() default false;
+            @interface QueryParam {
+                String name();
+
+                String description() default "";
+
+                String example() default "";
+
+                String type() default "string";
+
+                boolean required() default false;
+            }
+
+            /**
+             * Documentation of query parameter support for Route handler methods.
+             * This annotation is used as an embedded annotation inside the @Documentation
+             * annotation.
+             */
+            @Target(value = {ElementType.METHOD})
+            @Retention(value = RetentionPolicy.RUNTIME)
+            @interface PathParam {
+                String name();
+
+                String description() default "";
+
+                String example() default "";
+
+                String type() default "string";
+
+                boolean required() default true;
             }
         }
     }
@@ -294,16 +339,16 @@ public class RequestRouter implements Predicate<Operation> {
         List<Route> actionRoutes = this.routes.get(action);
         if (actionRoutes == null) {
             actionRoutes = new ArrayList<>();
+            this.routes.put(action, actionRoutes);
         }
         actionRoutes.add(route);
-        this.routes.put(action, actionRoutes);
     }
 
     public void register(Action action, Predicate<Operation> matcher, Consumer<Operation> handler,
             String description) {
         List<Route> actionRoutes = this.routes.get(action);
         if (actionRoutes == null) {
-            actionRoutes = new ArrayList<Route>();
+            actionRoutes = new ArrayList<>();
         }
         actionRoutes.add(new Route(action, matcher, handler, description));
         this.routes.put(action, actionRoutes);

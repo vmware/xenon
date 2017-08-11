@@ -17,6 +17,7 @@ import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
+import static java.util.stream.Collectors.toSet;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -76,6 +77,7 @@ import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Builder;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
+import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.TestNodeGroupService.ExampleFactoryServiceWithCustomSelector;
 
 public class TestMigrationTaskService extends BasicReusableHostTestCase {
@@ -500,6 +502,83 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
             ops.add(get);
         }
         this.sender.sendAndWait(ops);
+    }
+
+    @Test
+    public void successMigrateDocumentsWithDeletedDocuments() throws Throwable {
+        // since this test uses INCLUDE_DELETED for example services, destroy source hosts to set them up in clean state
+        this.host.tearDownInProcessPeers();
+        destinationHost.tearDownInProcessPeers();
+        setUp();
+
+        List<ExampleServiceState> created = createExampleDocuments(this.exampleSourceFactory, getSourceHost(), 30);
+
+        // delete some of them
+        List<Operation> ops = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            ExampleServiceState state = created.get(i);
+            ops.add(Operation.createDelete(getSourceHost(), state.documentSelfLink));
+        }
+        List<ExampleServiceState> deleted = this.sender.sendAndWait(ops, ExampleServiceState.class);
+
+        Set<String> deletedSelfLinks = deleted.stream().map(state -> state.documentSelfLink).collect(toSet());
+        Set<String> createdSelfLinks = created.stream()
+                .map(state -> state.documentSelfLink)
+                .filter(link -> !deletedSelfLinks.contains(link))
+                .collect(toSet());
+
+
+        // start migration with custom query using QueryOption.INCLUDE_DELETED
+        MigrationTaskService.State migrationState = validMigrationState(ExampleService.FACTORY_LINK);
+        migrationState.querySpec = new QuerySpecification();
+        migrationState.querySpec.options.add(QueryOption.INCLUDE_DELETED);
+
+        Operation op = Operation.createPost(this.destinationFactoryUri).setBody(migrationState);
+        State taskState = this.sender.sendAndWait(op, State.class);
+
+        State finalServiceState = waitForServiceCompletion(taskState.documentSelfLink, getDestinationHost());
+        assertEquals(TaskStage.FINISHED, finalServiceState.taskInfo.stage);
+
+        Query qs = Builder.create()
+                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, ExampleService.FACTORY_LINK, MatchType.PREFIX)
+                .build();
+
+        QueryTask q = QueryTask.Builder.createDirectTask()
+                .addOption(QueryOption.INCLUDE_DELETED)
+                .addOption(QueryOption.EXPAND_CONTENT)
+                .setQuery(qs)
+                .build();
+
+        URI postUri = UriUtils.buildUri(getDestinationHost(), ServiceUriPaths.CORE_QUERY_TASKS);
+        Operation queryOp = Operation.createPost(postUri).setBody(q);
+
+        QueryTask queryResult = this.sender.sendAndWait(queryOp, QueryTask.class);
+        assertEquals(Long.valueOf(30), queryResult.results.documentCount);
+
+        // verify deleted ones exist
+        for (String deletedSelfLink : deletedSelfLinks) {
+            Object docObj = queryResult.results.documents.get(deletedSelfLink);
+            String message = String.format("deleted document=%s should be migrated.", deletedSelfLink);
+            assertNotNull(message, docObj);
+            ExampleServiceState doc = Utils.fromJson(docObj, ExampleServiceState.class);
+            message = String.format("deleted document=%s should be migrated and marked as DELETE.", deletedSelfLink);
+            assertEquals(message, Action.DELETE.toString(), doc.documentUpdateAction);
+        }
+
+        // verify created one exist
+        for (String createdSelfLink : createdSelfLinks) {
+            Object docObj = queryResult.results.documents.get(createdSelfLink);
+            String message = String.format("document=%s should be migrated.", createdSelfLink);
+            assertNotNull(message, docObj);
+            ExampleServiceState doc = Utils.fromJson(docObj, ExampleServiceState.class);
+            message = String.format("document=%s should be migrated marked as POST.", createdSelfLink);
+            assertEquals(message, Action.POST.toString(), doc.documentUpdateAction);
+        }
+
+        // verify stats for deleted ones
+        ServiceStats stats = getStats(taskState.documentSelfLink, getDestinationHost());
+        long deletedDocCount = (long) stats.entries.get(MigrationTaskService.STAT_NAME_DELETED_DOCUMENT_COUNT).latestValue;
+        assertEquals(10, deletedDocCount);
     }
 
     @Test

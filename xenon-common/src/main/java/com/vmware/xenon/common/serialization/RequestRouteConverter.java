@@ -59,6 +59,7 @@ public enum RequestRouteConverter implements JsonSerializer<Route>, JsonDeserial
     private static final String FIELD_DESCRIPTION = "description";
     private static final String FIELD_NAME = "name";
     private static final String FIELD_TYPE = "type";
+    private static final String FIELD_PATH = "path";
     private static final String FIELD_REQUIRED = "required";
     private static final String FIELD_VALUE = "value";
     private static final String FIELD_PARAM_DEF = "paramDef";
@@ -78,6 +79,7 @@ public enum RequestRouteConverter implements JsonSerializer<Route>, JsonDeserial
             JsonSerializationContext context) {
         JsonObject ob = new JsonObject();
         ob.addProperty(FIELD_ACTION, src.action.toString());
+        ob.addProperty(FIELD_PATH, src.path);
         if (src.matcher != null) {
             ob.addProperty(FIELD_CONDITION, src.matcher.toString());
         }
@@ -128,6 +130,7 @@ public enum RequestRouteConverter implements JsonSerializer<Route>, JsonDeserial
 
         String action = checkAndGetFromJson(jsonObject, FIELD_ACTION);
         route.action = action == null ? null : Action.valueOf(action);
+        route.path = checkAndGetFromJson(jsonObject, FIELD_PATH);
         route.description = checkAndGetFromJson(jsonObject, FIELD_DESCRIPTION);
         try {
             String requestType = checkAndGetFromJson(jsonObject, FIELD_REQUEST_TYPE);
