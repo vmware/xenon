@@ -7,6 +7,9 @@
   interface: Service.setProcessingStage() now returns void instead of
   ServiceRuntimeContext.
 
+* Added SynchronizationManagementService service that provides an API to get
+  availability status of all factories in cluster from one place.
+
 * Fixed a bug whereby the wrong StatusCode was being returned through
   Operation.failActionNotSupported().  Instead of returning STATUS_CODE_BAD_METHOD
   (405) as in the code, it was being translated to (400) STATUS_CODE_BAD_REQUEST.

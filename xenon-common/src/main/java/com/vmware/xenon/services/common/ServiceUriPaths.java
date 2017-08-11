@@ -32,6 +32,7 @@ public final class ServiceUriPaths {
 
     public static final String MANAGEMENT = "/management";
     public static final String CORE_MANAGEMENT = CORE + MANAGEMENT;
+    public static final String CORE_SYNCHRONIZATION_MANAGEMENT = CORE_MANAGEMENT + "/synch";
     public static final String CORE_CALLBACKS = CORE + "/callbacks";
     public static final String PROCESS_LOG = CORE_MANAGEMENT + "/process-log";
     public static final String GO_PROCESS_LOG = CORE_MANAGEMENT + "/go-dcp-process-log";

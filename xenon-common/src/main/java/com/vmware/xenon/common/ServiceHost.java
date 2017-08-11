@@ -117,6 +117,7 @@ import com.vmware.xenon.services.common.RoleService;
 import com.vmware.xenon.services.common.ServiceHostLogService;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
+import com.vmware.xenon.services.common.SynchronizationManagementService;
 import com.vmware.xenon.services.common.SystemUserService;
 import com.vmware.xenon.services.common.TaskFactoryService;
 import com.vmware.xenon.services.common.TenantService;
@@ -1645,6 +1646,10 @@ public class ServiceHost implements ServiceRequestSender {
         Service transactionFactoryService = new TransactionFactoryService();
         coreServices.add(transactionFactoryService);
         addPrivilegedService(TransactionService.class);
+
+        Service synchronizationManagementService = new SynchronizationManagementService();
+        coreServices.add(synchronizationManagementService);
+        addPrivilegedService(SynchronizationManagementService.class);
 
         Service[] coreServiceArray = new Service[coreServices.size()];
         coreServices.toArray(coreServiceArray);
