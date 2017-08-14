@@ -375,6 +375,11 @@ public interface Service extends ServiceRequestSender {
     static final long MIN_MAINTENANCE_INTERVAL_MICROS = TimeUnit.MILLISECONDS.toMicros(1);
 
     /**
+     * Response time threshold
+     */
+    static final long HANDLER_RESPONSE_TIME_THRESHOLD = TimeUnit.MILLISECONDS.toMillis(500);
+
+    /**
      * Invoked by host only when a client issues a POST operation to a factory service.
      */
     void handleCreate(Operation createPost);

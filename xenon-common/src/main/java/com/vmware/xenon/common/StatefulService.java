@@ -464,6 +464,8 @@ public class StatefulService implements Service {
     private boolean handleRequestStageExecutingServiceHandler(Operation request,
             OperationProcessingStage opProcessingStage, boolean isCompletionNested) {
         if (opProcessingStage == OperationProcessingStage.EXECUTING_SERVICE_HANDLER) {
+            long startTime = System.currentTimeMillis();
+
             isCompletionNested = true;
             switch (request.getAction()) {
             case DELETE:
@@ -496,6 +498,12 @@ public class StatefulService implements Service {
             default:
                 Operation.failActionNotSupported(request);
                 break;
+            }
+
+            long delta = System.currentTimeMillis() - startTime;
+            if (delta >= Service.HANDLER_RESPONSE_TIME_THRESHOLD) {
+                log(Level.SEVERE, "Sluggish response time(%dms) from %s handler. System might gradually go into unstable state",
+                        delta, request.getAction());
             }
         }
         return isCompletionNested;

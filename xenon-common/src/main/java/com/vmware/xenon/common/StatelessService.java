@@ -115,6 +115,7 @@ public class StatelessService implements Service {
             }
 
             if (opProcessingStage == OperationProcessingStage.EXECUTING_SERVICE_HANDLER) {
+                long startTime = System.currentTimeMillis();
                 if (op.getAction() == Action.GET) {
                     if (ServiceHost.isForServiceNamespace(this, op)) {
                         handleGet(op);
@@ -158,6 +159,12 @@ public class StatelessService implements Service {
                     handlePatch(op);
                 } else if (op.getAction() == Action.PUT) {
                     handlePut(op);
+                }
+
+                long delta = System.currentTimeMillis() - startTime;
+                if (delta >= Service.HANDLER_RESPONSE_TIME_THRESHOLD) {
+                    log(Level.SEVERE, "Sluggish response time(%dms) from %s handler. System might gradually go into unstable state",
+                            delta, op.getAction());
                 }
             }
         } catch (Exception e) {
