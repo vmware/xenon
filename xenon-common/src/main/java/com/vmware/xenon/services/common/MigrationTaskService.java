@@ -632,9 +632,14 @@ public class MigrationTaskService extends StatefulService {
                 })
                 .thenCompose(peerNodeSelectorPath -> {
                     DeferredResult<Object> waitFactoryIsAvailableDeferred = new DeferredResult<>();
-                    waitFactoryIsAvailable(
-                            currentState, currentState.sourceReferences.get(0), (String)peerNodeSelectorPath, currentState.sourceFactoryLink,
-                            currentState.maximumConvergenceChecks, waitFactoryIsAvailableDeferred);
+                    if (peerNodeSelectorPath != null) {
+                        waitFactoryIsAvailable(
+                                currentState, currentState.sourceReferences.get(0), (String)peerNodeSelectorPath, currentState.sourceFactoryLink,
+                                currentState.maximumConvergenceChecks, waitFactoryIsAvailableDeferred);
+                    } else {
+                        logInfo("Skipping Factory service availability check because node-selector link is missing.");
+                        waitFactoryIsAvailableDeferred.complete(null);
+                    }
                     return waitFactoryIsAvailableDeferred;
                 })
                 .thenAccept(aVoid -> {
@@ -723,12 +728,17 @@ public class MigrationTaskService extends StatefulService {
                         return;
                     }
 
-                    String peerNodeSelectorPath = os.values().stream()
+                    Optional<String> peerNodeSelectorPath = os.values().stream()
                             .map(operation -> operation.getBody(ServiceConfiguration.class).peerNodeSelectorPath)
                             .filter(selectorPath -> selectorPath != null)
-                            .findFirst().get();
+                            .findFirst();
+                    if (peerNodeSelectorPath.isPresent()) {
+                        waitNodeSelectorAreStableRetry(currentState, sourceURIs, maxRetry, peerNodeSelectorPath.get(), deferredResult);
+                    } else {
+                        logInfo("Skipping node-selector availability check because node-selector link is missing.");
+                        deferredResult.complete(null);
+                    }
 
-                    waitNodeSelectorAreStableRetry(currentState, sourceURIs, maxRetry, peerNodeSelectorPath, deferredResult);
                 })
                 .sendWith(this);
     }
