@@ -21,6 +21,8 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
@@ -282,6 +284,20 @@ class ServiceResourceTracker {
             mgmtService.setStat(
                     ServiceHostManagementService.STAT_NAME_HTTP2_CONNECTION_COUNT_PER_DAY,
                     http2TagInfo.inUseConnectionCount);
+        }
+
+        ForkJoinPool executor = (ForkJoinPool) this.host.getExecutor();
+        if (executor != null) {
+            mgmtService.setStat(
+                    ServiceHostManagementService.STAT_NAME_EXECUTOR_QUEUE_DEPTH,
+                    executor.getQueuedSubmissionCount());
+        }
+
+        ScheduledThreadPoolExecutor scheduledExecutor = (ScheduledThreadPoolExecutor) this.host.getScheduledExecutor();
+        if (scheduledExecutor != null) {
+            mgmtService.setStat(
+                    ServiceHostManagementService.STAT_NAME_SCHEDULED_EXECUTOR_QUEUE_DEPTH,
+                    scheduledExecutor.getQueue().size());
         }
     }
 
