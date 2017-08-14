@@ -1318,6 +1318,10 @@ public class ServiceHost implements ServiceRequestSender {
         return this.basicAuthenticationServiceUri;
     }
 
+    ScheduledExecutorService getCoreScheduledExecutor() {
+        return this.scheduledExecutor;
+    }
+
     public ScheduledExecutorService getScheduledExecutor() {
         return this.serviceScheduledExecutor;
     }
