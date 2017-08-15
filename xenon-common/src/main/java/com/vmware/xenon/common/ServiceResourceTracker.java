@@ -46,8 +46,8 @@ class ServiceResourceTracker {
      * active optimistic transactions.
      */
     private static final class CachedServiceStateKey {
-        private String servicePath;
-        private String transactionId;
+        private final String servicePath;
+        private final String transactionId;
 
         CachedServiceStateKey(String servicePath, String transactionId) {
             this.servicePath = servicePath;
@@ -322,13 +322,15 @@ class ServiceResourceTracker {
 
         CachedServiceStateKey key = new CachedServiceStateKey(s.getSelfLink(),
                 op.getTransactionId());
-        synchronized (key.toString()) {
-            ServiceDocument cachedState = this.cachedTransactionalServiceStates.put(key, st);
+
+        this.cachedTransactionalServiceStates.compute(key, (k, cachedState) -> {
             if (cachedState != null && cachedState.documentVersion > st.documentVersion) {
-                // restore cached state, discarding update, if the existing version is higher
-                this.cachedTransactionalServiceStates.put(key, cachedState);
+                // No update if the existing version is higher
+                return cachedState;
+            } else {
+                return st;
             }
-        }
+        });
     }
 
     /**

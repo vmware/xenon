@@ -14,6 +14,8 @@
 package com.vmware.xenon.common;
 
 import java.util.ArrayDeque;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.Queue;
@@ -81,5 +83,15 @@ public class RoundRobinOperationQueue {
 
     public boolean isEmpty() {
         return this.queues.isEmpty();
+    }
+
+    public Map<String, Integer> sizesByKey() {
+        Map<String, Integer> sizes = new HashMap<>();
+        synchronized (this) {
+            for (Entry<String, Queue<Operation>> queueEntry : this.queues.entrySet()) {
+                sizes.put(queueEntry.getKey(), queueEntry.getValue().size());
+            }
+        }
+        return sizes;
     }
 }
