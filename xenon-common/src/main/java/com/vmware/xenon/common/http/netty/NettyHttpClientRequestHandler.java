@@ -55,6 +55,7 @@ import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.authn.AuthenticationConstants;
 
 /**
@@ -115,6 +116,13 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, Object msg) {
+        double startTime = 0;
+        String requestedPath = null;
+
+        if (this.host.isRequestLoggingEnabled()) {
+            startTime = System.nanoTime();
+        }
+
         Operation request = null;
         Integer streamId = null;
         try {
@@ -141,15 +149,17 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                 request.setBody(ServiceErrorResponse.create(
                         new IllegalArgumentException(ERROR_MSG_DECODING_FAILURE),
                         request.getStatusCode()));
-                sendResponse(ctx, request, streamId);
+                sendResponse(ctx, request, streamId, null, startTime);
                 return;
             }
 
             parseRequestHeaders(ctx, request, nettyRequest);
 
             parseRequestUri(request, nettyRequest);
+            requestedPath = request.getUri().getPath();
 
-            decodeRequestBody(ctx, request, nettyRequest.content(), streamId);
+            decodeRequestBody(ctx, request, nettyRequest.content(), streamId,
+                    requestedPath, startTime);
         } catch (Exception e) {
             this.host.log(Level.SEVERE, "Uncaught exception: %s", Utils.toString(e));
             if (request == null) {
@@ -161,7 +171,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             }
             request.setKeepAlive(false).setStatusCode(sc)
                     .setBodyNoCloning(ServiceErrorResponse.create(e, sc));
-            sendResponse(ctx, request, streamId);
+            sendResponse(ctx, request, streamId, requestedPath, startTime);
         }
     }
 
@@ -193,16 +203,16 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
     }
 
     private void decodeRequestBody(ChannelHandlerContext ctx, Operation request,
-            ByteBuf content, Integer streamId) throws Exception {
+            ByteBuf content, Integer streamId, String originalPath, double startTime) throws Exception {
         if (!content.isReadable()) {
             // skip body decode, request had no body
             request.setContentLength(0);
-            submitRequest(ctx, request, streamId);
+            submitRequest(ctx, request, streamId, originalPath, startTime);
             return;
         }
 
         Utils.decodeBody(request, content.nioBuffer(), true);
-        submitRequest(ctx, request, streamId);
+        submitRequest(ctx, request, streamId, originalPath, startTime);
     }
 
     private void parseRequestHeaders(ChannelHandlerContext ctx, Operation request,
@@ -300,10 +310,10 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
     }
 
     private void submitRequest(ChannelHandlerContext ctx, Operation request,
-            Integer streamId) {
+            Integer streamId, String originalPath, double startTime) {
         request.nestCompletion((o, e) -> {
             request.setBodyNoCloning(o.getBodyRaw());
-            sendResponse(ctx, request, streamId);
+            sendResponse(ctx, request, streamId, originalPath, startTime);
         });
 
         request.toggleOption(OperationOption.CLONING_DISABLED, true);
@@ -315,10 +325,11 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         this.host.handleRequest(null, request);
     }
 
-    private void sendResponse(ChannelHandlerContext ctx, Operation request, Integer streamId) {
+    private void sendResponse(ChannelHandlerContext ctx, Operation request,
+            Integer streamId, String originalPath, double startTime) {
         try {
             applyRateLimit(ctx, request);
-            writeResponseUnsafe(ctx, request, streamId);
+            writeResponseUnsafe(ctx, request, streamId, originalPath, startTime);
         } catch (Exception e1) {
             this.host.log(Level.SEVERE, "%s", Utils.toString(e1));
         }
@@ -333,7 +344,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
     }
 
     private void writeResponseUnsafe(ChannelHandlerContext ctx, Operation request,
-            Integer streamId) {
+            Integer streamId, String originalPath, double startTime) {
         ByteBuf bodyBuffer = null;
         FullHttpResponse response;
 
@@ -346,7 +357,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                 String errorMessage = "Content-Length " + request.getContentLength()
                         + " is greater than max size allowed " + this.responsePayloadSizeLimit;
                 this.host.log(Level.SEVERE, errorMessage);
-                writeInternalServerError(ctx, request, streamId, errorMessage);
+                writeInternalServerError(ctx, request, streamId, errorMessage, originalPath, startTime);
                 return;
             }
             if (data != null) {
@@ -356,7 +367,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             // Note that this is a program logic error - some service isn't properly checking or setting Content-Type
             this.host.log(Level.SEVERE, "Error encoding body: %s", Utils.toString(e1));
             writeInternalServerError(ctx, request, streamId,
-                    "Error encoding body: " + e1.getMessage());
+                    "Error encoding body: " + e1.getMessage(), originalPath, startTime);
             return;
         }
 
@@ -427,11 +438,11 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             response.headers().add(Operation.SET_COOKIE_HEADER, tokenCookieString);
         }
 
-        writeResponse(ctx, request, response);
+        writeResponse(ctx, request, response, streamId, originalPath, startTime);
     }
 
     private void writeInternalServerError(ChannelHandlerContext ctx, Operation request,
-            Integer streamId, String err) {
+            Integer streamId, String err, String originalPath, double startTime) {
         byte[] data;
         try {
             data = err.getBytes(Utils.CHARSET);
@@ -450,7 +461,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, Operation.MEDIA_TYPE_TEXT_HTML);
         response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH,
                 response.content().readableBytes());
-        writeResponse(ctx, request, response);
+        writeResponse(ctx, request, response, streamId, originalPath, startTime);
         return;
     }
 
@@ -486,7 +497,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
     }
 
     private void writeResponse(ChannelHandlerContext ctx, Operation request,
-            FullHttpResponse response) {
+            FullHttpResponse response, Integer streamId, String originalPath, double startTime) {
         boolean isClose = !request.isKeepAlive() || response == null;
         Object rsp = Unpooled.EMPTY_BUFFER;
         if (response != null) {
@@ -496,10 +507,26 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         }
 
         ctx.channel().attr(NettyChannelContext.OPERATION_KEY).set(null);
-
         ChannelFuture future = ctx.writeAndFlush(rsp);
+
+        if (this.host.isRequestLoggingEnabled()) {
+            boolean avoidLogging =
+                    request.hasAnyPragmaDirective(this.host.getSkipLoggingPragmaDirectives()) ||
+                    (this.host.getRequestLoggingInfo().skipGossipRequests &&
+                            request.getUri().getPath().contains(ServiceUriPaths.NODE_GROUP_FACTORY));
+
+            if (!avoidLogging) {
+                double totalTimeMillis = (System.nanoTime() - startTime) / 1000000;
+                this.host.log(Level.INFO, "%s %s %s %s %d %d %.2fms",
+                        ctx.channel().remoteAddress(), request.getAction(), originalPath,
+                        streamId != null ? "HTTP/2" : "HTTP/1.1", request.getStatusCode(),
+                        request.getContentLength(), totalTimeMillis);
+            }
+        }
+
         if (isClose) {
             future.addListener(ChannelFutureListener.CLOSE);
         }
     }
+
 }

@@ -31,6 +31,10 @@
 * Added new stats for ServiceHostManagementService to reflect the current size
   of the authorization context Cache and the count of cache insertions.
 
+* Added support for request logging that logs all inbound requests to a Service
+  Host. Logging can be enabled or disabled during host start-up by calling
+  ServiceHost.setRequestLoggingInfo OR by making a PATCH to ServiceHostManagementService.
+
 ## 1.5.4
 
 * Updates to migration task service to assert zero documentOwner mismatches

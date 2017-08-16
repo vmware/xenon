@@ -58,6 +58,7 @@ import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
@@ -698,5 +699,77 @@ public class TestServiceHostManagementService extends BasicTestCase {
         }
     }
 
+    @Test
+    public void testRequestLoggingEnabled() throws Throwable {
+        // Start a new host
+        VerificationHost newHost = VerificationHost.create(0);
+        newHost.start();
+        this.hostToCleanUp.add(newHost);
 
+        // Wait for the log-service to become available on this host.
+        // we will be using it to verify if request logging gets enabled.
+        TestContext ctx = this.host.testCreate(1);
+        newHost.registerForServiceAvailability(ctx.getCompletion(),
+                ServiceUriPaths.PROCESS_LOG);
+        ctx.await();
+
+        // Make a request to an unknown self-link
+        TestRequestSender sender = this.host.getTestRequestSender();
+        FailureResponse response = sender
+                .sendAndWaitFailure(Operation.createGet(newHost, "/unknown-self-link"));
+        assertTrue(response.op.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND);
+
+        // Query the Log Service to see if the request shows up in the set of logs.
+        assertTrue(findLogLine(newHost, "unknown-self-link", 0));
+
+        // Enable request logging
+        setRequestLogging(newHost, true);
+
+        // Again make requests on the same service.
+        int requestCount = 100;
+        for (int i = 0; i < requestCount; i++) {
+            sender.sendAndWaitFailure(Operation.createGet(newHost, "/unknown-self-link"));
+            assertTrue(response.op.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND);
+        }
+
+        // Verify that the log service shows requests logged for the self-link
+        assertTrue(findLogLine(newHost, "unknown-self-link", requestCount));
+
+        // Disable request logging
+        setRequestLogging(newHost, false);
+
+        // make one more request
+        sender.sendAndWaitFailure(Operation.createGet(newHost, "/unknown-self-link"));
+        assertTrue(response.op.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND);
+
+        // assert that the log-line count stays the same
+        assertTrue(findLogLine(newHost, "unknown-self-link", requestCount));
+    }
+
+    private void setRequestLogging(VerificationHost newHost, boolean enabled) {
+        ServiceHost.RequestLoggingInfo loggingInfo = new ServiceHost.RequestLoggingInfo();
+        loggingInfo.enabled = enabled;
+        ServiceHostManagementService.ConfigureInboundRequestLogging request = new
+                ServiceHostManagementService.ConfigureInboundRequestLogging();
+        request.kind = ServiceHostManagementService.ConfigureInboundRequestLogging.KIND;
+        request.loggingInfo = loggingInfo;
+        this.host.getTestRequestSender().sendAndWait(Operation.createPatch(
+                newHost, ServiceUriPaths.CORE_MANAGEMENT).setBody(request));
+    }
+
+    private boolean findLogLine(VerificationHost newHost, String logLine, int count) {
+        URI logServiceUri = UriUtils.buildUri(newHost, ServiceUriPaths.PROCESS_LOG);
+
+        Operation getOp = this.host.getTestRequestSender()
+                .sendAndWait(Operation.createGet(logServiceUri));
+        ServiceHostLogService.LogServiceState state = getOp.getBody(ServiceHostLogService.LogServiceState.class);
+
+        int foundCount = 0;
+        for (String i : state.items) {
+            if (i.contains(logLine)) {
+                foundCount++;
+            }
+        }
+        return foundCount == count;
+    }
 }
