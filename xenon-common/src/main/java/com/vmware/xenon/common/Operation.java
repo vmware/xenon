@@ -400,7 +400,7 @@ public class Operation implements Cloneable {
 
     public static void failActionNotSupported(Operation request) {
         request.setStatusCode(Operation.STATUS_CODE_BAD_METHOD).fail(
-                new IllegalArgumentException("Action not supported: " + request.getAction()));
+                new IllegalStateException("Action not supported: " + request.getAction()));
     }
 
     public static void failLimitExceeded(Operation request, int errorCode) {
