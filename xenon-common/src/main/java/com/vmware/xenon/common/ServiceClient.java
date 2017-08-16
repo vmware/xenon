@@ -18,6 +18,13 @@ import javax.net.ssl.SSLContext;
 public interface ServiceClient extends ServiceRequestSender {
 
     /**
+     * Client metrics
+     */
+    public static class ClientMetrics {
+        public Integer executorQueueDepth;
+    }
+
+    /**
      * Connection pool usage metrics
      */
     public static class ConnectionPoolMetrics {
@@ -146,4 +153,9 @@ public interface ServiceClient extends ServiceRequestSender {
      * Returns metrics for a connection pool associated with the given tag
      */
     ConnectionPoolMetrics getConnectionPoolMetrics(String connectionTag);
+
+    /**
+     * Returns general metrics for the client.
+     */
+    ClientMetrics getClientMetrics();
 }

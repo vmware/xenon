@@ -30,6 +30,7 @@ import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
+import com.vmware.xenon.common.ServiceClient.ClientMetrics;
 import com.vmware.xenon.common.ServiceClient.ConnectionPoolMetrics;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
@@ -257,6 +258,13 @@ class ServiceResourceTracker {
         mgmtService.setStat(
                 ServiceHostManagementService.STAT_NAME_CPU_USAGE_PCT_PER_DAY,
                 pctUse);
+
+        ClientMetrics clientMetrics = this.host.getClient().getClientMetrics();
+        if (clientMetrics != null) {
+            mgmtService.setStat(
+                    ServiceHostManagementService.STAT_NAME_HTTP_CLIENT_EXECUTOR_QUEUE_DEPTH,
+                    clientMetrics.executorQueueDepth);
+        }
 
         ConnectionPoolMetrics http11TagInfo = this.host.getClient()
                 .getConnectionPoolMetrics(ServiceClient.CONNECTION_TAG_DEFAULT);

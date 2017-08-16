@@ -1003,6 +1003,22 @@ public class NettyHttpServiceClient implements ServiceClient {
         return metrics;
     }
 
+    @Override
+    public ClientMetrics getClientMetrics() {
+        ClientMetrics metrics = new ClientMetrics();
+        metrics.executorQueueDepth = this.channelPool.getExecutorQueueDepth();
+        if (this.sslChannelPool != null) {
+            metrics.executorQueueDepth += this.sslChannelPool.getExecutorQueueDepth();
+        }
+        if (this.http2ChannelPool != null) {
+            metrics.executorQueueDepth += this.http2ChannelPool.getExecutorQueueDepth();
+        }
+        if (this.http2SslChannelPool != null) {
+            metrics.executorQueueDepth += this.http2SslChannelPool.getExecutorQueueDepth();
+        }
+        return metrics;
+    }
+
     /**
      * Count how many HTTP/2 contexts we have. There may be more than one if we have
      * an exhausted connection that hasn't been cleaned up yet.

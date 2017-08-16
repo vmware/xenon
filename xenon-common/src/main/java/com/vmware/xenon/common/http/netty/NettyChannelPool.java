@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.net.ssl.SSLContext;
@@ -304,6 +305,14 @@ public class NettyChannelPool {
             }
         }
         return tagInfo;
+    }
+
+    public int getExecutorQueueDepth() {
+        if (this.nettyExecutorService == null) {
+            return 0;
+        }
+        ThreadPoolExecutor tpe = (ThreadPoolExecutor) this.nettyExecutorService;
+        return tpe.getQueue().size();
     }
 
     public void connectOrReuse(NettyChannelGroupKey key, Operation request) {
