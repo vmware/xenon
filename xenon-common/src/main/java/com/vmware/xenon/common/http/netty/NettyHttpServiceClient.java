@@ -965,43 +965,42 @@ public class NettyHttpServiceClient implements ServiceClient {
             throw new IllegalArgumentException("tag is required");
         }
 
-        ConnectionPoolMetrics tagInfo = null;
-        if (this.http2ChannelPool != null) {
-            tagInfo = this.http2ChannelPool.getConnectionTagInfo(tag);
-        }
-        ConnectionPoolMetrics secureTagInfo = null;
-        if (this.http2SslChannelPool != null) {
-            secureTagInfo = this.http2SslChannelPool.getConnectionTagInfo(tag);
-        }
+        ConnectionPoolMetrics metrics = this.channelPool.getConnectionTagInfo(tag);
 
-        if (tagInfo == null) {
-            tagInfo = secureTagInfo;
-        } else if (secureTagInfo != null) {
-            tagInfo.inUseConnectionCount += secureTagInfo.inUseConnectionCount;
-            tagInfo.pendingRequestCount += secureTagInfo.pendingRequestCount;
-            tagInfo.availableConnectionCount += secureTagInfo.availableConnectionCount;
-        }
-
-        if (tagInfo != null) {
-            return tagInfo;
-        }
-
-        if (this.channelPool != null) {
-            tagInfo = this.channelPool.getConnectionTagInfo(tag);
-        }
         if (this.sslChannelPool != null) {
-            secureTagInfo = this.sslChannelPool.getConnectionTagInfo(tag);
+            ConnectionPoolMetrics cpm = this.sslChannelPool.getConnectionTagInfo(tag);
+            if (metrics == null) {
+                metrics = cpm;
+            } else if (cpm != null) {
+                metrics.inUseConnectionCount += cpm.inUseConnectionCount;
+                metrics.pendingRequestCount += cpm.pendingRequestCount;
+                metrics.availableConnectionCount += cpm.availableConnectionCount;
+            }
         }
 
-        if (tagInfo == null) {
-            tagInfo = secureTagInfo;
-        } else if (secureTagInfo != null) {
-            tagInfo.inUseConnectionCount += secureTagInfo.inUseConnectionCount;
-            tagInfo.pendingRequestCount += secureTagInfo.pendingRequestCount;
-            tagInfo.availableConnectionCount += secureTagInfo.availableConnectionCount;
+        if (this.http2ChannelPool != null) {
+            ConnectionPoolMetrics cpm = this.http2ChannelPool.getConnectionTagInfo(tag);
+            if (metrics == null) {
+                metrics = cpm;
+            } else if (cpm != null) {
+                metrics.inUseConnectionCount += cpm.inUseConnectionCount;
+                metrics.pendingRequestCount += cpm.pendingRequestCount;
+                metrics.availableConnectionCount += cpm.availableConnectionCount;
+            }
         }
 
-        return tagInfo;
+        if (this.http2SslChannelPool != null) {
+            ConnectionPoolMetrics cpm = this.http2SslChannelPool.getConnectionTagInfo(tag);
+            if (metrics == null) {
+                metrics = cpm;
+            } else if (cpm != null) {
+                metrics.inUseConnectionCount += cpm.inUseConnectionCount;
+                metrics.pendingRequestCount += cpm.pendingRequestCount;
+                metrics.availableConnectionCount += cpm.availableConnectionCount;
+            }
+        }
+
+        return metrics;
     }
 
     /**
