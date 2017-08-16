@@ -411,6 +411,22 @@ public class TestAuthorization extends BasicTestCase {
         // Make sure only the authorized services were returned
         assertAuthorizedServicesInResult("guest", exampleServices, factoryGetResult[0]);
 
+        // Execute get on factory trying to get all example services
+        getFactory = Operation.createGet(
+                UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK))
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+
+                    factoryGetResult[0] = o.getBody(ServiceDocumentQueryResult.class);
+                    this.host.completeIteration();
+                });
+
+        this.host.testStart(1);
+        this.host.send(getFactory);
+        this.host.testWait();
     }
 
     @Test
