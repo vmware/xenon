@@ -59,6 +59,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
@@ -386,9 +387,6 @@ public class ServiceHost implements ServiceRequestSender {
             .getProperty(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX) == null
             || Boolean.getBoolean(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX);
 
-
-
-
     /**
      * Request rate limiting configuration and real time statistics
      */
@@ -447,6 +445,7 @@ public class ServiceHost implements ServiceRequestSender {
         public SslClientAuthMode sslClientAuthMode;
         public int responsePayloadSizeLimit;
         public int requestPayloadSizeLimit;
+        public boolean isRequestLoggingEnabled;
 
         public URI storageSandboxFileReference;
         public URI resourceSandboxFileReference;
@@ -604,6 +603,7 @@ public class ServiceHost implements ServiceRequestSender {
     private URI authenticationServiceUri;
     private URI basicAuthenticationServiceUri;
     private ScheduledFuture<?> maintenanceTask;
+    private Function<Operation, Boolean> requestLoggingFilter;
 
     private final ServiceSynchronizationTracker serviceSynchTracker = ServiceSynchronizationTracker
             .create(this);
@@ -1010,6 +1010,38 @@ public class ServiceHost implements ServiceRequestSender {
 
     public void setPeerSynchronizationEnabled(boolean enabled) {
         this.state.isPeerSynchronizationEnabled = enabled;
+    }
+
+    public boolean isRequestLoggingEnabled() {
+        return this.state.isRequestLoggingEnabled;
+    }
+
+    public void setRequestLoggingEnabled(boolean enabled) {
+        this.state.isRequestLoggingEnabled = enabled;
+    }
+
+    public Function<Operation, Boolean> getRequestLoggingFilter() {
+        return this.requestLoggingFilter;
+    }
+
+    /**
+     * Allows callers to register a lambda function to determine what inbound
+     * operations should be logged. If the lambda returns true, Xenon
+     * will log the inbound request.
+     *
+     * For example: The below sample sample avoids logging all inbound requests
+     * for Synchronization, Replication, Forwarding and Gossip:
+     *
+     * setRequestLoggingFilter(
+     *         o -> !o.hasAnyPragmaDirective(
+     *                 Operation.PRAGMA_DIRECTIVE_FORWARDED,
+     *                 Operation.PRAGMA_DIRECTIVE_REPLICATED,
+     *                 Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER,
+     *                 Operation.PRAGMA_DIRECTIVE_SYNCH_PEER) &&
+     *         !o.getUri().getPath().startsWith(ServiceUriPaths.NODE_GROUP_FACTORY));
+     */
+    public void setRequestLoggingFilter(Function<Operation, Boolean> requestLoggingFilter) {
+        this.requestLoggingFilter = requestLoggingFilter;
     }
 
     public int getPeerSynchronizationTimeLimitSeconds() {
@@ -3444,6 +3476,10 @@ public class ServiceHost implements ServiceRequestSender {
      * Infrastructure use only
      */
     public boolean handleRequest(Service service, Operation inboundOp) {
+        if (inboundOp != null && inboundOp.getUri() != null && inboundOp.getUri().getPath().contains("mgmt/about")) {
+            log(Level.INFO, "/mgmt/about Id: %s", inboundOp.getId());
+        }
+
         if (inboundOp == null && service != null) {
             inboundOp = service.dequeueRequest();
         }
@@ -3478,6 +3514,10 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private void checkAndPopulateAuthContext(Service service, Operation inboundOp) {
+        if (inboundOp.getUri() != null && inboundOp.getUri().getPath().contains("mgmt/about")) {
+            log(Level.INFO, "/mgmt/about Id: %s", inboundOp.getId());
+        }
+
         if (inboundOp.getAuthorizationContext() != null) {
             checkAndPopulateAuthzContext(service, inboundOp);
             return;
@@ -3533,6 +3573,10 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private void checkAndPopulateAuthzContext(Service service, Operation inboundOp) {
+        if (inboundOp != null && inboundOp.getUri() != null && inboundOp.getUri().getPath().contains("mgmt/about")) {
+            log(Level.INFO, "/mgmt/about Id: %s", inboundOp.getId());
+        }
+
         if (this.authorizationService != null) {
             inboundOp.nestCompletion(op -> {
                 handleRequestWithAuthContext(null, inboundOp);
@@ -3544,6 +3588,10 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private void handleRequestWithAuthContext(Service service, Operation inboundOp) {
+        if (inboundOp != null && inboundOp.getUri() != null && inboundOp.getUri().getPath().contains("mgmt/about")) {
+            log(Level.INFO, "/mgmt/about Id: %s", inboundOp.getId());
+        }
+
         String path;
         if (service == null) {
             path = inboundOp.getUri().getPath();
@@ -3597,6 +3645,10 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     void getAuthorizationContext(Operation op, Consumer<AuthorizationContext> authorizationContextHandler) {
+        if (op.getUri() != null && op.getUri().getPath().contains("mgmt/about")) {
+            log(Level.INFO, "/mgmt/about Id: %s", op.getId());
+        }
+
         String token = BasicAuthenticationUtils.getAuthToken(op);
 
         if (token == null) {
@@ -4157,6 +4209,10 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private void queueOrScheduleRequest(Service s, Operation op) {
+        if (op != null && op.getUri() != null && op.getUri().getPath().contains("mgmt/about")) {
+            log(Level.INFO, "/mgmt/about Id: %s", op.getId());
+        }
+
         ProcessingStage stage = s.getProcessingStage();
         if (stage == ProcessingStage.AVAILABLE) {
             queueOrScheduleRequestInternal(s, op);
@@ -4190,8 +4246,16 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private void queueOrScheduleRequestInternal(Service s, Operation op) {
+        if (op != null && op.getUri() != null && op.getUri().getPath().contains("mgmt/about")) {
+            log(Level.INFO, "/mgmt/about Id: %s", op.getId());
+        }
+
         if (!s.queueRequest(op)) {
             Runnable r = () -> {
+                if (op != null && op.getUri() != null && op.getUri().getPath().contains("mgmt/about")) {
+                    log(Level.INFO, "/mgmt/about Id: %s", op.getId());
+                }
+
                 OperationContext opCtx = extractAndApplyContext(op);
                 try {
                     s.handleRequest(op);
@@ -5897,6 +5961,10 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private void populateAuthorizationContext(Operation op, Consumer<AuthorizationContext> authorizationContextHandler) {
+        if (op.getUri() != null && op.getUri().getPath().contains("mgmt/about")) {
+            log(Level.INFO, "/mgmt/about Id: %s", op.getId());
+        }
+
         getAuthorizationContext(op, authorizationContext -> {
             if (authorizationContext == null) {
                 // No (valid) authorization context, fall back to guest context

@@ -85,6 +85,10 @@ public class StatelessService implements Service {
 
     @Override
     public boolean queueRequest(Operation op) {
+        if (op != null && op.getUri() != null && op.getUri().getPath().contains("mgmt/about")) {
+            log(Level.INFO, "/mgmt/about Id: %s", op.getId());
+        }
+
         return false;
     }
 
@@ -100,6 +104,10 @@ public class StatelessService implements Service {
 
     @Override
     public void handleRequest(Operation op) {
+        if (op != null && op.getUri() != null && op.getUri().getPath().contains("mgmt/about")) {
+            log(Level.INFO, "/mgmt/about Id: %s", op.getId());
+        }
+
         handleRequest(op, OperationProcessingStage.PROCESSING_FILTERS);
     }
 
