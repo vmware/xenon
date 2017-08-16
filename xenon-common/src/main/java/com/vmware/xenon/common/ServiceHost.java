@@ -59,6 +59,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
@@ -386,9 +387,6 @@ public class ServiceHost implements ServiceRequestSender {
             .getProperty(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX) == null
             || Boolean.getBoolean(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX);
 
-
-
-
     /**
      * Request rate limiting configuration and real time statistics
      */
@@ -447,6 +445,7 @@ public class ServiceHost implements ServiceRequestSender {
         public SslClientAuthMode sslClientAuthMode;
         public int responsePayloadSizeLimit;
         public int requestPayloadSizeLimit;
+        public boolean isRequestLoggingEnabled;
 
         public URI storageSandboxFileReference;
         public URI resourceSandboxFileReference;
@@ -604,6 +603,8 @@ public class ServiceHost implements ServiceRequestSender {
     private URI authenticationServiceUri;
     private URI basicAuthenticationServiceUri;
     private ScheduledFuture<?> maintenanceTask;
+
+    private Function<Operation, Boolean> loggingFilter = createDefaultLoggingFilter();
 
     private final ServiceSynchronizationTracker serviceSynchTracker = ServiceSynchronizationTracker
             .create(this);
@@ -1012,6 +1013,23 @@ public class ServiceHost implements ServiceRequestSender {
         this.state.isPeerSynchronizationEnabled = enabled;
     }
 
+    public void setRequestLoggingEnabled(boolean enabled) {
+        this.state.isRequestLoggingEnabled = enabled;
+    }
+
+    public void setLoggingFilter(Function<Operation, Boolean> loggingFilter) {
+        this.loggingFilter = loggingFilter;
+    }
+
+    private static Function<Operation, Boolean> createDefaultLoggingFilter() {
+        return (op) ->
+            !op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED) &&
+            !op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED) &&
+            !op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_PEER) &&
+            !op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER) &&
+            !op.getUri().getPath().startsWith(ServiceUriPaths.NODE_GROUP_FACTORY);
+    }
+
     public int getPeerSynchronizationTimeLimitSeconds() {
         return this.state.peerSynchronizationTimeLimitSeconds;
     }
@@ -1398,6 +1416,11 @@ public class ServiceHost implements ServiceRequestSender {
                 this.httpListener.setResponsePayloadSizeLimit(this.state.responsePayloadSizeLimit);
             }
 
+            if (this.state.isRequestLoggingEnabled) {
+                this.httpListener.setRequestLoggingEnabled(this.state.isRequestLoggingEnabled,
+                        this.loggingFilter);
+            }
+
             this.httpListener.start(getPort(), this.state.bindAddress);
         }
 
@@ -1419,6 +1442,11 @@ public class ServiceHost implements ServiceRequestSender {
                 if (this.state.responsePayloadSizeLimit > 0) {
                     this.httpsListener
                             .setResponsePayloadSizeLimit(this.state.responsePayloadSizeLimit);
+                }
+
+                if (this.state.isRequestLoggingEnabled) {
+                    this.httpListener.setRequestLoggingEnabled(this.state.isRequestLoggingEnabled,
+                            this.loggingFilter);
                 }
 
                 this.httpsListener.start(getSecurePort(), this.state.bindAddress);

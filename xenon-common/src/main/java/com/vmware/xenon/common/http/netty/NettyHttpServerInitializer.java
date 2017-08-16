@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.common.http.netty;
 
+import java.util.function.Function;
 import java.util.logging.Level;
 
 import io.netty.channel.ChannelHandlerContext;
@@ -42,6 +43,7 @@ import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.util.AsciiString;
 
+import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.SslClientAuthMode;
 import com.vmware.xenon.common.Utils;
@@ -108,20 +110,26 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
     public static final String HTTP2_UPGRADE_HANDLER = "http2-upgrade-handler";
     public static final String SSL_HANDLER = "ssl";
 
+    private static final boolean debugLogging = false;
+
     private final SslContext sslContext;
     private ServiceHost host;
     private NettyHttpListener listener;
     private int responsePayloadSizeLimit;
     private boolean secureAuthCookie;
-    private static final boolean debugLogging = false;
+    private boolean isRequestLoggingEnabled;
+    private Function<Operation, Boolean> loggingFilter;
 
     public NettyHttpServerInitializer(NettyHttpListener listener, ServiceHost host,
-            SslContext sslContext, int responsePayloadSizeLimit, boolean secureAuthCookie) {
+            SslContext sslContext, int responsePayloadSizeLimit, boolean secureAuthCookie,
+            boolean isRequestLoggingEnabled, Function<Operation, Boolean> loggingFilter) {
         this.sslContext = sslContext;
         this.host = host;
         this.listener = listener;
         this.responsePayloadSizeLimit = responsePayloadSizeLimit;
         this.secureAuthCookie = secureAuthCookie;
+        this.isRequestLoggingEnabled = isRequestLoggingEnabled;
+        this.loggingFilter = loggingFilter;
         NettyLoggingUtil.setupNettyLogging();
     }
 
@@ -213,7 +221,8 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
                 ServiceUriPaths.WEB_SOCKET_SERVICE_PREFIX));
         p.addLast(HTTP_REQUEST_HANDLER,
                 new NettyHttpClientRequestHandler(this.host, this.listener, sslHandler,
-                        this.responsePayloadSizeLimit, this.secureAuthCookie));
+                        this.responsePayloadSizeLimit, this.secureAuthCookie,
+                        this.isRequestLoggingEnabled, this.loggingFilter));
     }
 
     /**

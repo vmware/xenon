@@ -22,6 +22,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.logging.Level;
 
 import io.netty.bootstrap.ServerBootstrap;
@@ -79,6 +80,8 @@ public class NettyHttpListener implements ServiceRequestListener {
     private ChannelHandler childChannelHandler;
     private boolean isListening;
     private int responsePayloadSizeLimit = RESPONSE_PAYLOAD_SIZE_LIMIT;
+    private boolean isRequestLoggingEnabled;
+    private Function<Operation, Boolean> loggingFilter;
 
     public NettyHttpListener(ServiceHost host) {
         this.host = host;
@@ -107,7 +110,8 @@ public class NettyHttpListener implements ServiceRequestListener {
         this.eventLoopGroup = new NioEventLoopGroup(EVENT_LOOP_THREAD_COUNT, this.nettyExecutorService);
         if (this.childChannelHandler == null) {
             this.childChannelHandler = new NettyHttpServerInitializer(this, this.host,
-                    this.sslContext, this.responsePayloadSizeLimit, this.secureAuthCookie);
+                    this.sslContext, this.responsePayloadSizeLimit, this.secureAuthCookie,
+                    this.isRequestLoggingEnabled, this.loggingFilter);
         }
 
         ServerBootstrap b = new ServerBootstrap();
@@ -272,5 +276,19 @@ public class NettyHttpListener implements ServiceRequestListener {
             throw new IllegalStateException("Already started listening");
         }
         this.secureAuthCookie = secureAuthCookie;
+    }
+
+    @Override
+    public void setRequestLoggingEnabled(boolean enabled, Function<Operation, Boolean> loggingFilter) {
+        if (isListening()) {
+            throw new IllegalStateException("Already started listening");
+        }
+        this.isRequestLoggingEnabled = enabled;
+        this.loggingFilter = loggingFilter;
+    }
+
+    @Override
+    public boolean isRequestLoggingEnabled() {
+        return this.isRequestLoggingEnabled;
     }
 }
