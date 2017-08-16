@@ -133,6 +133,11 @@ public class ServiceHostManagementService extends StatefulService {
         public String level;
     }
 
+    public static class ConfigureInboundRequestLogging extends BaseManagementServiceRequest {
+        public static final String KIND = Utils.buildKind(ConfigureInboundRequestLogging.class);
+        public Boolean enabled = true;
+    }
+
     public enum BackupType {
 
         /**
@@ -272,6 +277,12 @@ public class ServiceHostManagementService extends StatefulService {
                 return;
             }
 
+            if (request.kind.equals(ConfigureInboundRequestLogging.KIND)) {
+                ConfigureInboundRequestLogging lr = patch.getBody(ConfigureInboundRequestLogging.class);
+                handleConfigureInboundRequestLogging(lr, patch);
+                return;
+            }
+
             if (request.kind.equals(BackupRequest.KIND)) {
                 BackupRequest br = patch.getBody(BackupRequest.class);
                 handleBackupRequest(br, patch);
@@ -380,6 +391,13 @@ public class ServiceHostManagementService extends StatefulService {
             sendRequest(Operation.createDelete(operationTracingServiceUri).setCompletion(
                     serviceCompletion));
         }
+    }
+
+    private void handleConfigureInboundRequestLogging(ConfigureInboundRequestLogging request, Operation op) {
+        if (request.enabled != null) {
+            getHost().setRequestLoggingEnabled(request.enabled);
+        }
+        op.complete();
     }
 
     private void handleBackupRequest(BackupRequest req, Operation op) {
