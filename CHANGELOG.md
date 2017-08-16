@@ -2,6 +2,23 @@
 
 ## 1.5.5-SNAPSHOT
 
+* Fixed a bug whereby the wrong StatusCode was being returned through
+  Operation.failActionNotSupported().  Instead of returning STATUS_CODE_BAD_METHOD
+  (405) as in the code, it was being translated to (400) STATUS_CODE_BAD_REQUEST.
+
+  PLEASE NOTE: this is a potentially breaking change if you or your test code was
+  relying on the result from this method.  The most common way that this would occur
+  is in the result returned from methods that are not handled.
+
+  ex:  the following would now return a 405, instead of a 400.
+```$java
+  @Override
+  public void handlePut(Operation patch) {
+      Operation.failActionNotSupported(patch);
+  }
+```
+
+
 * Enable repeated @RouteDocumentation annotation. This enable richer Swagger
   support for services marked as *URI_NAMESPACE_OWNER*.
 
