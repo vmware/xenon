@@ -15,6 +15,7 @@ package com.vmware.xenon.common;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.function.Function;
 
 public interface ServiceRequestListener {
 
@@ -52,4 +53,8 @@ public interface ServiceRequestListener {
     void setSecureAuthCookie(boolean secureAuthCookie);
 
     boolean getSecureAuthCookie();
+
+    void setRequestLoggingEnabled(boolean enabled, Function<Operation, Boolean> loggingFilter);
+
+    boolean isRequestLoggingEnabled();
 }
