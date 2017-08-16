@@ -386,9 +386,6 @@ public class ServiceHost implements ServiceRequestSender {
             .getProperty(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX) == null
             || Boolean.getBoolean(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX);
 
-
-
-
     /**
      * Request rate limiting configuration and real time statistics
      */
@@ -423,6 +420,17 @@ public class ServiceHost implements ServiceRequestSender {
         public TimeSeriesStats timeSeries;
     }
 
+    /**
+     * Enables Logging for all inbound requests.
+     */
+    public static class RequestLoggingInfo {
+        public Boolean enabled = false;
+
+        public Boolean skipGossipRequests = true;
+        public Boolean skipSynchronizationRequests = true;
+        public Boolean skipForwardingRequests = true;
+    }
+
     public static class ServiceHostState extends ServiceDocument {
         public enum MemoryLimitType {
             LOW_WATERMARK, HIGH_WATERMARK, EXACT
@@ -447,6 +455,7 @@ public class ServiceHost implements ServiceRequestSender {
         public SslClientAuthMode sslClientAuthMode;
         public int responsePayloadSizeLimit;
         public int requestPayloadSizeLimit;
+        public RequestLoggingInfo requestLoggingInfo;
 
         public URI storageSandboxFileReference;
         public URI resourceSandboxFileReference;
@@ -624,6 +633,8 @@ public class ServiceHost implements ServiceRequestSender {
     private AuthorizationContext systemAuthorizationContext;
     private AuthorizationContext guestAuthorizationContext;
     private ScheduledExecutorService serviceScheduledExecutor;
+
+    private List<String> skipLoggingPragmaDirectives = new ArrayList<>();
 
     protected ServiceHost() {
         this.state = new ServiceHostState();
@@ -1010,6 +1021,44 @@ public class ServiceHost implements ServiceRequestSender {
 
     public void setPeerSynchronizationEnabled(boolean enabled) {
         this.state.isPeerSynchronizationEnabled = enabled;
+    }
+
+    public boolean isRequestLoggingEnabled() {
+        return this.state.requestLoggingInfo != null && this.state.requestLoggingInfo.enabled;
+    }
+
+    public RequestLoggingInfo getRequestLoggingInfo() {
+        return this.state.requestLoggingInfo;
+    }
+
+    public List<String> getSkipLoggingPragmaDirectives() {
+        return this.skipLoggingPragmaDirectives;
+    }
+
+    public void setRequestLoggingInfo(RequestLoggingInfo loggingInfo) {
+        this.state.requestLoggingInfo = loggingInfo;
+
+        // Update pragma directives list for forwarding requests
+        if (loggingInfo.skipForwardingRequests) {
+            if (!this.skipLoggingPragmaDirectives.contains(Operation.PRAGMA_DIRECTIVE_FORWARDED)) {
+                this.skipLoggingPragmaDirectives.add(Operation.PRAGMA_DIRECTIVE_FORWARDED);
+            }
+        } else {
+            this.skipLoggingPragmaDirectives.remove(Operation.PRAGMA_DIRECTIVE_FORWARDED);
+        }
+
+        // Update pragma directives list for synchronization requests
+        if (loggingInfo.skipSynchronizationRequests) {
+            if (!this.skipLoggingPragmaDirectives.contains(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)) {
+                this.skipLoggingPragmaDirectives.add(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER);
+            }
+            if (!this.skipLoggingPragmaDirectives.contains(Operation.PRAGMA_DIRECTIVE_SYNCH_PEER)) {
+                this.skipLoggingPragmaDirectives.add(Operation.PRAGMA_DIRECTIVE_SYNCH_PEER);
+            }
+        } else {
+            this.skipLoggingPragmaDirectives.remove(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER);
+            this.skipLoggingPragmaDirectives.remove(Operation.PRAGMA_DIRECTIVE_SYNCH_PEER);
+        }
     }
 
     public int getPeerSynchronizationTimeLimitSeconds() {

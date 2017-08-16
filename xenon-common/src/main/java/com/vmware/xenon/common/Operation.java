@@ -19,6 +19,7 @@ import java.security.Principal;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
@@ -1480,6 +1481,23 @@ public class Operation implements Cloneable {
         String existingDirectives = getRequestHeaderAsIs(PRAGMA_HEADER);
         return existingDirectives != null
                 && indexOfPragmaDirective(existingDirectives, directive) != -1;
+    }
+
+    /**
+     * Checks if a directive is present. Lower case strings must be used.
+     */
+    public boolean hasAnyPragmaDirective(List<String> directives) {
+        String existingDirectives = getRequestHeaderAsIs(PRAGMA_HEADER);
+        if (existingDirectives == null) {
+            return false;
+        }
+
+        for (String directive : directives) {
+            if (indexOfPragmaDirective(existingDirectives, directive) != -1) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

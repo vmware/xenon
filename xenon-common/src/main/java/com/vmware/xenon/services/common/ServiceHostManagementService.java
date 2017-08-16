@@ -19,6 +19,7 @@ import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStatUtils;
 import com.vmware.xenon.common.ServiceStats;
@@ -135,6 +136,12 @@ public class ServiceHostManagementService extends StatefulService {
         public OperationTracingEnable enable = OperationTracingEnable.START;
         public String level;
     }
+
+    public static class ConfigureInboundRequestLogging extends BaseManagementServiceRequest {
+        public static final String KIND = Utils.buildKind(ConfigureInboundRequestLogging.class);
+        public ServiceHost.RequestLoggingInfo loggingInfo;
+    }
+
 
     public enum BackupType {
 
@@ -275,6 +282,12 @@ public class ServiceHostManagementService extends StatefulService {
                 return;
             }
 
+            if (request.kind.equals(ConfigureInboundRequestLogging.KIND)) {
+                ConfigureInboundRequestLogging lr = patch.getBody(ConfigureInboundRequestLogging.class);
+                handleConfigureInboundRequestLogging(lr, patch);
+                return;
+            }
+
             if (request.kind.equals(BackupRequest.KIND)) {
                 BackupRequest br = patch.getBody(BackupRequest.class);
                 handleBackupRequest(br, patch);
@@ -377,12 +390,21 @@ public class ServiceHostManagementService extends StatefulService {
         if ((req.enable == OperationTracingEnable.START)) {
             OperationIndexService operationService = new OperationIndexService();
             this.getHost().startService(Operation.createPost(operationTracingServiceUri)
-                    .setCompletion(serviceCompletion),
+                            .setCompletion(serviceCompletion),
                     operationService);
         } else {
             sendRequest(Operation.createDelete(operationTracingServiceUri).setCompletion(
                     serviceCompletion));
         }
+    }
+
+    private void handleConfigureInboundRequestLogging(ConfigureInboundRequestLogging request, Operation op) {
+        if (request.loggingInfo == null) {
+            op.fail(new IllegalArgumentException("loggingInfo is missing"));
+            return;
+        }
+        getHost().setRequestLoggingInfo(request.loggingInfo);
+        op.complete();
     }
 
     private void handleBackupRequest(BackupRequest req, Operation op) {
