@@ -1547,7 +1547,7 @@ public class TestNodeGroupService {
 
     @Test
     public void synchronizationWithPeerNodeListAndDuplicates() throws Throwable {
-        ExampleServiceHost h = null;
+        VerificationHost h = null;
 
         TemporaryFolder tmpFolder = new TemporaryFolder();
         tmpFolder.create();
@@ -1610,7 +1610,7 @@ public class TestNodeGroupService {
 
             // now start a new Host and supply the already created peer, then observe the automatic
             // join
-            h = new ExampleServiceHost();
+            h = new VerificationHost();
             int quorum = this.host.getPeerCount() + 1;
 
             String mainHostId = "main-" + VerificationHost.hostNumber.incrementAndGet();
@@ -1653,6 +1653,7 @@ public class TestNodeGroupService {
 
             // now verify all nodes synchronize and see the example service instances that existed on the single
             // host
+            this.host.addPeerNode(h);
             this.host.waitForReplicatedFactoryChildServiceConvergence(
                     getFactoriesPerNodeGroup(this.replicationTargetFactoryLink),
                     exampleStatesPerSelfLink,
@@ -1661,13 +1662,13 @@ public class TestNodeGroupService {
                     this.replicationFactor);
 
             // Send some updates after the full group has formed  and verify the updates are seen by services on all nodes
-
             doStateUpdateReplicationTest(Action.PATCH, this.serviceCount, this.updateCount, 0,
                     this.exampleStateUpdateBodySetter,
                     this.exampleStateConvergenceChecker,
                     exampleStatesPerSelfLink);
 
             URI exampleFactoryUri = this.host.getPeerServiceUri(ExampleService.FACTORY_LINK);
+
             waitForReplicatedFactoryServiceAvailable(
                     UriUtils.buildUri(exampleFactoryUri, ExampleService.FACTORY_LINK),
                     ServiceUriPaths.DEFAULT_NODE_SELECTOR);

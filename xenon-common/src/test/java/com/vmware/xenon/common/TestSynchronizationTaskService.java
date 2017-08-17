@@ -21,6 +21,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -382,6 +383,76 @@ public class TestSynchronizationTaskService extends BasicTestCase {
 
         assertNotNull(newState);
         return newState;
+    }
+
+    @Test
+    public void  synchAfterClusterRestart() throws Throwable {
+        setUpMultiNode();
+        String factoryLink = ExampleService.FACTORY_LINK;
+        this.host.setNodeGroupQuorum(this.nodeCount - 1);
+        this.host.waitForNodeGroupConvergence();
+
+        List<ExampleServiceState> exampleStates = this.host.createExampleServices(
+                this.host.getPeerHost(), this.serviceCount, null, factoryLink);
+
+        Map<String, ExampleServiceState> exampleStatesMap =
+                exampleStates.stream().collect(Collectors.toMap(s -> s.documentSelfLink, s -> s));
+
+        this.host.waitForReplicatedFactoryChildServiceConvergence(
+                this.host.getNodeGroupToFactoryMap(factoryLink),
+                exampleStatesMap,
+                this.exampleStateConvergenceChecker,
+                exampleStatesMap.size(),
+                0, this.nodeCount);
+
+        List<VerificationHost> hosts = new ArrayList<>();
+
+        // Stop all nodes and preserve their state.
+        for (Map.Entry<URI, VerificationHost> entry : this.host.getInProcessHostMap().entrySet()) {
+            VerificationHost host = entry.getValue();
+            this.host.stopHostAndPreserveState(host);
+            hosts.add(host);
+        }
+
+        // Create new nodes with same sandbox and port, but different Id.
+        for (VerificationHost host : hosts) {
+            ServiceHost.Arguments args = new ServiceHost.Arguments();
+            args.sandbox = Paths.get(host.getStorageSandbox()).getParent();
+            args.port = 0;
+            VerificationHost newHost = VerificationHost.create(args);
+            newHost.setPort(host.getPort());
+            newHost.start();
+            this.host.addPeerNode(newHost);
+        }
+
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+        this.host.waitForNodeGroupConvergence(this.nodeCount, this.nodeCount);
+
+        // Verify that all states are replicated and synched.
+        this.host.waitForReplicatedFactoryChildServiceConvergence(
+                this.host.getNodeGroupToFactoryMap(factoryLink),
+                exampleStatesMap,
+                this.exampleStateConvergenceChecker,
+                exampleStatesMap.size(),
+                0, this.nodeCount);
+
+        // Remove one old node.
+        VerificationHost nodeToStop = this.host.getPeerHost();
+        this.host.stopHost(nodeToStop);
+
+        // Add new node and verify that state is replicated.
+        this.host.setUpLocalPeerHost(nodeToStop.getPort(),
+                VerificationHost.FAST_MAINT_INTERVAL_MILLIS, null, null);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+        this.host.waitForNodeGroupConvergence(this.nodeCount, this.nodeCount);
+
+        // Verify that all states are replicated and synched.
+        this.host.waitForReplicatedFactoryChildServiceConvergence(
+                this.host.getNodeGroupToFactoryMap(factoryLink),
+                exampleStatesMap,
+                this.exampleStateConvergenceChecker,
+                exampleStatesMap.size(),
+                0, this.nodeCount);
     }
 
     @Test
