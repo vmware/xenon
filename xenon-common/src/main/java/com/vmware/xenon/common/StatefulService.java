@@ -404,8 +404,8 @@ public class StatefulService implements Service {
             }
 
             if (opProcessingStage == OperationProcessingStage.PROCESSING_FILTERS) {
-                if (!request.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_FORWARDING) &&
-                        validateOwnerSelectedUpdate(request)) {
+
+                if (request.getAction() != Action.GET && validateOwnerSelectedUpdate(request)) {
                     return;
                 }
 
