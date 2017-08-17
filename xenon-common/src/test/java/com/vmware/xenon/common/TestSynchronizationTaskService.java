@@ -21,6 +21,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -101,6 +102,8 @@ public class TestSynchronizationTaskService extends BasicTestCase {
 
     @BeforeClass
     public static void setUpClass() throws Exception {
+        System.setProperty(Utils.PROPERTY_NAME_PREFIX
+                + "ServiceHost.APPEND_PORT_TO_SANDBOX", "false");
         System.setProperty(
                 SynchronizationTaskService.PROPERTY_NAME_SYNCHRONIZATION_LOGGING, "true");
     }
@@ -124,6 +127,8 @@ public class TestSynchronizationTaskService extends BasicTestCase {
 
     @Before
     public void setUp() {
+        System.setProperty(Utils.PROPERTY_NAME_PREFIX
+                + "ServiceHost.APPEND_PORT_TO_SANDBOX", "false");
         CommandLineArgumentParser.parseFromProperties(this);
         URI exampleFactoryUri = UriUtils.buildUri(
                 this.host.getUri(), ExampleService.FACTORY_LINK);
@@ -382,6 +387,86 @@ public class TestSynchronizationTaskService extends BasicTestCase {
 
         assertNotNull(newState);
         return newState;
+    }
+
+    @Test
+    public void  synchAfterClusterRestart() throws Throwable {
+        setUpMultiNode();
+        String factoryLink = ExampleService.FACTORY_LINK;
+        this.host.setNodeGroupQuorum(this.nodeCount - 1);
+        this.host.waitForNodeGroupConvergence();
+
+        List<ExampleServiceState> exampleStates = this.host.createExampleServices(
+                this.host.getPeerHost(), this.serviceCount, null, factoryLink);
+
+        Map<String, ExampleServiceState> exampleStatesMap =
+                exampleStates.stream().collect(Collectors.toMap(s -> s.documentSelfLink, s -> s));
+
+        this.host.waitForReplicatedFactoryChildServiceConvergence(
+                this.host.getNodeGroupToFactoryMap(factoryLink),
+                exampleStatesMap,
+                this.exampleStateConvergenceChecker,
+                exampleStatesMap.size(),
+                0, this.nodeCount);
+
+        List<VerificationHost> hosts = new ArrayList<>();
+
+        // Stop all nodes and preserve their state.
+        for (Map.Entry<URI, VerificationHost> entry : this.host.getInProcessHostMap().entrySet()) {
+            try {
+                VerificationHost host = entry.getValue();
+                this.host.stopHostAndPreserveState(host);
+                hosts.add(host);
+            } catch (Throwable e) {
+                throw new Throwable(e);
+            }
+        }
+
+        // Create new nodes with same sandbox and port, but different Id.
+        for (VerificationHost host : hosts) {
+            try {
+                ServiceHost.Arguments args = new ServiceHost.Arguments();
+                args.port = host.getPort();
+                args.sandbox = Paths.get(host.getStorageSandbox());
+                VerificationHost newHost = VerificationHost.create(args);
+                newHost.start();
+                this.host.addPeerNode(newHost);
+            } catch (Throwable e) {
+                throw new Throwable(e);
+            }
+        }
+
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+        this.host.waitForNodeGroupConvergence(this.nodeCount, this.nodeCount);
+
+        // Verify that all states are replicated and synched.
+        this.host.waitForReplicatedFactoryChildServiceConvergence(
+                this.host.getNodeGroupToFactoryMap(factoryLink),
+                exampleStatesMap,
+                this.exampleStateConvergenceChecker,
+                exampleStatesMap.size(),
+                0, this.nodeCount);
+
+        // Remove one old node.
+        VerificationHost nodeToStop = this.host.getPeerHost();
+        this.host.stopHost(nodeToStop);
+
+        // Add new node and verify that state is replicated.
+        this.host.testStart(1);
+        this.host.setUpLocalPeerHost(nodeToStop.getPort(),
+                VerificationHost.FAST_MAINT_INTERVAL_MILLIS, null, null);
+        this.host.testWait();
+
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+        this.host.waitForNodeGroupConvergence(this.nodeCount, this.nodeCount);
+
+        // Verify that all states are replicated and synched.
+        this.host.waitForReplicatedFactoryChildServiceConvergence(
+                this.host.getNodeGroupToFactoryMap(factoryLink),
+                exampleStatesMap,
+                this.exampleStateConvergenceChecker,
+                exampleStatesMap.size(),
+                0, this.nodeCount);
     }
 
     @Test
