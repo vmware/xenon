@@ -393,40 +393,59 @@ public class NettyHttpServiceClient implements ServiceClient {
             pool = this.sslChannelPool;
         }
 
-        connectChannel(pool, op, remoteHost, port);
+        resolveHostAddress(pool, op, remoteHost, port);
     }
 
-    private void connectChannel(NettyChannelPool pool, Operation op,
-            String remoteHost, int port) {
+    private void resolveHostAddress(NettyChannelPool pool, Operation op, String remoteHost, int port) {
         op.nestCompletion((o, e) -> {
             if (o.getStatusCode() == Operation.STATUS_CODE_TIMEOUT) {
                 failWithTimeout(op, op.getBodyRaw());
                 return;
             }
             if (e != null) {
-                Object originalBody = op.getBodyRaw();
-                ServiceErrorResponse rsp = null;
-                if (o.hasBody() && (o.getBodyRaw() instanceof ServiceErrorResponse)) {
-                    rsp = (ServiceErrorResponse) o.getBodyRaw();
-                    if (rsp.details == null) {
-                        rsp.details = EnumSet.of(ErrorDetail.SHOULD_RETRY);
-                    } else {
-                        rsp.details.add(ErrorDetail.SHOULD_RETRY);
-                    }
-                } else {
-                    rsp = ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST,
-                            EnumSet.of(ErrorDetail.SHOULD_RETRY));
-                }
-                op.setBodyNoCloning(rsp);
-                fail(e, op, originalBody);
+                handleConnectionFailure(o, e, op);
+                return;
+            }
+            connectChannel(pool, op);
+        });
+
+        pool.resolve(remoteHost, port, op);
+    }
+
+    private void connectChannel(NettyChannelPool pool, Operation op) {
+        op.nestCompletion((o, e) -> {
+            if (o.getStatusCode() == Operation.STATUS_CODE_TIMEOUT) {
+                failWithTimeout(op, op.getBodyRaw());
+                return;
+            }
+            if (e != null) {
+                handleConnectionFailure(o, e, op);
                 return;
             }
             sendHttpRequest(op);
         });
 
-        NettyChannelGroupKey key = NettyChannelPool.buildLookupKey(
-                op.getConnectionTag(), remoteHost, port, pool.isHttp2Only());
+        NettyChannelGroupKey key = NettyChannelPool.buildLookupKey(op.getConnectionTag(),
+                op.getSocketAddress(), pool.isHttp2Only());
         pool.connectOrReuse(key, op);
+    }
+
+    private void handleConnectionFailure(Operation o, Throwable e, Operation op) {
+        Object originalBody = op.getBodyRaw();
+        ServiceErrorResponse rsp = null;
+        if (o.hasBody() && (o.getBodyRaw() instanceof ServiceErrorResponse)) {
+            rsp = (ServiceErrorResponse) o.getBodyRaw();
+            if (rsp.details == null) {
+                rsp.details = EnumSet.of(ErrorDetail.SHOULD_RETRY);
+            } else {
+                rsp.details.add(ErrorDetail.SHOULD_RETRY);
+            }
+        } else {
+            rsp = ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST,
+                    EnumSet.of(ErrorDetail.SHOULD_RETRY));
+        }
+        op.setBodyNoCloning(rsp);
+        fail(e, op, originalBody);
     }
 
     private void sendHttpRequest(Operation op) {

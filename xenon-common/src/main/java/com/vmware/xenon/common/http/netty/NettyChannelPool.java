@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.common.http.netty;
 
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -33,10 +34,15 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelPromise;
+import io.netty.channel.EventLoop;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.ssl.SslContext;
+import io.netty.resolver.AddressResolver;
+import io.netty.resolver.AddressResolverGroup;
+import io.netty.resolver.DefaultAddressResolverGroup;
+import io.netty.util.concurrent.Future;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.OperationQueue;
@@ -44,7 +50,6 @@ import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceClient.ConnectionPoolMetrics;
 import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
-import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.http.netty.NettyChannelContext.Protocol;
 
@@ -61,62 +66,65 @@ public class NettyChannelPool {
         return key.set(tag, host, port, isHttp2);
     }
 
+    static NettyChannelGroupKey buildLookupKey(String tag, InetSocketAddress address, boolean isHttp2) {
+        NettyChannelGroupKey key = lookupChannelKeyPerThread.get();
+        return key.set(tag, address, isHttp2);
+    }
+
     public static class NettyChannelGroupKey implements Comparable<NettyChannelGroupKey> {
-        private static final String NO_HOST = "";
         private String connectionTag;
-        private String host;
-        private int port;
+        private InetSocketAddress address;
         private int hashcode;
 
-        public NettyChannelGroupKey() {
-
+        NettyChannelGroupKey() {
         }
 
         NettyChannelGroupKey(NettyChannelGroupKey other) {
             this.connectionTag = other.connectionTag;
-            this.host = other.host;
-            this.port = other.port;
+            this.address = other.address;
         }
 
         public NettyChannelGroupKey set(String tag, String host, int port, boolean isHttp2) {
+            return set(tag, InetSocketAddress.createUnresolved(host, port), isHttp2);
+        }
+
+        public NettyChannelGroupKey set(String tag, InetSocketAddress address, boolean isHttp2) {
             if (tag == null) {
                 tag = isHttp2 ? ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT
                         : ServiceClient.CONNECTION_TAG_DEFAULT;
             }
             this.connectionTag = tag;
-            this.host = host == null ? NO_HOST : host;
-            if (port <= 0) {
-                port = UriUtils.HTTP_DEFAULT_PORT;
-            }
-            this.port = port;
+            this.address = address;
             this.hashcode = 0;
             return this;
         }
 
         @Override
         public String toString() {
-            return this.connectionTag + ":" + this.host + ":" + this.port;
+            return this.connectionTag + ":" + this.address.getHostString() + ":" + this.address.getPort();
         }
 
         @Override
         public int hashCode() {
             if (this.hashcode == 0) {
-                this.hashcode = Objects.hash(this.connectionTag, this.host, this.port);
+                this.hashcode = Objects.hash(this.connectionTag, this.address);
             }
             return this.hashcode;
         }
 
         @Override
         public int compareTo(NettyChannelGroupKey o) {
-            int r = Integer.compare(this.port, o.port);
+            int r = Integer.compare(this.address.getPort(), o.address.getPort());
             if (r != 0) {
                 return r;
             }
+
             r = this.connectionTag.compareTo(o.connectionTag);
             if (r != 0) {
                 return r;
             }
-            return this.host.compareTo(o.host);
+
+            return this.address.getHostString().compareTo(o.address.getHostString());
         }
 
         @Override
@@ -306,6 +314,51 @@ public class NettyChannelPool {
         return tagInfo;
     }
 
+    private volatile AddressResolverGroup<InetSocketAddress> resolverGroup = DefaultAddressResolverGroup.INSTANCE;
+
+    public void resolve(String hostAddress, int port, Operation request) {
+        if (hostAddress == null) {
+            throw new IllegalArgumentException("hostAddress is required");
+        }
+
+        InetSocketAddress unresolved = InetSocketAddress.createUnresolved(hostAddress, port);
+
+        try {
+            EventLoop eventLoop = this.eventGroup.next();
+            AddressResolver<InetSocketAddress> resolver = this.resolverGroup.getResolver(eventLoop);
+            if (!resolver.isSupported(unresolved) || resolver.isResolved(unresolved)) {
+                request.setSocketAddress(unresolved);
+                request.complete();
+                return;
+            }
+
+            Future<InetSocketAddress> resolveFuture = resolver.resolve(unresolved);
+            if (resolveFuture.isDone()) {
+                Throwable cause = resolveFuture.cause();
+                if (cause != null) {
+                    fail(request, cause);
+                } else {
+                    request.setSocketAddress(resolveFuture.getNow());
+                    request.complete();
+                }
+                return;
+            }
+
+            resolveFuture.addListener((future) -> {
+                Throwable cause = future.cause();
+                if (cause != null) {
+                    fail(request, cause);
+                } else {
+                    request.setSocketAddress((InetSocketAddress) future.getNow());
+                    request.complete();
+                }
+            });
+
+        } catch (Exception e) {
+            fail(request, e);
+        }
+    }
+
     public void connectOrReuse(NettyChannelGroupKey key, Operation request) {
         if (request == null) {
             throw new IllegalArgumentException("request is required");
@@ -333,7 +386,7 @@ public class NettyChannelPool {
 
             // Connect, then wait for the connection to complete before either
             // sending data (HTTP/1.1) or negotiating settings (HTTP/2)
-            ChannelFuture connectFuture = this.bootStrap.connect(key.host, key.port);
+            ChannelFuture connectFuture = this.bootStrap.connect(key.address);
             connectFuture.addListener((ChannelFutureListener) future -> {
                 if (future.isSuccess()) {
                     Channel channel = future.channel();

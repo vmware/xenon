@@ -14,6 +14,7 @@
 package com.vmware.xenon.common;
 
 import java.net.HttpURLConnection;
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.security.Principal;
 import java.util.Arrays;
@@ -103,6 +104,7 @@ public class Operation implements Cloneable {
     }
 
     static class RemoteContext {
+        InetSocketAddress socketAddress;
         SocketContext socketCtx;
         Map<String, String> requestHeaders;
         Map<String, String> responseHeaders;
@@ -1186,6 +1188,16 @@ public class Operation implements Cloneable {
 
     public long getId() {
         return this.id;
+    }
+
+    public Operation setSocketAddress(InetSocketAddress socketAddress) {
+        allocateRemoteContext();
+        this.remoteCtx.socketAddress = socketAddress;
+        return this;
+    }
+
+    public InetSocketAddress getSocketAddress() {
+        return this.remoteCtx == null ? null : this.remoteCtx.socketAddress;
     }
 
     public Operation setSocketContext(SocketContext socketContext) {
