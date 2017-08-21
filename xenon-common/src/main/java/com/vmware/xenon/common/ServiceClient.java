@@ -44,6 +44,9 @@ public interface ServiceClient extends ServiceRequestSender {
     public static final String PROPERTY_NAME_DEFAULT_CONNECTION_LIMIT_PER_TAG =
             Utils.PROPERTY_NAME_PREFIX + "ServiceClient.DEFAULT_CONNECTION_LIMIT_PER_TAG";
 
+    public static final String PROPERTY_NAME_ENABLE_DIRECT_COMPLETIONS =
+            Utils.PROPERTY_NAME_PREFIX + "ServiceClient.ENABLE_DIRECT_COMPLETIONS";
+
     public static final int MAX_BINARY_SERIALIZED_BODY_LIMIT = Integer.getInteger(
             PROPERTY_NAME_MAX_BINARY_SERIALIZED_BODY_LIMIT, 1024 * 1024);
 
@@ -58,6 +61,9 @@ public interface ServiceClient extends ServiceRequestSender {
 
     public static final int DEFAULT_PENDING_REQUEST_QUEUE_LIMIT = Integer.getInteger(
             PROPERTY_NAME_PENDING_REQUEST_QUEUE_LIMIT, 100000);
+
+    public static final boolean ENABLE_DIRECT_COMPLETIONS = Boolean.getBoolean(
+            PROPERTY_NAME_ENABLE_DIRECT_COMPLETIONS);
 
     /**
      * Connection tag used by node group service for peer to peer random probing and liveness checks
