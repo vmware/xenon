@@ -69,8 +69,17 @@ public class ServiceHostManagementService extends StatefulService {
     public static final String STAT_NAME_HTTP2_CONNECTION_COUNT_PER_HOUR = STAT_NAME_HTTP2_CONNECTION_COUNT_PREFIX
             + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
 
-    public static final String STAT_NAME_HTTP11_PENDING_OP_COUNT = "http11PendingOperationCount";
-    public static final String STAT_NAME_HTTP2_PENDING_OP_COUNT = "http2PendingOperationCount";
+    public static final String STAT_NAME_HTTP11_PENDING_OP_COUNT_PREFIX = "http11PendingOperationCount";
+    public static final String STAT_NAME_HTTP11_PENDING_OP_COUNT_PER_DAY = STAT_NAME_HTTP11_PENDING_OP_COUNT_PREFIX
+            + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
+    public static final String STAT_NAME_HTTP11_PENDING_OP_COUNT_PER_HOUR = STAT_NAME_HTTP11_PENDING_OP_COUNT_PREFIX
+            + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
+
+    public static final String STAT_NAME_HTTP2_PENDING_OP_COUNT_PREFIX = "http2PendingOperationCount";
+    public static final String STAT_NAME_HTTP2_PENDING_OP_COUNT_PER_DAY = STAT_NAME_HTTP2_PENDING_OP_COUNT_PREFIX
+            + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
+    public static final String STAT_NAME_HTTP2_PENDING_OP_COUNT_PER_HOUR = STAT_NAME_HTTP2_PENDING_OP_COUNT_PREFIX
+            + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
 
     public static final String STAT_NAME_EXECUTOR_QUEUE_DEPTH = "executorQueueDepth";
     public static final String STAT_NAME_SCHEDULED_EXECUTOR_QUEUE_DEPTH = "scheduledExecutorQueueDepth";

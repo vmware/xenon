@@ -1467,16 +1467,28 @@ public class TestServiceHost {
                 return false;
             }
 
-            ServiceStat http1PendingCount = hostMgmtStats
-                    .get(ServiceHostManagementService.STAT_NAME_HTTP11_PENDING_OP_COUNT);
-            if (http1PendingCount == null) {
-                this.host.log("http1 pending op stats not present");
+            ServiceStat http1PendingCountDaily = hostMgmtStats
+                    .get(ServiceHostManagementService.STAT_NAME_HTTP11_PENDING_OP_COUNT_PER_DAY);
+            if (!isTimeSeriesStatReady(http1PendingCountDaily)) {
+                this.host.log("not ready: %s", Utils.toJson(http1PendingCountDaily));
                 return false;
             }
-            ServiceStat http2PendingCount = hostMgmtStats
-                    .get(ServiceHostManagementService.STAT_NAME_HTTP2_PENDING_OP_COUNT);
-            if (http2PendingCount == null) {
-                this.host.log("http2 pending op stats not present");
+            ServiceStat http1PendingCountHourly = hostMgmtStats
+                    .get(ServiceHostManagementService.STAT_NAME_HTTP11_PENDING_OP_COUNT_PER_HOUR);
+            if (!isTimeSeriesStatReady(http1PendingCountHourly)) {
+                this.host.log("not ready: %s", Utils.toJson(http1PendingCountHourly));
+                return false;
+            }
+            ServiceStat http2PendingCountDaily = hostMgmtStats
+                    .get(ServiceHostManagementService.STAT_NAME_HTTP2_PENDING_OP_COUNT_PER_DAY);
+            if (!isTimeSeriesStatReady(http2PendingCountDaily)) {
+                this.host.log("not ready: %s", Utils.toJson(http2PendingCountDaily));
+                return false;
+            }
+            ServiceStat http2PendingCountHourly = hostMgmtStats
+                    .get(ServiceHostManagementService.STAT_NAME_HTTP2_PENDING_OP_COUNT_PER_HOUR);
+            if (!isTimeSeriesStatReady(http2PendingCountHourly)) {
+                this.host.log("not ready: %s", Utils.toJson(http2PendingCountHourly));
                 return false;
             }
 
