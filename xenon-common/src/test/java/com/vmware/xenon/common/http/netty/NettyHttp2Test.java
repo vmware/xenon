@@ -280,7 +280,7 @@ public class NettyHttp2Test {
         assertTrue(completionTimes[0] > completionTimes[1]);
 
         String tag = ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT;
-        ConnectionPoolMetrics tagInfo = this.host.getClient().getConnectionPoolMetrics(tag);
+        ConnectionPoolMetrics tagInfo = this.host.getClient().getConnectionPoolMetricsPerTag(tag);
         assertTrue(tagInfo != null);
         assertTrue(tagInfo.inUseConnectionCount > 0);
         assertTrue(tagInfo.pendingRequestCount == 0);
@@ -544,7 +544,7 @@ public class NettyHttp2Test {
         }
 
         String tag = ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT;
-        ConnectionPoolMetrics tagInfo = this.host.getClient().getConnectionPoolMetrics(tag);
+        ConnectionPoolMetrics tagInfo = this.host.getClient().getConnectionPoolMetricsPerTag(tag);
         assertTrue(tagInfo != null);
         assertTrue(tagInfo.inUseConnectionCount > 0);
         assertTrue(tagInfo.pendingRequestCount == 0);
@@ -560,7 +560,7 @@ public class NettyHttp2Test {
                 services);
 
         tag = this.host.connectionTag;
-        tagInfo = this.host.getClient().getConnectionPoolMetrics(tag);
+        tagInfo = this.host.getClient().getConnectionPoolMetricsPerTag(tag);
         assertTrue(tagInfo != null);
         assertTrue(tagInfo.inUseConnectionCount > 0);
         assertTrue(tagInfo.pendingRequestCount == 0);

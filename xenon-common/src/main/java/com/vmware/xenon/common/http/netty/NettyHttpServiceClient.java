@@ -960,7 +960,34 @@ public class NettyHttpServiceClient implements ServiceClient {
     }
 
     @Override
-    public ConnectionPoolMetrics getConnectionPoolMetrics(String tag) {
+    public ConnectionPoolMetrics getConnectionPoolMetrics(boolean http2) {
+        if (http2) {
+            return getPoolMetrics(this.http2ChannelPool, this.http2SslChannelPool);
+        } else {
+            return getPoolMetrics(this.channelPool, this.sslChannelPool);
+        }
+    }
+
+    private ConnectionPoolMetrics getPoolMetrics(NettyChannelPool p1, NettyChannelPool p2) {
+        ConnectionPoolMetrics metrics = null;
+        if (p1 != null) {
+            metrics = p1.getConnectionTagInfo(null);
+        }
+        if (p2 != null) {
+            ConnectionPoolMetrics cpm = p2.getConnectionTagInfo(null);
+            if (metrics == null) {
+                metrics = cpm;
+            } else if (cpm != null) {
+                metrics.inUseConnectionCount += cpm.inUseConnectionCount;
+                metrics.availableConnectionCount += cpm.availableConnectionCount;
+                metrics.pendingRequestCount += cpm.pendingRequestCount;
+            }
+        }
+        return metrics;
+    }
+
+    @Override
+    public ConnectionPoolMetrics getConnectionPoolMetricsPerTag(String tag) {
         if (tag == null) {
             throw new IllegalArgumentException("tag is required");
         }

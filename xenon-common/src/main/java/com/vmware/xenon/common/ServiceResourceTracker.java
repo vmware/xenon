@@ -259,7 +259,7 @@ class ServiceResourceTracker {
                 pctUse);
 
         ConnectionPoolMetrics http11TagInfo = this.host.getClient()
-                .getConnectionPoolMetrics(ServiceClient.CONNECTION_TAG_DEFAULT);
+                .getConnectionPoolMetrics(false);
         if (http11TagInfo != null) {
             mgmtService.setStat(
                     ServiceHostManagementService.STAT_NAME_HTTP11_PENDING_OP_COUNT,
@@ -273,7 +273,7 @@ class ServiceResourceTracker {
         }
 
         ConnectionPoolMetrics http2TagInfo = this.host.getClient()
-                .getConnectionPoolMetrics(ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT);
+                .getConnectionPoolMetrics(true);
         if (http2TagInfo != null) {
             mgmtService.setStat(
                     ServiceHostManagementService.STAT_NAME_HTTP2_PENDING_OP_COUNT,
