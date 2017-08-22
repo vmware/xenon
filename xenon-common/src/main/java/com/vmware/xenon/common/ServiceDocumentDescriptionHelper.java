@@ -106,7 +106,17 @@ class ServiceDocumentDescriptionHelper {
                             if (entry.getValue().equals(Boolean.TRUE)) {
                                 // Post and Put also accept a document as a request parameter
                                 route.requestType = s.getStateType();
+
+                                if (doc.requestBodyType() != Object.class) {
+                                    // override response type from annotation only if explicitly set
+                                    route.requestType = doc.requestBodyType();
+                                }
                             }
+                        }
+
+                        if (route.requestType == null && doc.requestBodyType() != Object.class) {
+                            // override response type for stateless services
+                            route.requestType = doc.requestBodyType();
                         }
 
                         // @Deprecated annotation on method overrides support levels higher than DEPRECATED

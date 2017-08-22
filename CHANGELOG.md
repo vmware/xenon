@@ -20,7 +20,8 @@
 
 
 * Enable repeated @RouteDocumentation annotation. This enable richer Swagger
-  support for services marked as *URI_NAMESPACE_OWNER*.
+  support for services marked as *URI_NAMESPACE_OWNER*. @RouteDocumentation now
+  also supports requestBodyType parameter.
 
   https://www.pivotaltracker.com/n/projects/1471320/stories/143529775
 
