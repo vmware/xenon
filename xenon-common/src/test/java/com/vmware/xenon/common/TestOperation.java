@@ -16,6 +16,7 @@ package com.vmware.xenon.common;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -689,6 +690,16 @@ public class TestOperation extends BasicReusableHostTestCase {
         assertEquals(rsp.getErrorCode(), 123123);
         rsp.setInternalErrorCode(0x81234567);
         assertEquals(rsp.getErrorCode(), 0x81234567);
+    }
+
+    @Test
+    public void testFailureCodes() throws Throwable {
+        Operation op = Operation.createGet(this.host.getUri());
+        Operation.failActionNotSupported(op);
+        ServiceErrorResponse rsp = op.getErrorResponseBody();
+        assertEquals(op.getStatusCode(), Operation.STATUS_CODE_BAD_METHOD);
+        assertNotNull(rsp);
+        assertEquals(rsp.statusCode, Operation.STATUS_CODE_BAD_METHOD);
     }
 
     @Test(expected = IllegalArgumentException.class)
