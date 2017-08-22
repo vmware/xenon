@@ -261,13 +261,13 @@ class ServiceResourceTracker {
         ConnectionPoolMetrics http11TagInfo = this.host.getClient()
                 .getConnectionPoolMetrics(false);
         if (http11TagInfo != null) {
-            mgmtService.setStat(
+            createTimeSeriesStat(
                     ServiceHostManagementService.STAT_NAME_HTTP11_PENDING_OP_COUNT,
                     http11TagInfo.pendingRequestCount);
-            mgmtService.setStat(
+            createTimeSeriesStat(
                     ServiceHostManagementService.STAT_NAME_HTTP11_CONNECTION_COUNT_PER_HOUR,
                     http11TagInfo.inUseConnectionCount);
-            mgmtService.setStat(
+            createTimeSeriesStat(
                     ServiceHostManagementService.STAT_NAME_HTTP11_CONNECTION_COUNT_PER_DAY,
                     http11TagInfo.inUseConnectionCount);
         }
@@ -275,27 +275,27 @@ class ServiceResourceTracker {
         ConnectionPoolMetrics http2TagInfo = this.host.getClient()
                 .getConnectionPoolMetrics(true);
         if (http2TagInfo != null) {
-            mgmtService.setStat(
+            createTimeSeriesStat(
                     ServiceHostManagementService.STAT_NAME_HTTP2_PENDING_OP_COUNT,
                     http2TagInfo.pendingRequestCount);
-            mgmtService.setStat(
+            createTimeSeriesStat(
                     ServiceHostManagementService.STAT_NAME_HTTP2_CONNECTION_COUNT_PER_HOUR,
                     http2TagInfo.inUseConnectionCount);
-            mgmtService.setStat(
+            createTimeSeriesStat(
                     ServiceHostManagementService.STAT_NAME_HTTP2_CONNECTION_COUNT_PER_DAY,
                     http2TagInfo.inUseConnectionCount);
         }
 
         ForkJoinPool executor = (ForkJoinPool) this.host.getExecutor();
         if (executor != null) {
-            mgmtService.setStat(
+            createTimeSeriesStat(
                     ServiceHostManagementService.STAT_NAME_EXECUTOR_QUEUE_DEPTH,
                     executor.getQueuedSubmissionCount());
         }
 
         ScheduledThreadPoolExecutor scheduledExecutor = (ScheduledThreadPoolExecutor) this.host.getScheduledExecutor();
         if (scheduledExecutor != null) {
-            mgmtService.setStat(
+            createTimeSeriesStat(
                     ServiceHostManagementService.STAT_NAME_SCHEDULED_EXECUTOR_QUEUE_DEPTH,
                     scheduledExecutor.getQueue().size());
         }
