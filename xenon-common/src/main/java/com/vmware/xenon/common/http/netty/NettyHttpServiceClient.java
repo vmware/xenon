@@ -590,7 +590,18 @@ public class NettyHttpServiceClient implements ServiceClient {
                 // After request is sent control is transferred to the
                 // NettyHttpServerResponseHandler. The response handler will nest completions
                 // and call complete() when response is received, which will invoke this completion
-                op.complete();
+                ExecutorService executorService;
+                if (ENABLE_DIRECT_COMPLETIONS) {
+                    executorService = null;
+                } else {
+                    executorService = this.host != null ? this.host.getExecutor() : this.executor;
+                }
+
+                if (executorService != null) {
+                    executorService.execute(op::complete);
+                } else {
+                    op.complete();
+                }
             });
 
             op.toggleOption(OperationOption.SOCKET_ACTIVE, true);
