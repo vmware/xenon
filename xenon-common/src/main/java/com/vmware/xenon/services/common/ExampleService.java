@@ -149,6 +149,8 @@ public class ExampleService extends StatefulService {
         toggleOption(ServiceOption.REPLICATION, true);
         toggleOption(ServiceOption.INSTRUMENTATION, true);
         toggleOption(ServiceOption.OWNER_SELECTION, true);
+
+        toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
     }
 
     @Override
@@ -297,6 +299,7 @@ public class ExampleService extends StatefulService {
     @Override
     public void handleDelete(Operation delete) {
         if (!delete.hasBody()) {
+            delete.complete();
             delete.complete();
             return;
         }
