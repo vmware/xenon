@@ -54,6 +54,9 @@ public final class ServiceStatUtils {
     static final String DELETE_HANDLER_LATENCY = Action.DELETE + Service.STAT_NAME_SERVICE_HANDLER_LATENCY;
     static final String OPTIONS_HANDLER_LATENCY = Action.OPTIONS + Service.STAT_NAME_SERVICE_HANDLER_LATENCY;
 
+    static final EnumSet<AggregationType> AGGREGATION_TYPE_AVG_MAX =
+            EnumSet.of(AggregationType.AVG, AggregationType.MAX);
+
     private ServiceStatUtils() {
 
     }

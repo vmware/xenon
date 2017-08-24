@@ -27,6 +27,11 @@ public class BasicAuthenticationService extends StatelessService {
 
     public static final String SELF_LINK = ServiceUriPaths.CORE_AUTHN_BASIC;
 
+    public BasicAuthenticationService() {
+        toggleOption(ServiceOption.CORE, true);
+        toggleOption(ServiceOption.INSTRUMENTATION, true);
+    }
+
     @Override
     public void authorizeRequest(Operation op) {
         op.complete();

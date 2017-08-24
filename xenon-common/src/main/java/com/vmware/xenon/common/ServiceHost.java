@@ -129,6 +129,7 @@ import com.vmware.xenon.services.common.UserService;
 import com.vmware.xenon.services.common.authn.AuthenticationConstants;
 import com.vmware.xenon.services.common.authn.BasicAuthenticationService;
 import com.vmware.xenon.services.common.authn.BasicAuthenticationUtils;
+import com.vmware.xenon.services.common.authz.AuthorizationConstants;
 
 /**
  * Service host manages service life cycle, delivery of operations (remote and local) and performing
@@ -3511,7 +3512,15 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         // Dispatch the operation to the authentication service for handling.
+        long dispatchTime = System.nanoTime();
         inboundOp.nestCompletion((op, ex) -> {
+            if (this.authenticationService.hasOption(ServiceOption.INSTRUMENTATION)) {
+                long dispatchDuration = System.nanoTime() - dispatchTime;
+                setAuthDurationStat(this.authenticationService,
+                        AuthenticationConstants.STAT_NAME_DURATION_MICROS_PREFIX,
+                        TimeUnit.NANOSECONDS.toMicros(dispatchDuration));
+            }
+
             if (ex != null) {
                 inboundOp.setBodyNoCloning(op.getBodyRaw())
                         .setStatusCode(op.getStatusCode()).fail(ex);
@@ -3534,13 +3543,31 @@ public class ServiceHost implements ServiceRequestSender {
 
     private void checkAndPopulateAuthzContext(Service service, Operation inboundOp) {
         if (this.authorizationService != null) {
+            long dispatchTime = System.nanoTime();
             inboundOp.nestCompletion(op -> {
+                if (this.authorizationService.hasOption(ServiceOption.INSTRUMENTATION)) {
+                    long dispatchDuration = System.nanoTime() - dispatchTime;
+                    setAuthDurationStat(this.authorizationService,
+                            AuthorizationConstants.STAT_NAME_DURATION_MICROS_PREFIX,
+                            TimeUnit.NANOSECONDS.toMicros(dispatchDuration));
+                }
+
                 handleRequestWithAuthContext(null, inboundOp);
             });
+
             queueOrScheduleRequest(this.authorizationService, inboundOp);
         } else {
             handleRequestWithAuthContext(service, inboundOp);
         }
+    }
+
+    private void setAuthDurationStat(Service service, String prefix, double value) {
+        ServiceStat st = ServiceStatUtils.getOrCreateDailyTimeSeriesHistogramStat(service, prefix,
+                ServiceStatUtils.AGGREGATION_TYPE_AVG_MAX);
+        service.setStat(st, value);
+        st = ServiceStatUtils.getOrCreateHourlyTimeSeriesHistogramStat(service, prefix,
+                ServiceStatUtils.AGGREGATION_TYPE_AVG_MAX);
+        service.setStat(st, value);
     }
 
     private void handleRequestWithAuthContext(Service service, Operation inboundOp) {
