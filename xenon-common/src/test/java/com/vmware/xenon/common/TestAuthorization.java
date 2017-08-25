@@ -66,6 +66,8 @@ import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.RoleService;
 import com.vmware.xenon.services.common.RoleService.Policy;
 import com.vmware.xenon.services.common.RoleService.RoleState;
+import com.vmware.xenon.services.common.ServiceHostManagementService;
+import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.TransactionService.TransactionServiceState;
 import com.vmware.xenon.services.common.UserGroupService;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
@@ -390,27 +392,31 @@ public class TestAuthorization extends BasicTestCase {
 
         OperationContext.setAuthorizationContext(null);
 
-        // Execute get on factory trying to get all example services
-        final ServiceDocumentQueryResult[] factoryGetResult = new ServiceDocumentQueryResult[1];
-        Operation getFactory = Operation.createGet(
-                UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK))
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.failIteration(e);
-                        return;
-                    }
+        TestRequestSender sender = this.host.getTestRequestSender();
+        Operation responseOp = sender.sendAndWait(Operation.createGet(this.host, ExampleService.FACTORY_LINK));
 
-                    factoryGetResult[0] = o.getBody(ServiceDocumentQueryResult.class);
-                    this.host.completeIteration();
-                });
-
-        this.host.testStart(1);
-        this.host.send(getFactory);
-        this.host.testWait();
+        Map<String, ServiceStats.ServiceStat> stat = this.host.getServiceStats(
+                UriUtils.buildUri(this.host, ServiceUriPaths.CORE_MANAGEMENT));
+        double currentInsertCount = stat.get(
+                ServiceHostManagementService.STAT_NAME_AUTHORIZATION_CACHE_INSERT_COUNT).latestValue;
 
         // Make sure only the authorized services were returned
-        assertAuthorizedServicesInResult("guest", exampleServices, factoryGetResult[0]);
+        ServiceDocumentQueryResult getResult = responseOp.getBody(ServiceDocumentQueryResult.class);
+        assertAuthorizedServicesInResult("guest", exampleServices, getResult);
 
+        // Make a second request and verify that the cache did not get updated, instead Xenon re-used
+        // the cached Guest authorization context.
+        sender.sendAndWait(Operation.createGet(this.host, ExampleService.FACTORY_LINK));
+        stat = this.host.getServiceStats(
+                UriUtils.buildUri(this.host, ServiceUriPaths.CORE_MANAGEMENT));
+        double newInsertCount = stat.get(
+                ServiceHostManagementService.STAT_NAME_AUTHORIZATION_CACHE_INSERT_COUNT).latestValue;
+        assertTrue(currentInsertCount == newInsertCount);
+
+        // Make sure that Authorization Context cache in Xenon has atleast one cached token.
+        double currentCacheSize = stat.get(
+                ServiceHostManagementService.STAT_NAME_AUTHORIZATION_CACHE_SIZE).latestValue;
+        assertTrue(currentCacheSize == newInsertCount);
     }
 
     @Test

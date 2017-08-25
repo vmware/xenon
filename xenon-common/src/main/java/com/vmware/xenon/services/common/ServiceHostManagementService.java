@@ -19,6 +19,7 @@ import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStatUtils;
 import com.vmware.xenon.common.ServiceStats;
@@ -69,8 +70,17 @@ public class ServiceHostManagementService extends StatefulService {
     public static final String STAT_NAME_HTTP2_CONNECTION_COUNT_PER_HOUR = STAT_NAME_HTTP2_CONNECTION_COUNT_PREFIX
             + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
 
-    public static final String STAT_NAME_HTTP11_PENDING_OP_COUNT = "http11PendingOperationCount";
-    public static final String STAT_NAME_HTTP2_PENDING_OP_COUNT = "http2PendingOperationCount";
+    public static final String STAT_NAME_HTTP11_PENDING_OP_COUNT_PREFIX = "http11PendingOperationCount";
+    public static final String STAT_NAME_HTTP11_PENDING_OP_COUNT_PER_DAY = STAT_NAME_HTTP11_PENDING_OP_COUNT_PREFIX
+            + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
+    public static final String STAT_NAME_HTTP11_PENDING_OP_COUNT_PER_HOUR = STAT_NAME_HTTP11_PENDING_OP_COUNT_PREFIX
+            + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
+
+    public static final String STAT_NAME_HTTP2_PENDING_OP_COUNT_PREFIX = "http2PendingOperationCount";
+    public static final String STAT_NAME_HTTP2_PENDING_OP_COUNT_PER_DAY = STAT_NAME_HTTP2_PENDING_OP_COUNT_PREFIX
+            + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
+    public static final String STAT_NAME_HTTP2_PENDING_OP_COUNT_PER_HOUR = STAT_NAME_HTTP2_PENDING_OP_COUNT_PREFIX
+            + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
 
     public static final String STAT_NAME_EXECUTOR_QUEUE_DEPTH = "executorQueueDepth";
     public static final String STAT_NAME_SCHEDULED_EXECUTOR_QUEUE_DEPTH = "scheduledExecutorQueueDepth";
@@ -88,6 +98,9 @@ public class ServiceHostManagementService extends StatefulService {
 
     public static final String STAT_NAME_AUTO_BACKUP_SKIPPED_COUNT = "autoBackupSkippedCount";
     public static final String STAT_NAME_AUTO_BACKUP_PERFORMED_COUNT = "autoBackupPerformedCount";
+
+    public static final String STAT_NAME_AUTHORIZATION_CACHE_SIZE = "authorizationCacheSize";
+    public static final String STAT_NAME_AUTHORIZATION_CACHE_INSERT_COUNT = "authorizationCacheInsertCount";
 
     public ServiceHostManagementService() {
         super(ServiceHostState.class);
@@ -123,6 +136,12 @@ public class ServiceHostManagementService extends StatefulService {
         public OperationTracingEnable enable = OperationTracingEnable.START;
         public String level;
     }
+
+    public static class ConfigureInboundRequestLogging extends BaseManagementServiceRequest {
+        public static final String KIND = Utils.buildKind(ConfigureInboundRequestLogging.class);
+        public ServiceHost.RequestLoggingInfo loggingInfo;
+    }
+
 
     public enum BackupType {
 
@@ -263,6 +282,12 @@ public class ServiceHostManagementService extends StatefulService {
                 return;
             }
 
+            if (request.kind.equals(ConfigureInboundRequestLogging.KIND)) {
+                ConfigureInboundRequestLogging lr = patch.getBody(ConfigureInboundRequestLogging.class);
+                handleConfigureInboundRequestLogging(lr, patch);
+                return;
+            }
+
             if (request.kind.equals(BackupRequest.KIND)) {
                 BackupRequest br = patch.getBody(BackupRequest.class);
                 handleBackupRequest(br, patch);
@@ -365,12 +390,21 @@ public class ServiceHostManagementService extends StatefulService {
         if ((req.enable == OperationTracingEnable.START)) {
             OperationIndexService operationService = new OperationIndexService();
             this.getHost().startService(Operation.createPost(operationTracingServiceUri)
-                    .setCompletion(serviceCompletion),
+                            .setCompletion(serviceCompletion),
                     operationService);
         } else {
             sendRequest(Operation.createDelete(operationTracingServiceUri).setCompletion(
                     serviceCompletion));
         }
+    }
+
+    private void handleConfigureInboundRequestLogging(ConfigureInboundRequestLogging request, Operation op) {
+        if (request.loggingInfo == null) {
+            op.fail(new IllegalArgumentException("loggingInfo is missing"));
+            return;
+        }
+        getHost().setRequestLoggingInfo(request.loggingInfo);
+        op.complete();
     }
 
     private void handleBackupRequest(BackupRequest req, Operation op) {

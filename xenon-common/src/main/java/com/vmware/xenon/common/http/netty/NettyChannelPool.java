@@ -291,7 +291,7 @@ public class NettyChannelPool {
     public ConnectionPoolMetrics getConnectionTagInfo(String tag) {
         ConnectionPoolMetrics tagInfo = null;
         for (NettyChannelGroup g : this.channelGroups.values()) {
-            if (!tag.equals(g.key.connectionTag)) {
+            if (tag != null && !tag.equals(g.key.connectionTag)) {
                 continue;
             }
             if (tagInfo == null) {

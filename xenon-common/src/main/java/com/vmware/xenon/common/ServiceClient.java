@@ -143,7 +143,12 @@ public interface ServiceClient extends ServiceRequestSender {
     int getRequestPayloadSizeLimit();
 
     /**
+     * Returns metrics for a connection pool (HTTP/1.1 or HTTP/2).
+     */
+    ConnectionPoolMetrics getConnectionPoolMetrics(boolean http2);
+
+    /**
      * Returns metrics for a connection pool associated with the given tag
      */
-    ConnectionPoolMetrics getConnectionPoolMetrics(String connectionTag);
+    ConnectionPoolMetrics getConnectionPoolMetricsPerTag(String connectionTag);
 }

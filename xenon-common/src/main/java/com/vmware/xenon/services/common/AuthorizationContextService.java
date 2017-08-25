@@ -49,6 +49,8 @@ public class AuthorizationContextService extends StatelessService {
     public static final String SELF_LINK = ServiceUriPaths.CORE_AUTHZ_VERIFICATION;
 
     public AuthorizationContextService() {
+        toggleOption(ServiceOption.CORE, true);
+        toggleOption(ServiceOption.INSTRUMENTATION, true);
         this.context = new AuthServiceContext(this, null, (requestBody) -> {
             synchronized (this.pendingOperationsBySubject) {
                 if (this.pendingOperationsBySubject.containsKey(requestBody.subjectLink)) {

@@ -279,8 +279,13 @@ public class NettyHttp2Test {
         this.host.testWait();
         assertTrue(completionTimes[0] > completionTimes[1]);
 
+        ConnectionPoolMetrics http2Metrics = this.host.getClient().getConnectionPoolMetrics(true);
+        assertTrue(http2Metrics != null);
+        assertTrue(http2Metrics.inUseConnectionCount > 0);
+        assertTrue(http2Metrics.pendingRequestCount == 0);
+
         String tag = ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT;
-        ConnectionPoolMetrics tagInfo = this.host.getClient().getConnectionPoolMetrics(tag);
+        ConnectionPoolMetrics tagInfo = this.host.getClient().getConnectionPoolMetricsPerTag(tag);
         assertTrue(tagInfo != null);
         assertTrue(tagInfo.inUseConnectionCount > 0);
         assertTrue(tagInfo.pendingRequestCount == 0);
@@ -543,8 +548,13 @@ public class NettyHttp2Test {
             this.host.waitForGC();
         }
 
+        ConnectionPoolMetrics http2Metrics = this.host.getClient().getConnectionPoolMetrics(true);
+        assertTrue(http2Metrics != null);
+        assertTrue(http2Metrics.inUseConnectionCount > 0);
+        assertTrue(http2Metrics.pendingRequestCount == 0);
+
         String tag = ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT;
-        ConnectionPoolMetrics tagInfo = this.host.getClient().getConnectionPoolMetrics(tag);
+        ConnectionPoolMetrics tagInfo = this.host.getClient().getConnectionPoolMetricsPerTag(tag);
         assertTrue(tagInfo != null);
         assertTrue(tagInfo.inUseConnectionCount > 0);
         assertTrue(tagInfo.pendingRequestCount == 0);
@@ -559,8 +569,13 @@ public class NettyHttp2Test {
                 EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.HTTP2),
                 services);
 
+        http2Metrics = this.host.getClient().getConnectionPoolMetrics(true);
+        assertTrue(http2Metrics != null);
+        assertTrue(http2Metrics.inUseConnectionCount > 0);
+        assertTrue(http2Metrics.pendingRequestCount == 0);
+
         tag = this.host.connectionTag;
-        tagInfo = this.host.getClient().getConnectionPoolMetrics(tag);
+        tagInfo = this.host.getClient().getConnectionPoolMetricsPerTag(tag);
         assertTrue(tagInfo != null);
         assertTrue(tagInfo.inUseConnectionCount > 0);
         assertTrue(tagInfo.pendingRequestCount == 0);

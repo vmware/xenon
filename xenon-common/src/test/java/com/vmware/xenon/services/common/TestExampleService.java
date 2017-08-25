@@ -386,9 +386,9 @@ public class TestExampleService {
         body.documentSelfLink = suffix;
         Operation post = Operation.createPost(peer, ExampleService.FACTORY_LINK).setBody(body);
 
-        // enable compression
+        // enable compression and test a more complex Accept-Encoding header works correctly
         post.addRequestHeader(Operation.CONTENT_ENCODING_HEADER, Operation.CONTENT_ENCODING_GZIP);
-        post.addRequestHeader(Operation.ACCEPT_ENCODING_HEADER, Operation.CONTENT_ENCODING_GZIP);
+        post.addRequestHeader(Operation.ACCEPT_ENCODING_HEADER, "br;q=1.0, gzip;q=0.8, *;q=0.1");
 
         // verify post response
         ExampleServiceState result = sender.sendAndWait(post, ExampleServiceState.class);
@@ -398,7 +398,7 @@ public class TestExampleService {
         String servicePath = UriUtils.buildUriPath(ExampleService.FACTORY_LINK, suffix);
         Operation get = Operation.createGet(peer, servicePath);
         get.addRequestHeader(Operation.CONTENT_ENCODING_HEADER, Operation.CONTENT_ENCODING_GZIP);
-        get.addRequestHeader(Operation.ACCEPT_ENCODING_HEADER, Operation.CONTENT_ENCODING_GZIP);
+        post.addRequestHeader(Operation.ACCEPT_ENCODING_HEADER, "br;q=1.0, gzip;q=0.8, *;q=0.1");
 
         ExampleServiceState getResult = sender.sendAndWait(get, ExampleServiceState.class);
 
@@ -408,7 +408,7 @@ public class TestExampleService {
         // now do a manual get with manual gunzip to check compresion was actually used
         URL url = new URL(peer.getUri() + getResult.documentSelfLink);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestProperty(Operation.ACCEPT_ENCODING_HEADER, Operation.CONTENT_ENCODING_GZIP);
+        conn.setRequestProperty(Operation.ACCEPT_ENCODING_HEADER, "br;q=1.0, gzip;q=0.8, *;q=0.1");
 
         InputStream inputStream = conn.getInputStream();
         ByteArrayOutputStream baos;

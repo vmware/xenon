@@ -775,10 +775,29 @@ public final class Utils {
 
         // For requests, if encoding is specified as gzip, then compress body
         // For responses, if request accepts gzip body, then compress body and add response header
-        String encodingHeader = isRequest ?
-                Operation.CONTENT_ENCODING_HEADER : Operation.ACCEPT_ENCODING_HEADER;
-        String encoding = op.getRequestHeaderAsIs(encodingHeader);
-        if (Operation.CONTENT_ENCODING_GZIP.equals(encoding)) {
+        boolean gzip = false;
+        if (isRequest) {
+            String encoding = op.getRequestHeader(Operation.CONTENT_ENCODING_HEADER);
+            gzip = Operation.CONTENT_ENCODING_GZIP.equals(encoding);
+        } else {
+            String encoding = op.getRequestHeader(Operation.ACCEPT_ENCODING_HEADER);
+            // encoding can be of form br;q=1.0, gzip;q=0.8, *;q=0.1
+            // see https://tools.ietf.org/html/rfc7231#section-5.3.4
+            if (encoding != null) {
+                String[] encodings = encoding.split(",");
+                for (String enc : encodings) {
+                    int idx = enc.indexOf(';');
+                    if (idx > 0) {
+                        enc = enc.substring(0, idx);
+                    }
+                    if (Operation.CONTENT_ENCODING_GZIP.equals(enc.trim())) {
+                        gzip = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (gzip) {
             data = compressGZip(data);
             op.setContentLength(data.length);
             if (!isRequest) {

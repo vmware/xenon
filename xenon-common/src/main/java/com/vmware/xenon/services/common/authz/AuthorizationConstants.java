@@ -11,19 +11,13 @@
  * specific language governing permissions and limitations under the License.
  */
 
-package com.vmware.xenon.services.common.authn;
+package com.vmware.xenon.services.common.authz;
 
-public final class AuthenticationConstants {
+public class AuthorizationConstants {
 
-    private AuthenticationConstants() {
+    private AuthorizationConstants() {
 
     }
 
-    public static final String DEFAULT_JWT_SECRET = "BAD_SECRET_NOT_SECURE";
-
-    public static final String DEFAULT_ISSUER = "xn";
-
-    public static final String REQUEST_AUTH_TOKEN_COOKIE = "xenon-auth-cookie";
-
-    public static final String STAT_NAME_DURATION_MICROS_PREFIX = "authenticationDurationMicros";
+    public static final String STAT_NAME_DURATION_MICROS_PREFIX = "authorizationDurationMicros";
 }

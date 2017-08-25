@@ -129,6 +129,7 @@ import com.vmware.xenon.services.common.UserService;
 import com.vmware.xenon.services.common.authn.AuthenticationConstants;
 import com.vmware.xenon.services.common.authn.BasicAuthenticationService;
 import com.vmware.xenon.services.common.authn.BasicAuthenticationUtils;
+import com.vmware.xenon.services.common.authz.AuthorizationConstants;
 
 /**
  * Service host manages service life cycle, delivery of operations (remote and local) and performing
@@ -386,9 +387,6 @@ public class ServiceHost implements ServiceRequestSender {
             .getProperty(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX) == null
             || Boolean.getBoolean(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX);
 
-
-
-
     /**
      * Request rate limiting configuration and real time statistics
      */
@@ -423,6 +421,17 @@ public class ServiceHost implements ServiceRequestSender {
         public TimeSeriesStats timeSeries;
     }
 
+    /**
+     * Enables Logging for all inbound requests.
+     */
+    public static class RequestLoggingInfo {
+        public Boolean enabled = false;
+
+        public Boolean skipGossipRequests = true;
+        public Boolean skipSynchronizationRequests = true;
+        public Boolean skipForwardingRequests = true;
+    }
+
     public static class ServiceHostState extends ServiceDocument {
         public enum MemoryLimitType {
             LOW_WATERMARK, HIGH_WATERMARK, EXACT
@@ -447,6 +456,7 @@ public class ServiceHost implements ServiceRequestSender {
         public SslClientAuthMode sslClientAuthMode;
         public int responsePayloadSizeLimit;
         public int requestPayloadSizeLimit;
+        public RequestLoggingInfo requestLoggingInfo;
 
         public URI storageSandboxFileReference;
         public URI resourceSandboxFileReference;
@@ -624,6 +634,8 @@ public class ServiceHost implements ServiceRequestSender {
     private AuthorizationContext systemAuthorizationContext;
     private AuthorizationContext guestAuthorizationContext;
     private ScheduledExecutorService serviceScheduledExecutor;
+
+    private List<String> skipLoggingPragmaDirectives = new ArrayList<>();
 
     protected ServiceHost() {
         this.state = new ServiceHostState();
@@ -1010,6 +1022,44 @@ public class ServiceHost implements ServiceRequestSender {
 
     public void setPeerSynchronizationEnabled(boolean enabled) {
         this.state.isPeerSynchronizationEnabled = enabled;
+    }
+
+    public boolean isRequestLoggingEnabled() {
+        return this.state.requestLoggingInfo != null && this.state.requestLoggingInfo.enabled;
+    }
+
+    public RequestLoggingInfo getRequestLoggingInfo() {
+        return this.state.requestLoggingInfo;
+    }
+
+    public List<String> getSkipLoggingPragmaDirectives() {
+        return this.skipLoggingPragmaDirectives;
+    }
+
+    public void setRequestLoggingInfo(RequestLoggingInfo loggingInfo) {
+        this.state.requestLoggingInfo = loggingInfo;
+
+        // Update pragma directives list for forwarding requests
+        if (loggingInfo.skipForwardingRequests) {
+            if (!this.skipLoggingPragmaDirectives.contains(Operation.PRAGMA_DIRECTIVE_FORWARDED)) {
+                this.skipLoggingPragmaDirectives.add(Operation.PRAGMA_DIRECTIVE_FORWARDED);
+            }
+        } else {
+            this.skipLoggingPragmaDirectives.remove(Operation.PRAGMA_DIRECTIVE_FORWARDED);
+        }
+
+        // Update pragma directives list for synchronization requests
+        if (loggingInfo.skipSynchronizationRequests) {
+            if (!this.skipLoggingPragmaDirectives.contains(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)) {
+                this.skipLoggingPragmaDirectives.add(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER);
+            }
+            if (!this.skipLoggingPragmaDirectives.contains(Operation.PRAGMA_DIRECTIVE_SYNCH_PEER)) {
+                this.skipLoggingPragmaDirectives.add(Operation.PRAGMA_DIRECTIVE_SYNCH_PEER);
+            }
+        } else {
+            this.skipLoggingPragmaDirectives.remove(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER);
+            this.skipLoggingPragmaDirectives.remove(Operation.PRAGMA_DIRECTIVE_SYNCH_PEER);
+        }
     }
 
     public int getPeerSynchronizationTimeLimitSeconds() {
@@ -3511,7 +3561,15 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         // Dispatch the operation to the authentication service for handling.
+        long dispatchTime = System.nanoTime();
         inboundOp.nestCompletion((op, ex) -> {
+            if (this.authenticationService.hasOption(ServiceOption.INSTRUMENTATION)) {
+                long dispatchDuration = System.nanoTime() - dispatchTime;
+                setAuthDurationStat(this.authenticationService,
+                        AuthenticationConstants.STAT_NAME_DURATION_MICROS_PREFIX,
+                        TimeUnit.NANOSECONDS.toMicros(dispatchDuration));
+            }
+
             if (ex != null) {
                 inboundOp.setBodyNoCloning(op.getBodyRaw())
                         .setStatusCode(op.getStatusCode()).fail(ex);
@@ -3534,13 +3592,31 @@ public class ServiceHost implements ServiceRequestSender {
 
     private void checkAndPopulateAuthzContext(Service service, Operation inboundOp) {
         if (this.authorizationService != null) {
+            long dispatchTime = System.nanoTime();
             inboundOp.nestCompletion(op -> {
+                if (this.authorizationService.hasOption(ServiceOption.INSTRUMENTATION)) {
+                    long dispatchDuration = System.nanoTime() - dispatchTime;
+                    setAuthDurationStat(this.authorizationService,
+                            AuthorizationConstants.STAT_NAME_DURATION_MICROS_PREFIX,
+                            TimeUnit.NANOSECONDS.toMicros(dispatchDuration));
+                }
+
                 handleRequestWithAuthContext(null, inboundOp);
             });
+
             queueOrScheduleRequest(this.authorizationService, inboundOp);
         } else {
             handleRequestWithAuthContext(service, inboundOp);
         }
+    }
+
+    private void setAuthDurationStat(Service service, String prefix, double value) {
+        ServiceStat st = ServiceStatUtils.getOrCreateDailyTimeSeriesHistogramStat(service, prefix,
+                ServiceStatUtils.AGGREGATION_TYPE_AVG_MAX);
+        service.setStat(st, value);
+        st = ServiceStatUtils.getOrCreateHourlyTimeSeriesHistogramStat(service, prefix,
+                ServiceStatUtils.AGGREGATION_TYPE_AVG_MAX);
+        service.setStat(st, value);
     }
 
     private void handleRequestWithAuthContext(Service service, Operation inboundOp) {
@@ -3727,6 +3803,11 @@ public class ServiceHost implements ServiceRequestSender {
                 this.authorizationContextCache.remove(token);
                 this.userLinkToTokenMap.remove(claims.getSubject());
             }
+
+            this.managementService.adjustStat(
+                    ServiceHostManagementService.STAT_NAME_AUTHORIZATION_CACHE_SIZE,
+                    this.authorizationContextCache.size());
+
             return null;
         }
 
@@ -3742,6 +3823,13 @@ public class ServiceHost implements ServiceRequestSender {
             this.authorizationContextCache.put(token, ctx);
             addUserToken(this.userLinkToTokenMap, claims.getSubject(), token);
         }
+
+        this.managementService.adjustStat(
+                ServiceHostManagementService.STAT_NAME_AUTHORIZATION_CACHE_INSERT_COUNT, 1);
+        this.managementService.adjustStat(
+                ServiceHostManagementService.STAT_NAME_AUTHORIZATION_CACHE_SIZE,
+                this.authorizationContextCache.size());
+
         return ctx;
     }
 
@@ -5867,6 +5955,12 @@ public class ServiceHost implements ServiceRequestSender {
             this.authorizationContextCache.put(token, ctx);
             addUserToken(this.userLinkToTokenMap, ctx.getClaims().getSubject(), token);
         }
+
+        this.managementService.adjustStat(
+                ServiceHostManagementService.STAT_NAME_AUTHORIZATION_CACHE_INSERT_COUNT, 1);
+        this.managementService.adjustStat(
+                ServiceHostManagementService.STAT_NAME_AUTHORIZATION_CACHE_SIZE,
+                this.authorizationContextCache.size());
     }
 
     /**
@@ -5876,6 +5970,7 @@ public class ServiceHost implements ServiceRequestSender {
         if (!this.isPrivilegedService(s)) {
             throw new RuntimeException("Service not allowed to clear authorization token");
         }
+
         synchronized (this.state) {
             Set<String> tokenSet = this.userLinkToTokenMap.remove(userLink);
             if (tokenSet != null) {
@@ -5884,6 +5979,10 @@ public class ServiceHost implements ServiceRequestSender {
                 }
             }
         }
+
+        this.managementService.adjustStat(
+                ServiceHostManagementService.STAT_NAME_AUTHORIZATION_CACHE_SIZE,
+                this.authorizationContextCache.size());
     }
 
     /**
@@ -5899,9 +5998,16 @@ public class ServiceHost implements ServiceRequestSender {
     private void populateAuthorizationContext(Operation op, Consumer<AuthorizationContext> authorizationContextHandler) {
         getAuthorizationContext(op, authorizationContext -> {
             if (authorizationContext == null) {
-                // No (valid) authorization context, fall back to guest context
                 authorizationContext = getGuestAuthorizationContext();
+
+                // Check if we have an authorizationContext already setup for the Guest user
+                AuthorizationContext cachedGuestCtx = this.authorizationContextCache
+                        .get(authorizationContext.getToken());
+                if (cachedGuestCtx != null) {
+                    authorizationContext = cachedGuestCtx;
+                }
             }
+
             op.setAuthorizationContext(authorizationContext);
             authorizationContextHandler.accept(authorizationContext);
         });

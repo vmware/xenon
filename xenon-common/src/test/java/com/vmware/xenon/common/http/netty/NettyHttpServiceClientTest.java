@@ -293,7 +293,7 @@ public class NettyHttpServiceClientTest {
     private static void validateTagInfo(VerificationHost host, ServiceClient client, String tag,
             Integer limit) {
         host.waitFor("pending requests", () -> {
-            ConnectionPoolMetrics tagInfo = client.getConnectionPoolMetrics(tag);
+            ConnectionPoolMetrics tagInfo = client.getConnectionPoolMetricsPerTag(tag);
             if (tagInfo == null) {
                 return false;
             }
