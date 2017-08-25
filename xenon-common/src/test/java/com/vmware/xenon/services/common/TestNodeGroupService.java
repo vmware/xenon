@@ -3008,6 +3008,43 @@ public class TestNodeGroupService {
     }
 
     @Test
+    public void oneNodeDeletionSynchronizationOptimization() throws Throwable {
+
+        this.nodeCount = 3;
+        this.serviceCount = 1000000;
+        setUp(this.nodeCount);
+        this.host.setTimeoutSeconds(100000);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+        Map<String, ExampleServiceState> exampleServices = createExampleServices(this.host.getPeerHostUri());
+
+        // We wait for node-group to become stable after initialization.
+        Thread.sleep(500);
+
+        this.host.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(this.host.getPeerHost(), ExampleService.FACTORY_LINK));
+        VerificationHost peerToStop = this.host.getPeerHost();
+        this.host.stopHost(peerToStop);
+        //this.host.testStart(1);
+
+
+        //this.host.setUpLocalPeerHost(null, this.host.getMaintenanceIntervalMicros());
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount - 1);
+        this.host.testStart(1);
+
+        this.host.waitForReplicatedFactoryChildServiceConvergence(getFactoriesPerNodeGroup(ExampleService.FACTORY_LINK),
+                exampleServices,
+                exampleStateConvergenceChecker,
+                this.serviceCount,
+                0, this.nodeCount - 1);
+
+        this.host.completeIteration();
+        this.host.testWait();
+        this.host.logThroughput();
+        //this.host.calculateThroughput();
+        //) (UriUtils.buildUri(this.host.getPeerHost(), ExampleService.FACTORY_LINK));
+        //this.host.testWait();
+    }
+
+    @Test
     public void factorySynchronization() throws Throwable {
 
         setUp(this.nodeCount);

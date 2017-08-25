@@ -2422,9 +2422,9 @@ public class VerificationHost extends ExampleServiceHost {
 
                 if (e.getValue().size() < expectedNodeCountPerLinkMin
                         || e.getValue().size() > expectedNodeCountPerLinkMax) {
-                    this.log("Service %s found on %d nodes, expected %d -> %d", e.getKey(), e
+                    this.log("Service %s found on %d nodes, expected %d -> %d, nodes:%s", e.getKey(), e
                             .getValue().size(), expectedNodeCountPerLinkMin,
-                            expectedNodeCountPerLinkMax);
+                            expectedNodeCountPerLinkMax, e.getValue());
                     isConverged = false;
                 }
             }

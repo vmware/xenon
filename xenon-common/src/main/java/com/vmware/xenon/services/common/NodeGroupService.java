@@ -148,10 +148,17 @@ public class NodeGroupService extends StatefulService {
          */
         public Map<String, NodeState> nodes = new ConcurrentHashMap<>();
         /**
+         * Node that just got disappeared. This will only be used in cases if and only if there was one node that
+         * is missing. We use this case of single node missing to optimize synchronization of services by only
+         * synchronizing those child services whose owner was this missing node. This gives us n-1 times speed-up
+         * in synchronization.
+         */
+        public String disappearedNode;
+        /**
          * The maximum value among all reported times from the peers. If one peer has significant
          * time drift compared to others, this value will appears in the future or past, compared to local time.
          * This value is updated during gossip and is considered a "global" field that settles to the same
-         * value across all peers, when gossip ahs converged
+         * value across all peers, when gossip has converged.
          */
         public long membershipUpdateTimeMicros;
 
@@ -938,12 +945,17 @@ public class NodeGroupService extends StatefulService {
         }
 
         List<String> missingNodes = new ArrayList<>();
+        List<String> disappearedNodes = new ArrayList<>();
+
         for (NodeState l : localState.nodes.values()) {
             NodeState r = remotePeerState.nodes.get(l.id);
             if (!NodeState.isUnAvailable(l, null) || l.id.equals(getHost().getId())) {
                 continue;
             }
 
+            if (remotePeerState.nodes.containsKey(l.id)) {
+                disappearedNodes.add(l.id);
+            }
             long expirationMicros = l.documentExpirationTimeMicros;
             if (r != null) {
                 expirationMicros = Math.max(l.documentExpirationTimeMicros,
@@ -959,6 +971,10 @@ public class NodeGroupService extends StatefulService {
 
         for (String id : missingNodes) {
             localState.nodes.remove(id);
+        }
+
+        if (disappearedNodes.size() == 1) {
+            localState.disappearedNode = disappearedNodes.get(0);
         }
 
         boolean isModified = !changes.isEmpty();

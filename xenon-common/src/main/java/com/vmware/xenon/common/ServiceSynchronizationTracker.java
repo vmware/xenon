@@ -306,6 +306,15 @@ class ServiceSynchronizationTracker {
             return;
         }
 
+        String nodeToSynch = op.getRequestHeader(Operation.SYNCH_FOR_NODE_HEADER);
+        if (nodeToSynch != null && t.state != null && t.state.documentOwner != null && !t.state.documentOwner.equals(nodeToSynch)) {
+            this.host.log(Level.INFO, "Skipping synch for service because of optimization: %s, header=%s, owner:%s",
+                    op.getUri().getPath(), op.getRequestHeader(Operation.SYNCH_FOR_NODE_HEADER), t.state == null? null :t.state.documentOwner);
+
+            op.complete();
+            return;
+        }
+
         if (t.state == null) {
             // we have no initial state or state from storage. Create an empty state so we can
             // compare with peers
@@ -336,6 +345,7 @@ class ServiceSynchronizationTracker {
                 op.fail(new CancellationException("Host is stopping"));
                 return;
             }
+
 
             if (e != null) {
                 op.setStatusCode(o.getStatusCode());
@@ -389,6 +399,10 @@ class ServiceSynchronizationTracker {
             // so that the correct documentVersion is indexed during startService.
             op.linkState(selectedState);
             op.setBodyNoCloning(selectedState).complete();
+
+            this.host.log(Level.INFO, "Synch completed:%s, old owner:%s new owner:%s",
+                    op.getUri().getPath(), op.getRequestHeader(Operation.SYNCH_FOR_NODE_HEADER), selectedState.documentOwner);
+
         };
 
         URI synchServiceForGroup = UriUtils.extendUri(

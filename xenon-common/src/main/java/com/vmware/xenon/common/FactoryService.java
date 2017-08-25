@@ -1012,6 +1012,16 @@ public abstract class FactoryService extends StatelessService {
 
         SynchronizationTaskService.State task = createSynchronizationTaskState(
                 membershipUpdateTimeMicros);
+
+        /**
+         * We provide node group state to the Synchronization task if the synchronization was triggered
+         * by a node group change. Synchronization task will use node group state to optimize the synchronization.
+         */
+        if (parentOp != null) {
+            ServiceMaintenanceRequest request = parentOp.getBody(ServiceMaintenanceRequest.class);
+            task.nodeGroupState = request.nodeGroupState;
+        }
+
         Operation post = Operation
                 .createPost(this, ServiceUriPaths.SYNCHRONIZATION_TASKS)
                 .setBody(task)

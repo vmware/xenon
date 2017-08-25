@@ -487,6 +487,12 @@ public class Operation implements Cloneable {
     public static final String TRANSACTION_REFLINK_HEADER = HEADER_NAME_PREFIX + "tx-reflink";
 
     /**
+     * This header is used for synch optimization that occurs if and only if there was node-group
+     * change with one node getting disappeared.
+     */
+    public static final String SYNCH_FOR_NODE_HEADER = HEADER_NAME_PREFIX + "synch-for-node";
+
+    /**
      * Infrastructure use only. Set when a service is first created due to a client request. Since
      * service start can be invoked by the runtime during node synchronization, restart, this
      * directive is the only way to distinguish original creation of arbitrary services (without relying

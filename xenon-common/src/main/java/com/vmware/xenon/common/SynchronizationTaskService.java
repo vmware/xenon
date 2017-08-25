@@ -45,11 +45,23 @@ public class SynchronizationTaskService
 
     public static final String PROPERTY_NAME_MAX_CHILD_SYNCH_RETRY_COUNT =
             Utils.PROPERTY_NAME_PREFIX + "SynchronizationTaskService.MAX_CHILD_SYNCH_RETRY_COUNT";
-
-    // Maximum synch-task retry limit.
-    // We are using exponential backoff for synchronization retry.
+    /**
+     * Maximum synch-task retry limit.
+     * We are using exponential backoff for synchronization retry.
+     */
     public static final int MAX_CHILD_SYNCH_RETRY_COUNT = Integer.getInteger(
             PROPERTY_NAME_MAX_CHILD_SYNCH_RETRY_COUNT, 3);
+
+    public static final String PROPERTY_NAME_SYNCH_REMOVED_OWNER_OPTIMIZATION =
+            Utils.PROPERTY_NAME_PREFIX + "SynchronizationTaskService.SYNCH_DISAPPEARED_OWNER_OPTIMIZATION";
+
+    /**
+     * JVM property to enable/disable disappeared owner optimization done in synchronization task.
+     * Default value is true.
+     */
+    public static final boolean SYNCH_DISAPPEARED_OWNER_OPTIMIZATION = System
+            .getProperty(PROPERTY_NAME_SYNCH_REMOVED_OWNER_OPTIMIZATION) == null
+            || Boolean.getBoolean(PROPERTY_NAME_SYNCH_REMOVED_OWNER_OPTIMIZATION);
 
 
     public static SynchronizationTaskService create(Supplier<Service> childServiceInstantiator) {
@@ -124,6 +136,11 @@ public class SynchronizationTaskService
          */
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public int synchCompletionCount;
+
+        /**
+         * Node group state that caused synchronization to trigger.
+         */
+        public NodeGroupService.NodeGroupState nodeGroupState;
     }
 
     private Supplier<Service> childServiceInstantiator;
@@ -284,6 +301,7 @@ public class SynchronizationTaskService
         // See documentation above for State class.
         task.membershipUpdateTimeMicros = body.membershipUpdateTimeMicros;
         task.queryResultLimit = body.queryResultLimit;
+        task.nodeGroupState = body.nodeGroupState;
         if (startStateMachine) {
             task.taskInfo.stage = TaskState.TaskStage.STARTED;
             task.subStage = SubStage.QUERY;
@@ -795,6 +813,13 @@ public class SynchronizationTaskService
                 .setExpiration(
                         Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
                 .setRetryCount(0);
+
+        if (SYNCH_DISAPPEARED_OWNER_OPTIMIZATION) {
+            if (task.nodeGroupState != null && task.nodeGroupState.disappearedNode != null) {
+                synchRequest.addRequestHeader(Operation.SYNCH_FOR_NODE_HEADER, task.nodeGroupState.disappearedNode);
+            }
+        }
+
         try {
             sendRequest(synchRequest);
         } catch (Exception e) {
