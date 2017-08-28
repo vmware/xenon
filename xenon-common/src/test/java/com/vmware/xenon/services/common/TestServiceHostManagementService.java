@@ -764,6 +764,7 @@ public class TestServiceHostManagementService extends BasicTestCase {
                 .sendAndWait(Operation.createGet(logServiceUri));
         ServiceHostLogService.LogServiceState state = getOp.getBody(ServiceHostLogService.LogServiceState.class);
 
+        System.out.printf("Log Service results: %s", Utils.toJsonHtml(state));
         int foundCount = 0;
         for (String i : state.items) {
             if (i.contains(logLine)) {
