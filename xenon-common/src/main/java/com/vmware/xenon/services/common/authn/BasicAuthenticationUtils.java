@@ -13,11 +13,11 @@
 
 package com.vmware.xenon.services.common.authn;
 
-
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.util.Base64;
+import java.util.EnumSet;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -48,6 +48,9 @@ public final class BasicAuthenticationUtils {
     private static final long AUTH_TOKEN_EXPIRATION_MICROS = Long.getLong(
             Utils.PROPERTY_NAME_PREFIX + "BasicAuthenticationService.AUTH_TOKEN_EXPIRATION_MICROS",
             TimeUnit.HOURS.toMicros(1));
+
+    public static final EnumSet<QueryTask.QuerySpecification.QueryOption> QUERY_OPTIONS_TOP_RESULTS =
+            EnumSet.of(QueryTask.QuerySpecification.QueryOption.TOP_RESULTS);
 
     private BasicAuthenticationUtils() {
 
@@ -159,6 +162,8 @@ public final class BasicAuthenticationUtils {
         QueryTask q = new QueryTask();
         q.querySpec = new QueryTask.QuerySpecification();
         q.querySpec.query = authContext.userQuery;
+        q.querySpec.options = QUERY_OPTIONS_TOP_RESULTS;
+        q.querySpec.resultLimit = 1;
         q.taskInfo.isDirect = true;
 
         Operation.CompletionHandler userServiceCompletion = (o, ex) -> {
@@ -180,7 +185,8 @@ public final class BasicAuthenticationUtils {
         };
 
         Operation queryOp = Operation
-                .createPost(AuthUtils.buildAuthProviderHostUri(service.getHost(), ServiceUriPaths.CORE_QUERY_TASKS))
+                .createPost(AuthUtils.buildAuthProviderHostUri(service.getHost(),
+                        ServiceUriPaths.CORE_LOCAL_QUERY_TASKS))
                 .setBody(q)
                 .setCompletion(userServiceCompletion);
         service.setAuthorizationContext(queryOp, service.getSystemAuthorizationContext());
@@ -201,6 +207,8 @@ public final class BasicAuthenticationUtils {
         QueryTask authQuery = new QueryTask();
         authQuery.querySpec = new QueryTask.QuerySpecification();
         authQuery.querySpec.query = authContext.authQuery;
+        authQuery.querySpec.options = QUERY_OPTIONS_TOP_RESULTS;
+        authQuery.querySpec.resultLimit = 1;
         authQuery.taskInfo.isDirect = true;
         Operation.CompletionHandler authCompletionHandler = (authOp, authEx) -> {
             if (authEx != null) {
@@ -236,7 +244,8 @@ public final class BasicAuthenticationUtils {
         };
 
         Operation queryAuth = Operation
-                .createPost(AuthUtils.buildAuthProviderHostUri(service.getHost(), ServiceUriPaths.CORE_QUERY_TASKS))
+                .createPost(AuthUtils.buildAuthProviderHostUri(service.getHost(),
+                        ServiceUriPaths.CORE_LOCAL_QUERY_TASKS))
                 .setBody(authQuery)
                 .setCompletion(authCompletionHandler);
         service.setAuthorizationContext(queryAuth, service.getSystemAuthorizationContext());

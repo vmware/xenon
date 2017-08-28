@@ -360,6 +360,8 @@ public class AuthorizationSetupHelper {
 
         QueryTask queryTask = QueryTask.Builder.createDirectTask()
                 .setQuery(userQuery)
+                .addOption(QueryTask.QuerySpecification.QueryOption.TOP_RESULTS)
+                .setResultLimit(1)
                 .build();
 
         URI queryTaskUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_QUERY_TASKS);
