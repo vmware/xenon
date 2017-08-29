@@ -2763,12 +2763,12 @@ public class ServiceHost implements ServiceRequestSender {
             case LOADING_INITIAL_STATE:
                 boolean isImmutableStart = ServiceHost.isServiceCreate(post)
                         && isServiceImmutable(s);
-                if (!isImmutableStart && isServiceIndexed(s) && !post.isFromReplication()) {
+                if (!isImmutableStart && isServiceIndexed(s) && (!post.isFromReplication() ||
+                        post.isSynchronizePeer())) {
                     // Skip querying the index for existing state if any of the following is true:
                     // 1) Service is marked IMMUTABLE. This means no previous version should exist,
                     //     its up to the client to enforce unique links
-                    // 2) Request is from replication. This means state is already attached to the
-                    //     request
+                    // 2) Request is from replication and is not a synch-peer request
                     // 3) Service is NOT indexed.
                     loadInitialServiceState(s, post, ProcessingStage.SYNCHRONIZING,
                             hasClientSuppliedInitialState);
@@ -2891,8 +2891,10 @@ public class ServiceHost implements ServiceRequestSender {
 
                 if (isServiceIndexed(s) && !s.hasOption(ServiceOption.FACTORY)) {
                     // we only index if this is a synchronization request from
-                    // a remote peer, or this is a new "create", brand new service start.
-                    if (post.isSynchronizePeer() || hasClientSuppliedInitialState) {
+                    // a remote peer (unless it's of the same version of the last one in
+                    // the index), or this is a new "create", brand new service start.
+                    if ((post.isSynchronizePeer() || hasClientSuppliedInitialState) &&
+                            !post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)) {
                         needsIndexing = true;
                     }
                 }
@@ -3250,13 +3252,21 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
-        ServiceDocument stateFromStore = null;
-        if (indexQueryOperation.hasBody()) {
-            stateFromStore = indexQueryOperation.getBody(s.getStateType());
-            serviceStartPost.linkState(stateFromStore);
-        }
+        ServiceDocument stateFromStore = indexQueryOperation.hasBody() ?
+                indexQueryOperation.getBody(s.getStateType()) : null;
+        boolean isSynchronizePeer = serviceStartPost.isSynchronizePeer();
+
+        ServiceDocument stateToLink = isSynchronizePeer ?
+                (ServiceDocument) serviceStartPost.getBodyRaw() : stateFromStore;
+        serviceStartPost.linkState(stateToLink);
 
         if (!checkServiceExistsOrDeleted(s, stateFromStore, serviceStartPost)) {
+            return;
+        }
+
+        if (isSynchronizePeer) {
+            processServiceStart(next, s,
+                    serviceStartPost, hasClientSuppliedState);
             return;
         }
 
@@ -3323,6 +3333,15 @@ public class ServiceHost implements ServiceRequestSender {
                         serviceStartPost);
                 return false;
             }
+        }
+
+        if (serviceStartPost.isSynchronizePeer()) {
+            // this is a sync-peer request, which should allow to continue
+            if (stateFromStore.documentVersion == initState.documentVersion) {
+                // avoid creating a duplicate document version
+                serviceStartPost.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE);
+            }
+            return true;
         }
 
         if (!s.hasOption(ServiceOption.IDEMPOTENT_POST)) {
