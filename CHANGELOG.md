@@ -36,6 +36,13 @@
   Host. Logging can be enabled or disabled during host start-up by calling
   ServiceHost.setRequestLoggingInfo OR by making a PATCH to ServiceHostManagementService.
 
+* Enable odata `$skip` support on factory get.
+  e.g.: 
+    /core/examples?$skip=5
+    /core/examples?$skip=5&$limit=10
+    /core/examples?$skip=5&$top=2
+
+
 ## 1.5.4
 
 * Updates to migration task service to assert zero documentOwner mismatches

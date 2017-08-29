@@ -17,6 +17,7 @@ import static java.util.stream.Collectors.toSet;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.lang.reflect.Field;
@@ -1190,6 +1191,8 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         validateLimitAndOrderBy(stateSupplier, 1, true, "counter", true, true);
         validateLimitAndOrderBy(stateSupplier, 5, false, "counter", false, true);
         validateLimitAndOrderBy(stateSupplier, 10, false, "name", true, false);
+
+        validateSkip();
     }
 
     private void validateCount(Supplier<Stream<ExampleServiceState>> stateSupplier,
@@ -1297,6 +1300,32 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         }
 
         assertTrue(current == stateSupplier.get().count());
+    }
+
+    private void validateSkip() throws Throwable {
+        // validate skip
+        ODataFactoryQueryResult result = getResult("$skip=3");
+        assertEquals(2, result.documentLinks.size());
+
+        // skip with limit
+        result = getResult("$skip=1&$limit=2");
+        assertNotNull(result.nextPageLink);
+        ServiceDocumentQueryResult nextResult = getNextResult(result.nextPageLink);
+        assertEquals(2, nextResult.documentLinks.size());
+        assertNull(nextResult.nextPageLink);
+
+        // skip with top
+        result = getResult("$skip=2&$top=2");
+        assertEquals(2, result.documentLinks.size());
+        assertNull(result.nextPageLink);
+
+        // skip with orderby
+        ODataFactoryQueryResult ordered = getResult("$orderby=counter asc");
+        result = getResult("$skip=2&$orderby=counter asc");
+        assertEquals(3, result.documentLinks.size());
+        assertEquals("expected 3rd doc shows up on 1st result", ordered.documentLinks.get(2), result.documentLinks.get(0));
+        assertEquals("expected 4th doc shows up on 2nd result", ordered.documentLinks.get(3), result.documentLinks.get(1));
+        assertEquals("expected 5th doc shows up on 3rd result", ordered.documentLinks.get(4), result.documentLinks.get(2));
     }
 
     private ODataFactoryQueryResult getResult(String queryString) throws Throwable {
