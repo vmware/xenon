@@ -95,6 +95,7 @@ class AsyncLogFileReader {
             this.buffer.limit(this.buffer.capacity());
             if (this.remaining != null) {
                 this.buffer.put(this.remaining);
+                this.remaining = null;
             }
 
             this.bufferPosition = this.buffer.capacity() - 1;
