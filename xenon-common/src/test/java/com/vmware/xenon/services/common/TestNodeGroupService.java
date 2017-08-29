@@ -510,87 +510,65 @@ public class TestNodeGroupService {
     @Test
     public void synchronizationAfterStaleHostRestart() throws Throwable {
         // This test verifies that if a stale host joins
-        // a node-group after restart and becomes OWNER for services
-        // that are stale in the local index, synchronization will kick-in
-        // and update the local state with the latest state from peers
+        // a node-group after restart, synchronization updates
+        // the local index with the latest state from peers
 
         this.isPeerSynchronizationEnabled = false;
         setUp(this.nodeCount);
-
-        ExampleServiceState state = new ExampleServiceState();
-        state.name = "testing";
-
-        // Create the same services on all the hosts.
-        ConcurrentSkipListSet<String> links = new ConcurrentSkipListSet<>();
-        TestContext ctx = this.host.testCreate(this.serviceCount * this.nodeCount);
-        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
-            for (int i = 0; i < this.serviceCount; i++) {
-                state.documentSelfLink = "example-" + i;
-                Operation postOp = Operation
-                        .createPost(h, ExampleService.FACTORY_LINK)
-                        .setBody(state)
-                        .setReferer(this.host.getUri())
-                        .setCompletion((o, e) -> {
-                            if (e != null) {
-                                ctx.failIteration(e);
-                                return;
-                            }
-                            ExampleServiceState rsp = o.getBody(ExampleServiceState.class);
-                            links.add(rsp.documentSelfLink);
-                            ctx.completeIteration();
-                        });
-                this.host.sendRequest(postOp);
-            }
-        }
-        ctx.await();
-
-        VerificationHost[] hosts = this.host.getInProcessHostMap().values()
-                .toArray(new VerificationHost[this.host.getPeerCount()]);
-
-        // On one of the hosts, patch services to get a higher documentVersion
-        VerificationHost peerHost = hosts[0];
-        ExampleServiceState patchState = new ExampleServiceState();
-        for (int i = 0; i < this.updateCount; i++) {
-            TestContext patchCtx = this.host.testCreate(links.size());
-            patchState.counter = (long)(i + 10);
-            int counter = 0;
-            boolean deleteServices = i == this.updateCount - 1;
-            for (String documentSelfLink : links) {
-                Operation updateOp = Operation
-                        .createPatch(peerHost, documentSelfLink)
-                        .setBody(patchState)
-                        .setReferer(this.host.getUri())
-                        .setCompletion(patchCtx.getCompletion());
-                if (deleteServices && counter % 2 == 0) {
-                    updateOp.setAction(Action.DELETE);
-                    updateOp.setBody(null);
-                }
-                this.host.sendRequest(updateOp);
-            }
-            patchCtx.await();
-        }
-
-        // Restart one of the hosts by reusing the same storage sandboxes. Also
-        // disable synchronization so that the example services we created
-        // are not started.
-        this.host.stopHostAndPreserveState(hosts[1]);
-        hosts[1].setPort(0);
-
-        hosts[1].setPeerSynchronizationEnabled(false);
-        assertTrue(VerificationHost.restartStatefulHost(hosts[1], false));
-        this.host.addPeerNode(hosts[1]);
-
-        // Join the nodes and wait for node-group convergence.
         this.host.joinNodesAndVerifyConvergence(this.nodeCount);
 
-        // Kick-off Synchronization
-        VerificationHost owner = null;
-        for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
-            if (peer.isOwner(ExampleService.FACTORY_LINK, ServiceUriPaths.DEFAULT_NODE_SELECTOR)) {
-                owner = peer;
-                break;
+        // create example services on one of the hosts, let replication do its thing
+        VerificationHost peerHost = this.host.getPeerHost();
+        Map<String, ExampleServiceState> exampleStatesPerSelfLink = createExampleServices(peerHost.getUri());
+
+        // relax quorum, so we can perform updates after a host is stopped
+        this.host.setNodeGroupQuorum(this.nodeCount - 1);
+
+        // expire node that went away quickly to avoid alot of log spam from gossip failures
+        NodeGroupConfig cfg = new NodeGroupConfig();
+        cfg.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(1);
+        this.host.setNodeGroupConfig(cfg);
+
+        // stop one of the hosts, preserve its index
+        this.host.stopHostAndPreserveState(peerHost);
+
+        // wait for stopped host to be removed from node group
+        this.host.waitForNodeGroupConvergence(this.nodeCount - 1, this.nodeCount - 1);
+
+        // update about half of the services
+        VerificationHost existingHost = this.host.getPeerHost();
+        Map<String, ExampleServiceState> servicesToUpdate = new HashMap<>();
+        boolean update = false;
+        for (Entry<String, ExampleServiceState> e : exampleStatesPerSelfLink.entrySet()) {
+            update = !update;
+            if (update) {
+                servicesToUpdate.put(e.getKey(), e.getValue());
             }
         }
+        doExampleServicePatch(servicesToUpdate, existingHost.getUri());
+
+        // increase quorum on existing nodes, so they wait for restarted host to join
+        this.host.setNodeGroupQuorum(this.nodeCount);
+
+        // restart stopped host
+        peerHost.setPort(0);
+        peerHost.setSecurePort(0);
+        peerHost.setPeerSynchronizationEnabled(false);
+        assertTrue(VerificationHost.restartStatefulHost(peerHost, false));
+
+        // join restarted host and wait for node group convergence
+        this.host.addPeerNode(peerHost);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+
+        // set quorum on new node as well
+        this.host.setNodeGroupQuorum(this.nodeCount);
+
+        // find example factory owner
+        VerificationHost owner = this.host.getInProcessHostMap().values().stream()
+                .filter(h -> h.isOwner(ExampleService.FACTORY_LINK, ServiceUriPaths.DEFAULT_NODE_SELECTOR))
+                .findFirst().get();
+
+        // kick-off synchronization and wait for it to finish
         startSynchronizationTaskAndWait(owner,
                 ExampleService.FACTORY_LINK, ExampleServiceState.class, 1L);
 
@@ -598,7 +576,7 @@ public class TestNodeGroupService {
         // documentEpoch for each service.
         List<String> nonComparedLinks = new ArrayList<>(this.serviceCount);
         HashMap<String, ServiceDocument> services = new HashMap<>(this.serviceCount);
-        for (VerificationHost h : hosts) {
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
             ServiceDocumentQueryResult r = this.host.getFactoryState(
                     UriUtils.buildExpandLinksQueryUri(UriUtils.buildUri(h, ExampleService.FACTORY_LINK)));
             for (Entry<String, Object> e : r.documents.entrySet()) {
@@ -618,6 +596,30 @@ public class TestNodeGroupService {
         // This is to make sure that the deleted services reflect on all the hosts, including
         // the restarted host.
         assertTrue(nonComparedLinks.isEmpty());
+
+        // Verify no duplicate document versions have been created
+        // (see https://www.pivotaltracker.com/n/projects/1471320/stories/149126897)
+        URI queryTaskUri = UriUtils.buildUri(peerHost, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
+        long actualTotalVersionCount = 0;
+        for (String selfLink : services.keySet()) {
+            Query query = Query.Builder.create()
+                    .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, selfLink)
+                    .build();
+            QueryTask queryTask = QueryTask.Builder.createDirectTask()
+                    .setQuery(query)
+                    .addOption(QueryOption.INCLUDE_ALL_VERSIONS)
+                    .addOption(QueryOption.COUNT)
+                    .build();
+            Operation postQuery = Operation.createPost(queryTaskUri)
+                    .setBody(queryTask);
+
+            QueryTask queryResponse = peerHost.getTestRequestSender().sendAndWait(postQuery, QueryTask.class);
+            actualTotalVersionCount += queryResponse.results.documentCount.longValue();
+        }
+
+        long expectedTotalVersionCount = exampleStatesPerSelfLink.size() // contributed version 0
+                + servicesToUpdate.size(); // contributed version 1
+        assertEquals(expectedTotalVersionCount, actualTotalVersionCount);
     }
 
     @Test
@@ -738,8 +740,17 @@ public class TestNodeGroupService {
                 .setBody(task)
                 .setReferer(this.host.getUri())
                 .setCompletion(synchCtx.getCompletion());
+
+        // create the synchronization task placeholder
         this.host.sendRequest(synchPost);
         synchCtx.await();
+
+        // kick-off synchronization state machine
+        synchCtx = this.host.testCreate(1);
+        synchPost.setCompletion(synchCtx.getCompletion());
+
+        // wait for synchronization task to finish
+        this.host.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(owner, factoryLink));
     }
 
     @Test
@@ -1369,7 +1380,7 @@ public class TestNodeGroupService {
     }
 
     private void doExampleServicePatch(Map<String, ExampleServiceState> states,
-            URI nodeGroupOnSomeHost) throws Throwable {
+            URI hostUri) throws Throwable {
         this.host.log("Starting PATCH to %d example services", states.size());
         TestContext ctx = this.host
                 .testCreate(this.updateCount * states.size());
@@ -1381,7 +1392,7 @@ public class TestNodeGroupService {
                 ExampleServiceState st = Utils.clone(e.getValue());
                 st.counter = (long) i;
                 Operation patch = Operation
-                        .createPatch(UriUtils.buildUri(nodeGroupOnSomeHost, e.getKey()))
+                        .createPatch(UriUtils.buildUri(hostUri, e.getKey()))
                         .setCompletion(ctx.getCompletion())
                         .setBody(st);
                 this.host.send(patch);
@@ -3875,8 +3886,6 @@ public class TestNodeGroupService {
 
         authHelper = new AuthorizationHelper(this.host);
 
-        // relax quorum to allow for divergent writes, on independent nodes (not yet joined)
-
         this.host.setSystemAuthorizationContext();
 
         // Create the same users and roles on every peer independently
@@ -4097,13 +4106,14 @@ public class TestNodeGroupService {
         // any example service instances, by specifying a name value we know will not match anything
         createReplicatedExampleTasks(exampleTaskLinks, UUID.randomUUID().toString());
 
-        // delete some of the task links, to test synchronization of deleted entries on the restarted
+        // delete some of the example services, to test synchronization of deleted entries on the restarted
         // host
         Set<String> deletedExampleLinks = deleteSomeServices(exampleLinks);
 
         // increase quorum on existing nodes, so they wait for new node
         this.host.setNodeGroupQuorum(this.nodeCount);
 
+        // restart stopped host
         hostToStop.setPort(0);
         hostToStop.setSecurePort(0);
         if (!VerificationHost.restartStatefulHost(hostToStop, false)) {
@@ -4118,7 +4128,7 @@ public class TestNodeGroupService {
                 UriUtils.buildUri(hostToStop, ExampleService.FACTORY_LINK),
                 ServiceUriPaths.DEFAULT_NODE_SELECTOR);
 
-        // restart host, rejoin it
+        // rejoin restarted host
         URI nodeGroupU = UriUtils.buildUri(hostToStop, ServiceUriPaths.DEFAULT_NODE_GROUP);
         URI eNodeGroupU = UriUtils.buildUri(existingHost, ServiceUriPaths.DEFAULT_NODE_GROUP);
         this.host.testStart(1);
@@ -4332,7 +4342,7 @@ public class TestNodeGroupService {
                             ServiceHost.SERVICE_URI_SUFFIX_STATS);
                     childStatUris.add(statUri);
 
-                    Set<Long> epochs = epochsPerLink.get(state.documentEpoch);
+                    Set<Long> epochs = epochsPerLink.get(state.documentSelfLink);
                     if (epochs == null) {
                         epochs = new HashSet<>();
                         epochsPerLink.put(state.documentSelfLink, epochs);
