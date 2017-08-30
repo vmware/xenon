@@ -113,7 +113,7 @@ class OperationTracker {
             Entry<Long, Operation> entry = it.next();
             Operation o = entry.getValue();
             if (this.host.isStopping()) {
-                o.fail(new CancellationException());
+                o.fail(new CancellationException("Host is stopping"));
                 return;
             }
 
@@ -145,18 +145,18 @@ class OperationTracker {
 
     public void close() {
         for (Operation op : this.pendingOperationsForRetry.values()) {
-            op.fail(new CancellationException());
+            op.fail(new CancellationException("Operation tracker is closing"));
         }
         this.pendingOperationsForRetry.clear();
 
         for (Operation op : this.pendingStartOperations) {
-            op.fail(new CancellationException());
+            op.fail(new CancellationException("Operation tracker is closing"));
         }
         this.pendingStartOperations.clear();
 
         for (SortedSet<Operation> opSet : this.pendingServiceAvailableCompletions.values()) {
             for (Operation op : opSet) {
-                op.fail(new CancellationException());
+                op.fail(new CancellationException("Operation tracker is closing"));
             }
         }
         this.pendingServiceAvailableCompletions.clear();

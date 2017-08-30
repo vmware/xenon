@@ -335,7 +335,7 @@ class ServiceSynchronizationTracker {
             ServiceDocument selectedState = null;
 
             if (this.host.isStopping()) {
-                op.fail(new CancellationException());
+                op.fail(new CancellationException("Host is stopping"));
                 return;
             }
 

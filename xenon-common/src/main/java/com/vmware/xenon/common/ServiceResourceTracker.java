@@ -842,7 +842,7 @@ class ServiceResourceTracker {
 
         Service indexService = this.host.getDocumentIndexService();
         if (indexService == null) {
-            inboundOp.fail(new CancellationException());
+            inboundOp.fail(new CancellationException("Index service is null"));
             return true;
         }
         indexService.handleRequest(getOp);

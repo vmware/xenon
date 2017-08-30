@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import com.vmware.xenon.common.AuthUtils;
 import com.vmware.xenon.common.Claims;
@@ -61,6 +62,14 @@ import com.vmware.xenon.services.common.UserService.UserState;
  *
  */
 public class AuthorizationContextServiceHelper {
+
+    public static final String PROPERTY_NAME_DEFAULT_RESULT_LIMIT =
+            Utils.PROPERTY_NAME_PREFIX + "AuthorizationContextServiceHelper.defaultResultLimit";
+
+    private static final int DEFAULT_RESULT_LIMIT = 1000;
+
+    private static final int resultLimit =
+            Integer.getInteger(PROPERTY_NAME_DEFAULT_RESULT_LIMIT, DEFAULT_RESULT_LIMIT);
 
     private AuthorizationContextServiceHelper() {
     }
@@ -340,22 +349,66 @@ public class AuthorizationContextServiceHelper {
             return;
         }
 
-        URI getUserGroupsUri = AuthUtils.buildAuthProviderHostUri(context.authContextService.getHost(),
-                ServiceUriPaths.CORE_AUTHZ_USER_GROUPS);
-        getUserGroupsUri = UriUtils.buildExpandLinksQueryUri(getUserGroupsUri);
-        Operation get = Operation.createGet(getUserGroupsUri)
+        Query userGroupQuery = Query.Builder.create()
+                .addKindFieldClause(UserGroupState.class)
+                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, ServiceUriPaths.CORE_AUTHZ_USER_GROUPS,
+                        MatchType.PREFIX)
+                .build();
+
+        QueryTask userGroupQueryTask = QueryTask.Builder.createDirectTask()
+                .setQuery(userGroupQuery)
+                .addOption(QuerySpecification.QueryOption.EXPAND_CONTENT)
+                .setResultLimit(resultLimit)
+                .build();
+
+        URI queryPostUri = AuthUtils.buildAuthProviderHostUri(context.authContextService.getHost(),
+                ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
+        Operation postOp = Operation.createPost(queryPostUri)
+                .setBody(userGroupQueryTask)
                 .setConnectionSharing(true)
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         op.fail(e);
                         return;
                     }
-                    ServiceDocumentQueryResult result = o
-                            .getBody(ServiceDocumentQueryResult.class);
+
+                    ServiceDocumentQueryResult rsp = o.getBody(QueryTask.class).results;
+                    if (rsp == null || rsp.nextPageLink == null) {
+                        populateAuthorizationContext(op, ctx, claims, null, context);
+                        return;
+                    }
+
                     Collection<UserGroupState> userGroupStates = new ArrayList<>();
-                    for (Object doc : result.documents.values()) {
-                        UserGroupState userGroupState = Utils.fromJson(doc,
-                                UserGroupState.class);
+                    handleLoadUserGroupsQueryResult(op, ctx, claims, userServiceDocument, context, userGroupStates,
+                            rsp.nextPageLink);
+                });
+
+        context.authContextService.setAuthorizationContext(postOp,
+                context.authContextService.getSystemAuthorizationContext());
+        context.authContextService.sendRequest(postOp);
+    }
+
+    private static void handleLoadUserGroupsQueryResult(Operation op, AuthorizationContext ctx, Claims claims,
+            ServiceDocument userServiceDocument, AuthServiceContext context,
+            Collection<UserGroupState> userGroupStates, String nextPageLink) {
+
+        URI nextPageUri = AuthUtils.buildAuthProviderHostUri(context.authContextService.getHost(), nextPageLink);
+        Operation get = Operation.createGet(nextPageUri)
+                .setConnectionSharing(true)
+                .setCompletion((queryOp, queryEx) -> {
+                    if (queryEx != null) {
+                        op.fail(queryEx);
+                        return;
+                    }
+
+                    ServiceDocumentQueryResult rsp = queryOp.getBody(QueryTask.class).results;
+                    if (rsp == null || rsp.documents.isEmpty()) {
+                        filterUserGroupStatesAndLoadRoles(op, ctx, claims, userGroupStates, context);
+                        return;
+                    }
+
+                    for (Object doc : rsp.documents.values()) {
+                        UserGroupState userGroupState = Utils.fromJson(doc, UserGroupState.class);
                         try {
                             QueryFilter f = QueryFilter.create(userGroupState.query);
                             ServiceDocumentDescription sdd = getServiceDesc(userServiceDocument, context);
@@ -363,42 +416,21 @@ public class AuthorizationContextServiceHelper {
                                 userGroupStates.add(userGroupState);
                             }
                         } catch (QueryFilterException qfe) {
-                            //service.logWarning("Error creating query filter: %s", qfe.toString());
                             op.fail(qfe);
                             return;
                         }
                     }
 
-                    // If no user groups apply to this user, we are sure no roles
-                    // will apply and we can populate the authorization context.
-                    if (userGroupStates.isEmpty()) {
-                        // TODO(DCP-782): Add negative cache
-                        populateAuthorizationContext(op, ctx, claims, null, context);
-                        return;
+                    if (rsp.nextPageLink == null) {
+                        filterUserGroupStatesAndLoadRoles(op, ctx, claims, userGroupStates, context);
+                    } else {
+                        handleLoadUserGroupsQueryResult(op, ctx, claims, userServiceDocument, context,
+                                userGroupStates, rsp.nextPageLink);
                     }
-                    if (context.userGroupsFilter != null) {
-                        Collection<String> userGroupLinks = new ArrayList<>();
-                        for (UserGroupState groupState : userGroupStates) {
-                            userGroupLinks.add(groupState.documentSelfLink);
-                        }
-                        Collection<String> filteredUserGroupLinks = context.userGroupsFilter.apply(op, userGroupLinks);
-                        if (filteredUserGroupLinks == null || filteredUserGroupLinks.isEmpty()) {
-                            populateAuthorizationContext(op, ctx, claims, null, context);
-                            return;
-                        }
-                        Collection<UserGroupState> filteredUserGroupStates = new ArrayList<>();
-                        if (filteredUserGroupLinks != null) {
-                            for (String filterUserGroupLink : filteredUserGroupLinks) {
-                                filteredUserGroupStates.add(Utils.fromJson(result.documents.get(filterUserGroupLink),
-                                        UserGroupState.class));
-                            }
-                        }
-                        userGroupStates = filteredUserGroupStates;
-                    }
-                    loadRoles(op, ctx, claims, userGroupStates, context);
                 });
 
-        context.authContextService.setAuthorizationContext(get, context.authContextService.getSystemAuthorizationContext());
+        context.authContextService.setAuthorizationContext(get,
+                context.authContextService.getSystemAuthorizationContext());
         context.authContextService.sendRequest(get);
     }
 
@@ -414,6 +446,31 @@ public class AuthorizationContextServiceHelper {
                             .buildDescription(userServiceDocument.getClass());
                 });
         return sdd;
+    }
+
+    private static void filterUserGroupStatesAndLoadRoles(Operation op, AuthorizationContext ctx, Claims claims,
+            Collection<UserGroupState> userGroupStates, AuthServiceContext context) {
+        // If no user groups apply to this user, we are sure no roles
+        // will apply and we can populate the authorization context.
+        if (userGroupStates.isEmpty()) {
+            populateAuthorizationContext(op, ctx, claims, null, context);
+            return;
+        }
+
+        if (context.userGroupsFilter != null) {
+            Collection<String> userGroupLinks = userGroupStates.stream()
+                    .map((state) -> state.documentSelfLink).collect(Collectors.toList());
+            Collection<String> filteredUserGroupLinks = context.userGroupsFilter.apply(op, userGroupLinks);
+            if (filteredUserGroupLinks == null || filteredUserGroupLinks.isEmpty()) {
+                populateAuthorizationContext(op, ctx, claims, null, context);
+                return;
+            }
+            userGroupStates = userGroupStates.stream()
+                    .filter((state) -> filteredUserGroupLinks.contains(state.documentSelfLink))
+                    .collect(Collectors.toList());
+        }
+
+        loadRoles(op, ctx, claims, userGroupStates, context);
     }
 
     private static void loadRoles(Operation op, AuthorizationContext ctx, Claims claims,
@@ -458,6 +515,7 @@ public class AuthorizationContextServiceHelper {
         queryTask.querySpec.query = query;
         queryTask.querySpec.options =
                 EnumSet.of(QueryTask.QuerySpecification.QueryOption.EXPAND_CONTENT);
+        queryTask.querySpec.resultLimit = resultLimit;
         queryTask.setDirect(true);
 
         URI postQueryUri = AuthUtils.buildAuthProviderHostUri(context.authContextService.getHost(),
@@ -473,13 +531,41 @@ public class AuthorizationContextServiceHelper {
 
                     QueryTask queryTaskResult = o.getBody(QueryTask.class);
                     ServiceDocumentQueryResult result = queryTaskResult.results;
-                    if (result.documents == null || result.documents.isEmpty()) {
+                    if (result == null || result.nextPageLink == null) {
                         populateAuthorizationContext(op, ctx, claims, null, context);
                         return;
                     }
 
                     Collection<Role> roles = new LinkedList<>();
-                    for (Object doc : result.documents.values()) {
+                    handleLoadRolesQueryCompletion(op, ctx, claims, context, userGroupStateMap, roles,
+                            result.nextPageLink);
+                });
+
+        context.authContextService.setAuthorizationContext(post,
+                context.authContextService.getSystemAuthorizationContext());
+        context.authContextService.sendRequest(post);
+    }
+
+    private static void handleLoadRolesQueryCompletion(Operation op, AuthorizationContext ctx, Claims claims,
+            AuthServiceContext context, Map<String, UserGroupState> userGroupStateMap, Collection<Role> roles,
+            String nextPageLink) {
+
+        URI nextPageUri = AuthUtils.buildAuthProviderHostUri(context.authContextService.getHost(), nextPageLink);
+        Operation get = Operation.createGet(nextPageUri)
+                .setConnectionSharing(true)
+                .setCompletion((queryOp, queryEx) -> {
+                    if (queryEx != null) {
+                        op.fail(queryEx);
+                        return;
+                    }
+
+                    ServiceDocumentQueryResult rsp = queryOp.getBody(QueryTask.class).results;
+                    if (rsp == null || rsp.documents.isEmpty()) {
+                        loadResourceGroups(op, ctx, claims, roles, context);
+                        return;
+                    }
+
+                    for (Object doc : rsp.documents.values()) {
                         RoleState roleState = Utils.fromJson(doc, RoleState.class);
                         Role role = new Role();
                         role.setRoleState(roleState);
@@ -487,11 +573,17 @@ public class AuthorizationContextServiceHelper {
                         roles.add(role);
                     }
 
-                    loadResourceGroups(op, ctx, claims, roles, context);
+                    if (rsp.nextPageLink == null) {
+                        loadResourceGroups(op, ctx, claims, roles, context);
+                    } else {
+                        handleLoadRolesQueryCompletion(op, ctx, claims, context, userGroupStateMap, roles,
+                                rsp.nextPageLink);
+                    }
                 });
 
-        context.authContextService.setAuthorizationContext(post, context.authContextService.getSystemAuthorizationContext());
-        context.authContextService.sendRequest(post);
+        context.authContextService.setAuthorizationContext(get,
+                context.authContextService.getSystemAuthorizationContext());
+        context.authContextService.sendRequest(get);
     }
 
     private static void loadResourceGroups(Operation op, AuthorizationContext ctx, Claims claims, Collection<Role> roles,

@@ -699,7 +699,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         }
 
         if (this.scheduledExecutor.isShutdown()) {
-            op.fail(new CancellationException());
+            op.fail(new CancellationException("Host is stopping"));
             return;
         }
 

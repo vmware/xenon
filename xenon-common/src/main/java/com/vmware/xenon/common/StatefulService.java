@@ -151,7 +151,7 @@ public class StatefulService implements Service {
             // available
             logWarning("Service in %s stage, cancelling operation",
                     this.context.processingStage);
-            op.fail(new CancellationException());
+            op.fail(new CancellationException("Service is not available"));
             return true;
         }
 
@@ -213,7 +213,7 @@ public class StatefulService implements Service {
         if (isAlreadyStopped) {
             if (op.getAction() != Action.DELETE) {
                 logWarning("Service is stopped, cancelling operation");
-                op.fail(new CancellationException());
+                op.fail(new CancellationException("Service is stopped"));
             } else {
                 op.complete();
             }

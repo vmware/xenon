@@ -206,6 +206,9 @@ public class RequestRouter implements Predicate<Operation> {
             /** List of supported media types, defaults to application/json */
             String[] produces() default {};
 
+            /** The type of the request body.*/
+            Class<?> requestBodyType() default Object.class;
+
             /**
              * Documentation of HTTP response codes for Route handler methods.
              * This annotation is used as an embedded annotation inside the @Documentation

@@ -1356,7 +1356,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         IndexWriter w = this.writer;
         if (w == null) {
-            op.fail(new CancellationException());
+            op.fail(new CancellationException("Index writer is null"));
             return true;
         }
 
@@ -1402,7 +1402,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             throws Exception {
         IndexWriter w = this.writer;
         if (w == null) {
-            op.fail(new CancellationException());
+            op.fail(new CancellationException("Index writer is null"));
             return;
         }
 
@@ -2532,7 +2532,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         IndexWriter wr = this.writer;
         if (wr == null) {
-            updateOp.fail(new CancellationException());
+            updateOp.fail(new CancellationException("Index writer is null"));
             return;
         }
         s.documentDescription = null;
@@ -2709,7 +2709,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         IndexWriter wr = this.writer;
         if (wr == null) {
-            delete.fail(new CancellationException());
+            delete.fail(new CancellationException("Index writer is null"));
             return;
         }
 
@@ -3043,7 +3043,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         try {
             IndexWriter w = this.writer;
             if (w == null) {
-                op.fail(new CancellationException());
+                op.fail(new CancellationException("Index writer is null"));
                 return;
             }
 
@@ -3124,7 +3124,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             op.complete();
         } catch (Exception e) {
             if (this.getHost().isStopping()) {
-                op.fail(new CancellationException());
+                op.fail(new CancellationException("Host is stopping"));
                 return;
             }
             logWarning("Attempting recovery due to error: %s", Utils.toString(e));

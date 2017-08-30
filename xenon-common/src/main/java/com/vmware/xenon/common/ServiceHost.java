@@ -2718,12 +2718,12 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         if (isStopping()) {
-            post.fail(new CancellationException());
+            post.fail(new CancellationException("Host is stopping"));
             return;
         }
 
         if (s.getProcessingStage() == ProcessingStage.STOPPED) {
-            post.fail(new CancellationException());
+            post.fail(new CancellationException("Service is stopped"));
             return;
         }
 
@@ -3125,7 +3125,7 @@ public class ServiceHost implements ServiceRequestSender {
         Service indexService = getIndexServiceForService(s);
 
         if (indexService == null) {
-            op.fail(new CancellationException());
+            op.fail(new CancellationException("Index service is null"));
             return;
         }
 
@@ -3195,7 +3195,7 @@ public class ServiceHost implements ServiceRequestSender {
             boolean hasClientSuppliedState) {
         Service indexService = getIndexServiceForService(s);
         if (indexService == null) {
-            serviceStartPost.fail(new CancellationException());
+            serviceStartPost.fail(new CancellationException("Index service is null"));
             return;
         }
 
@@ -5551,7 +5551,7 @@ public class ServiceHost implements ServiceRequestSender {
     public void broadcastRequest(String selectorPath, String key, boolean excludeThisHost,
             Operation request) {
         if (isStopping()) {
-            request.fail(new CancellationException());
+            request.fail(new CancellationException("Host is stopping"));
             return;
         }
 
@@ -5591,7 +5591,7 @@ public class ServiceHost implements ServiceRequestSender {
      */
     public void selectOwner(String selectorPath, String key, Operation op) {
         if (isStopping()) {
-            op.fail(new CancellationException());
+            op.fail(new CancellationException("Host is stopping"));
             return;
         }
 
@@ -5619,7 +5619,7 @@ public class ServiceHost implements ServiceRequestSender {
      */
     public void forwardRequest(String selectorPath, String key, Operation request) {
         if (isStopping()) {
-            request.fail(new CancellationException());
+            request.fail(new CancellationException("Host is stopping"));
             return;
         }
 
@@ -5643,7 +5643,7 @@ public class ServiceHost implements ServiceRequestSender {
             String selectionKey,
             Operation op) {
         if (isStopping()) {
-            op.fail(new CancellationException());
+            op.fail(new CancellationException("Host is stopping"));
             return;
         }
 

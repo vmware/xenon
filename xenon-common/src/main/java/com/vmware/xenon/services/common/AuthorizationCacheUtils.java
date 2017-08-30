@@ -36,6 +36,14 @@ import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
 
 public final class AuthorizationCacheUtils {
 
+    public static final String PROPERTY_NAME_DEFAULT_RESULT_LIMIT =
+            Utils.PROPERTY_NAME_PREFIX + "AuthorizationCacheUtils.defaultResultLimit";
+
+    private static final int DEFAULT_RESULT_LIMIT = 1000;
+
+    private static final int resultLimit =
+            Integer.getInteger(PROPERTY_NAME_DEFAULT_RESULT_LIMIT, DEFAULT_RESULT_LIMIT);
+
     private AuthorizationCacheUtils() {
 
     }
@@ -103,6 +111,7 @@ public final class AuthorizationCacheUtils {
             QueryTask queryTask = new QueryTask();
             queryTask.querySpec = new QuerySpecification();
             queryTask.querySpec.query = userGroupState.query;
+            queryTask.querySpec.resultLimit = resultLimit;
             queryTask.setDirect(true);
             Operation postOp = Operation.createPost(s, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS)
                     .setBody(queryTask)
@@ -113,33 +122,57 @@ public final class AuthorizationCacheUtils {
                         }
                         QueryTask queryTaskResult = queryOp.getBody(QueryTask.class);
                         ServiceDocumentQueryResult result = queryTaskResult.results;
-                        if (result.documentLinks == null || result.documentLinks.isEmpty()) {
+                        if (result == null || result.nextPageLink == null) {
                             op.complete();
                             return;
                         }
-                        AtomicInteger completionCount = new AtomicInteger(0);
-                        CompletionHandler handler = (clearOp, clearEx) -> {
-                            if (clearEx != null) {
-                                s.getHost().log(Level.SEVERE, Utils.toString(clearEx));
-                                op.fail(clearEx);
-                                return;
-                            }
-                            if (completionCount.incrementAndGet() == result.documentLinks.size()) {
-                                op.complete();
-                            }
-                        };
-                        for (String userLink : result.documentLinks) {
-                            Operation clearUserOp = new Operation();
-                            clearUserOp.setUri(UriUtils.buildUri(s.getHost(), userLink));
-                            clearUserOp.setCompletion(handler);
-                            clearAuthzCacheForUser(s, clearUserOp);
-                            clearUserOp.complete();
-                        }
-                    }
-                );
+                        handleClearAuthzCacheForUserGroupQueryCompletion(s, op, result.nextPageLink);
+                    });
+
             s.setAuthorizationContext(postOp, s.getSystemAuthorizationContext());
             s.sendRequest(postOp);
         });
+    }
+
+    private static void handleClearAuthzCacheForUserGroupQueryCompletion(Service s, Operation op, String nextPageLink) {
+        Operation getOp = Operation.createGet(s, nextPageLink)
+                .setCompletion((queryOp, queryEx) -> {
+                    if (queryEx != null) {
+                        op.fail(queryEx);
+                        return;
+                    }
+                    QueryTask queryTaskResult = queryOp.getBody(QueryTask.class);
+                    ServiceDocumentQueryResult result = queryTaskResult.results;
+                    if (result.documentLinks == null || result.documentLinks.isEmpty()) {
+                        op.complete();
+                        return;
+                    }
+                    AtomicInteger completionCount = new AtomicInteger(0);
+                    CompletionHandler handler = (clearOp, clearEx) -> {
+                        if (clearEx != null) {
+                            s.getHost().log(Level.SEVERE, Utils.toString(clearEx));
+                            op.fail(clearEx);
+                            return;
+                        }
+                        if (completionCount.incrementAndGet() == result.documentLinks.size()) {
+                            if (result.nextPageLink == null) {
+                                op.complete();
+                            } else {
+                                handleClearAuthzCacheForUserGroupQueryCompletion(s, op, result.nextPageLink);
+                            }
+                        }
+                    };
+                    for (String userLink : result.documentLinks) {
+                        Operation clearUserOp = new Operation();
+                        clearUserOp.setUri(UriUtils.buildUri(s.getHost(), userLink));
+                        clearUserOp.setCompletion(handler);
+                        clearAuthzCacheForUser(s, clearUserOp);
+                        clearUserOp.complete();
+                    }
+                });
+
+        s.setAuthorizationContext(getOp, s.getSystemAuthorizationContext());
+        s.sendRequest(getOp);
     }
 
     /**
@@ -212,6 +245,7 @@ public final class AuthorizationCacheUtils {
             queryTask.querySpec.options =
                     EnumSet.of(QueryTask.QuerySpecification.QueryOption.EXPAND_CONTENT);
             queryTask.querySpec.query = resourceGroupQuery;
+            queryTask.querySpec.resultLimit = resultLimit;
             queryTask.setDirect(true);
             Operation postOp = Operation.createPost(s, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS)
                     .setBody(queryTask)
@@ -223,32 +257,56 @@ public final class AuthorizationCacheUtils {
 
                         QueryTask queryTaskResult = queryOp.getBody(QueryTask.class);
                         ServiceDocumentQueryResult result = queryTaskResult.results;
-                        if (result.documents == null || result.documents.isEmpty()) {
+                        if (result == null || result.nextPageLink == null) {
                             op.complete();
                             return;
                         }
-                        AtomicInteger completionCount = new AtomicInteger(0);
-                        CompletionHandler handler = (subOp, subEx) -> {
-                            if (subEx != null) {
-                                op.fail(subEx);
-                                return;
-                            }
-                            if (completionCount.incrementAndGet() == result.documents.size()) {
-                                op.complete();
-                            }
-                        };
-                        for (Object doc : result.documents.values()) {
-                            RoleState roleState = Utils.fromJson(doc, RoleState.class);
-                            Operation roleOp = new Operation();
-                            roleOp.setCompletion(handler);
-                            clearAuthzCacheForRole(s, roleOp, roleState);
-                            roleOp.complete();
-                        }
-                    }
-                );
+                        handleClearAuthzCacheForResourceGroupQueryCompletion(s, op, result.nextPageLink);
+                    });
             s.setAuthorizationContext(postOp, s.getSystemAuthorizationContext());
             s.sendRequest(postOp);
         });
+    }
+
+    private static void handleClearAuthzCacheForResourceGroupQueryCompletion(Service s, Operation op,
+            String nextPageLink) {
+        Operation getOp = Operation.createGet(s, nextPageLink)
+                .setCompletion((queryOp, queryEx) -> {
+                    if (queryEx != null) {
+                        op.fail(queryEx);
+                        return;
+                    }
+
+                    QueryTask queryTaskResult = queryOp.getBody(QueryTask.class);
+                    ServiceDocumentQueryResult result = queryTaskResult.results;
+                    if (result.documents == null || result.documents.isEmpty()) {
+                        op.complete();
+                        return;
+                    }
+                    AtomicInteger completionCount = new AtomicInteger(0);
+                    CompletionHandler handler = (subOp, subEx) -> {
+                        if (subEx != null) {
+                            op.fail(subEx);
+                            return;
+                        }
+                        if (completionCount.incrementAndGet() == result.documents.size()) {
+                            if (result.nextPageLink == null) {
+                                op.complete();
+                            } else {
+                                handleClearAuthzCacheForResourceGroupQueryCompletion(s, op, result.nextPageLink);
+                            }
+                        }
+                    };
+                    for (Object doc : result.documents.values()) {
+                        RoleState roleState = Utils.fromJson(doc, RoleState.class);
+                        Operation roleOp = new Operation();
+                        roleOp.setCompletion(handler);
+                        clearAuthzCacheForRole(s, roleOp, roleState);
+                        roleOp.complete();
+                    }
+                });
+        s.setAuthorizationContext(getOp, s.getSystemAuthorizationContext());
+        s.sendRequest(getOp);
     }
 
     /**

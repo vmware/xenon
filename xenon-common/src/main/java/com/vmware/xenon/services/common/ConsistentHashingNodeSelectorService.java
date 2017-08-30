@@ -579,7 +579,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             this.pendingOperationCount.decrementAndGet();
 
             if (getHost().isStopping()) {
-                req.associatedOp.fail(new CancellationException());
+                req.associatedOp.fail(new CancellationException("Host is stopping"));
                 continue;
             }
             selectAndForward(req, req.associatedOp, this.cachedGroupState);

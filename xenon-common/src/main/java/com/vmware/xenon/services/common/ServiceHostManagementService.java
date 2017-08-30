@@ -19,6 +19,8 @@ import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.RequestRouter.Route.RouteDocumentation;
+import com.vmware.xenon.common.RequestRouter.Route.RouteDocumentation.ApiResponse;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStatUtils;
@@ -251,6 +253,11 @@ public class ServiceHostManagementService extends StatefulService {
         ServiceStatUtils.getOrCreateDailyTimeSeriesStat(this, STAT_NAME_AUTO_BACKUP_SKIPPED_COUNT, EnumSet.of(AggregationType.SUM));
     }
 
+    @RouteDocumentation(
+            description = "Describe this host.",
+            responses = {
+                    @ApiResponse(statusCode = 200, description = "OK", response = ServiceHostState.class)
+            })
     @Override
     public void handleGet(Operation get) {
         getHost().updateSystemInfo(false);
@@ -323,6 +330,8 @@ public class ServiceHostManagementService extends StatefulService {
      *
      * When host is the process owner, {@code System.exit(0);} is called at the end.
      */
+    @RouteDocumentation(description = "Shuts down this host. If the host is the process owner then the process"
+            + " is terminated with exit code 0.")
     @Override
     public void handleDelete(Operation delete) {
         logInfo("Received shutdown request from %s", delete.getReferer());

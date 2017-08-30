@@ -27,6 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.RequestRouter.Route.RouteDocumentation;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
@@ -385,6 +386,9 @@ public class NodeGroupService extends StatefulService {
      *
      * @param post
      */
+    @RouteDocumentation(
+            description = "Join a peer to this node group",
+            requestBodyType = JoinPeerRequest.class)
     @Override
     public void handlePost(Operation post) {
         if (!post.hasBody()) {

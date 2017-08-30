@@ -100,13 +100,27 @@ class ServiceDocumentDescriptionHelper {
                         RequestRouter.Route route = new RequestRouter.Route();
                         route.path = doc.path();
                         // if the request / response is not the default (used by stateless) ServiceDocument then enrich
-                        if (entry.getValue() != null && !s.getStateType().equals(ServiceDocument.class)) {
+                        Boolean entryValue = entry.getValue();
+                        if (entryValue != null && !s.getStateType().equals(ServiceDocument.class)) {
                             // Get, Post, Put all generate a document as response
                             route.responseType = s.getStateType();
-                            if (entry.getValue().equals(Boolean.TRUE)) {
+                            if (entryValue.equals(Boolean.TRUE)) {
                                 // Post and Put also accept a document as a request parameter
                                 route.requestType = s.getStateType();
+
+                                if (doc.requestBodyType() != Object.class) {
+                                    // override response type from annotation only if explicitly set
+                                    route.requestType = doc.requestBodyType();
+                                }
                             }
+                        }
+
+                        if (entryValue != null  &&
+                                entryValue.equals(Boolean.TRUE) &&
+                                route.requestType == null &&
+                                doc.requestBodyType() != Object.class) {
+                            // override response type for stateless services
+                            route.requestType = doc.requestBodyType();
                         }
 
                         // @Deprecated annotation on method overrides support levels higher than DEPRECATED

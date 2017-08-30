@@ -717,10 +717,10 @@ public class TestServiceHostManagementService extends BasicTestCase {
         TestRequestSender sender = this.host.getTestRequestSender();
         FailureResponse response = sender
                 .sendAndWaitFailure(Operation.createGet(newHost, "/unknown-self-link"));
-        assertTrue(response.op.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND);
+        assertEquals(Operation.STATUS_CODE_NOT_FOUND, response.op.getStatusCode());
 
         // Query the Log Service to see if the request shows up in the set of logs.
-        assertTrue(findLogLine(newHost, "unknown-self-link", 0));
+        assertEquals(0, findLogLine(newHost, "unknown-self-link"));
 
         // Enable request logging
         setRequestLogging(newHost, true);
@@ -729,21 +729,22 @@ public class TestServiceHostManagementService extends BasicTestCase {
         int requestCount = 100;
         for (int i = 0; i < requestCount; i++) {
             sender.sendAndWaitFailure(Operation.createGet(newHost, "/unknown-self-link"));
-            assertTrue(response.op.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND);
+            assertEquals(Operation.STATUS_CODE_NOT_FOUND, response.op.getStatusCode());
         }
 
         // Verify that the log service shows requests logged for the self-link
-        assertTrue(findLogLine(newHost, "unknown-self-link", requestCount));
+        this.host.waitFor("Log messages failed to be printed",
+                () -> requestCount == findLogLine(newHost, "unknown-self-link"));
 
         // Disable request logging
         setRequestLogging(newHost, false);
 
         // make one more request
         sender.sendAndWaitFailure(Operation.createGet(newHost, "/unknown-self-link"));
-        assertTrue(response.op.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND);
+        assertEquals(Operation.STATUS_CODE_NOT_FOUND, response.op.getStatusCode());
 
         // assert that the log-line count stays the same
-        assertTrue(findLogLine(newHost, "unknown-self-link", requestCount));
+        assertEquals(requestCount, findLogLine(newHost, "unknown-self-link"));
     }
 
     private void setRequestLogging(VerificationHost newHost, boolean enabled) {
@@ -757,7 +758,7 @@ public class TestServiceHostManagementService extends BasicTestCase {
                 newHost, ServiceUriPaths.CORE_MANAGEMENT).setBody(request));
     }
 
-    private boolean findLogLine(VerificationHost newHost, String logLine, int count) {
+    private int findLogLine(VerificationHost newHost, String logLine) {
         URI logServiceUri = UriUtils.buildUri(newHost, ServiceUriPaths.PROCESS_LOG);
 
         Operation getOp = this.host.getTestRequestSender()
@@ -770,6 +771,6 @@ public class TestServiceHostManagementService extends BasicTestCase {
                 foundCount++;
             }
         }
-        return foundCount == count;
+        return foundCount;
     }
 }

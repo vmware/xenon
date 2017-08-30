@@ -26,12 +26,17 @@ import com.vmware.xenon.common.RequestRouter.Route;
 import com.vmware.xenon.common.RequestRouter.Route.RouteDocumentation;
 import com.vmware.xenon.common.RequestRouter.Route.RouteDocumentation.PathParam;
 import com.vmware.xenon.common.Service.Action;
+import com.vmware.xenon.common.ServiceConfigUpdateRequest;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
+import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.VerificationHost;
+import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
+import com.vmware.xenon.services.common.ServiceUriPaths;
 
 public class TestServiceDocumentDescription {
 
@@ -56,6 +61,13 @@ public class TestServiceDocumentDescription {
         public void handleGet(Operation get) {
             get.fail(new UnsupportedOperationException("not implemented"));
         }
+
+        @RouteDocumentation(requestBodyType = ServiceConfigUpdateRequest.class, description = "just test that "
+                + "requestBodyType is propagated")
+        @Override
+        public void handlePatch(Operation patch) {
+            patch.fail(new UnsupportedOperationException("not implemented"));
+        }
     }
 
     private VerificationHost host;
@@ -75,6 +87,8 @@ public class TestServiceDocumentDescription {
 
     @Test
     public void testRoutes() throws InterruptedException {
+        this.host.waitForServiceAvailable(ServiceUriPaths.NODE_GROUP_FACTORY);
+
         Operation get = Operation.createGet(UriUtils.buildUri(this.host,
                 NsOwner.SELF_LINK + ServiceHost.SERVICE_URI_SUFFIX_TEMPLATE));
 
@@ -82,22 +96,43 @@ public class TestServiceDocumentDescription {
         ServiceDocument body = resp.getBody(ServiceDocument.class);
         ServiceDocumentDescription desc = body.documentDescription;
 
-        // there is a handler for  DELETE + 1 annotated for GET
-        assertEquals(2, desc.serviceRequestRoutes.size());
+        // there is a handler for  DELETE + 1 annotated for GET + 1 PATCH
+        assertEquals(3, desc.serviceRequestRoutes.size());
 
-        List<Route> routes = desc.serviceRequestRoutes.get(Action.GET);
-        assertEquals(2, routes.size());
+        List<Route> getRoutes = desc.serviceRequestRoutes.get(Action.GET);
+        assertEquals(2, getRoutes.size());
 
-        Route users = routes.stream().filter(r -> r.path.equals("/users/{user}")).findFirst()
+        Route users = getRoutes.stream().filter(r -> r.path.equals("/users/{user}")).findFirst()
                 .orElseGet(TestServiceDocumentDescription::failNotFound);
 
         assertEquals(1, users.parameters.size());
         assertEquals("user", users.parameters.get(0).name);
 
-        Route tenants = routes.stream().filter(r -> r.path.equals("/tenants/{tenant}")).findFirst()
+        Route tenants = getRoutes.stream().filter(r -> r.path.equals("/tenants/{tenant}")).findFirst()
                 .orElseGet(TestServiceDocumentDescription::failNotFound);
 
         assertEquals(1, tenants.parameters.size());
         assertEquals("tenant", tenants.parameters.get(0).name);
+
+        List<Route> patchRoutes = desc.serviceRequestRoutes.get(Action.PATCH);
+        assertEquals(1, patchRoutes.size());
+        Route patch = patchRoutes.get(0);
+        assertEquals(ServiceConfigUpdateRequest.class, patch.requestType);
+    }
+
+    @Test
+    public void testNodeGroupService() {
+        Operation get = Operation.createGet(UriUtils.buildUri(this.host,
+                ServiceUriPaths.NODE_GROUP_FACTORY + ServiceHost.SERVICE_URI_SUFFIX_TEMPLATE));
+
+        Operation resp = this.host.waitForResponse(get);
+        ServiceDocumentQueryResult body = resp.getBody(ServiceDocumentQueryResult.class);
+        ServiceDocumentDescription desc = Utils.fromJson(body.documents.values().iterator().next().toString(),
+                ServiceDocument.class).documentDescription;
+
+        List<Route> postRoutes = desc.serviceRequestRoutes.get(Action.POST);
+        assertEquals(1, postRoutes.size());
+        Route post = postRoutes.get(0);
+        assertEquals(JoinPeerRequest.class, post.requestType);
     }
 }
