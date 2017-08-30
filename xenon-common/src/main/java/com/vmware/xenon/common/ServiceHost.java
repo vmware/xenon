@@ -3156,6 +3156,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         AuthorizationContext ctx = op.getAuthorizationContext();
         if (ctx == null) {
+            log(Level.INFO, "Authorization context was null");
             return false;
         }
 
@@ -3182,7 +3183,11 @@ public class ServiceHost implements ServiceRequestSender {
         try {
             ServiceDocumentDescription documentDescription = buildDocumentDescription(service);
             QueryFilter queryFilter = ctx.getResourceQueryFilter(op.getAction());
-            if (queryFilter == null || !queryFilter.evaluate(document, documentDescription)) {
+            if (queryFilter == null) {
+                log(Level.INFO, "Query filter was null");
+                return false;
+            } else if (!queryFilter.evaluate(document, documentDescription)) {
+                log(Level.INFO, "Query filter %s returned false", queryFilter);
                 return false;
             }
         } catch (Exception e) {
