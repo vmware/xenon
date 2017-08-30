@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.logging.Level;
 import java.util.stream.Collectors;
 
 import com.vmware.xenon.common.AuthUtils;
@@ -227,6 +228,7 @@ public class AuthorizationContextServiceHelper {
                     // If the native user state could not be extracted, we are sure no roles
                     // will apply and we can populate the authorization context.
                     if (userState == null) {
+                        context.authContextService.getHost().log(Level.INFO, "User state was null");
                         populateAuthorizationContext(op, ctx, claims, null, context);
                         return;
                     }
@@ -301,6 +303,7 @@ public class AuthorizationContextServiceHelper {
             // If no user groups apply to this user, we are sure no roles
             // will apply and we can populate the authorization context with a null context.
             if (userGroupOps.isEmpty()) {
+                context.authContextService.getHost().log(Level.INFO, "User groups list was empty");
                 populateAuthorizationContext(op, ctx, claims, null, context);
                 return;
             }
@@ -322,6 +325,7 @@ public class AuthorizationContextServiceHelper {
         if (context.userGroupsFilter != null) {
             filteredUserGroupLinks = context.userGroupsFilter.apply(op, userGroupLinks);
             if (filteredUserGroupLinks == null || filteredUserGroupLinks.isEmpty()) {
+                context.authContextService.getHost().log(Level.INFO, "Filtered user groups list was empty");
                 populateAuthorizationContext(op, ctx, claims, null, context);
                 return true;
             }
@@ -374,6 +378,7 @@ public class AuthorizationContextServiceHelper {
 
                     ServiceDocumentQueryResult rsp = o.getBody(QueryTask.class).results;
                     if (rsp == null || rsp.nextPageLink == null) {
+                        context.authContextService.getHost().log(Level.INFO, "Query task body was null");
                         populateAuthorizationContext(op, ctx, claims, null, context);
                         return;
                     }
@@ -453,6 +458,7 @@ public class AuthorizationContextServiceHelper {
         // If no user groups apply to this user, we are sure no roles
         // will apply and we can populate the authorization context.
         if (userGroupStates.isEmpty()) {
+            context.authContextService.getHost().log(Level.INFO, "User group states list was empty");
             populateAuthorizationContext(op, ctx, claims, null, context);
             return;
         }
@@ -462,6 +468,7 @@ public class AuthorizationContextServiceHelper {
                     .map((state) -> state.documentSelfLink).collect(Collectors.toList());
             Collection<String> filteredUserGroupLinks = context.userGroupsFilter.apply(op, userGroupLinks);
             if (filteredUserGroupLinks == null || filteredUserGroupLinks.isEmpty()) {
+                context.authContextService.getHost().log(Level.INFO, "Filtered user group links list was empty");
                 populateAuthorizationContext(op, ctx, claims, null, context);
                 return;
             }
@@ -532,6 +539,7 @@ public class AuthorizationContextServiceHelper {
                     QueryTask queryTaskResult = o.getBody(QueryTask.class);
                     ServiceDocumentQueryResult result = queryTaskResult.results;
                     if (result == null || result.nextPageLink == null) {
+                        context.authContextService.getHost().log(Level.INFO, "Query task body was null");
                         populateAuthorizationContext(op, ctx, claims, null, context);
                         return;
                     }
@@ -708,6 +716,9 @@ public class AuthorizationContextServiceHelper {
                         }
                     }
                 }
+
+                context.authContextService.getHost().log(Level.INFO, "Setting queryFilterByAction map to %s",
+                        Utils.toJsonHtml(queryFilterByAction));
 
                 builder.setResourceQueryMap(queryByAction);
                 builder.setResourceQueryFilterMap(queryFilterByAction);

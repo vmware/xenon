@@ -53,6 +53,9 @@ import com.vmware.xenon.services.common.UserService.UserState;
 import com.vmware.xenon.services.common.authn.AuthenticationRequest.AuthenticationRequestType;
 
 public class TestBasicAuthenticationService extends BasicTestCase {
+
+    public int iterationCount = 10;
+
     private static final String USER = "jane@doe.com";
     private static final String INVALID_USER = "janedoe@doe.com";
     private static final String PASSWORD = "password-for-jane";
@@ -354,7 +357,9 @@ public class TestBasicAuthenticationService extends BasicTestCase {
 
     @Test
     public void verifyLoginLogoutLoginWithTokenInCookie() {
-        verifyLoginLogoutLogin(true);
+        for (int i = 0; i < this.iterationCount; i++) {
+            verifyLoginLogoutLogin(true);
+        }
     }
 
     public void verifyLoginLogoutLogin(boolean withCookie) {
