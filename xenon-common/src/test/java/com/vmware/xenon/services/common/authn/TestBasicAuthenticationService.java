@@ -17,6 +17,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 
+import static com.vmware.xenon.services.common.authn.BasicAuthenticationService.UPPER_SESSION_LIMIT_SECONDS_PROPERTY;
 import static com.vmware.xenon.services.common.authn.BasicAuthenticationUtils.constructBasicAuth;
 
 import java.net.URI;
@@ -32,7 +33,10 @@ import java.util.concurrent.TimeUnit;
 
 import io.netty.handler.codec.http.cookie.ClientCookieDecoder;
 import io.netty.handler.codec.http.cookie.Cookie;
+
+import org.junit.AfterClass;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.vmware.xenon.common.AuthorizationSetupHelper;
@@ -43,6 +47,7 @@ import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceStateCollectionUpdateRequest;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthCredentialsService;
 import com.vmware.xenon.services.common.AuthCredentialsService.AuthCredentialsServiceState;
@@ -63,10 +68,29 @@ public class TestBasicAuthenticationService extends BasicTestCase {
     private static final String ROLE = "guest-role";
     private static final String USER_GROUP = "guest-user-group";
     private static final String RESOURCE_GROUP = "guest-resource-group";
+    private static final Long UPPER_SESSION_LIMIT = (long) 28800;
+
+    private static Long ORIGINAL_UPPER_SESSION_LIMIT;
 
     @Override
     public void beforeHostStart(VerificationHost h) {
         h.setAuthorizationEnabled(true);
+    }
+
+    @BeforeClass
+    public static void setUpSystemProperties() throws Exception {
+        ORIGINAL_UPPER_SESSION_LIMIT = Long.getLong(UPPER_SESSION_LIMIT_SECONDS_PROPERTY);
+        System.setProperty(UPPER_SESSION_LIMIT_SECONDS_PROPERTY, UPPER_SESSION_LIMIT.toString());
+    }
+
+    @AfterClass
+    public static void clearSystemProperties() throws Exception {
+        if (ORIGINAL_UPPER_SESSION_LIMIT != null) {
+            System.setProperty(UPPER_SESSION_LIMIT_SECONDS_PROPERTY,
+                    ORIGINAL_UPPER_SESSION_LIMIT.toString());
+        } else {
+            System.clearProperty(UPPER_SESSION_LIMIT_SECONDS_PROPERTY);
+        }
     }
 
     @Before
@@ -490,6 +514,8 @@ public class TestBasicAuthenticationService extends BasicTestCase {
 
     @Test
     public void testAuthExpiration() throws Throwable {
+        TestRequestSender sender = this.host.getTestRequestSender();
+
         this.host.resetAuthorizationContext();
         URI authServiceUri = UriUtils.buildUri(this.host, BasicAuthenticationService.SELF_LINK);
 
@@ -503,104 +529,78 @@ public class TestBasicAuthenticationService extends BasicTestCase {
         // do not specify expiration
         AuthenticationRequest authReq = new AuthenticationRequest();
 
-        this.host.testStart(1);
-        this.host.send(Operation
+        Operation response = sender.sendAndWait(Operation
                 .createPost(authServiceUri)
                 .setBody(authReq)
-                .addRequestHeader(Operation.AUTHORIZATION_HEADER, headerVal)
-                .setCompletion(
-                        (o, e) -> {
-                            if (e != null) {
-                                this.host.failIteration(e);
-                                return;
-                            }
+                .addRequestHeader(Operation.AUTHORIZATION_HEADER, headerVal));
+        assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
 
-                            long oneHourFromNowAfterAuth =
-                                    Utils.getSystemNowMicrosUtc() + TimeUnit.HOURS.toMicros(1);
+        long oneHourFromNowAfterAuth =
+                Utils.getSystemNowMicrosUtc() + TimeUnit.HOURS.toMicros(1);
 
-                            // default expiration(1hour) must be used
-                            validateExpirationTimeRange(o.getAuthorizationContext(),
-                                    oneHourFromNowBeforeAuth, oneHourFromNowAfterAuth);
-
-                            this.host.completeIteration();
-                        }));
-        this.host.testWait();
+        // default expiration (1 hour) must be used
+        validateExpirationTimeRange(response.getAuthorizationContext(), oneHourFromNowBeforeAuth,
+                oneHourFromNowAfterAuth);
 
         // set expiration 1min
         authReq = new AuthenticationRequest();
         authReq.sessionExpirationSeconds = 60L;
 
-        this.host.testStart(1);
-        this.host.send(Operation
+        response = sender.sendAndWait(Operation
                 .createPost(authServiceUri)
                 .setBody(authReq)
-                .addRequestHeader(Operation.AUTHORIZATION_HEADER, headerVal)
-                .setCompletion(
-                        (o, e) -> {
-                            if (e != null) {
-                                this.host.failIteration(e);
-                                return;
-                            }
+                .addRequestHeader(Operation.AUTHORIZATION_HEADER, headerVal));
+        assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
 
-                            long tenMinAfterNowInMicro =
-                                    Utils.getSystemNowMicrosUtc() + TimeUnit.MINUTES.toMicros(10);
+        long tenMinAfterNowInMicro =
+                Utils.getSystemNowMicrosUtc() + TimeUnit.MINUTES.toMicros(10);
 
-                            // expiration has set to 1min, so it must be before now + 10min
-                            validateExpirationTimeRange(o.getAuthorizationContext(),
-                                    null, tenMinAfterNowInMicro);
-
-                            this.host.completeIteration();
-                        }));
-        this.host.testWait();
+        // expiration has set to 1min, so it must be before now + 10min
+        validateExpirationTimeRange(response.getAuthorizationContext(), null,
+                tenMinAfterNowInMicro);
 
         // with negative sec
         authReq = new AuthenticationRequest();
         authReq.sessionExpirationSeconds = -1L;
 
-        this.host.testStart(1);
-        this.host.send(Operation
+        response = sender.sendAndWait(Operation
                 .createPost(authServiceUri)
                 .setBody(authReq)
-                .addRequestHeader(Operation.AUTHORIZATION_HEADER, headerVal)
-                .setCompletion(
-                        (o, e) -> {
-                            if (e != null) {
-                                this.host.failIteration(e);
-                                return;
-                            }
+                .addRequestHeader(Operation.AUTHORIZATION_HEADER, headerVal));
+        assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
 
-                            // must be before now
-                            validateExpirationTimeRange(o.getAuthorizationContext(),
-                                    null, Utils.getSystemNowMicrosUtc());
-
-                            this.host.completeIteration();
-                        }));
-        this.host.testWait();
+        validateExpirationTimeRange(response.getAuthorizationContext(), null,
+                Utils.getSystemNowMicrosUtc());
 
         // with 0
         authReq = new AuthenticationRequest();
         authReq.sessionExpirationSeconds = 0L;
 
-        this.host.testStart(1);
-        this.host.send(Operation
+        response = sender.sendAndWait(Operation
                 .createPost(authServiceUri)
                 .setBody(authReq)
-                .addRequestHeader(Operation.AUTHORIZATION_HEADER, headerVal)
-                .setCompletion(
-                        (o, e) -> {
-                            if (e != null) {
-                                this.host.failIteration(e);
-                                return;
-                            }
+                .addRequestHeader(Operation.AUTHORIZATION_HEADER, headerVal));
+        assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
 
-                            // must be before now
-                            validateExpirationTimeRange(o.getAuthorizationContext(),
-                                    null, Utils.getSystemNowMicrosUtc());
+        // must be before now
+        validateExpirationTimeRange(response.getAuthorizationContext(), null,
+                Utils.getSystemNowMicrosUtc());
 
-                            this.host.completeIteration();
-                        }));
-        this.host.testWait();
+        // Post upper limit
+        authReq = new AuthenticationRequest();
+        authReq.sessionExpirationSeconds = TimeUnit.HOURS.toSeconds(9);
 
+        response = sender.sendAndWait(Operation
+                .createPost(authServiceUri)
+                .setBody(authReq)
+                .addRequestHeader(Operation.AUTHORIZATION_HEADER, headerVal));
+        assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
+
+        // expiration has set to 9 hours but should be prevented from going
+        // past 8 hours, so it must be about 8 hours from now.
+        validateExpirationTimeRange(response.getAuthorizationContext(),
+                Utils.getSystemNowMicrosUtc() + TimeUnit.MINUTES.toMicros(479),
+                Utils.getSystemNowMicrosUtc() + TimeUnit.HOURS.toMicros(8));
     }
 
     private void validateExpirationTimeRange(AuthorizationContext authContext, Long fromInMicro,
@@ -824,5 +824,38 @@ public class TestBasicAuthenticationService extends BasicTestCase {
             return false;
         }
         return true;
+    }
+
+    @Test
+    public void testGetExpirationTime() throws Throwable {
+        BasicAuthenticationService basicAuthenticationService = new BasicAuthenticationService();
+        AuthenticationRequest authRequest = new AuthenticationRequest();
+
+        authRequest.sessionExpirationSeconds = null;
+        assertEquals(
+                Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(BasicAuthenticationService.AUTH_TOKEN_EXPIRATION_SECONDS)),
+                basicAuthenticationService.getExpirationTime(authRequest));
+
+        authRequest.sessionExpirationSeconds = (long) 0;
+        assertEquals(Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(0)),
+                basicAuthenticationService.getExpirationTime(authRequest));
+
+        authRequest.sessionExpirationSeconds = (long) -1;
+        assertEquals(Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(-1)),
+                basicAuthenticationService.getExpirationTime(authRequest));
+
+        authRequest.sessionExpirationSeconds = UPPER_SESSION_LIMIT - 1;
+        assertEquals(Utils.fromNowMicrosUtc(
+                TimeUnit.SECONDS.toMicros(authRequest.sessionExpirationSeconds)),
+                basicAuthenticationService.getExpirationTime(authRequest));
+
+        authRequest.sessionExpirationSeconds = UPPER_SESSION_LIMIT;
+        assertEquals(Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(
+                authRequest.sessionExpirationSeconds)),
+                basicAuthenticationService.getExpirationTime(authRequest));
+
+        authRequest.sessionExpirationSeconds = UPPER_SESSION_LIMIT + 1;
+        assertEquals(Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(UPPER_SESSION_LIMIT)),
+                basicAuthenticationService.getExpirationTime(authRequest));
     }
 }

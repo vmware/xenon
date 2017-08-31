@@ -45,10 +45,6 @@ public final class BasicAuthenticationUtils {
     private static final String BASIC_AUTH_SEPARATOR = " ";
     private static final String BASIC_AUTH_USER_SEPARATOR = ":";
 
-    private static final long AUTH_TOKEN_EXPIRATION_MICROS = Long.getLong(
-            Utils.PROPERTY_NAME_PREFIX + "BasicAuthenticationService.AUTH_TOKEN_EXPIRATION_MICROS",
-            TimeUnit.HOURS.toMicros(1));
-
     public static final EnumSet<QueryTask.QuerySpecification.QueryOption> QUERY_OPTIONS_TOP_RESULTS =
             EnumSet.of(QueryTask.QuerySpecification.QueryOption.TOP_RESULTS);
 
@@ -87,10 +83,11 @@ public final class BasicAuthenticationUtils {
      * @param service service invoking this method
      * @param op Operation context of the login request
      * @param authContext authContext to perform the login checks
+     * @param expirationTimeMicros expiration time for the auth token
      */
     public static void handleLogin(StatelessService service, Operation op,
-            BasicAuthenticationContext authContext) {
-        queryUserService(service, op, authContext);
+            BasicAuthenticationContext authContext, long expirationTimeMicros) {
+        queryUserService(service, op, authContext, expirationTimeMicros);
     }
 
     /**
@@ -157,8 +154,10 @@ public final class BasicAuthenticationUtils {
      * @param service service invoking this method
      * @param parentOp Operation context of the login request
      * @param authContext authContext to perform the login checks
+     * @param expirationTimeMicros expiration time for the auth token
      */
-    private static void queryUserService(StatelessService service, Operation parentOp, BasicAuthenticationContext authContext) {
+    private static void queryUserService(StatelessService service, Operation parentOp,
+            BasicAuthenticationContext authContext, long expirationTimeMicros) {
         QueryTask q = new QueryTask();
         q.querySpec = new QueryTask.QuerySpecification();
         q.querySpec.query = authContext.userQuery;
@@ -181,7 +180,7 @@ public final class BasicAuthenticationUtils {
 
             // The user is valid; query the auth provider to check if the credentials match
             String userLink = rsp.results.documentLinks.get(0);
-            queryAuthStore(service, parentOp, userLink, authContext);
+            queryAuthStore(service, parentOp, userLink, authContext, expirationTimeMicros);
         };
 
         Operation queryOp = Operation
@@ -200,9 +199,10 @@ public final class BasicAuthenticationUtils {
      * @param parentOp Operation context of the login request
      * @param userLink service link for the user
      * @param authContext authContext to perform the login checks
+     * @param expirationTimeMicros expiration time for the auth token
      */
     private static void queryAuthStore(StatelessService service, Operation parentOp, String userLink,
-            BasicAuthenticationContext authContext) {
+            BasicAuthenticationContext authContext, long expirationTimeMicros) {
         // query against the auth credentials store
         QueryTask authQuery = new QueryTask();
         authQuery.querySpec = new QueryTask.QuerySpecification();
@@ -225,17 +225,8 @@ public final class BasicAuthenticationUtils {
                 return;
             }
 
-            AuthenticationRequest authRequest = parentOp.getBody(AuthenticationRequest.class);
-            long expirationTime;
-            if (authRequest.sessionExpirationSeconds != null) {
-                expirationTime = Utils.fromNowMicrosUtc(TimeUnit.SECONDS
-                        .toMicros(authRequest.sessionExpirationSeconds));
-            } else {
-                expirationTime = Utils.fromNowMicrosUtc(AUTH_TOKEN_EXPIRATION_MICROS);
-            }
-
             // set token validity
-            if (!associateAuthorizationContext(service, parentOp, userLink, expirationTime)) {
+            if (!associateAuthorizationContext(service, parentOp, userLink, expirationTimeMicros)) {
                 parentOp.fail(Operation.STATUS_CODE_SERVER_FAILURE_THRESHOLD);
                 return;
             }
