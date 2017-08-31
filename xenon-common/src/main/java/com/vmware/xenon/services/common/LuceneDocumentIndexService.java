@@ -927,11 +927,12 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void handleQueryRequest() {
-
+        OperationContext originalContext = OperationContext.getOperationContext();
         Operation op = pollQueryOperation();
         try {
             this.writerSync.acquire();
             while (op != null) {
+                OperationContext.setFrom(op);
                 switch (op.getAction()) {
                 case GET:
                     handleGetImpl(op);
@@ -970,15 +971,18 @@ public class LuceneDocumentIndexService extends StatelessService {
                 op.fail(e);
             }
         } finally {
+            OperationContext.setFrom(originalContext);
             this.writerSync.release();
         }
     }
 
     private void handleUpdateRequest() {
+        OperationContext originalContext = OperationContext.getOperationContext();
         Operation op = pollUpdateOperation();
         try {
             this.writerSync.acquire();
             while (op != null) {
+                OperationContext.setFrom(op);
                 switch (op.getAction()) {
                 case DELETE:
                     handleDeleteImpl(op);
@@ -1008,6 +1012,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 op.fail(e);
             }
         } finally {
+            OperationContext.setFrom(originalContext);
             this.writerSync.release();
         }
     }
