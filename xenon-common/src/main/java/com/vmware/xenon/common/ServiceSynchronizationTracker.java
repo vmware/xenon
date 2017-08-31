@@ -332,8 +332,6 @@ class ServiceSynchronizationTracker {
         op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER);
 
         CompletionHandler c = (o, e) -> {
-            ServiceDocument selectedState = null;
-
             if (this.host.isStopping()) {
                 op.fail(new CancellationException("Host is stopping"));
                 return;
@@ -345,27 +343,27 @@ class ServiceSynchronizationTracker {
                 return;
             }
 
-            if (o.hasBody()) {
-                selectedState = o.getBody(s.getStateType());
-            } else {
+            if (!o.hasBody()) {
                 // peers did not have a better state to offer
                 if (ServiceDocument.isDeleted(t.state)) {
                     Operation.failServiceMarkedDeleted(t.state.documentSelfLink, op);
                     return;
                 }
 
-                op.linkState(null);
+                // avoid duplicate document version on owner
+                op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE);
+
                 op.complete();
                 return;
             }
 
+            ServiceDocument selectedState = o.getBody(s.getStateType());
+            boolean isVersionSame = ServiceDocument
+                    .compare(selectedState, t.state, t.stateDescription, Utils.getTimeComparisonEpsilonMicros())
+                    .contains(ServiceDocument.DocumentRelationship.EQUAL_VERSION);
+
             if (ServiceDocument.isDeleted(selectedState)) {
                 Operation.failServiceMarkedDeleted(t.state.documentSelfLink, op);
-
-                boolean isVersionSame = ServiceDocument
-                        .compare(selectedState, t.state, t.stateDescription, Utils.getTimeComparisonEpsilonMicros())
-                        .contains(ServiceDocument.DocumentRelationship.EQUAL_VERSION);
-
                 // Only save the document, if the selected state is a newer version of the document
                 // than the local copy.
                 if (!isVersionSame ) {
@@ -380,6 +378,11 @@ class ServiceSynchronizationTracker {
 
             // indicate that synchronization occurred, we got an updated state from peers
             op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_PEER);
+
+            if (isVersionSame) {
+                // avoid duplicate document version on owner
+                op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE);
+            }
 
             // The remote peers have a more recent state than the one we loaded from the store.
             // Use the peer service state as the initial state. Also update the linked state,

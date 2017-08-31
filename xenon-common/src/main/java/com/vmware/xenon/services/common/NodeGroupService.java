@@ -745,8 +745,9 @@ public class NodeGroupService extends StatefulService {
             if (e != null) {
                 updateTime = remotePeer.status != NodeStatus.UNAVAILABLE ? Utils.getNowMicrosUtc()
                         : updateTime;
-
                 if (remotePeer.status != NodeStatus.UNAVAILABLE) {
+                    logWarning("Sending patch to peer %s failed with %s; marking as UNAVAILABLE",
+                            remotePeer.id, Utils.toString(e));
                     remotePeer.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
                     remotePeer.documentVersion++;
                 }
