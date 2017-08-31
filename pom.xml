@@ -97,7 +97,7 @@
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <testHeapSizeMb>256</testHeapSizeMb>
     <testThreadStackSizeKb>256</testThreadStackSizeKb>
-    <testJvmOpts></testJvmOpts>
+    <testJvmOpts>-Dxenon.BasicAuthenticationService.UPPER_SESSION_LIMIT_MICROS=840000000</testJvmOpts>
     <autoReleaseAfterClose>true</autoReleaseAfterClose>
   </properties>
 
