@@ -42,6 +42,14 @@
     /core/examples?$skip=5&$limit=10
     /core/examples?$skip=5&$top=2
 
+* Added an optional system property,
+  `xenon.BasicAuthenticationService.UPPER_SESSION_LIMIT_MICROS` to set a maximum session
+  duration when passing in `sessionExpirationSeconds` to BasicAuthenticationService
+  payload. If `sessionExpirationSeconds` exceeds the upper limit, it will be capped.
+
+* Changed the default auth token expiration in BasicAuthenticationService from 1 hour to
+  8 hours.
+
 
 ## 1.5.4
 
