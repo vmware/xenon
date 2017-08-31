@@ -3048,7 +3048,9 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void handleMaintenanceImpl(Operation op) throws Exception {
+        OperationContext originalContext = OperationContext.getOperationContext();
         try {
+            OperationContext.setFrom(op);
             IndexWriter w = this.writer;
             if (w == null) {
                 op.fail(new CancellationException("Index writer is null"));
@@ -3138,6 +3140,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             logWarning("Attempting recovery due to error: %s", Utils.toString(e));
             applyFileLimitRefreshWriter(true);
             op.fail(e);
+        } finally {
+            OperationContext.setFrom(originalContext);
         }
     }
 
