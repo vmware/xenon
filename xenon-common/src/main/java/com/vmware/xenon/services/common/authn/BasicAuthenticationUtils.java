@@ -45,6 +45,8 @@ public final class BasicAuthenticationUtils {
     private static final String BASIC_AUTH_SEPARATOR = " ";
     private static final String BASIC_AUTH_USER_SEPARATOR = ":";
 
+    private static final long UPPER_SESSION_EXPIRATION_LIMIT_SECONDS = TimeUnit.HOURS.toSeconds(8);
+
     private static final long AUTH_TOKEN_EXPIRATION_MICROS = Long.getLong(
             Utils.PROPERTY_NAME_PREFIX + "BasicAuthenticationService.AUTH_TOKEN_EXPIRATION_MICROS",
             TimeUnit.HOURS.toMicros(1));
@@ -228,8 +230,13 @@ public final class BasicAuthenticationUtils {
             AuthenticationRequest authRequest = parentOp.getBody(AuthenticationRequest.class);
             long expirationTime;
             if (authRequest.sessionExpirationSeconds != null) {
-                expirationTime = Utils.fromNowMicrosUtc(TimeUnit.SECONDS
-                        .toMicros(authRequest.sessionExpirationSeconds));
+                // Set a hard limit on the duration of a session if the sessionExpirationSeconds
+                // exceeds the upper session expiration limit.
+                expirationTime = authRequest.sessionExpirationSeconds;
+                if (authRequest.sessionExpirationSeconds > UPPER_SESSION_EXPIRATION_LIMIT_SECONDS) {
+                    expirationTime = UPPER_SESSION_EXPIRATION_LIMIT_SECONDS;
+                }
+                expirationTime = Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(expirationTime));
             } else {
                 expirationTime = Utils.fromNowMicrosUtc(AUTH_TOKEN_EXPIRATION_MICROS);
             }
