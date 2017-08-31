@@ -128,7 +128,7 @@ public class ExampleService extends StatefulService {
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         @PropertyOptions(indexing = PropertyIndexingOption.SORT)
         public String name;
-        @Documentation(description = "@TAGS", exampleString = "{ \"tag1\" , \"tag2\" }")
+        @Documentation(description = "@TAGS", exampleString = "[ \"tag1\" , \"tag2\" ]")
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public Set<String> tags = new HashSet<>();
         @UsageOption(option = PropertyUsageOption.ID)
