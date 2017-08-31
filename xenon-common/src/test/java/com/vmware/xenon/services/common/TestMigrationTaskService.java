@@ -45,7 +45,6 @@ import java.util.stream.Collectors;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.BasicReusableHostTestCase;
@@ -947,7 +946,6 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                 ExampleServiceState.class, uris);
     }
 
-    @Ignore("https://www.pivotaltracker.com/story/show/150063470")
     @Test
     public void failMigrationWithDocumentOwnerMismatch() throws Throwable {
         // this test dirties destination host, requires clean up
@@ -982,7 +980,8 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                 VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
         newHost.setPeerSynchronizationEnabled(false);
         newHost.start();
-        newHost.waitForServiceAvailable(ExampleService.FACTORY_LINK);
+        newHost.startFactory(new MigrationTaskService());
+        newHost.waitForServiceAvailable(ExampleService.FACTORY_LINK, MigrationTaskService.FACTORY_LINK);
         this.host.addPeerNode(newHost);
         this.host.joinNodesAndVerifyConvergence(this.nodeCount, true);
 

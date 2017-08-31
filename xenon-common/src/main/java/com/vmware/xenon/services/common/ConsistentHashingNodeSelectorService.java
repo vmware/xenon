@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.services.common;
 
+import static java.util.stream.Collectors.toList;
+
 import java.net.URI;
 import java.util.Collection;
 import java.util.TreeMap;
@@ -310,7 +312,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
         if (this.cachedState.replicationFactor == null && body.options != null
                 && body.options.contains(ForwardingOption.BROADCAST)) {
-            response.selectedNodes = localState.nodes.values();
+            // broadcast/replicate to only "available" nodes
+            response.selectedNodes = localState.nodes.values().stream().filter(ns -> !NodeState.isUnAvailable(ns)).collect(toList());
             if (body.options.contains(ForwardingOption.REPLICATE)) {
                 replicateRequest(op, body, response);
                 return;
@@ -448,15 +451,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         };
 
         for (NodeState m : members) {
-            boolean skipNode = false;
             if (req.options.contains(ForwardingOption.EXCLUDE_ENTRY_NODE)
                     && m.id.equals(getHost().getId())) {
-                skipNode = true;
-            }
-
-            skipNode = NodeState.isUnAvailable(m) | skipNode;
-
-            if (skipNode) {
                 c.handle(null, null);
                 continue;
             }
