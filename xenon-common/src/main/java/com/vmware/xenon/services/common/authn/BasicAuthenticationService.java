@@ -13,9 +13,11 @@
 
 package com.vmware.xenon.services.common.authn;
 
+import java.util.concurrent.TimeUnit;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.StatelessService;
+import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.AuthCredentialsService.AuthCredentialsServiceState;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -26,6 +28,14 @@ import com.vmware.xenon.services.common.authn.BasicAuthenticationUtils.BasicAuth
 public class BasicAuthenticationService extends StatelessService {
 
     public static final String SELF_LINK = ServiceUriPaths.CORE_AUTHN_BASIC;
+
+    static final Long UPPER_SESSION_LIMIT_MICROS
+            = Long.getLong(Utils.PROPERTY_NAME_PREFIX +
+            "BasicAuthenticationService.UPPER_SESSION_LIMIT_MICROS");
+
+    static final long AUTH_TOKEN_EXPIRATION_MICROS = Long.getLong(
+            Utils.PROPERTY_NAME_PREFIX + "BasicAuthenticationService.AUTH_TOKEN_EXPIRATION_MICROS",
+            TimeUnit.HOURS.toMicros(1));
 
     public BasicAuthenticationService() {
         toggleOption(ServiceOption.CORE, true);
@@ -57,12 +67,12 @@ public class BasicAuthenticationService extends StatelessService {
             op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_VERIFY_TOKEN);
             return;
         }
-        AuthenticationRequestType requestType = op.getBody(AuthenticationRequest.class).requestType;
+        AuthenticationRequest authRequest = op.getBody(AuthenticationRequest.class);
         // default to login for backward compatibility
-        if (requestType == null) {
-            requestType = AuthenticationRequestType.LOGIN;
+        if (authRequest.requestType == null) {
+            authRequest.requestType = AuthenticationRequestType.LOGIN;
         }
-        switch (requestType) {
+        switch (authRequest.requestType) {
         case LOGIN:
             String[] userNameAndPassword = BasicAuthenticationUtils.parseRequest(this, op);
             if (userNameAndPassword == null) {
@@ -78,7 +88,8 @@ public class BasicAuthenticationService extends StatelessService {
             .addFieldClause(AuthCredentialsServiceState.FIELD_NAME_EMAIL, userNameAndPassword[0])
             .addFieldClause(AuthCredentialsServiceState.FIELD_NAME_PRIVATE_KEY, userNameAndPassword[1])
             .build();
-            BasicAuthenticationUtils.handleLogin(this, op, authContext);
+            BasicAuthenticationUtils.handleLogin(this, op, authContext,
+                    getExpirationTime(authRequest));
             break;
         case LOGOUT:
             BasicAuthenticationUtils.handleLogout(this, op);
@@ -88,9 +99,30 @@ public class BasicAuthenticationService extends StatelessService {
         }
     }
 
+    /**
+     * Get the expected expiration time from the current time based on system settings and passed-in
+     * session expiration duration. If unspecified, then {@link #AUTH_TOKEN_EXPIRATION_MICROS}
+     * microseconds from the current time will be set. Otherwise, if specified, the expiration will
+     * be based on the minimum between `sessionExpirationMicros` and
+     * {@link #UPPER_SESSION_LIMIT_MICROS}.
+     *
+     * @param authRequest The original authentication request.
+     *
+     * @return The expiration time of the session.
+     */
+    public static long getExpirationTime(AuthenticationRequest authRequest) {
+        long expirationTimeMicros = AUTH_TOKEN_EXPIRATION_MICROS;
 
+        if (authRequest.sessionExpirationSeconds != null) {
+            // Set a hard limit on the duration of a session if the sessionExpirationMicros
+            // exceeds the upper session expiration limit.
+            expirationTimeMicros = TimeUnit.SECONDS.toMicros(authRequest.sessionExpirationSeconds);
+            if (UPPER_SESSION_LIMIT_MICROS != null &&
+                    expirationTimeMicros > UPPER_SESSION_LIMIT_MICROS) {
+                expirationTimeMicros = UPPER_SESSION_LIMIT_MICROS;
+            }
+        }
 
-
-
-
+        return Utils.fromNowMicrosUtc(expirationTimeMicros);
+    }
 }
