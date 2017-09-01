@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## 1.5.4-CR4-SNAPSHOT
+## 1.5.4-CR4
 
 * Bug fix related to the creation of duplicate Lucene documents during
   synchronization.
