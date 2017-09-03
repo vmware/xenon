@@ -35,7 +35,6 @@ import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.jwt.Signer;
-import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
@@ -140,9 +139,8 @@ public class StatefulService implements Service {
                 && this.context.processingStage != ProcessingStage.AVAILABLE) {
 
             if (hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                if (this.context.processingStage == ProcessingStage.PAUSED
-                        || this.context.processingStage == ProcessingStage.STOPPED) {
-                    getHost().retryPauseOrOnDemandLoadConflict(op, false);
+                if (this.context.processingStage == ProcessingStage.STOPPED) {
+                    getHost().retryOnDemandLoadConflict(op);
                     return true;
                 }
             }
@@ -196,7 +194,7 @@ public class StatefulService implements Service {
                 // If the operation supplied is a DELETE, not just a "stop", we need to retry as well
                 // so the service is properly deleted from the index
                 if (!stop || isDeleteAndStop) {
-                    getHost().retryPauseOrOnDemandLoadConflict(op, true);
+                    getHost().retryOnDemandLoadConflict(op);
                     return true;
                 }
             } else if (stop && hasActiveUpdates && !isDeleteAndStop) {
@@ -247,7 +245,7 @@ public class StatefulService implements Service {
                 if (hasOption(ServiceOption.ON_DEMAND_LOAD)
                         && (!stop || !ServiceHost.isServiceDeleteAndStop(op))) {
                     // Pending requests need to be retried on ODL services that are being stopped.
-                    getHost().retryPauseOrOnDemandLoadConflict(o, true);
+                    getHost().retryOnDemandLoadConflict(o);
                 } else {
                     o.fail(new CancellationException(getSelfLink()));
                 }
@@ -261,7 +259,6 @@ public class StatefulService implements Service {
     // Set of local flags to avoid allocation and use of EnumSet in the fast path
     // for queueRequestInternal. The use of integer flags is the exception, not the norm
     // and only justified in very few places
-    private static final int PAUSE_FLAG = 0x00000001;
     private static final int ODL_STOP_FLAG = 0x00000002;
     private static final int RETURN_TRUE_FLAG = 0x10000000;
 
@@ -269,14 +266,14 @@ public class StatefulService implements Service {
      * Returns true if a request was handled (caller should not attempt to dispatch it)
      */
     private boolean queueRequestInternal(final Operation op) {
-        int pausedOrOdlStopped = 0;
+        int odlStopped = 0;
         Action a = op.getAction();
 
         if (a == Action.PATCH
                 || a == Action.PUT
                 || a == Action.DELETE
                 || a == Action.POST) {
-            pausedOrOdlStopped = queueUpdateRequestInternal(op, pausedOrOdlStopped);
+            odlStopped = queueUpdateRequestInternal(op, odlStopped);
         } else {
             if (a == Action.OPTIONS) {
                 return false;
@@ -285,18 +282,17 @@ public class StatefulService implements Service {
                 // can run in parallel with updates and each other
                 return false;
             } else {
-                pausedOrOdlStopped = queueGetRequestInternal(op, pausedOrOdlStopped);
+                odlStopped = queueGetRequestInternal(op, odlStopped);
             }
         }
 
-        if ((pausedOrOdlStopped & RETURN_TRUE_FLAG) != 0) {
+        if ((odlStopped & RETURN_TRUE_FLAG) != 0) {
             return true;
         }
 
-        if (pausedOrOdlStopped != 0 && !getHost().isStopping()) {
+        if (odlStopped != 0 && !getHost().isStopping()) {
             logWarning("Service in stage %s, retrying request", this.context.processingStage);
-            getHost().retryPauseOrOnDemandLoadConflict(op,
-                    (pausedOrOdlStopped & ODL_STOP_FLAG) != 0);
+            getHost().retryOnDemandLoadConflict(op);
             return true;
         }
 
@@ -308,13 +304,11 @@ public class StatefulService implements Service {
         return false;
     }
 
-    private int queueGetRequestInternal(final Operation op, int pausedOrOdlStopped) {
+    private int queueGetRequestInternal(final Operation op, int odlStopped) {
         // queue GETs, if updates are pending
         synchronized (this.context) {
-            if (this.context.processingStage == ProcessingStage.PAUSED) {
-                pausedOrOdlStopped |= PAUSE_FLAG;
-            } else if (this.context.processingStage == ProcessingStage.STOPPED) {
-                pausedOrOdlStopped |= hasOption(ServiceOption.ON_DEMAND_LOAD)
+            if (this.context.processingStage == ProcessingStage.STOPPED) {
+                odlStopped |= hasOption(ServiceOption.ON_DEMAND_LOAD)
                         ? ODL_STOP_FLAG
                         : 0;
             } else if (this.context.isUpdateActive) {
@@ -326,16 +320,14 @@ public class StatefulService implements Service {
                 this.context.getActiveCount++;
             }
         }
-        return pausedOrOdlStopped;
+        return odlStopped;
     }
 
-    private int queueUpdateRequestInternal(final Operation op, int pausedOrOdlStopped) {
+    private int queueUpdateRequestInternal(final Operation op, int odlStopped) {
         // serialize updates
         synchronized (this.context) {
-            if (this.context.processingStage == ProcessingStage.PAUSED) {
-                pausedOrOdlStopped |= PAUSE_FLAG;
-            } else if (this.context.processingStage == ProcessingStage.STOPPED) {
-                pausedOrOdlStopped |= hasOption(ServiceOption.ON_DEMAND_LOAD) ? ODL_STOP_FLAG : 0;
+            if (this.context.processingStage == ProcessingStage.STOPPED) {
+                odlStopped |= hasOption(ServiceOption.ON_DEMAND_LOAD) ? ODL_STOP_FLAG : 0;
             } else if ((this.context.isUpdateActive || this.context.getActiveCount != 0)) {
                 if (op.isSynchronizeOwner()) {
                     // Synchronization requests are queued in a separate queue
@@ -355,7 +347,7 @@ public class StatefulService implements Service {
                 this.context.isUpdateActive = true;
             }
         }
-        return pausedOrOdlStopped;
+        return odlStopped;
     }
 
     @Override
@@ -1693,72 +1685,35 @@ public class StatefulService implements Service {
     }
 
     @Override
-    public ServiceRuntimeContext setProcessingStage(ProcessingStage stage) {
-        ServiceRuntimeContext src = null;
-        IllegalStateException failure = null;
-        String statName = null;
-        try {
-            boolean logTransition = false;
-            synchronized (this.context) {
-                if (this.context.processingStage == stage) {
-                    return null;
-                }
-
-                if (stage == ProcessingStage.PAUSED) {
-                    if (this.context.processingStage != ProcessingStage.AVAILABLE) {
-                        failure = new IllegalStateException("Service can not be paused, in stage: "
-                                + this.context.processingStage);
-                        return null;
-                    }
-
-                    if (this.context.isUpdateActive ||
-                            (this.context.synchQueue != null && !this.context.synchQueue.isEmpty())
-                            ||
-                            !this.context.operationQueue.isEmpty()) {
-                        failure = new IllegalStateException("Service has active updates");
-                        return null;
-                    }
-                    adjustStat(STAT_NAME_PAUSE_COUNT, 1);
-                    src = new ServiceRuntimeContext();
-                    src.selfLink = getSelfLink();
-                    src.serializationTimeMicros = Utils.getNowMicrosUtc();
-                    src.serializedService = KryoSerializers.serializeObject(this,
-                            Service.MAX_SERIALIZED_SIZE_BYTES);
-                } else if (this.context.processingStage == ProcessingStage.PAUSED
-                        && stage == ProcessingStage.AVAILABLE) {
-                    statName = STAT_NAME_RESUME_COUNT;
-                    this.context.isUpdateActive = false;
-                } else if (this.context.processingStage == ProcessingStage.STOPPED
-                        && stage == ProcessingStage.AVAILABLE
-                        && hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                    // an ODL service can be stopped while an attempt to start is being processed.
-                    // Instead of failing the attempt that marks it available, accept the
-                    // transition from STOPPED -> AVAILABLE
-                    logTransition = true;
-                } else if (this.context.processingStage.ordinal() > stage.ordinal()) {
-                    throw new IllegalArgumentException(this.context.processingStage
-                            + " can not move to "
-                            + stage);
-                }
-
-                if (logTransition) {
-                    logInfo("Transition from %s to %s", this.context.processingStage, stage);
-                }
-                this.context.processingStage = stage;
+    public void setProcessingStage(ProcessingStage stage) {
+        boolean logTransition = false;
+        synchronized (this.context) {
+            if (this.context.processingStage == stage) {
+                return;
             }
-        } finally {
-            if (failure != null) {
-                throw failure;
+
+            if (this.context.processingStage == ProcessingStage.STOPPED
+                    && stage == ProcessingStage.AVAILABLE
+                    && hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+                // an ODL service can be stopped while an attempt to start is being processed.
+                // Instead of failing the attempt that marks it available, accept the
+                // transition from STOPPED -> AVAILABLE
+                logTransition = true;
+            } else if (this.context.processingStage.ordinal() > stage.ordinal()) {
+                throw new IllegalArgumentException(this.context.processingStage
+                        + " can not move to "
+                        + stage);
             }
-            if (statName != null) {
-                adjustStat(statName, 1);
+
+            if (logTransition) {
+                logInfo("Transition from %s to %s", this.context.processingStage, stage);
             }
+            this.context.processingStage = stage;
         }
 
         if (stage == ProcessingStage.AVAILABLE) {
             getHost().processPendingServiceAvailableOperations(this, null, false);
         }
-        return src;
     }
 
     @Override
@@ -2072,8 +2027,7 @@ public class StatefulService implements Service {
             return true;
         }
         // processing stage must also indicate service is started
-        if (getProcessingStage() != ProcessingStage.PAUSED
-                && getProcessingStage() != ProcessingStage.AVAILABLE) {
+        if (getProcessingStage() != ProcessingStage.AVAILABLE) {
             return false;
         }
         ServiceStat st = this.getStat(STAT_NAME_AVAILABLE);

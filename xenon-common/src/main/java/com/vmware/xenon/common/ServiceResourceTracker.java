@@ -20,7 +20,6 @@ import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -28,7 +27,6 @@ import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service.Action;
-import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceClient.ConnectionPoolMetrics;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
@@ -36,7 +34,6 @@ import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
-import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
  * Monitors service resources, and takes action, during periodic maintenance
@@ -96,11 +93,6 @@ class ServiceResourceTracker {
     private final Map<String, Service> attachedServices;
 
     /**
-     * Tracks if a factory link ever had one of its children paused
-     */
-    private final ConcurrentSkipListSet<String> serviceFactoriesWithPauseResume = new ConcurrentSkipListSet<>();
-
-    /**
      * Tracks cached service state. Cleared periodically during maintenance
      */
     private final ConcurrentMap<String, ServiceDocument> cachedServiceStates = new ConcurrentHashMap<>();
@@ -109,11 +101,10 @@ class ServiceResourceTracker {
      * Tracks last access time for PERSISTENT services. The access time is used for a few things:
      * 1. Deciding if the cache state of the service needs to be cleared based
      *    on {@link ServiceHost#getServiceCacheClearDelayMicros()}.
-     * 2. Deciding if the service needs to be stopped or paused when memory pressure is high.
+     * 2. Deciding if the service needs to be stopped when memory pressure is high.
      *
      * We don't bother tracking access time for StatefulServices that are non-persistent.
-     * This is because the cached state for non-persistent stateful services is never cleared and
-     * they do not get paused.
+     * This is because the cached state for non-persistent stateful services is never cleared.
      */
     private final ConcurrentMap<String, Long> persistedServiceLastAccessTimes = new ConcurrentHashMap<>();
 
@@ -132,15 +123,12 @@ class ServiceResourceTracker {
 
     private Service mgmtService;
 
-    public static ServiceResourceTracker create(ServiceHost host, Map<String, Service> services,
-            Map<String, Service> pendingPauseServices) {
-        ServiceResourceTracker srt = new ServiceResourceTracker(host, services,
-                pendingPauseServices);
+    public static ServiceResourceTracker create(ServiceHost host, Map<String, Service> services) {
+        ServiceResourceTracker srt = new ServiceResourceTracker(host, services);
         return srt;
     }
 
-    public ServiceResourceTracker(ServiceHost host, Map<String, Service> services,
-            Map<String, Service> pendingPauseServices) {
+    public ServiceResourceTracker(ServiceHost host, Map<String, Service> services) {
         this.attachedServices = services;
         this.host = host;
     }
@@ -461,7 +449,7 @@ class ServiceResourceTracker {
     public void performMaintenance(long now, long deadlineMicros) {
         updateStats(now);
         ServiceHostState hostState = this.host.getStateNoCloning();
-        int pauseServiceCount = 0;
+        int stopServiceCount = 0;
         long memoryLimitHighMB = this.host.getServiceMemoryLimitMB(ServiceHost.ROOT_PATH,
                 MemoryLimitType.HIGH_WATERMARK);
 
@@ -469,7 +457,7 @@ class ServiceResourceTracker {
                 * ServiceHost.DEFAULT_SERVICE_INSTANCE_COST_BYTES;
         memoryInUseMB /= (1024 * 1024);
 
-        boolean shouldPause = memoryLimitHighMB <= memoryInUseMB;
+        boolean shouldStop = memoryLimitHighMB <= memoryInUseMB;
 
         for (Service service : this.attachedServices.values()) {
             // skip factory services, they do not have state
@@ -510,7 +498,7 @@ class ServiceResourceTracker {
                     // The cached entry is old and should be cleared.
                     // Note that we are not going to clear the lastAccessTime here
                     // because we will need it in future maintenance runs to determine
-                    // if the service should be paused/ stopped.
+                    // if the service should be stopped.
                     clearCachedServiceState(service, null, null, true);
                     cacheCleared = true;
                 }
@@ -518,8 +506,8 @@ class ServiceResourceTracker {
 
             // If this host is the OWNER for the service and we didn't find it's entry
             // in the cache or the lastAccessTime map, and it's also a PERSISTENT service,
-            // then probably the service is just starting up. So, we will skip pause..
-            // However, if this host is not the OWNER, then we will proceed with Stop or Pause.
+            // then probably the service is just starting up. So, we will skip stop..
+            // However, if this host is not the OWNER, then we will proceed with stop.
             // This is because state is not cached on replicas.
             if (lastAccessTime == null &&
                     ServiceHost.isServiceIndexed(service) &&
@@ -530,7 +518,7 @@ class ServiceResourceTracker {
             if (lastAccessTime != null &&
                     hostState.lastMaintenanceTimeUtcMicros - lastAccessTime < service
                     .getMaintenanceIntervalMicros() * 2) {
-                // Skip pause for services that have been active within a maintenance interval
+                // Skip stop for services that have been active within a maintenance interval
                 continue;
             }
 
@@ -555,7 +543,7 @@ class ServiceResourceTracker {
 
             if (this.host.hasPendingServiceAvailableCompletions(service.getSelfLink())) {
                 this.host.log(Level.INFO,
-                        "Pending available completions, skipping pause/stop on %s",
+                        "Pending available completions, skipping stop on %s",
                         service.getSelfLink());
                 continue;
             }
@@ -563,37 +551,28 @@ class ServiceResourceTracker {
             boolean hasSoftState = hasServiceSoftState(service);
             if (cacheCleared && !hasSoftState) {
                 // if it's an on-demand-load service with no subscribers or stats,
-                // instead of pausing it, simply stop them when the service is idle.
-                // if the on-demand-load service does have subscribers/stats, then continue with
-                // pausing so that we don't lose any "soft" state
+                // instead simply stop them when the service is idle.
+                stopServiceCount++;
                 stopService(service, false, null);
                 continue;
             }
 
-            if (!shouldPause && !cacheCleared) {
-                // if we are not under memory pressure only pause or stop ODL services if their
-                // cache is cleared. It uses a longer interval of inactivity, to avoid thrashing
-                // the service context index with pause/resume or with start/stop
+            if (!shouldStop && !cacheCleared) {
+                // if we are not under memory pressure only stop ODL services if their
+                // cache is cleared.
                 continue;
             }
 
             if (!cacheCleared) {
-                // if we're going to pause it, clear state from cache if not already cleared
+                // if we're going to stop it, clear state from cache if not already cleared
                 clearCachedServiceState(service, null, null);
                 // and check again if ON_DEMAND_LOAD with no subscriptions, then we need to stop
                 if (!hasSoftState) {
+                    stopServiceCount++;
                     stopService(service, false, null);
                     continue;
                 }
             }
-
-            String factoryPath = UriUtils.getParentPath(service.getSelfLink());
-            if (factoryPath != null) {
-                this.serviceFactoriesWithPauseResume.add(factoryPath);
-            }
-
-            pauseServiceCount++;
-            pauseService(service);
 
             if (deadlineMicros < Utils.getSystemNowMicrosUtc()) {
                 break;
@@ -609,79 +588,18 @@ class ServiceResourceTracker {
             }
         }
 
-        if (pauseServiceCount == 0) {
+        if (stopServiceCount == 0) {
             return;
         }
 
         this.host.log(Level.FINE,
-                "Attempt pause on %d services, attached: %d, cached: %d, persistedServiceLastAccessTimes: %d",
-                pauseServiceCount, hostState.serviceCount,
+                "Attempt stop on %d services, attached: %d, cached: %d, persistedServiceLastAccessTimes: %d",
+                stopServiceCount, hostState.serviceCount,
                 this.cachedServiceStates.size(),
                 this.persistedServiceLastAccessTimes.size());
     }
 
-    private void pauseService(Service s) {
-        if (this.host.isStopping()) {
-            return;
-        }
-
-        ServiceHostState hostState = this.host.getStateNoCloning();
-
-        if (s.getProcessingStage() != ProcessingStage.AVAILABLE) {
-            return;
-        }
-
-        String path = s.getSelfLink();
-        CompletionHandler indexCompletion = (o, e) -> {
-            if (e != null) {
-                resumeService(path, s);
-                abortPause(s, path, e);
-                return;
-            }
-
-            synchronized (hostState) {
-                if (null != this.attachedServices.remove(path)) {
-                    hostState.serviceCount--;
-                }
-            }
-            this.persistedServiceLastAccessTimes.remove(path);
-            this.host.getManagementService().adjustStat(
-                    ServiceHostManagementService.STAT_NAME_SERVICE_PAUSE_COUNT, 1);
-        };
-
-        try {
-            // Atomically pause and serialize into a context we can store in the index
-            ServiceRuntimeContext src = s.setProcessingStage(ProcessingStage.PAUSED);
-            // Pause was successful, issue indexing request
-            Operation indexPut = Operation
-                    .createPut(this.host, ServiceUriPaths.CORE_SERVICE_CONTEXT_INDEX)
-                    .setReferer(this.host.getUri())
-                    .setBodyNoCloning(src)
-                    .setCompletion(indexCompletion);
-            this.host.sendRequest(indexPut);
-        } catch (Exception e) {
-            abortPause(s, path, e);
-        }
-    }
-
-    void abortPause(Service s, String path, Throwable e) {
-        if (this.host.isStopping()) {
-            return;
-        }
-        if (e != null && !(e instanceof CancellationException)) {
-            this.host.log(Level.WARNING,
-                    "Failure pausing service %s: %s",
-                    path,
-                    e.toString());
-        }
-        Operation op = s.dequeueRequest();
-        if (op != null) {
-            this.host.handleRequest(null, op);
-        }
-        this.host.processPendingServiceAvailableOperations(s, null, false);
-    }
-
-    boolean checkAndResumeService(Operation inboundOp) {
+    boolean checkAndOnDemandStartService(Operation inboundOp) {
         String key = inboundOp.getUri().getPath();
         if (ServiceHost.isHelperServicePath(key)) {
             key = UriUtils.getParentPath(key);
@@ -700,82 +618,37 @@ class ServiceResourceTracker {
             factoryService = (FactoryService) parentService;
         }
 
-        if (factoryService != null) {
-            if (!this.serviceFactoriesWithPauseResume.contains(factoryPath)) {
-                // minor optimization: if the service factory has never experienced a pause for one of the child
-                // services, do not bother querying the blob index. A node might never come under memory
-                // pressure so this lookup avoids the index query.
-                if (factoryService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                    inboundOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
-                } else {
-                    return false;
-                }
-            } else if (this.host.getServiceStage(key) == ProcessingStage.PAUSED) {
-                // if the service is paused, skip ODL on demand start
-                this.host.log(Level.WARNING, "ODL service %s is paused, attempting resume",
-                        key);
-                inboundOp.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
-            }
-        }
-
-        String path = key;
-
         if (factoryService == null) {
             Operation.failServiceNotFound(inboundOp);
             return true;
         }
 
+        if (!factoryService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+            return false;
+        }
+
+        inboundOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
+
+        String path = key;
+
         if (this.host.isStopping()
                 && inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)
                 && inboundOp.getAction() == Action.DELETE) {
-            // do not attempt to resume services if they are paused or in the process of being paused
             inboundOp.complete();
             return true;
         }
 
-        if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)) {
-            if (inboundOp.getExpirationMicrosUtc() < Utils.getSystemNowMicrosUtc()) {
-                this.host.log(Level.WARNING, "Request to %s has expired", path);
-                return false;
-            }
-
-            if (this.host.isStopping()) {
-                return false;
-            }
-
-            this.host.log(Level.FINE, "(%d) ODL check for %s", inboundOp.getId(), path);
-            return checkAndOnDemandStartService(inboundOp, factoryService);
+        if (inboundOp.getExpirationMicrosUtc() < Utils.getSystemNowMicrosUtc()) {
+            this.host.log(Level.WARNING, "Request to %s has expired", path);
+            return false;
         }
 
-        inboundOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
-        OperationContext inputContext = OperationContext.getOperationContext();
-        Operation resumePut = Operation.createPut(this.host,
-                ServiceUriPaths.CORE_SERVICE_CONTEXT_INDEX);
-        resumePut.setBodyNoCloning(ServiceRuntimeContext.create(key));
-        resumePut.setCompletion((o, e) -> {
-            OperationContext.setFrom(inputContext);
-            if (e != null) {
-                this.host.log(Level.WARNING,
-                        "Failure checking if service paused: " + Utils.toString(e));
-                this.host.handleRequest(null, inboundOp);
-                return;
-            }
+        if (this.host.isStopping()) {
+            return false;
+        }
 
-            if (!o.hasBody()) {
-                // service is not paused
-                this.host.handleRequest(null, inboundOp);
-                return;
-            }
-
-            // the service context index resume the service before completing the GET, and deleting
-            // the index entry for the paused service.
-
-            // re-submit the operation that caused the resume
-            this.host.handleRequest(null, inboundOp);
-        });
-        resumePut.setAuthorizationContext(this.host.getSystemAuthorizationContext());
-        this.host.sendRequest(resumePut.setReferer(this.host.getUri()));
-        return true;
+        this.host.log(Level.FINE, "(%d) ODL check for %s", inboundOp.getId(), path);
+        return checkAndOnDemandStartService(inboundOp, factoryService);
     }
 
     boolean checkAndOnDemandStartService(Operation inboundOp, Service parentService) {
@@ -956,43 +829,15 @@ class ServiceResourceTracker {
         this.host.startService(onDemandPost, childService);
     }
 
-    void resumeService(String path, Service resumedService) {
-        if (this.host.isStopping()) {
-            return;
-        }
-        resumedService.setHost(this.host);
-
-        ServiceHostState hostState = this.host.getStateNoCloning();
-        synchronized (hostState) {
-            if (!this.attachedServices.containsKey(path)) {
-                this.attachedServices.put(path, resumedService);
-                hostState.serviceCount++;
-            }
-        }
-
-        resumedService.setProcessingStage(ProcessingStage.AVAILABLE);
-
-        if (ServiceHost.isServiceIndexed(resumedService)) {
-            this.persistedServiceLastAccessTimes.put(
-                    resumedService.getSelfLink(), Utils.getNowMicrosUtc());
-        }
-
-        this.host.getManagementService().adjustStat(
-                ServiceHostManagementService.STAT_NAME_SERVICE_RESUME_COUNT, 1);
-    }
-
-    void retryPauseOrOnDemandLoadConflict(Operation op,
-            boolean isOdlConflict) {
+    void retryOnDemandLoadConflict(Operation op) {
 
         op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
-        String statName = isOdlConflict
-                ? ServiceHostManagementService.STAT_NAME_ODL_STOP_CONFLICT_COUNT
-                : ServiceHostManagementService.STAT_NAME_PAUSE_RESUME_CONFLICT_COUNT;
+        String statName = ServiceHostManagementService.STAT_NAME_ODL_STOP_CONFLICT_COUNT;
         this.host.getManagementService().adjustStat(statName, 1);
 
         this.host.log(Level.WARNING,
-                "Pause(%s)/ODL(%s) conflict: retrying %s (%d %s) on %s",
-                !isOdlConflict, isOdlConflict, op.getAction(), op.getId(), op.getContextId(),
+                "ODL conflict: retrying %s (%d %s) on %s",
+                op.getAction(), op.getId(), op.getContextId(),
                 op.getUri().getPath());
 
         long interval = Math.max(TimeUnit.SECONDS.toMicros(1),

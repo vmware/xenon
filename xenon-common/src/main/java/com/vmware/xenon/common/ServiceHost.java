@@ -114,7 +114,6 @@ import com.vmware.xenon.services.common.QueryTaskFactoryService;
 import com.vmware.xenon.services.common.ReliableSubscriptionService;
 import com.vmware.xenon.services.common.ResourceGroupService;
 import com.vmware.xenon.services.common.RoleService;
-import com.vmware.xenon.services.common.ServiceContextIndexService;
 import com.vmware.xenon.services.common.ServiceHostLogService;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -591,7 +590,6 @@ public class ServiceHost implements ServiceRequestSender {
 
     private final Set<String> pendingServiceDeletions = Collections
             .synchronizedSet(new HashSet<String>());
-    private final ConcurrentHashMap<String, Service> pendingPauseServices = new ConcurrentHashMap<>();
 
     private ServiceHostState state;
     private Service documentIndexService;
@@ -620,7 +618,7 @@ public class ServiceHost implements ServiceRequestSender {
     private final ServiceMaintenanceTracker serviceMaintTracker = ServiceMaintenanceTracker
             .create(this);
     private final ServiceResourceTracker serviceResourceTracker = ServiceResourceTracker
-            .create(this, this.attachedServices, this.pendingPauseServices);
+            .create(this, this.attachedServices);
     private final OperationTracker operationTracker = OperationTracker.create(this);
 
     private String hashedId;
@@ -1601,7 +1599,6 @@ public class ServiceHost implements ServiceRequestSender {
                 LuceneDocumentIndexService luceneDocumentIndexService = (LuceneDocumentIndexService) this.documentIndexService;
                 Service[] queryServiceArray = new Service[] {
                         luceneDocumentIndexService,
-                        new ServiceContextIndexService(),
                         new LuceneDocumentIndexBackupService(luceneDocumentIndexService),
                         new QueryTaskFactoryService(),
                         new LocalQueryTaskFactoryService(),
@@ -2916,7 +2913,7 @@ public class ServiceHost implements ServiceRequestSender {
                     boolean skipCaching = post.isFromReplication() && isServiceIndexed(s);
 
                     // A replication request for an ODL service can cause xenon to start the target service with
-                    // POST if the service was paused in cleanup cycle. That internally triggered POST will have
+                    // POST if the service was stopped in cleanup cycle. That internally triggered POST will have
                     // isReplicationDisabled flag set.  We skip caching if this is ODL service
                     // and isReplicationDisabled is set.
                     skipCaching |= post.isReplicationDisabled() &&
@@ -3409,7 +3406,6 @@ public class ServiceHost implements ServiceRequestSender {
 
             this.serviceSynchTracker.removeService(path);
             this.serviceResourceTracker.clearCachedServiceState(existing, path, null);
-            this.pendingPauseServices.remove(path);
 
             this.state.serviceCount--;
         }
@@ -3651,12 +3647,6 @@ public class ServiceHost implements ServiceRequestSender {
             service = findService(path, false);
         } else {
             path = service.getSelfLink();
-        }
-
-        // if this service was about to stop, due to memory pressure, cancel, its still active
-        Service pendingStopService = this.pendingPauseServices.remove(path);
-        if (pendingStopService != null) {
-            service = pendingStopService;
         }
 
         if (applyRequestRateLimit(service, inboundOp)) {
@@ -3931,14 +3921,6 @@ public class ServiceHost implements ServiceRequestSender {
                 path = UriUtils.getParentPath(path);
                 parent = findService(path);
                 if (parent == null) {
-                    if (op.getRetryCount() == 0) {
-                        op.setRetryCount(1);
-                    }
-                    if (op.decrementRetriesRemaining() >= 0) {
-                        log(Level.WARNING, "Parent for %s missing, retrying", op.getUri().getPath());
-                        retryPauseOrOnDemandLoadConflict(op, false);
-                        return true;
-                    }
                     Operation.failServiceNotFound(op);
                     return true;
                 }
@@ -4100,7 +4082,7 @@ public class ServiceHost implements ServiceRequestSender {
 
     private void queueOrFailRequestForServiceNotFoundOnOwner(
             Service parent, String path, Operation op, int availableNodeCount) {
-        if (this.serviceResourceTracker.checkAndResumeService(op)) {
+        if (this.serviceResourceTracker.checkAndOnDemandStartService(op)) {
             return;
         }
 
@@ -4139,9 +4121,8 @@ public class ServiceHost implements ServiceRequestSender {
         registerForServiceAvailability(op, path);
     }
 
-    void retryPauseOrOnDemandLoadConflict(Operation op,
-            boolean isOdlConflict) {
-        this.serviceResourceTracker.retryPauseOrOnDemandLoadConflict(op, isOdlConflict);
+    void retryOnDemandLoadConflict(Operation op) {
+        this.serviceResourceTracker.retryOnDemandLoadConflict(op);
     }
 
     private void retryOrFailRequest(Operation op, Operation fo, Throwable fe) {
@@ -4210,9 +4191,9 @@ public class ServiceHost implements ServiceRequestSender {
                         return false;
                     }
                 }
-                // the service might be paused (stopped due to memory pressure)
+                // the service might be ODL-stopped
                 if (parentService.hasOption(ServiceOption.PERSISTENCE)) {
-                    if (this.serviceResourceTracker.checkAndResumeService(inboundOp)) {
+                    if (this.serviceResourceTracker.checkAndOnDemandStartService(inboundOp)) {
                         return true;
                     }
                 }
@@ -4284,13 +4265,10 @@ public class ServiceHost implements ServiceRequestSender {
                 return;
             }
             if (s.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                retryPauseOrOnDemandLoadConflict(op, true);
+                retryOnDemandLoadConflict(op);
                 return;
             }
             op.setStatusCode(Operation.STATUS_CODE_NOT_FOUND);
-        } else if (stage == ProcessingStage.PAUSED) {
-            retryPauseOrOnDemandLoadConflict(op, false);
-            return;
         }
 
         op.fail(new CancellationException("Service not available, in stage: " + stage));
@@ -5407,13 +5385,6 @@ public class ServiceHost implements ServiceRequestSender {
         }
     }
 
-    /**
-     * Infrastructure use only. Invoked from the service context index service
-     */
-    public void resumeService(String path, Service resumedService) {
-        this.serviceResourceTracker.resumeService(path, resumedService);
-    }
-
     public ServiceHost setOperationTimeOutMicros(long timeoutMicros) {
         this.state.operationTimeoutMicros = timeoutMicros;
         return this;
@@ -5504,7 +5475,7 @@ public class ServiceHost implements ServiceRequestSender {
         boolean skipCaching = op.isFromReplication();
 
         // A replication request for an ODL service can cause xenon to start the target service with
-        // POST if the service was paused in cleanup cycle. That internally triggered POST will have
+        // POST if the service was stopped in cleanup cycle. That internally triggered POST will have
         // isReplicationDisabled flag set.  We skip caching if this is ODL service
         // and isReplicationDisabled is set.
         skipCaching |= op.isReplicationDisabled() &&
@@ -5799,7 +5770,7 @@ public class ServiceHost implements ServiceRequestSender {
     public ServiceDocumentDescription buildDocumentDescription(String servicePath) {
         Service s = findService(servicePath);
         if (s == null) {
-            // on demand load or paused services will not be attached, but will still have
+            // on demand load services will not be attached, but will still have
             // valid descriptions cached. Look up their description using their parent (factory)
             // link
             String parentPath = UriUtils.getParentPath(servicePath);

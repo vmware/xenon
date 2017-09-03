@@ -196,12 +196,6 @@ public abstract class FactoryService extends StatelessService {
                                 + "declared in child service class (%s)", getStateType(),
                                 childStateTypeDeclaredInChild));
             }
-
-            if (s.hasOption(ServiceOption.PERSISTENCE)) {
-                byte[] buffer = new byte[Service.MAX_SERIALIZED_SIZE_BYTES];
-                // make sure service can be serialized, so it can be paused under memory pressure
-                Utils.toBytes(s, buffer, 0);
-            }
         } catch (Throwable e) {
             logSevere(e);
             startPost.fail(e);

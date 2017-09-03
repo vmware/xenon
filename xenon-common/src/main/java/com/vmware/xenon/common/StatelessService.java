@@ -426,7 +426,7 @@ public class StatelessService implements Service {
             return true;
         }
         // processing stage must also indicate service is started
-        if (this.stage != ProcessingStage.AVAILABLE && this.stage != ProcessingStage.PAUSED) {
+        if (this.stage != ProcessingStage.AVAILABLE) {
             return false;
         }
         ServiceStat st = this.getStat(STAT_NAME_AVAILABLE);
@@ -460,18 +460,17 @@ public class StatelessService implements Service {
     }
 
     @Override
-    public ServiceRuntimeContext setProcessingStage(ProcessingStage stage) {
+    public void setProcessingStage(ProcessingStage stage) {
         if (this.stage == stage) {
-            return null;
+            return;
         }
 
         this.stage = stage;
         if (stage != ProcessingStage.AVAILABLE) {
-            return null;
+            return;
         }
 
         getHost().processPendingServiceAvailableOperations(this, null, false);
-        return null;
     }
 
     @Override

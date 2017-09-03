@@ -24,7 +24,6 @@ import static org.junit.Assert.fail;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -37,9 +36,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Random;
 import java.util.UUID;
-import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -72,7 +69,6 @@ import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
-import com.vmware.xenon.common.test.VerificationHost.WaitHandler;
 import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
@@ -85,7 +81,6 @@ import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeState;
 import com.vmware.xenon.services.common.OnDemandLoadFactoryService;
 import com.vmware.xenon.services.common.QueryTask.Query;
-import com.vmware.xenon.services.common.ServiceContextIndexService;
 import com.vmware.xenon.services.common.ServiceHostLogService.LogServiceState;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -1862,42 +1857,8 @@ public class TestServiceHost {
         this.host.testWait();
     }
 
-    //override setProcessingStage() of ExampleService to randomly
-    // fail some pause operations
-    static class PauseExampleService extends ExampleService {
-
-        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/pause-examples";
-        public static final String STAT_NAME_ABORT_COUNT = "abortCount";
-
-        public static FactoryService createFactory() {
-            return FactoryService.create(PauseExampleService.class);
-        }
-
-        public PauseExampleService() {
-            super();
-            // we only pause on demand load services
-            toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
-            // ODL services will normally just stop, not pause. To make them pause
-            // we need to either add subscribers or stats. We toggle the INSTRUMENTATION
-            // option (even if ExampleService already sets it, we do it again in case it
-            // changes in the future)
-            toggleOption(ServiceOption.INSTRUMENTATION, true);
-        }
-
-        @Override
-        public ServiceRuntimeContext setProcessingStage(Service.ProcessingStage stage) {
-            if (stage == Service.ProcessingStage.PAUSED) {
-                if (new Random().nextBoolean()) {
-                    this.adjustStat(STAT_NAME_ABORT_COUNT, 1);
-                    throw new CancellationException("Cannot pause service.");
-                }
-            }
-            return super.setProcessingStage(stage);
-        }
-    }
-
     @Test
-    public void servicePauseDueToMemoryPressure() throws Throwable {
+    public void serviceStopDueToMemoryPressure() throws Throwable {
         setUp(true);
         this.host.setAuthorizationService(new AuthorizationContextService());
         this.host.setAuthorizationEnabled(true);
@@ -1911,7 +1872,7 @@ public class TestServiceHost {
         LuceneDocumentIndexService
                 .setIndexFileCountThresholdForWriterRefresh(this.indexFileThreshold);
 
-        // set memory limit low to force service pause
+        // set memory limit low to force service stop
         this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, 0.00001);
         beforeHostStart(this.host);
 
@@ -1946,10 +1907,8 @@ public class TestServiceHost {
                     ctxQuery.completeIteration();
                 }).start();
         ctxQuery.await();
-        this.host.startFactory(PauseExampleService.class,
-                PauseExampleService::createFactory);
-        URI factoryURI = UriUtils.buildFactoryUri(this.host, PauseExampleService.class);
-        this.host.waitForServiceAvailable(PauseExampleService.FACTORY_LINK);
+        String factoryLink = OnDemandLoadFactoryService.create(this.host);
+        URI factoryURI = UriUtils.buildUri(this.host, factoryLink);
         this.host.resetSystemAuthorizationContext();
 
         AtomicLong selfLinkCounter = new AtomicLong();
@@ -1969,16 +1928,16 @@ public class TestServiceHost {
                 this.serviceCount,
                 ExampleServiceState.class, bodySetter, factoryURI);
 
-        // Wait for the next maintenance interval to trigger. This will pause all the services
+        // Wait for the next maintenance interval to trigger. This will stop all the services
         // we just created since the memory limit was set so low.
-        long expectedPauseTime = Utils.fromNowMicrosUtc(this.host
+        long expectedStopTime = Utils.fromNowMicrosUtc(this.host
                 .getMaintenanceIntervalMicros() * 5);
-        while (this.host.getState().lastMaintenanceTimeUtcMicros < expectedPauseTime) {
+        while (this.host.getState().lastMaintenanceTimeUtcMicros < expectedStopTime) {
             // memory limits are applied during maintenance, so wait for a few intervals.
             Thread.sleep(this.host.getMaintenanceIntervalMicros() / 1000);
         }
 
-        // Let's now issue some updates to verify paused services get resumed.
+        // Let's now issue some updates to verify stopped services get started.
         int updateCount = 100;
         if (this.testDurationSeconds > 0 || this.host.isStressTest()) {
             updateCount = 1;
@@ -2007,10 +1966,6 @@ public class TestServiceHost {
         }
         this.host.testWait(ctxGet);
 
-        if (this.testDurationSeconds == 0) {
-            verifyPauseResumeStats(states);
-        }
-
         // Let's set the service memory limit back to normal and issue more updates to ensure
         // that the services still continue to operate as expected.
         this.host
@@ -2018,7 +1973,7 @@ public class TestServiceHost {
         patchExampleServices(states, updateCount);
 
         states.clear();
-        // Long running test. Keep adding services, expecting pause to occur and free up memory so the
+        // Long running test. Keep adding services, expecting stop to occur and free up memory so the
         // number of service instances exceeds available memory.
         Date exp = new Date(TimeUnit.MICROSECONDS.toMillis(
                 Utils.getSystemNowMicrosUtc())
@@ -2049,7 +2004,7 @@ public class TestServiceHost {
             // let a couple of maintenance intervals run
             Thread.sleep(TimeUnit.MICROSECONDS.toMillis(this.host.getMaintenanceIntervalMicros()) * 2);
 
-            // ping every service we created to see if they can be resumed
+            // ping every service we created to see if they can be started
             TestContext getCtx = this.host.testCreate(states.size());
             for (URI u : states.keySet()) {
                 Operation get = Operation.createGet(u).setCompletion((o, e) -> {
@@ -2080,7 +2035,7 @@ public class TestServiceHost {
             }
 
             TestContext ctxDelete = this.host.testCreate(states.size());
-            // periodically, delete services we created (and likely paused) several passes ago
+            // periodically, delete services we created (and likely stopped) several passes ago
             for (int i = 0; i < states.size(); i++) {
                 String childPath = UriUtils.buildUriPath(factoryURI.getPath(), prefix + ""
                         + (selfLinkCounter.get() - limit + i));
@@ -2091,73 +2046,7 @@ public class TestServiceHost {
                 this.host.send(delete);
             }
             ctxDelete.await();
-
-            File indexDir = new File(this.host.getStorageSandbox());
-            indexDir = new File(indexDir, ServiceContextIndexService.FILE_PATH);
-            long fileCount = Files.list(indexDir.toPath()).count();
-            this.host.log("Paused file count %d", fileCount);
         }
-    }
-
-    private void deletePausedFiles() throws IOException {
-        File indexDir = new File(this.host.getStorageSandbox());
-        indexDir = new File(indexDir, ServiceContextIndexService.FILE_PATH);
-        if (!indexDir.exists()) {
-            return;
-        }
-        AtomicInteger count = new AtomicInteger();
-        Files.list(indexDir.toPath()).forEach((p) -> {
-            try {
-                Files.deleteIfExists(p);
-                count.incrementAndGet();
-            } catch (Exception e) {
-
-            }
-        });
-        this.host.log("Deleted %d files", count.get());
-    }
-
-    private void verifyPauseResumeStats(Map<URI, ExampleServiceState> states) throws Throwable {
-        // Let's now query stats for each service. We will use these stats to verify that the
-        // services did get paused and resumed.
-        WaitHandler wh = () -> {
-            int totalServicePauseResumeOrAbort = 0;
-            int pauseCount = 0;
-            List<URI> statsUris = new ArrayList<>();
-            // Verify the stats for each service show that the service was paused and resumed
-            for (ExampleServiceState st : states.values()) {
-                URI serviceUri = UriUtils.buildStatsUri(this.host, st.documentSelfLink);
-                statsUris.add(serviceUri);
-            }
-
-            Map<URI, ServiceStats> statsPerService = this.host.getServiceState(null,
-                    ServiceStats.class, statsUris);
-            for (ServiceStats serviceStats : statsPerService.values()) {
-                ServiceStat pauseStat = serviceStats.entries.get(Service.STAT_NAME_PAUSE_COUNT);
-                ServiceStat resumeStat = serviceStats.entries.get(Service.STAT_NAME_RESUME_COUNT);
-                ServiceStat abortStat = serviceStats.entries
-                        .get(PauseExampleService.STAT_NAME_ABORT_COUNT);
-                if (abortStat == null && pauseStat == null && resumeStat == null) {
-                    return false;
-                }
-                if (pauseStat != null) {
-                    pauseCount += pauseStat.latestValue;
-                }
-                totalServicePauseResumeOrAbort++;
-            }
-
-            if (totalServicePauseResumeOrAbort < states.size() || pauseCount == 0) {
-                this.host.log(
-                        "ManagementSvc total pause + resume or abort was less than service count."
-                                + "Abort,Pause,Resume: %d, pause:%d (service count: %d)",
-                        totalServicePauseResumeOrAbort, pauseCount, states.size());
-                return false;
-            }
-
-            this.host.log("Pause count: %d", pauseCount);
-            return true;
-        };
-        this.host.waitFor("Service stats did not get updated", wh);
     }
 
     @Test
@@ -2196,23 +2085,6 @@ public class TestServiceHost {
         this.host.waitFor(
                 "Service stats did not get updated",
                 () -> {
-                    int pausedCount = 0;
-
-                    Map<URI, ServiceStats> allStats = this.host.getServiceState(null,
-                            ServiceStats.class, statsUris);
-                    for (ServiceStats sStats : allStats.values()) {
-                        ServiceStat pauseStat = sStats.entries.get(Service.STAT_NAME_PAUSE_COUNT);
-                        if (pauseStat != null && pauseStat.latestValue > 0) {
-                            pausedCount++;
-                        }
-                    }
-
-                    if (pausedCount < this.serviceCount) {
-                        this.host.log("Paused Count %d is less than expected %d", pausedCount,
-                                this.serviceCount);
-                        return false;
-                    }
-
                     Map<String, ServiceStat> stats = this.host.getServiceStats(this.host
                             .getManagementServiceUri());
 
@@ -2252,7 +2124,6 @@ public class TestServiceHost {
                         .createPatch(UriUtils.buildUri(this.host, st.documentSelfLink))
                         .setCompletion((o, e) -> {
                             if (e != null) {
-                                logPausedFiles();
                                 ctx.fail(e);
                                 return;
                             }
@@ -2262,18 +2133,6 @@ public class TestServiceHost {
             }
         }
         this.host.testWait(ctx);
-    }
-
-    private void logPausedFiles() {
-        File sandBox = new File(this.host.getStorageSandbox());
-        File serviceContextIndex = new File(sandBox, ServiceContextIndexService.FILE_PATH);
-        try {
-            Files.list(serviceContextIndex.toPath()).forEach((p) -> {
-                this.host.log("%s", p);
-            });
-        } catch (IOException e) {
-            this.host.log(Level.WARNING, "%s", Utils.toString(e));
-        }
     }
 
     @Test
@@ -2496,103 +2355,6 @@ public class TestServiceHost {
             patch.setCompletion(ctx.getCompletion());
         }
         return patch;
-    }
-
-    @Test
-    public void onDemandLoadServicePauseWithSubscribersAndStats() throws Throwable {
-        setUp(false);
-        // Set memory limit very low to induce service pause/stop.
-        this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, 0.00001);
-
-        // Increase the maintenance interval to delay service pause/ stop.
-        this.host.setMaintenanceIntervalMicros(TimeUnit.SECONDS.toMicros(5));
-
-        Consumer<Operation> bodySetter = (o) -> {
-            ExampleServiceState body = new ExampleServiceState();
-            body.name = "prefix-" + UUID.randomUUID();
-            o.setBody(body);
-        };
-
-        // Create one OnDemandLoad Services
-        String factoryLink = OnDemandLoadFactoryService.create(this.host);
-        Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(
-                null,
-                this.serviceCount,
-                ExampleServiceState.class,
-                bodySetter,
-                UriUtils.buildUri(this.host, factoryLink));
-
-        TestContext ctx = this.host.testCreate(this.serviceCount);
-        TestContext notifyCtx = this.host.testCreate(this.serviceCount * 2);
-        notifyCtx.setTestName("notifications");
-
-        // Subscribe to created services
-        ctx.setTestName("Subscriptions").logBefore();
-        for (URI serviceUri : states.keySet()) {
-            Operation subscribe = Operation.createPost(serviceUri)
-                    .setCompletion(ctx.getCompletion())
-                    .setReferer(this.host.getReferer());
-
-            this.host.startReliableSubscriptionService(subscribe, (notifyOp) -> {
-                notifyOp.complete();
-                notifyCtx.completeIteration();
-            });
-        }
-        this.host.testWait(ctx);
-        ctx.logAfter();
-
-        TestContext firstPatchCtx = this.host.testCreate(this.serviceCount);
-        firstPatchCtx.setTestName("Initial patch").logBefore();
-        // do a PATCH, to trigger a notification
-        for (URI serviceUri : states.keySet()) {
-            ExampleServiceState st = new ExampleServiceState();
-            st.name = "firstPatch";
-            Operation patch = Operation
-                    .createPatch(serviceUri)
-                    .setBody(st)
-                    .setCompletion(firstPatchCtx.getCompletion());
-            this.host.send(patch);
-        }
-        this.host.testWait(firstPatchCtx);
-        firstPatchCtx.logAfter();
-
-        // Let's change the maintenance interval to low so that the service pauses.
-        this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
-
-        this.host.log("Waiting for service pauses after reduced maint. interval");
-        // Wait for the service to get paused.
-        this.host.waitFor("Service failed to pause",
-                () -> {
-                    for (URI uri : states.keySet()) {
-                        if (this.host.getServiceStage(uri.getPath()) != null) {
-                            return false;
-                        }
-                    }
-                    return true;
-                });
-
-        // do a PATCH, after pause, to trigger a resume and another notification
-        TestContext patchCtx = this.host.testCreate(this.serviceCount);
-        patchCtx.setTestName("second patch, post pause").logBefore();
-        for (URI serviceUri : states.keySet()) {
-            ExampleServiceState st = new ExampleServiceState();
-            st.name = "firstPatch";
-
-            Operation patch = Operation
-                    .createPatch(serviceUri)
-                    .setBody(st)
-                    .setCompletion(patchCtx.getCompletion());
-            this.host.send(patch);
-        }
-
-        // wait for PATCHs
-        this.host.testWait(patchCtx);
-        patchCtx.logAfter();
-
-        // Wait for all the patch notifications. This will exit only
-        // when both notifications have been received.
-        notifyCtx.logBefore();
-        this.host.testWait(notifyCtx);
     }
 
     private ServiceStat getODLStopCountStat() throws Throwable {
@@ -2933,7 +2695,6 @@ public class TestServiceHost {
             return;
         }
 
-        deletePausedFiles();
         this.host.tearDown();
     }
 
