@@ -55,7 +55,6 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinWorkerThread;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
@@ -762,16 +761,31 @@ public class ServiceHost implements ServiceRequestSender {
             this.serviceScheduledExecutor.shutdownNow();
         }
 
+        // for request processing
         this.executor = new ForkJoinPool(Utils.DEFAULT_THREAD_COUNT, (pool) -> {
             ForkJoinWorkerThread res = ForkJoinPool.defaultForkJoinWorkerThreadFactory.newThread(pool);
             res.setName(getUri() + "/" + res.getName());
             return res;
         }, null, false);
 
+        // for core service maintenance, retry logic, etc
         this.scheduledExecutor = Executors.newScheduledThreadPool(Utils.DEFAULT_THREAD_COUNT,
                 r -> new Thread(r, getUri().toString() + "/scheduled/" + this.state.id));
 
-        this.serviceScheduledExecutor = Executors.newScheduledThreadPool(
+        // for non-core maintenance, user scheduled tasks, etc.
+        this.serviceScheduledExecutor = constructScheduledExecutor();
+    }
+
+    /**
+     * Create a {@link ScheduledExecutorService} that is used for performing service maintenance, user scheduled task, etc.
+     *
+     * Subclass can override this method to configure the executor
+     * e.g.: set cancellation policy
+     *
+     * @return a scheduled executor
+     */
+    protected ScheduledExecutorService constructScheduledExecutor() {
+        return Executors.newScheduledThreadPool(
                 Utils.DEFAULT_THREAD_COUNT / 2,
                 r -> new Thread(r, getUri().toString() + "/service-scheduled/" + this.state.id));
     }
@@ -1381,12 +1395,8 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     public ExecutorService allocateExecutor(Service s, int threadCount) {
-        return Executors.newFixedThreadPool(threadCount, new ThreadFactory() {
-            @Override
-            public Thread newThread(Runnable r) {
-                return new Thread(r, s.getUri() + "/" + Utils.getSystemNowMicrosUtc());
-            }
-        });
+        return Executors.newFixedThreadPool(threadCount, r ->
+                new Thread(r, s.getUri() + "/" + Utils.getSystemNowMicrosUtc()));
     }
 
     public ServiceHost start() throws Throwable {
