@@ -2,6 +2,11 @@
 
 ## 1.5.5-SNAPSHOT
 
+* Removed service pause/resume, as the marginal value over stop/start does not
+  justify the increased complexity. This includes a small change to the Service
+  interface: Service.setProcessingStage() now returns void instead of
+  ServiceRuntimeContext.
+
 * Fixed a bug whereby the wrong StatusCode was being returned through
   Operation.failActionNotSupported().  Instead of returning STATUS_CODE_BAD_METHOD
   (405) as in the code, it was being translated to (400) STATUS_CODE_BAD_REQUEST.
@@ -35,6 +40,13 @@
 * Added support for request logging that logs all inbound requests to a Service
   Host. Logging can be enabled or disabled during host start-up by calling
   ServiceHost.setRequestLoggingInfo OR by making a PATCH to ServiceHostManagementService.
+
+* Enable odata `$skip` support on factory get.
+  e.g.: 
+    /core/examples?$skip=5
+    /core/examples?$skip=5&$limit=10
+    /core/examples?$skip=5&$top=2
+
 
 ## 1.5.4
 

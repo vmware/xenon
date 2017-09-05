@@ -1678,7 +1678,7 @@ public class TestLuceneDocumentIndexService {
     private void verifyOnDemandLoad(ServiceHost h) throws Throwable {
         this.host.log("ODL verification starting");
         // make sure on demand load does not have INSTRUMENTATION enabled since that
-        // will prevent stop: services will be paused instead
+        // will prevent stop
         String onDemandFactoryLink = OnDemandLoadFactoryService.create(h);
         URI factoryUri = UriUtils.buildUri(h, onDemandFactoryLink);
         ServiceDocumentQueryResult rsp = this.host.getFactoryState(factoryUri);
@@ -2263,7 +2263,7 @@ public class TestLuceneDocumentIndexService {
         doThroughputImmutablePost(stVersion, interleaveQueries, factoryUri);
 
         // similar test but with regular, mutable, example factory
-        double initialPauseCount = getHostPauseCount();
+        double initialStopCount = getHostStopCount();
         interleaveQueries = true;
         factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
@@ -2279,8 +2279,8 @@ public class TestLuceneDocumentIndexService {
         interleaveQueries = false;
         doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
 
-        double finalPauseCount = getHostPauseCount();
-        assertTrue(initialPauseCount == finalPauseCount);
+        double finalStopCount = getHostStopCount();
+        assertTrue(initialStopCount == finalStopCount);
     }
 
     @Test
@@ -2467,8 +2467,8 @@ public class TestLuceneDocumentIndexService {
         return factoryUri;
     }
 
-    private double getHostPauseCount() {
-        return getMgmtStat(ServiceHostManagementService.STAT_NAME_PAUSE_COUNT);
+    private double getHostStopCount() {
+        return getMgmtStat(ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT);
     }
 
     private double getHostODLStopCount() {

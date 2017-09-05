@@ -571,6 +571,13 @@ public class TestNodeGroupService {
         // kick-off synchronization and wait for it to finish
         startSynchronizationTaskAndWait(owner,
                 ExampleService.FACTORY_LINK, ExampleServiceState.class, 1L);
+        this.host.waitForReplicatedFactoryChildServiceConvergence(
+                getFactoriesPerNodeGroup(ExampleService.FACTORY_LINK),
+                exampleStatesPerSelfLink,
+                this.exampleStateConvergenceChecker,
+                exampleStatesPerSelfLink.size(),
+                0,
+                this.replicationFactor);
 
         // Verify all factories return exactly the same documentVersion and
         // documentEpoch for each service.
@@ -748,9 +755,6 @@ public class TestNodeGroupService {
         // kick-off synchronization state machine
         synchCtx = this.host.testCreate(1);
         synchPost.setCompletion(synchCtx.getCompletion());
-
-        // wait for synchronization task to finish
-        this.host.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(owner, factoryLink));
     }
 
     @Test

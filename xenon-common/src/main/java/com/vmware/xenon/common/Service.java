@@ -286,12 +286,6 @@ public interface Service extends ServiceRequestSender {
         AVAILABLE,
 
         /**
-         * Service is paused due to memory pressure. Its detached from the service host and its
-         * runtime context is persisted to disk.
-         */
-        PAUSED,
-
-        /**
          * Service is stopped and its resources have been released
          */
         STOPPED,
@@ -340,8 +334,6 @@ public interface Service extends ServiceRequestSender {
     static final String STAT_NAME_CACHE_CLEAR_COUNT = "stateCacheClearCount";
     static final String STAT_NAME_VERSION_CONFLICT_COUNT = "stateVersionConflictCount";
     static final String STAT_NAME_VERSION_IN_CONFLICT = "stateVersionInConflict";
-    static final String STAT_NAME_PAUSE_COUNT = "pauseCount";
-    static final String STAT_NAME_RESUME_COUNT = "resumeCount";
     static final String STAT_NAME_MAINTENANCE_DURATION = "maintenanceDuration";
     static final String STAT_NAME_SYNCH_TASK_RETRY_COUNT = "synchTaskRetryCount";
     static final String STAT_NAME_CHILD_SYNCH_FAILURE_COUNT = "childSynchFailureCount";
@@ -531,7 +523,7 @@ public interface Service extends ServiceRequestSender {
 
     void setOperationProcessingChain(OperationProcessingChain opProcessingChain);
 
-    ServiceRuntimeContext setProcessingStage(ProcessingStage initialized);
+    void setProcessingStage(ProcessingStage initialized);
 
     ServiceDocument setInitialState(Object state, Long initialVersion);
 

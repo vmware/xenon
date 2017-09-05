@@ -138,9 +138,7 @@ public final class ODataUtils {
 
         Integer skip = UriUtils.getODataSkipParamValue(op.getUri());
         if (skip != null) {
-            op.fail(new IllegalArgumentException(
-                    UriUtils.URI_PARAM_ODATA_SKIP + " is not supported, see skipto"));
-            return null;
+            task.querySpec.offset = skip;
         }
 
         Integer limit = UriUtils.getODataLimitParamValue(op.getUri());

@@ -88,8 +88,6 @@ public class UtilityService implements Service {
             register(Service.STAT_NAME_CACHE_CLEAR_COUNT);
             register(Service.STAT_NAME_VERSION_CONFLICT_COUNT);
             register(Service.STAT_NAME_VERSION_IN_CONFLICT);
-            register(Service.STAT_NAME_PAUSE_COUNT);
-            register(Service.STAT_NAME_RESUME_COUNT);
             register(Service.STAT_NAME_MAINTENANCE_DURATION);
             register(Service.STAT_NAME_SYNCH_TASK_RETRY_COUNT);
             register(Service.STAT_NAME_CHILD_SYNCH_FAILURE_COUNT);
@@ -191,8 +189,7 @@ public class UtilityService implements Service {
 
     private void handleAvailableRequest(Operation op) {
         if (op.getAction() == Action.GET) {
-            if (this.parent.getProcessingStage() != ProcessingStage.PAUSED
-                    && this.parent.getProcessingStage() != ProcessingStage.AVAILABLE) {
+            if (this.parent.getProcessingStage() != ProcessingStage.AVAILABLE) {
                 // processing stage takes precedence over isAvailable statistic
                 op.fail(Operation.STATUS_CODE_UNAVAILABLE);
                 return;
@@ -992,8 +989,8 @@ public class UtilityService implements Service {
     }
 
     @Override
-    public ServiceRuntimeContext setProcessingStage(ProcessingStage initialized) {
-        return null;
+    public void setProcessingStage(ProcessingStage initialized) {
+
     }
 
     @Override

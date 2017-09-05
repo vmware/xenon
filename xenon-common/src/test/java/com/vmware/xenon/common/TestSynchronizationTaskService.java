@@ -469,6 +469,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         consistentStateAfterOwnerStop(InMemoryExampleService.FACTORY_LINK);
     }
 
+    @Ignore("ODL synchronization is yet to be supported")
     @Test
     public void consistentStateAfterOwnerStopsODLService() throws Throwable {
         setUpMultiNode();
