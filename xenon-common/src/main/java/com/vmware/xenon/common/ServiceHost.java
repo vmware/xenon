@@ -5695,6 +5695,10 @@ public class ServiceHost implements ServiceRequestSender {
                 }
             }
 
+            if (!isAuthorized(s, null, get)) {
+                continue;
+            }
+
             r.documentLinks.add(path);
         }
         r.documentOwner = getId();

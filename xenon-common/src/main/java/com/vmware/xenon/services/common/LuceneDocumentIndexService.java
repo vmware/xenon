@@ -1266,6 +1266,36 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         if (!selfLink.endsWith(UriUtils.URI_WILDCARD_CHAR)) {
+
+            // TODO: document
+            if (get.isRemote() && getHost().isAuthorizationEnabled()) {
+                get.nestCompletion((op, ex) -> {
+                    if (ex != null) {
+                        get.fail(ex);
+                        return;
+                    }
+
+                    if (!op.hasBody()) {
+                        // when there is no matching
+                        get.complete();
+                        return;
+                    }
+
+                    // evaluate whether the matched document is authorized for the user
+                    ServiceDocument doc = op.getBody(ServiceDocument.class);
+                    QueryFilter queryFilter = get.getAuthorizationContext().getResourceQueryFilter(Action.GET);
+                    if (queryFilter == null) {
+                        // do not match anything
+                        queryFilter = QueryFilter.FALSE;
+                    }
+                    if (!QueryFilterUtils.evaluate(queryFilter, doc, getHost())) {
+                        get.fail(Operation.STATUS_CODE_FORBIDDEN);
+                        return;
+                    }
+                    get.complete();
+                });
+            }
+
             // Most basic query is retrieving latest document at latest version for a specific link
             queryIndexSingle(selfLink, get, version);
             return;
