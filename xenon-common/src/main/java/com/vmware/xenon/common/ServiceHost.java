@@ -3158,6 +3158,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         AuthorizationContext ctx = op.getAuthorizationContext();
         if (ctx == null) {
+            log(Level.INFO, String.format("request to %s with null auth context", service.getSelfLink()));
             return false;
         }
 
@@ -3185,6 +3186,7 @@ public class ServiceHost implements ServiceRequestSender {
             ServiceDocumentDescription documentDescription = buildDocumentDescription(service);
             QueryFilter queryFilter = ctx.getResourceQueryFilter(op.getAction());
             if (queryFilter == null || !queryFilter.evaluate(document, documentDescription)) {
+                log(Level.INFO, String.format("request to %s with invalid auth context %s", service.getSelfLink(), ctx.getClaims().getSubject()));
                 return false;
             }
         } catch (Exception e) {
@@ -3813,6 +3815,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         Long expirationTime = claims.getExpirationTime();
         if (expirationTime != null && TimeUnit.SECONDS.toMicros(expirationTime) <= Utils.getSystemNowMicrosUtc()) {
+            log(Level.INFO, "Token expired for %s", claims.getSubject());
             synchronized (this.state) {
                 this.authorizationContextCache.remove(token);
                 this.userLinkToTokenMap.remove(claims.getSubject());
