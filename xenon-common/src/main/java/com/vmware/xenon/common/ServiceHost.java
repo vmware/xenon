@@ -5397,6 +5397,13 @@ public class ServiceHost implements ServiceRequestSender {
                 }
             }
 
+            // For wildcard search on index-service(e.g.: "/core/document-index?documentSelfLink=/core/examples/*"),
+            // when there is no matching in data store, it also searches available services on the host.
+            // To reflect the authorization, need to check the found service here.
+            if (!isAuthorized(s, null, get)) {
+                continue;
+            }
+
             r.documentLinks.add(path);
         }
         r.documentOwner = getId();

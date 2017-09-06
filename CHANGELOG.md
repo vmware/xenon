@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 1.3.7-CR1
+
+* Enforce auth check for remote GET access on document-index service
+
+
 ## 1.3.7
 
 * For factories using setUseBodyForSelfLink, FactoryService will

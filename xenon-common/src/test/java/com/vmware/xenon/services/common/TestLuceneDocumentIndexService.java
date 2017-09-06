@@ -25,6 +25,7 @@ import java.net.URI;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
@@ -78,10 +79,12 @@ import com.vmware.xenon.common.TestResults;
 import com.vmware.xenon.common.TestUtilityService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.test.AuthTestUtils;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.TestRequestSender;
+import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryTask.Query;
@@ -271,6 +274,8 @@ public class TestLuceneDocumentIndexService {
                 LuceneDocumentIndexService.DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH);
         LuceneDocumentIndexService
                 .setExpiredDocumentSearchThreshold(this.expiredDocumentSearchThreshold);
+
+        TestRequestSender.clearAuthToken();
     }
 
     @Test
@@ -3211,4 +3216,128 @@ public class TestLuceneDocumentIndexService {
         }
         return state;
     }
+
+    @Test
+    public void authVisibilityOnRemoteGetOperation() throws Throwable {
+        setUpHost(true);
+
+        // create following users with following authorizations:
+        //   foo:  /core/examples/doc-foo
+        //   bar:  /core/examples/doc-bar
+        //   baz:  ExampleServiceState kind
+
+        TestContext waitContext = new TestContext(3, Duration.ofSeconds(30));
+        String usernameFoo = "foo@vmware.com";
+        String usernameBar = "bar@vmware.com";
+        String usernameBaz = "baz@vmware.com";
+        String selfLinkDocFoo = "/doc-foo";
+        String selfLinkDocBar = "/doc-bar";
+        AuthorizationSetupHelper fooBuilder = AuthorizationSetupHelper.create()
+                .setHost(this.host)
+                .setUserSelfLink(usernameFoo)
+                .setUserEmail(usernameFoo)
+                .setUserPassword("password")
+                .setDocumentLink(ExampleService.FACTORY_LINK + selfLinkDocFoo)
+                .setCompletion(waitContext.getCompletion());
+        AuthorizationSetupHelper barBuilder = AuthorizationSetupHelper.create()
+                .setHost(this.host)
+                .setUserSelfLink(usernameBar)
+                .setUserEmail(usernameBar)
+                .setUserPassword("password")
+                .setDocumentLink(ExampleService.FACTORY_LINK + selfLinkDocBar)
+                .setCompletion(waitContext.getCompletion());
+        AuthorizationSetupHelper bazBuilder = AuthorizationSetupHelper.create()
+                .setHost(this.host)
+                .setUserSelfLink(usernameBaz)
+                .setUserEmail(usernameBaz)
+                .setUserPassword("password")
+                // since setDocumentKind() also checks the FIELD_NAME_AUTH_PRINCIPAL_LINK, here create a custom query
+                // that ONLY check the document kind.
+                .setResourceQuery(
+                        Query.Builder.create()
+                                .addFieldClause(ServiceDocument.FIELD_NAME_KIND, Utils.buildKind(ExampleServiceState.class))
+                                .build()
+                )
+                .setCompletion(waitContext.getCompletion());
+
+        AuthTestUtils.setSystemAuthorizationContext(this.host);
+        fooBuilder.start();
+        barBuilder.start();
+        bazBuilder.start();
+        AuthTestUtils.resetAuthorizationContext(this.host);
+
+        waitContext.await();
+
+        TestRequestSender sender = new TestRequestSender(this.host);
+
+        // login as foo@vmware.com
+        String fooAuthToken = AuthTestUtils.loginAndSetToken(this.host, usernameFoo, "password");
+
+        // create /core/examples/foo-doc
+        ExampleServiceState docFoo = new ExampleServiceState();
+        docFoo.name = "FOO";
+        docFoo.documentSelfLink = selfLinkDocFoo;
+        Operation post = Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(docFoo);
+        sender.sendAndWait(post);
+
+        // login as bar@vmware.com
+        String barAuthToken = AuthTestUtils.loginAndSetToken(this.host, usernameBar, "password");
+
+        // create /core/examples/bar-doc
+        ExampleServiceState docBar = new ExampleServiceState();
+        docBar.name = "BAR";
+        docBar.documentSelfLink = selfLinkDocBar;
+        post = Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(docBar);
+        sender.sendAndWait(post);
+
+        String pathToDocFoo = UriUtils.buildUriPath(ExampleService.FACTORY_LINK, selfLinkDocFoo);
+        String pathToDocBar = UriUtils.buildUriPath(ExampleService.FACTORY_LINK, selfLinkDocBar);
+        FailureResponse failureResponse;
+        ServiceDocumentQueryResult factoryResult;
+
+        //  behave as foo@vmware.com
+        TestRequestSender.setAuthToken(fooAuthToken);
+
+        // verify direct document get
+        sender.sendAndWait(Operation.createGet(this.host, pathToDocFoo).forceRemote());
+        failureResponse = sender.sendAndWaitFailure(Operation.createGet(this.host, pathToDocBar).forceRemote());
+        assertEquals(Operation.STATUS_CODE_FORBIDDEN, failureResponse.op.getStatusCode());
+
+        // verify factory get only returns authorized list of docs
+        Operation factoryGet = Operation.createGet(this.host, ExampleService.FACTORY_LINK);
+        factoryResult = sender.sendAndWait(factoryGet, ServiceDocumentQueryResult.class);
+        assertEquals(Long.valueOf(1), factoryResult.documentCount);
+        assertEquals(pathToDocFoo, factoryResult.documentLinks.get(0));
+
+
+        //  behave as bar@vmware.com
+        TestRequestSender.setAuthToken(barAuthToken);
+
+        // verify direct document get
+        failureResponse = sender.sendAndWaitFailure(Operation.createGet(this.host, pathToDocFoo).forceRemote());
+        assertEquals(Operation.STATUS_CODE_FORBIDDEN, failureResponse.op.getStatusCode());
+        sender.sendAndWait(Operation.createGet(this.host, pathToDocBar).forceRemote());
+
+        // verify factory get only returns authorized list of docs
+        factoryGet = Operation.createGet(this.host, ExampleService.FACTORY_LINK);
+        factoryResult = sender.sendAndWait(factoryGet, ServiceDocumentQueryResult.class);
+        assertEquals(Long.valueOf(1), factoryResult.documentCount);
+        assertEquals(pathToDocBar, factoryResult.documentLinks.get(0));
+
+
+        // login as baz@vmware.com
+        AuthTestUtils.loginAndSetToken(this.host, usernameBaz, "password");
+
+        // verify direct document get
+        sender.sendAndWait(Operation.createGet(this.host, pathToDocFoo).forceRemote());
+        sender.sendAndWait(Operation.createGet(this.host, pathToDocBar).forceRemote());
+
+        // verify factory get
+        factoryGet = Operation.createGet(this.host, ExampleService.FACTORY_LINK);
+        factoryResult = sender.sendAndWait(factoryGet, ServiceDocumentQueryResult.class);
+        assertEquals(Long.valueOf(2), factoryResult.documentCount);
+        assertTrue(pathToDocFoo + " should be visible", factoryResult.documentLinks.contains(pathToDocFoo));
+        assertTrue(pathToDocBar + " should be visible", factoryResult.documentLinks.contains(pathToDocBar));
+    }
+
 }
