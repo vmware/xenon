@@ -311,6 +311,7 @@ public final class BasicAuthenticationUtils {
                 if (expirationTime != null
                         && TimeUnit.SECONDS.toMicros(expirationTime)
                         <= Utils.getSystemNowMicrosUtc()) {
+                    service.logFine("Token expired for %s", claims.getSubject());
                     AuthorizationContext guestCtx = service
                             .getAuthorizationContextForSubject(GuestUserService.SELF_LINK);
                     claims = guestCtx.getClaims();
