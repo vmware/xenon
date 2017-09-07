@@ -968,15 +968,19 @@ public class MigrationTaskService extends StatefulService {
                     Collection<Object> docs = queryTask.results.documents.values();
                     int totalFetched = docs.size();
                     int ownerMissMatched = 0;
-
+                    logInfo(String.format("queryTask owner %s", queryTask.results.documentOwner));
                     for (Object doc : docs) {
                         ServiceDocument document = Utils.fromJson(doc, ServiceDocument.class);
                         String documentOwner = document.documentOwner;
                         if (documentOwner == null) {
                             documentOwner = queryTask.results.documentOwner;
+                            logWarning(String.format("link: %s version: %d null owner, assigned query task owner %s",
+                                    document.documentSelfLink, document.documentVersion, documentOwner));
                         }
 
                         if (documentOwner.equals(queryTask.results.documentOwner)) {
+                            logInfo(String.format("link: %s version: %d, owner match %s",
+                                    document.documentSelfLink, document.documentVersion, documentOwner));
                             results.add(doc);
 
                             // keep last processed document update time(max) in each host
@@ -997,6 +1001,8 @@ public class MigrationTaskService extends StatefulService {
                                 currentState.migratedSelfLinks.add(document.documentSelfLink);
                             }
                         } else {
+                            logWarning(String.format("link: %s, version %d, expected owner: %s actual owner: %s",
+                                    document.documentSelfLink, document.documentVersion, queryTask.results.documentOwner, documentOwner));
                             ownerMissMatched++;
 
                             // save selfLinks that were not selected due to own mismatch.
