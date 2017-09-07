@@ -19,6 +19,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -30,6 +31,7 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
@@ -120,6 +122,11 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
     @Test
     public void testDirectTask() {
         createExampleServices();
+        URI callBackQueryUri = UriUtils.buildDocumentQueryUri(
+                this.host, ServiceUriPaths.CORE_CALLBACKS + "/*", false, false, EnumSet.of(Service.ServiceOption.NONE));
+        // Get the current list of callbacks and compare it at the end to verify that new callbacks were cleaned.
+        ServiceDocumentQueryResult prevCallbacks =
+                this.sender.sendAndWait(Operation.createGet(callBackQueryUri), ServiceDocumentQueryResult.class);
 
         List<Operation> posts = new ArrayList<>();
         for (int i = 0; i < this.serviceCount; i++) {
@@ -160,6 +167,12 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
                 return false;
             }
             return true;
+        });
+
+        this.host.waitFor("callbacks never stopped", () -> {
+            ServiceDocumentQueryResult currentCallbacks =
+                    this.sender.sendAndWait(Operation.createGet(callBackQueryUri), ServiceDocumentQueryResult.class);
+            return currentCallbacks.documentLinks.size() <= prevCallbacks.documentLinks.size();
         });
     }
 
