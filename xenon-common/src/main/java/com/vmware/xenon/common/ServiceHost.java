@@ -2231,8 +2231,9 @@ public class ServiceHost implements ServiceRequestSender {
             }
         } else {
             if (notificationTargetSelfLink == null) {
+                String prefix = UriUtils.convertPathCharsFromLink(UriUtils.getParentPath(subscribe.getUri().getPath()));
                 notificationTargetSelfLink = UriUtils.buildUriPath(ServiceUriPaths.CORE_CALLBACKS,
-                        nextUUID());
+                        prefix + "-" + nextUUID());
             }
             if (request.usePublicUri) {
                 subscriptionUri = UriUtils.buildPublicUri(this, notificationTargetSelfLink);
