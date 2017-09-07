@@ -345,7 +345,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             };
 
             if (incrementEpoch) {
-                logInfo("Incrementing epoch from %d to %d for %s", bestPeerRsp.documentEpoch,
+                logFine("Incrementing epoch from %d to %d for %s", bestPeerRsp.documentEpoch,
                         bestPeerRsp.documentEpoch + 1, bestPeerRsp.documentSelfLink);
                 bestPeerRsp.documentEpoch += 1;
                 bestPeerRsp.documentVersion++;
@@ -409,7 +409,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 .setExpiration(Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(2)))
                 .setCompletion((o, e) -> {
                     if (e == null) {
-                        logInfo("Skipping %s , state identical with best state", o.getUri());
+                        logFine("Skipping %s , state identical with best state", o.getUri());
                         peerOp.complete();
                         return;
                     }

@@ -2,10 +2,19 @@
 
 ## 1.5.5-SNAPSHOT
 
+* Added JVM property - enableOdlSynchronization. If set as true, then
+  synchronization task will be triggered for ON_DEMAND_LOAD service
+  when node-group changed. Otherwise, warning message -
+  "No sync during node-group maintenance" will be shown.
+  By default, the property set as false.
+
 * Removed service pause/resume, as the marginal value over stop/start does not
   justify the increased complexity. This includes a small change to the Service
   interface: Service.setProcessingStage() now returns void instead of
   ServiceRuntimeContext.
+
+* Added SynchronizationManagementService service that provides an API to get
+  availability status of all factories in cluster from one place.
 
 * Fixed a bug whereby the wrong StatusCode was being returned through
   Operation.failActionNotSupported().  Instead of returning STATUS_CODE_BAD_METHOD
