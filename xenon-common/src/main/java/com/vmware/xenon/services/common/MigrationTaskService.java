@@ -862,6 +862,8 @@ public class MigrationTaskService extends StatefulService {
                     if (countQueryTask.querySpec.options.contains(QueryOption.INCLUDE_ALL_VERSIONS)) {
                         queryTask.querySpec.options.add(QueryOption.INCLUDE_ALL_VERSIONS);
                     }
+                    // only document owned by the source return
+                    queryTask.querySpec.options.add(QueryOption.OWNER_SELECTION);
 
                     queryTask.documentExpirationTimeMicros = documentExpirationTimeMicros;
 
