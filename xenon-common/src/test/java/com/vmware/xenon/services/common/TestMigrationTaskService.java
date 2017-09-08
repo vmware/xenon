@@ -45,7 +45,6 @@ import java.util.stream.Collectors;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.BasicReusableHostTestCase;
@@ -271,6 +270,14 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
     @After
     public void cleanUp() throws Throwable {
+
+        if (clearSourceAndDestInProcessPeers) {
+            this.host.tearDownInProcessPeers();
+            destinationHost.tearDownInProcessPeers();
+            clearSourceAndDestInProcessPeers = false;
+            return;
+        }
+
         for (VerificationHost host : this.host.getInProcessHostMap().values()) {
             checkReusableHostAndCleanup(host);
         }
@@ -289,11 +296,6 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
             host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
         }
 
-        if (clearSourceAndDestInProcessPeers) {
-            this.host.tearDownInProcessPeers();
-            destinationHost.tearDownInProcessPeers();
-            clearSourceAndDestInProcessPeers = false;
-        }
     }
 
     @AfterClass
@@ -947,7 +949,6 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                 ExampleServiceState.class, uris);
     }
 
-    @Ignore("https://www.pivotaltracker.com/story/show/150063470")
     @Test
     public void failMigrationWithDocumentOwnerMismatch() throws Throwable {
         // this test dirties destination host, requires clean up
@@ -996,10 +997,11 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         out[0] = getDestinationHost().getTestRequestSender().sendAndWait(op).getBody(State.class).documentSelfLink;
 
         // Wait for the migration task to fail
-        State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
+        VerificationHost d = getDestinationHost();
+        State waitForServiceCompletion = waitForServiceCompletion(out[0], d);
         assertEquals(waitForServiceCompletion.taskInfo.stage, TaskStage.FAILED);
 
-        ServiceStats stats = getStats(out[0], getDestinationHost());
+        ServiceStats stats = getStats(out[0], d);
         long ownerMismatchedDocuments = (long)stats.entries.get(MigrationTaskService.STAT_NAME_OWNER_MISMATCH_COUNT).latestValue;
         assertTrue(ownerMismatchedDocuments > 0);
     }
