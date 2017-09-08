@@ -1526,8 +1526,8 @@ public class MigrationTaskService extends StatefulService {
         State patch = new State();
         patch.taskInfo = TaskState.createAsFinished();
         if (lastUpdateTimesPerOwner != null) {
-            // pick the smallest(min) among the hosts(documentOwner)
-            patch.latestSourceUpdateTimeMicros = lastUpdateTimesPerOwner.values().stream().min(Long::compare).orElse(0L);
+            // pick the largest(max) among the hosts(documentOwner)
+            patch.latestSourceUpdateTimeMicros = lastUpdateTimesPerOwner.values().stream().max(Long::compare).orElse(0L);
         }
         Operation.createPatch(getUri()).setBody(patch).sendWith(this);
     }
