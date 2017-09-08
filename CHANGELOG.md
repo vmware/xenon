@@ -8,6 +8,11 @@
   "No sync during node-group maintenance" will be shown.
   By default, the property set as false.
 
+* Breaking change that restricts users from creating service document with '/' in
+  its document Id.
+
+  https://www.pivotaltracker.com/story/show/150904484
+
 * Removed service pause/resume, as the marginal value over stop/start does not
   justify the increased complexity. This includes a small change to the Service
   interface: Service.setProcessingStage() now returns void instead of

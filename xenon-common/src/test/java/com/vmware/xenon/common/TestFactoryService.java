@@ -1132,7 +1132,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         idempotentPostReturnsUpdatedOpBody();
         checkDerivedSelfLinkWhenProvidedSelfLinkIsJustASuffix();
         checkDerivedSelfLinkWhenProvidedSelfLinkAlreadyContainsAPath();
-        checkDerivedSelfLinkWhenProvidedSelfLinkLooksLikeItContainsAPathButDoesnt();
+        failPostWhenProvidedSelfLinkContainsUriPathChar();
         this.host.testWait();
     }
 
@@ -1472,7 +1472,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
 
     private void checkDerivedSelfLinkWhenProvidedSelfLinkIsJustASuffix() throws Throwable {
         SomeDocument doc = new SomeDocument();
-        doc.documentSelfLink = "freddy/x1";
+        doc.documentSelfLink = "freddy-x1";
 
         this.host.send(Operation.createPost(this.factoryUri)
                 .setBody(doc)
@@ -1485,7 +1485,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
                     String selfLink = o.getBody(SomeDocument.class).documentSelfLink;
                     URI opUri = o.getUri();
 
-                    String expectedPath = "/subpath/fff/freddy/x1";
+                    String expectedPath = "/subpath/fff/freddy-x1";
                     try {
                         assertEquals(expectedPath, selfLink);
                         assertEquals(UriUtils.buildUri(this.host, expectedPath), opUri);
@@ -1498,7 +1498,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
 
     private void checkDerivedSelfLinkWhenProvidedSelfLinkAlreadyContainsAPath() throws Throwable {
         SomeDocument doc = new SomeDocument();
-        doc.documentSelfLink = "/subpath/fff/freddy/x2";
+        doc.documentSelfLink = "/subpath/fff/freddy-x2";
 
         this.host.send(Operation.createPost(this.factoryUri)
                 .setBody(doc)
@@ -1511,7 +1511,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
                     String selfLink = o.getBody(SomeDocument.class).documentSelfLink;
                     URI opUri = o.getUri();
 
-                    String expectedPath = "/subpath/fff/freddy/x2";
+                    String expectedPath = "/subpath/fff/freddy-x2";
                     try {
                         assertEquals(expectedPath, selfLink);
                         assertEquals(UriUtils.buildUri(this.host, expectedPath), opUri);
@@ -1522,30 +1522,20 @@ public class TestFactoryService extends BasicReusableHostTestCase {
                 }));
     }
 
-    private void checkDerivedSelfLinkWhenProvidedSelfLinkLooksLikeItContainsAPathButDoesnt()
+    private void failPostWhenProvidedSelfLinkContainsUriPathChar()
             throws Throwable {
         SomeDocument doc = new SomeDocument();
-        doc.documentSelfLink = "/subpath/fffreddy/x3";
+        doc.documentSelfLink = "reddy/x3";
 
         this.host.send(Operation.createPost(this.factoryUri)
                 .setBody(doc)
                 .setCompletion((o, e) -> {
                     if (e != null) {
-                        this.host.failIteration(e);
+                        this.host.completeIteration();
                         return;
                     }
 
-                    String selfLink = o.getBody(SomeDocument.class).documentSelfLink;
-                    URI opUri = o.getUri();
-
-                    String expectedPath = "/subpath/fff/subpath/fffreddy/x3";
-                    try {
-                        assertEquals(expectedPath, selfLink);
-                        assertEquals(UriUtils.buildUri(this.host, expectedPath), opUri);
-                        this.host.completeIteration();
-                    } catch (Throwable e2) {
-                        this.host.failIteration(e2);
-                    }
+                    this.host.failIteration(new Throwable());
                 }));
     }
 
