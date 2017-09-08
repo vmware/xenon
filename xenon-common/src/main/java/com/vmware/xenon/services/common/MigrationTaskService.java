@@ -1063,6 +1063,7 @@ public class MigrationTaskService extends StatefulService {
                         QueryTask q = QueryTask.Builder.createDirectTask()
                                 .addOption(QueryOption.INCLUDE_ALL_VERSIONS)
                                 .addOption(QueryOption.EXPAND_CONTENT)
+                                .addOption(QueryOption.OWNER_SELECTION)
                                 .setQuery(qs)
                                 .setResultLimit(resultLimit)
                                 .orderAscending(ServiceDocument.FIELD_NAME_VERSION, TypeName.LONG)
