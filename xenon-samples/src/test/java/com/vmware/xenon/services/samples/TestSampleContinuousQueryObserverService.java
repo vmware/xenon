@@ -11,7 +11,7 @@
  * specific language governing permissions and limitations under the License.
  */
 
-package com.vmware.dcp.services.samples;
+package com.vmware.xenon.services.samples;
 
 import static com.vmware.xenon.common.test.TestContext.waitFor;
 
@@ -34,9 +34,7 @@ import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService;
-import com.vmware.xenon.services.samples.SampleContinuousQueryObserverService;
 import com.vmware.xenon.services.samples.SampleContinuousQueryObserverService.QueryObserverState;
-import com.vmware.xenon.services.samples.SamplePreviousEchoService;
 import com.vmware.xenon.services.samples.SamplePreviousEchoService.EchoServiceState;
 
 public class TestSampleContinuousQueryObserverService {

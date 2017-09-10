@@ -2231,8 +2231,9 @@ public class ServiceHost implements ServiceRequestSender {
             }
         } else {
             if (notificationTargetSelfLink == null) {
+                String prefix = UriUtils.convertPathCharsFromLink(UriUtils.getParentPath(subscribe.getUri().getPath()));
                 notificationTargetSelfLink = UriUtils.buildUriPath(ServiceUriPaths.CORE_CALLBACKS,
-                        nextUUID());
+                        prefix + "-" + nextUUID());
             }
             if (request.usePublicUri) {
                 subscriptionUri = UriUtils.buildPublicUri(this, notificationTargetSelfLink);
@@ -3158,6 +3159,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         AuthorizationContext ctx = op.getAuthorizationContext();
         if (ctx == null) {
+            log(Level.FINE, String.format("request to %s with null auth context", service.getSelfLink()));
             return false;
         }
 
@@ -3813,6 +3815,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         Long expirationTime = claims.getExpirationTime();
         if (expirationTime != null && TimeUnit.SECONDS.toMicros(expirationTime) <= Utils.getSystemNowMicrosUtc()) {
+            log(Level.FINE, "Token expired for %s", claims.getSubject());
             synchronized (this.state) {
                 this.authorizationContextCache.remove(token);
                 this.userLinkToTokenMap.remove(claims.getSubject());
@@ -5693,6 +5696,13 @@ public class ServiceHost implements ServiceRequestSender {
                 if (!path.equals(servicePath)) {
                     continue;
                 }
+            }
+
+            // For wildcard search on index-service(e.g.: "/core/document-index?documentSelfLink=/core/examples/*"),
+            // when there is no matching in data store, it also searches available services on the host.
+            // To reflect the authorization, need to check the found service here.
+            if (!isAuthorized(s, null, get)) {
+                continue;
             }
 
             r.documentLinks.add(path);

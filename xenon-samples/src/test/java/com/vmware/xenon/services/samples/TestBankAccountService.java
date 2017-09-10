@@ -11,7 +11,7 @@
  * specific language governing permissions and limitations under the License.
  */
 
-package com.vmware.dcp.services.samples;
+package com.vmware.xenon.services.samples;
 
 import static org.junit.Assert.assertEquals;
 
@@ -29,7 +29,6 @@ import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
-import com.vmware.xenon.services.samples.BankAccountService;
 import com.vmware.xenon.services.samples.BankAccountService.BankAccountServiceRequest;
 import com.vmware.xenon.services.samples.BankAccountService.BankAccountServiceState;
 

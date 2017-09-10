@@ -11,7 +11,7 @@
  * specific language governing permissions and limitations under the License.
  */
 
-package com.vmware.dcp.services.samples;
+package com.vmware.xenon.services.samples;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;

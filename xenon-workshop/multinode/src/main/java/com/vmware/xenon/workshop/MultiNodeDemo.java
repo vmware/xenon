@@ -133,7 +133,6 @@ public class MultiNodeDemo {
 
     public static void main(String[] stringArgs) throws Throwable {
         ServiceHost host = ServiceHost.create("--sandbox=/tmp/multinode/xenondb");
-        host.initialize(stringArgs);
         host.start();
         host.startDefaultCoreServicesSynchronously();
 

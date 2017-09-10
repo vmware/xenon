@@ -11,7 +11,7 @@
  * specific language governing permissions and limitations under the License.
  */
 
-package com.vmware.dcp.services.samples;
+package com.vmware.xenon.services.samples;
 
 import static org.junit.Assert.assertEquals;
 
@@ -25,21 +25,19 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.UriUtils;
-import com.vmware.xenon.services.samples.SamplePreviousEchoService;
 import com.vmware.xenon.services.samples.SamplePreviousEchoService.EchoServiceState;
 
-public class TestSamplePreviousEchoService extends BasicReusableHostTestCase {
+public class TestSampleSimpleEchoService extends BasicReusableHostTestCase {
 
     @Before
     public void prepare() throws Throwable {
-        this.host.startFactory(new SamplePreviousEchoService());
-        this.host.waitForServiceAvailable(SamplePreviousEchoService.FACTORY_LINK);
+        this.host.startFactory(new SampleSimpleEchoService());
+        this.host.waitForServiceAvailable(SampleSimpleEchoService.FACTORY_LINK);
     }
 
     @Test
     public void testState() throws Throwable {
-
-        URI factoryUri = UriUtils.buildFactoryUri(this.host, SamplePreviousEchoService.class);
+        URI factoryUri = UriUtils.buildFactoryUri(this.host, SampleSimpleEchoService.class);
         this.host.testStart(1);
         URI[] instanceURIs = new URI[1];
         EchoServiceState initialState = new EchoServiceState();
@@ -87,8 +85,8 @@ public class TestSamplePreviousEchoService extends BasicReusableHostTestCase {
         this.host.send(createPut);
         host.testWait();
 
-        // This should be equal to the *previous* state
+        // This should be equal to the current state
         currentState = this.host.getServiceState(null, EchoServiceState.class, instanceURIs[0]);
-        assertEquals(currentState.message, initialState.message);
+        assertEquals(currentState.message, newState.message);
     }
 }

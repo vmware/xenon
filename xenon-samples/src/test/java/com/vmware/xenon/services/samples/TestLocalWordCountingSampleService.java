@@ -11,7 +11,7 @@
  * specific language governing permissions and limitations under the License.
  */
 
-package com.vmware.dcp.services.samples;
+package com.vmware.xenon.services.samples;
 
 import java.net.URI;
 import java.util.Arrays;
@@ -27,13 +27,12 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.vmware.dcp.services.samples.MockDocumentsService.Document;
 import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.test.TestRequestSender;
-import com.vmware.xenon.services.samples.LocalWordCountingSampleService;
+import com.vmware.xenon.services.samples.MockDocumentsService.Document;
 import com.vmware.xenon.services.samples.WordCountingSampleService.WordCountsResponse;
 
 public class TestLocalWordCountingSampleService extends BasicReusableHostTestCase {

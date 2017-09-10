@@ -1266,6 +1266,41 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         if (!selfLink.endsWith(UriUtils.URI_WILDCARD_CHAR)) {
+
+            // Enforce auth check for the returning document for remote GET requests.
+            // This is mainly for the direct client requests to the index-service such as
+            // "/core/document-index?documentSelfLink=...".
+            // Some other core services also perform remote GET (e.g.: NodeSelectorSynchronizationService),
+            // but they populate appropriate auth context such as system-user.
+            // For non-wildcard selfLink request, auth check is performed as part of queryIndex().
+            if (get.isRemote() && getHost().isAuthorizationEnabled()) {
+                get.nestCompletion((op, ex) -> {
+                    if (ex != null) {
+                        get.fail(ex);
+                        return;
+                    }
+
+                    if (get.getAuthorizationContext().isSystemUser() || !op.hasBody()) {
+                        // when there is no matching document, we cannot evaluate the auth, thus simply complete.
+                        get.complete();
+                        return;
+                    }
+
+                    // evaluate whether the matched document is authorized for the user
+                    ServiceDocument doc = op.getBody(ServiceDocument.class);
+                    QueryFilter queryFilter = get.getAuthorizationContext().getResourceQueryFilter(Action.GET);
+                    if (queryFilter == null) {
+                        // do not match anything
+                        queryFilter = QueryFilter.FALSE;
+                    }
+                    if (!QueryFilterUtils.evaluate(queryFilter, doc, getHost())) {
+                        get.fail(Operation.STATUS_CODE_FORBIDDEN);
+                        return;
+                    }
+                    get.complete();
+                });
+            }
+
             // Most basic query is retrieving latest document at latest version for a specific link
             queryIndexSingle(selfLink, get, version);
             return;

@@ -11,7 +11,7 @@
  * specific language governing permissions and limitations under the License.
  */
 
-package com.vmware.dcp.services.samples;
+package com.vmware.xenon.services.samples;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -21,7 +21,6 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.test.VerificationHost;
-import com.vmware.xenon.services.samples.SampleBootstrapService;
 
 public class TestSampleBootstrapService extends BasicTestCase {
 

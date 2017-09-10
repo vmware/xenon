@@ -11,7 +11,7 @@
  * specific language governing permissions and limitations under the License.
  */
 
-package com.vmware.dcp.services.samples;
+package com.vmware.xenon.services.samples;
 
 
 import java.util.ArrayList;
@@ -36,8 +36,6 @@ import com.vmware.xenon.services.common.LuceneDocumentIndexService;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.ServiceUriPaths;
-import com.vmware.xenon.services.samples.SampleContinuousQueryWatchService;
-import com.vmware.xenon.services.samples.SamplePreviousEchoService;
 
 public class TestSampleContinuousQueryWatchService {
 

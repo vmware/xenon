@@ -369,13 +369,16 @@ public class TestBasicAuthenticationService extends BasicTestCase {
 
         // First Login
         headerVal = constructBasicAuth(USER, PASSWORD);
-        login(authServiceUri, headerVal, authToken, 1L);
-        oldAuthToken[0] = authToken[0];
 
-        // Verify token works
-        Operation op1 = Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(state);
-        addToken(op1, authToken[0], withCookie);
-        this.host.sendAndWaitExpectSuccess(op1);
+        // Verify token works if token not expired
+        this.host.waitFor("Token expired", () -> {
+            login(authServiceUri, headerVal, authToken, 1L);
+            oldAuthToken[0] = authToken[0];
+            Operation op = Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(state);
+            addToken(op, authToken[0], withCookie);
+            op = this.host.waitForResponse(op);
+            return  op.getStatusCode() == Operation.STATUS_CODE_OK;
+        });
 
         // Verify that without valid token user operation fails.
         Operation op2 = Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(state);
@@ -395,7 +398,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
         assertNotEquals(authToken[0], oldAuthToken[0]);
 
         // Verify new token works
-        op1 = Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(state);
+        Operation op1 = Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(state);
         addToken(op1, authToken[0], withCookie);
         this.host.sendAndWaitExpectSuccess(op1);
 

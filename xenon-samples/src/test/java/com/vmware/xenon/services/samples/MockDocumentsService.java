@@ -11,7 +11,7 @@
  * specific language governing permissions and limitations under the License.
  */
 
-package com.vmware.dcp.services.samples;
+package com.vmware.xenon.services.samples;
 
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
