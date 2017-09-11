@@ -66,6 +66,8 @@ public class ServiceStats extends ServiceDocument {
         public long binDurationMillis;
         public EnumSet<AggregationType> aggregationType;
 
+        public TimeSeriesStats();
+        
         public TimeSeriesStats(int numBins, long binDurationMillis,
                 EnumSet<AggregationType> aggregationType) {
             this.numBins = numBins;
