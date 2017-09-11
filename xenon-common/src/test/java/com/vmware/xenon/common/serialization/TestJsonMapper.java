@@ -14,12 +14,16 @@
 package com.vmware.xenon.common.serialization;
 
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import org.junit.Assert;
 import org.junit.Test;
 
+import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Builder;
@@ -64,5 +68,39 @@ public class TestJsonMapper {
             start.countDown();
             finish.await();
         }
+    }
+
+    @Test
+    public void testObjectValue() {
+
+        Map<String, Object> srcMap = new HashMap<>();
+
+        srcMap.put("str", "string");
+        //srcMap.put("int", 3);   // cannot map back to int, all ints mapped to long
+        srcMap.put("long", Long.MAX_VALUE);
+        srcMap.put("double", new Double(3.14));
+        srcMap.put("boolean", Boolean.TRUE);
+
+        // fields with null values are ignored by default in Gson but this can be overridden
+        // see https://sites.google.com/site/gson/gson-user-guide#TOC-Null-Object-Support
+        // srcMap.put("null", null);
+
+        String json = Utils.toJson(srcMap);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> dstMap = (Map<String, Object>) Utils.fromJson(json, ObjectMapTypeConverter.TYPE);
+
+        for (Map.Entry<String, Object> entry : srcMap.entrySet()) {
+            String key = entry.getKey();
+            Object srcValue = entry.getValue();
+            Assert.assertTrue("Missing key: " + key, dstMap.containsKey(key));
+            Object dstValue = dstMap.get(key);
+            if (srcValue != null) {
+                Assert.assertEquals(srcValue, dstValue);
+            } else {
+                Assert.assertNull(dstMap.get(key));
+            }
+        }
+
     }
 }

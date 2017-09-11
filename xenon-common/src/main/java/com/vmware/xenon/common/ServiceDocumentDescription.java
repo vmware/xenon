@@ -638,7 +638,8 @@ public class ServiceDocumentDescription {
                             if (!Modifier.isAbstract(clazz.getModifiers())) {
                                 example = (Map<Object,Object>)clazz.getConstructor((Class[])null).newInstance((Object[])null);
                             } else {
-                                example = new HashMap<>();
+                                // parent is abstract Map, probably Map or SortedMap
+                                example = new TreeMap<>();
                             }
                             example.put("example", refitValue(componentClass, fd.exampleValue));
                             pd.exampleValue = example;
@@ -757,14 +758,14 @@ public class ServiceDocumentDescription {
                                     Field f = fieldMap.get(entry.getKey());
                                     f.set(example, refitValue(f.getType(), entry.getValue().exampleValue));
                                 } catch (Exception ex) {
-                                    logger.log(Level.FINE, "Cannot initialize example field " + entry.getKey() +
-                                            " for " + pd.kind + ": " + ex.getMessage(), ex);
+                                    logger.log(Level.FINE, "Cannot initialize example field " + entry.getKey()
+                                            + " for " + pd.kind + ": " + ex.getMessage());
                                 }
                             });
 
                             pd.exampleValue = example;
                         } catch (Exception ex) {
-                            logger.log(Level.FINE, "Cannot initialize example for " + pd.kind + ": " + ex.getMessage(), ex);
+                            logger.log(Level.FINE, "Cannot initialize example for " + pd.kind + ": " + ex.getMessage());
                         }
                     }
                 }
