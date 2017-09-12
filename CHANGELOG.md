@@ -1,6 +1,8 @@
 # CHANGELOG
 
-## 1.5.5-SNAPSHOT
+## 1.5.6-SNAPSHOT
+
+## 1.5.5
 
 * Added JVM property - enableOdlSynchronization. If set as true, then
   synchronization task will be triggered for ON_DEMAND_LOAD service
@@ -63,6 +65,16 @@
 
 * Enforce auth check for remote GET access on document-index service
 
+* Added an optional system property,
+  `xenon.BasicAuthenticationService.UPPER_SESSION_LIMIT_SECONDS` to set a maximum session
+  duration when passing in `sessionExpirationSeconds` to BasicAuthenticationService
+  payload. If set, this will be the chosen maximum of any session duration (default or
+  set by consumer).
+
+* Removed the system property `xenon.BasicAuthenticationService.AUTH_TOKEN_EXPIRATION_MICROS`
+  in favour of `xenon.BasicAuthenticationService.AUTH_TOKEN_EXPIRATION_SECONDS` to keep
+  consistency with the new property.
+
 
 ## 1.5.4
 
@@ -70,6 +82,16 @@
   while migrating services that don't use ServiceOption ON_DEMAND_LOAD.
   This avoids cases when some stateful services fail to migrate due because
   of pending synchronization.
+
+* Add auto backup
+  When auto-backup is enabled, host performs incremental backup when underlying
+  document-index service persists document changes.
+  (for default `LuceneDocumentIndexService` service, it performs commit periodically)
+  The location is configurable by `autoBackup` host argument parameter.
+  To enable auto-backup, `isAutoBackupEnabled` argument is added for host start up.
+  Also, `/core/management` takes `AutoBackupConfiguration` patch request to toggle the
+  feature at run time.
+
 
 ## 1.5.3
 
@@ -98,15 +120,6 @@
 
 * ForkJoinPool threads owned by a ServiceHost are named like the host uri +
   the default name.
-
-* Add auto backup
-  When auto-backup is enabled, host performs incremental backup when underlying
-  document-index service persists document changes.
-  (for default `LuceneDocumentIndexService` service, it performs commit periodically)
-  The location is configurable by `autoBackup` host argument parameter.
-  To enable auto-backup, `isAutoBackupEnabled` argument is added for host start up.
-  Also, `/core/management` takes `AutoBackupConfiguration` patch request to toggle the
-  feature at run time.
 
 
 ## 1.5.2

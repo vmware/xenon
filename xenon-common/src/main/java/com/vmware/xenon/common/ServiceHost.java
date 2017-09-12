@@ -2744,7 +2744,7 @@ public class ServiceHost implements ServiceRequestSender {
                     ServiceDocument d = post.getBody(s.getStateType());
 
                     // preserve original update time for migration task
-                    if (!post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK)) {
+                    if (!post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK) && !post.isFromReplication()) {
                         d.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
                     }
                 }

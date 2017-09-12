@@ -353,6 +353,36 @@ public class TestExampleService {
 
         // validate get result...
         assertEquals("FOO", getResult.name);
+
+        QueryTask.Query q = QueryTask.Query.Builder.create()
+                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, getResult.documentSelfLink)
+                .build();
+        QueryTask queryTask = QueryTask.Builder.createDirectTask()
+                .addOption(QueryTask.QuerySpecification.QueryOption.EXPAND_CONTENT)
+                .setQuery(q)
+                .build();
+        ExampleServiceState d1 = Utils.fromJson(sender.sendAndWait(Operation.createPost(host1, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS)
+                .setBody(queryTask), QueryTask.class).results.documents.values().iterator().next(), ExampleServiceState.class);
+        ExampleServiceState d2 = Utils.fromJson(sender.sendAndWait(Operation.createPost(host2, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS)
+                .setBody(queryTask), QueryTask.class).results.documents.values().iterator().next(), ExampleServiceState.class);
+        assertEquals(getResult.documentUpdateTimeMicros, d1.documentUpdateTimeMicros);
+        assertEquals(getResult.documentUpdateTimeMicros, d2.documentUpdateTimeMicros);
+        assertEquals(getResult.documentVersion, d1.documentVersion);
+        assertEquals(getResult.documentVersion, d2.documentVersion);
+
+        //update
+        Operation put = Operation.createPut(peer, servicePath).setBody(body);
+        sender.sendAndWait(put, ExampleServiceState.class);
+        get = Operation.createGet(peer, servicePath);
+        getResult = sender.sendAndWait(get, ExampleServiceState.class);
+        d1 = Utils.fromJson(sender.sendAndWait(Operation.createPost(host1, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS)
+                .setBody(queryTask), QueryTask.class).results.documents.values().iterator().next(), ExampleServiceState.class);
+        d2 = Utils.fromJson(sender.sendAndWait(Operation.createPost(host2, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS)
+                .setBody(queryTask), QueryTask.class).results.documents.values().iterator().next(), ExampleServiceState.class);
+        assertEquals(getResult.documentUpdateTimeMicros, d1.documentUpdateTimeMicros);
+        assertEquals(getResult.documentUpdateTimeMicros, d2.documentUpdateTimeMicros);
+        assertEquals(getResult.documentVersion, d1.documentVersion);
+        assertEquals(getResult.documentVersion, d2.documentVersion);
     }
 
     @Test
