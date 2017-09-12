@@ -1093,19 +1093,18 @@ public class TestLuceneDocumentIndexService {
         MinimalTestServiceState body = new MinimalTestServiceState();
         body.id = "id";
         Operation post = Operation.createPost(factoryService.getUri()).setBody(body);
-        // should fail, missing ON_DEMAND_LOAD
-        this.host.sendAndWaitExpectFailure(post);
+        this.host.sendAndWaitExpectSuccess(post);
 
         post = Operation.createPost(factoryService.getUri()).setBody(body);
         factoryService.setChildServiceCaps(
-                EnumSet.of(ServiceOption.PERSISTENCE, ServiceOption.ON_DEMAND_LOAD,
+                EnumSet.of(ServiceOption.PERSISTENCE,
                         ServiceOption.IMMUTABLE, ServiceOption.PERIODIC_MAINTENANCE));
         // should fail, has PERIODIC_MAINTENANCE
         this.host.sendAndWaitExpectFailure(post);
 
         post = Operation.createPost(factoryService.getUri()).setBody(body);
         factoryService.setChildServiceCaps(
-                EnumSet.of(ServiceOption.PERSISTENCE, ServiceOption.ON_DEMAND_LOAD,
+                EnumSet.of(ServiceOption.PERSISTENCE,
                         ServiceOption.IMMUTABLE, ServiceOption.INSTRUMENTATION));
         // should fail, has INSTRUMENTATION
         this.host.sendAndWaitExpectFailure(post);
@@ -1682,21 +1681,11 @@ public class TestLuceneDocumentIndexService {
         String onDemandFactoryLink = OnDemandLoadFactoryService.create(h);
         URI factoryUri = UriUtils.buildUri(h, onDemandFactoryLink);
         ServiceDocumentQueryResult rsp = this.host.getFactoryState(factoryUri);
-        // verify that for every factory child reported by the index, through the GET (query), the service is NOT
-        // started
+
         assertEquals(this.serviceCount, rsp.documentLinks.size());
         List<URI> childUris = new ArrayList<>();
         for (String childLink : rsp.documentLinks) {
-            assertTrue(h.getServiceStage(childLink) == null);
             childUris.add(UriUtils.buildUri(h, childLink));
-        }
-
-        // explicitly trigger synchronization and verify on demand load services did NOT start
-        this.host.log("Triggering synchronization to verify on demand load is not affected");
-        h.scheduleNodeGroupChangeMaintenance(ServiceUriPaths.DEFAULT_NODE_SELECTOR);
-        Thread.sleep(TimeUnit.MICROSECONDS.toMillis(h.getMaintenanceIntervalMicros()) * 2);
-        for (String childLink : rsp.documentLinks) {
-            assertTrue(h.getServiceStage(childLink) == null);
         }
 
         int startCount = MinimalTestService.HANDLE_START_COUNT.get();
@@ -1747,7 +1736,6 @@ public class TestLuceneDocumentIndexService {
 
         for (ExampleServiceState s : childStates.values()) {
             assertTrue(s.name != null);
-            assertTrue(s.name.startsWith(prefix));
         }
 
         // mark a service for expiration, a few seconds in the future
@@ -1950,8 +1938,9 @@ public class TestLuceneDocumentIndexService {
                         }
                     }
                     if (count != beforeState.size()) {
-                        this.host.failIteration(new IllegalStateException("Unexpected result:"
-                                + Utils.toJsonHtml(r)));
+                        this.host.failIteration(new IllegalStateException(String.format(
+                                "Unexpected result: expected count: %d, actual count: %d",
+                                beforeState.size(), count)));
                     } else {
                         this.host.completeIteration();
                     }
@@ -2246,7 +2235,7 @@ public class TestLuceneDocumentIndexService {
     @Test
     public void throughputPost() throws Throwable {
         if (this.serviceCacheClearIntervalSeconds == 0) {
-            // effectively disable ODL stop/start behavior while running throughput tests
+            // effectively disable stop/start behavior while running throughput tests
             this.serviceCacheClearIntervalSeconds = TimeUnit.MICROSECONDS.toSeconds(
                     ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS);
         }
@@ -2263,7 +2252,6 @@ public class TestLuceneDocumentIndexService {
         doThroughputImmutablePost(stVersion, interleaveQueries, factoryUri);
 
         // similar test but with regular, mutable, example factory
-        double initialStopCount = getHostStopCount();
         interleaveQueries = true;
         factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
@@ -2278,9 +2266,6 @@ public class TestLuceneDocumentIndexService {
 
         interleaveQueries = false;
         doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
-
-        double finalStopCount = getHostStopCount();
-        assertTrue(initialStopCount == finalStopCount);
     }
 
     @Test
@@ -2342,28 +2327,6 @@ public class TestLuceneDocumentIndexService {
                 LuceneDocumentIndexService.STAT_NAME_RESULT_PROCESSING_DURATION_MICROS);
     }
 
-    private void logServiceStatHistogram(Map<String, ServiceStat> serviceStats, String statName) {
-        ServiceStat stat = serviceStats.get(statName + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR);
-        if (stat == null) {
-            return;
-        }
-        ServiceStats.ServiceStatLogHistogram logHistogram = stat.logHistogram;
-        if (logHistogram == null) {
-            return;
-        }
-
-        StringBuilder stringBuilder = new StringBuilder();
-        stringBuilder.append(String.format("Stat name: %s\n", statName));
-        for (int i = 0; i < 15; i++) {
-            stringBuilder.append(String.format("%15d: %8d (%.2f percent)\n",
-                    (long) Math.pow(10.0, i),
-                    logHistogram.bins[i],
-                    logHistogram.bins[i] * 100.0 / stat.version));
-        }
-
-        this.host.log(stringBuilder.toString());
-    }
-
     private long doThroughputImmutablePost(long statVersion, boolean interleaveQueries,
             URI immutableFactoryUri)
             throws Throwable {
@@ -2401,6 +2364,28 @@ public class TestLuceneDocumentIndexService {
         return afterVersionStat.version;
     }
 
+    private void logServiceStatHistogram(Map<String, ServiceStat> serviceStats, String statName) {
+        ServiceStat stat = serviceStats.get(statName + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR);
+        if (stat == null) {
+            return;
+        }
+        ServiceStats.ServiceStatLogHistogram logHistogram = stat.logHistogram;
+        if (logHistogram == null) {
+            return;
+        }
+
+        StringBuilder stringBuilder = new StringBuilder();
+        stringBuilder.append(String.format("Stat name: %s\n", statName));
+        for (int i = 0; i < 15; i++) {
+            stringBuilder.append(String.format("%15d: %8d (%.2f percent)\n",
+                    (long) Math.pow(10.0, i),
+                    logHistogram.bins[i],
+                    logHistogram.bins[i] * 100.0 / stat.version));
+        }
+
+        this.host.log(stringBuilder.toString());
+    }
+
     void prePopulateIndexWithServiceDocuments(URI factoryUri) throws Throwable {
         if (this.documentCountAtStart == 0) {
             return;
@@ -2414,18 +2399,27 @@ public class TestLuceneDocumentIndexService {
     }
 
     void verifyImmutableEagerServiceStop(URI factoryUri, int expectedStopCount) {
-        double initialStopCount = getHostODLStopCount();
+        ServiceDocumentQueryResult res = this.host.getFactoryState(factoryUri);
         double initialMaintCount = getMaintCount();
-        this.host.waitFor("eager ODL stop not seen", () -> {
+
+        this.host.waitFor("eager Immutable stop not seen", () -> {
             double maintCount = getMaintCount();
             if (maintCount <= initialMaintCount + 1) {
                 return false;
             }
-            double stopCount = getHostODLStopCount();
-            this.host.log("Stop count: %f, initial: %f, maint count delta: %f",
+
+            int stopCount = 0;
+            for (String link : res.documentLinks) {
+                ProcessingStage stage =  this.host.getServiceStage(link);
+                if (stage == null || stage == ProcessingStage.STOPPED) {
+                    stopCount++;
+                }
+            }
+
+            this.host.log("Stopped count: %d, maint count delta: %f",
                     stopCount,
-                    initialStopCount,
                     maintCount - initialMaintCount);
+
             boolean allStopped = stopCount >= expectedStopCount;
             if (!allStopped) {
                 return false;
@@ -2465,14 +2459,6 @@ public class TestLuceneDocumentIndexService {
 
         URI factoryUri = exampleFactory.getUri();
         return factoryUri;
-    }
-
-    private double getHostStopCount() {
-        return getMgmtStat(ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT);
-    }
-
-    private double getHostODLStopCount() {
-        return getMgmtStat(ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT);
     }
 
     private double getMaintCount() {
