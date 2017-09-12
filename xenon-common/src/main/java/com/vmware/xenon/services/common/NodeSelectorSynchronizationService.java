@@ -23,7 +23,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.vmware.xenon.common.Operation;
@@ -133,7 +132,6 @@ public class NodeSelectorSynchronizationService extends StatelessService {
 
         // we are going to broadcast a query (GET) to all peers, that should return
         // a document with the specified self link
-
         URI localQueryUri = UriUtils.buildDocumentQueryUri(
                 getHost(),
                 body.indexLink,
@@ -368,7 +366,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 if (!incrementEpoch && isVersionSame
                         && bestPeerRsp.getClass().equals(peerState.getClass())
                         && ServiceDocument.equals(request.stateDescription, bestPeerRsp, peerState)) {
-                    skipSynchOrStartServiceOnPeer(peerOp, peerState.documentSelfLink, request);
+                    peerOp.complete();
                     continue;
                 }
 
@@ -388,35 +386,6 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             logSevere(e);
             post.fail(e);
         }
-    }
-
-    /**
-     * The service state on the peer node is identical to best state. We should
-     * skip sending a synchronization POST, if the service is already started
-     */
-    private void skipSynchOrStartServiceOnPeer(Operation peerOp, String link, SynchronizePeersRequest request) {
-        // If the service is an ON_DEMAND_LOAD service, we don't bother trying to
-        // start it on the peer host. It will get started on-demand when a request comes in.
-        if (request.options.contains(ServiceOption.ON_DEMAND_LOAD)) {
-            peerOp.complete();
-            return;
-        }
-
-        Operation checkGet = Operation.createGet(UriUtils.buildUri(peerOp.getUri(), link))
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_FORWARDING)
-                .setConnectionSharing(true)
-                .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION)
-                .setExpiration(Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(2)))
-                .setCompletion((o, e) -> {
-                    if (e == null) {
-                        logFine("Skipping %s , state identical with best state", o.getUri());
-                        peerOp.complete();
-                        return;
-                    }
-                    // service does not seem to exist, issue POST to start it
-                    sendRequest(peerOp);
-                });
-        sendRequest(checkGet);
     }
 
     private Operation prepareSynchPostRequest(Operation post, SynchronizePeersRequest request,
