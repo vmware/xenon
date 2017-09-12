@@ -436,10 +436,6 @@ class ServiceResourceTracker {
         s.adjustStat(Service.STAT_NAME_CACHE_CLEAR_COUNT, 1);
         this.host.getManagementService().adjustStat(
                 ServiceHostManagementService.STAT_NAME_SERVICE_CACHE_CLEAR_COUNT, 1);
-        if (s.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-            this.host.getManagementService().adjustStat(
-                    ServiceHostManagementService.STAT_NAME_ODL_CACHE_CLEAR_COUNT, 1);
-        }
     }
 
     /**
@@ -490,9 +486,6 @@ class ServiceResourceTracker {
                 }
 
                 long cacheClearDelayMicros = hostState.serviceCacheClearDelayMicros;
-                if (ServiceHost.isServiceImmutable(service)) {
-                    cacheClearDelayMicros = 0;
-                }
 
                 if ((cacheClearDelayMicros + lastAccessTime) < now) {
                     // The cached entry is old and should be cleared.
@@ -533,10 +526,6 @@ class ServiceResourceTracker {
                 continue;
             }
 
-            if (!service.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                continue;
-            }
-
             if (this.host.isServiceStarting(service, service.getSelfLink())) {
                 continue;
             }
@@ -550,7 +539,7 @@ class ServiceResourceTracker {
 
             boolean hasSoftState = hasServiceSoftState(service);
             if (cacheCleared && !hasSoftState) {
-                // if it's an on-demand-load service with no subscribers or stats,
+                // if it's a service with no subscribers or stats,
                 // instead simply stop them when the service is idle.
                 stopServiceCount++;
                 stopService(service, false, null);
@@ -566,7 +555,7 @@ class ServiceResourceTracker {
             if (!cacheCleared) {
                 // if we're going to stop it, clear state from cache if not already cleared
                 clearCachedServiceState(service, null, null);
-                // and check again if ON_DEMAND_LOAD with no subscriptions, then we need to stop
+                // and check again if no subscriptions or stats, then we need to stop
                 if (!hasSoftState) {
                     stopServiceCount++;
                     stopService(service, false, null);
@@ -623,10 +612,6 @@ class ServiceResourceTracker {
             return true;
         }
 
-        if (!factoryService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-            return false;
-        }
-
         inboundOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
 
         String path = key;
@@ -657,10 +642,6 @@ class ServiceResourceTracker {
             return true;
         }
 
-        if (!parentService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-            return false;
-        }
-
         FactoryService factoryService = (FactoryService) parentService;
 
         String servicePath = inboundOp.getUri().getPath();
@@ -684,6 +665,9 @@ class ServiceResourceTracker {
         }
 
         if (!doProbe) {
+            this.host.log(Level.INFO, "Starting service %s on-demand due to %s %d (isFromReplication: %b, isSynchronized: %b)",
+                    finalServicePath, inboundOp.getAction(), inboundOp.getId(),
+                    inboundOp.isFromReplication(), inboundOp.isSynchronize());
             startServiceOnDemand(inboundOp, parentService, factoryService, finalServicePath);
             return true;
         }
@@ -709,6 +693,9 @@ class ServiceResourceTracker {
                     }
 
                     // service state exists, proceed with starting service
+                    this.host.log(Level.INFO, "Starting service %s on-demand due to %s %d (isFromReplication: %b, isSynchronized: %b)",
+                            finalServicePath, inboundOp.getAction(), inboundOp.getId(),
+                            inboundOp.isFromReplication(), inboundOp.isSynchronize());
                     startServiceOnDemand(inboundOp, parentService, factoryService,
                             finalServicePath);
                 });
@@ -743,13 +730,16 @@ class ServiceResourceTracker {
                 ServiceErrorResponse response = o.getErrorResponseBody();
 
                 if (response != null) {
-                    // Since we do a POST first for services using ON_DEMAND_LOAD to start the service,
+                    // Since we do a POST to start the service,
                     // we can get back a 409 status code i.e. the service has already been started or was
                     // deleted previously. Differentiate based on action, if we need to fail or succeed
                     if (response.statusCode == Operation.STATUS_CODE_CONFLICT) {
                         if (!ServiceHost.isServiceCreate(inboundOp)
                                 && response.errorCode == ServiceErrorResponse.ERROR_CODE_SERVICE_ALREADY_EXISTS) {
                             // service exists, action is not attempt to recreate, so complete as success
+                            this.host.log(Level.WARNING,
+                                    "Failed to start service %s because it already exists. Resubmitting request %s %d",
+                                    finalServicePath, inboundOp.getAction(), inboundOp.getId());
                             this.host.handleRequest(null, inboundOp);
                             return;
                         }
@@ -774,7 +764,7 @@ class ServiceResourceTracker {
                     }
 
                     // if the service we are trying to DELETE never existed, we swallow the 404 error.
-                    // This is for consistency in behavior with non ON_DEMAND_LOAD services.
+                    // This is for consistency in behavior with services already resident in memory.
                     if (inboundOp.getAction() == Action.DELETE &&
                             response.statusCode == Operation.STATUS_CODE_NOT_FOUND) {
                         inboundOp.complete();
@@ -799,6 +789,9 @@ class ServiceResourceTracker {
                 return;
             }
             // proceed with handling original client request, service now started
+            this.host.log(Level.WARNING,
+                    "Successfully started service %s. Resubmitting request %s %d",
+                    finalServicePath, inboundOp.getAction(), inboundOp.getId());
             this.host.handleRequest(null, inboundOp);
         };
 
@@ -832,8 +825,6 @@ class ServiceResourceTracker {
     void retryOnDemandLoadConflict(Operation op) {
 
         op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
-        String statName = ServiceHostManagementService.STAT_NAME_ODL_STOP_CONFLICT_COUNT;
-        this.host.getManagementService().adjustStat(statName, 1);
 
         this.host.log(Level.WARNING,
                 "ODL conflict: retrying %s (%d %s) on %s",
@@ -858,10 +849,6 @@ class ServiceResourceTracker {
     }
 
     private boolean hasServiceSoftState(Service service) {
-        if (!service.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-            return false;
-        }
-
         UtilityService subUtilityService = (UtilityService) service
                 .getUtilityService(ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS);
         UtilityService statsUtilityService = (UtilityService) service
