@@ -24,7 +24,6 @@ public class OnDemandLoadService extends StatefulService {
 
     public OnDemandLoadService() {
         super(ExampleService.ExampleServiceState.class);
-        super.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
     }
 
     @Override

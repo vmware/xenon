@@ -68,6 +68,12 @@ public class ReplicationTestService extends StatefulService {
             return;
         }
 
+        if (!startPost.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED)) {
+            // this is a restart
+            startPost.complete();
+            return;
+        }
+
         ReplicationTestServiceState initState = startPost
                 .getBody(ReplicationTestServiceState.class);
 

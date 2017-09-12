@@ -816,10 +816,9 @@ public class MigrationTaskService extends StatefulService {
                     // When source hosts are older version of xenon, factory config request may not contain childOptions.
                     // To support count query to use "INCLUDE_ALL_VERSIONS" in that case, here also checks user specified
                     // query options.
-                    // When retrieval query(user specified) contains INCLUDE_ALL_VERSIONS, or target data is immutable,
+                    // When retrieval query(user specified) contains INCLUDE_ALL_VERSIONS,
                     // add INCLUDE_ALL_VERSIONS to count query
-                    if (currentState.querySpec.options.contains(QueryOption.INCLUDE_ALL_VERSIONS)
-                            || factoryConfig.childOptions.contains(ServiceOption.IMMUTABLE)) {
+                    if (currentState.querySpec.options.contains(QueryOption.INCLUDE_ALL_VERSIONS)) {
                         // Use INCLUDE_ALL_VERSIONS speeds up count query for immutable docs
                         countQuery.querySpec.options.add(QueryOption.INCLUDE_ALL_VERSIONS);
                     }
@@ -991,17 +990,14 @@ public class MigrationTaskService extends StatefulService {
                             URI hostUri = getHostUri(op);
                             hostUriByResult.put(doc, hostUri);
 
-                            if (!currentState.factoryChildOptions.contains(ServiceOption.ON_DEMAND_LOAD)) {
-                                // save selfLinks that were selected for migration.
-                                currentState.nonMigratedSelfLinks.remove(document.documentSelfLink);
-                                currentState.migratedSelfLinks.add(document.documentSelfLink);
-                            }
+                            // save selfLinks that were selected for migration.
+                            currentState.nonMigratedSelfLinks.remove(document.documentSelfLink);
+                            currentState.migratedSelfLinks.add(document.documentSelfLink);
                         } else {
                             ownerMissMatched++;
 
                             // save selfLinks that were not selected due to own mismatch.
-                            if (!currentState.factoryChildOptions.contains(ServiceOption.ON_DEMAND_LOAD) &&
-                                    !currentState.migratedSelfLinks.contains(document.documentSelfLink)) {
+                            if (!currentState.migratedSelfLinks.contains(document.documentSelfLink)) {
                                 currentState.nonMigratedSelfLinks.add(document.documentSelfLink);
                             }
                         }

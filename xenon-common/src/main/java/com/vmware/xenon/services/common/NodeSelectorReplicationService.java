@@ -321,6 +321,8 @@ public class NodeSelectorReplicationService extends StatelessService {
         // We avoid retrying if the service is not started on the replica even after
         // retrying a few times.
         if (Utils.beforeNow(context.startTimeMicros + this.peerTimeoutMicros)) {
+            logWarning("Service %s not found on replica. Giving up on %s replication request ...",
+                    o.getUri().getPath(), op.getAction());
             return false;
         }
 
@@ -333,8 +335,8 @@ public class NodeSelectorReplicationService extends StatelessService {
                 this.handleReplicationCompletion(context, innerOp, innerEx));
 
         this.getHost().scheduleCore(() -> {
-            logWarning("Service %s not found on replica. Retrying replication request ...",
-                    o.getUri().getPath());
+            logWarning("Service %s not found on replica. Retrying %s replication request ...",
+                    o.getUri().getPath(), op.getAction());
             this.getHost().getClient().send(update);
         }, this.getHost().getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
 

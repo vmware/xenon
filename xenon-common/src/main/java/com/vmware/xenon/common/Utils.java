@@ -535,9 +535,6 @@ public final class Utils {
         case URI_NAMESPACE_OWNER:
             antiReqs = EnumSet.of(ServiceOption.PERSISTENCE, ServiceOption.REPLICATION);
             break;
-        case PERIODIC_MAINTENANCE:
-            antiReqs = EnumSet.of(ServiceOption.ON_DEMAND_LOAD, ServiceOption.IMMUTABLE);
-            break;
         case PERSISTENCE:
             break;
         case REPLICATION:
@@ -554,25 +551,11 @@ public final class Utils {
             break;
         case HTML_USER_INTERFACE:
             break;
-        case INSTRUMENTATION:
-            antiReqs = EnumSet.of(ServiceOption.IMMUTABLE);
-            break;
         case LIFO_QUEUE:
             break;
         case NONE:
             break;
         case UTILITY:
-            break;
-        case ON_DEMAND_LOAD:
-            if (!options.contains(ServiceOption.FACTORY)) {
-                reqs = EnumSet.of(ServiceOption.PERSISTENCE);
-            }
-            antiReqs = EnumSet.of(ServiceOption.PERIODIC_MAINTENANCE);
-            break;
-        case IMMUTABLE:
-            reqs = EnumSet.of(ServiceOption.ON_DEMAND_LOAD, ServiceOption.PERSISTENCE);
-            antiReqs = EnumSet.of(ServiceOption.PERIODIC_MAINTENANCE,
-                    ServiceOption.INSTRUMENTATION);
             break;
         case TRANSACTION_PENDING:
             break;
