@@ -2,6 +2,16 @@
 
 ## 1.5.5-SNAPSHOT
 
+* Deprecated ServiceOption.ON_DEMAND_LOAD. While the option still exists
+  it has not effect, and is marked @Deprecated to discourage applications
+  from using it. All indexed services are now eligible for on-demand
+  stop (under memory pressure) and on-demand start. The usual rules still
+  apply; specifically, a service needs to be inactive in order to be
+  eligible for stop. Inactivity threshold is measured as a factor of the
+  service maintenance interval. A service author can override its
+  maintenance interval as usual. The stop delay factor is a host setting
+  and can be overridden via ServiceHost.setServiceStopDelayFactor().  
+
 * Added JVM property - enableOdlSynchronization. If set as true, then
   synchronization task will be triggered for ON_DEMAND_LOAD service
   when node-group changed. Otherwise, warning message -
