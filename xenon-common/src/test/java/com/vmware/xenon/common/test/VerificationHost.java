@@ -122,6 +122,7 @@ import com.vmware.xenon.services.common.NodeState;
 import com.vmware.xenon.services.common.NodeState.NodeOption;
 import com.vmware.xenon.services.common.NodeState.NodeStatus;
 import com.vmware.xenon.services.common.QueryTask;
+import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
@@ -1155,10 +1156,28 @@ public class VerificationHost extends ExampleServiceHost {
 
         ServiceDocument doc = result.getBody(ServiceDocument.class);
         int expectedVersion = version == null ? latestVersion.intValue() : version.intValue();
-        assertEquals("Invalid document version returned", doc.documentVersion, expectedVersion);
+        assertEquals(localQueryUri + ": Invalid document version returned", doc.documentVersion, expectedVersion);
 
         String action = doc.documentUpdateAction;
-        assertEquals("Invalid document update action returned:" + action, expectedAction.name(),
+        // debug
+        if (!action.equals(expectedAction.name())) {
+            log("%s: Invalid document update action returned: %s (expected %s). Querying for all versions.",
+                    localQueryUri, action, expectedAction);
+            Query query = Query.Builder.create().addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, selfLink).build();
+            QueryTask queryTask = QueryTask.Builder.createDirectTask().setQuery(query).addOptions(
+                    EnumSet.of(QueryOption.INCLUDE_ALL_VERSIONS, QueryOption.INCLUDE_DELETED,
+                            QueryOption.EXPAND_CONTENT)).build();
+            Operation post = Operation.createPost(
+                    UriUtils.buildUri(hostUri, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS))
+                    .setBody(queryTask);
+            QueryTask rsp = this.sender.sendAndWait(post, QueryTask.class);
+            for (Entry<String, Object> e : rsp.results.documents.entrySet()) {
+                ServiceDocument sd = Utils.fromJson(e.getValue(), ExampleServiceState.class);
+                log("link: %s, version: %d, action: %s", sd.documentSelfLink, sd.documentVersion, sd.documentUpdateAction);
+            }
+        }
+        // end debug
+        assertEquals(localQueryUri + ": Invalid document update action returned:" + action, expectedAction.name(),
                 action);
 
     }

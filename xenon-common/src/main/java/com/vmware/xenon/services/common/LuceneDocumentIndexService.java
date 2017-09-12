@@ -389,7 +389,6 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private final Map<String, DocumentUpdateInfo> updatesPerLink = new HashMap<>();
     private final Map<String, Long> liveVersionsPerLink = new HashMap<>();
-    private final Map<String, Long> immutableParentLinks = new HashMap<>();
     private final Map<String, Long> documentKindUpdateInfo = new HashMap<>();
 
     private final SortedSet<MetadataUpdateInfo> metadataUpdates =
@@ -1232,11 +1231,6 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             if (cap != null) {
                 serviceOption = ServiceOption.valueOf(cap);
-            }
-
-            if (serviceOption == ServiceOption.IMMUTABLE) {
-                options.add(QueryOption.INCLUDE_ALL_VERSIONS);
-                serviceOption = ServiceOption.PERSISTENCE;
             }
 
             if (params.containsKey(UriUtils.URI_PARAM_INCLUDE_DELETED)) {
@@ -2410,14 +2404,6 @@ public class LuceneDocumentIndexService extends StatelessService {
             if (documentsUpdatedBeforeInMicros == -1 && dui != null && dui.updateTimeMicros <= searcherUpdateTime) {
                 return Math.max(version, dui.version);
             }
-
-            if (!this.immutableParentLinks.isEmpty()) {
-                String parentLink = UriUtils.getParentPath(link);
-                if (this.immutableParentLinks.containsKey(parentLink)) {
-                    // all immutable services have just a single, zero, version
-                    return 0;
-                }
-            }
         }
 
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
@@ -2839,32 +2825,17 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private void updateLinkInfoCache(ServiceDocumentDescription desc,
             String link, String kind, long version, long lastAccessTime) {
-        boolean isImmutable = desc != null
-                && desc.serviceCapabilities != null
-                && desc.serviceCapabilities.contains(ServiceOption.IMMUTABLE);
         synchronized (this.searchSync) {
-            if (isImmutable) {
-                String parent = UriUtils.getParentPath(link);
-                this.immutableParentLinks.compute(parent, (k, time) -> {
-                    if (time == null) {
-                        time = lastAccessTime;
-                    } else {
-                        time = Math.max(time, lastAccessTime);
-                    }
-                    return time;
-                });
-            } else {
-                this.updatesPerLink.compute(link, (k, entry) -> {
-                    if (entry == null) {
-                        entry = new DocumentUpdateInfo();
-                    }
-                    if (version >= entry.version) {
-                        entry.updateTimeMicros = Math.max(entry.updateTimeMicros, lastAccessTime);
-                        entry.version = version;
-                    }
-                    return entry;
-                });
-            }
+            this.updatesPerLink.compute(link, (k, entry) -> {
+                if (entry == null) {
+                    entry = new DocumentUpdateInfo();
+                }
+                if (version >= entry.version) {
+                    entry.updateTimeMicros = Math.max(entry.updateTimeMicros, lastAccessTime);
+                    entry.version = version;
+                }
+                return entry;
+            });
 
             if (kind != null) {
                 this.documentKindUpdateInfo.compute(kind, (k, entry) -> {
@@ -2984,12 +2955,6 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             if (du != null && du.updateTimeMicros >= searcherUpdateTime) {
                 return true;
-            } else {
-                String parent = UriUtils.getParentPath(selfLink);
-                Long updateTime = this.immutableParentLinks.get(parent);
-                if (updateTime != null && updateTime >= searcherUpdateTime) {
-                    return true;
-                }
             }
         } else {
             boolean needNewSearcher = false;
