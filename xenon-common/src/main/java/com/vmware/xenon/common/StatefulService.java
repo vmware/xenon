@@ -138,11 +138,9 @@ public class StatefulService implements Service {
         if (op.getAction() != Action.DELETE
                 && this.context.processingStage != ProcessingStage.AVAILABLE) {
 
-            if (hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                if (this.context.processingStage == ProcessingStage.STOPPED) {
-                    getHost().retryOnDemandLoadConflict(op);
-                    return true;
-                }
+            if (this.context.processingStage == ProcessingStage.STOPPED) {
+                getHost().retryOnDemandLoadConflict(op);
+                return true;
             }
 
             // this should never happen since the host will not forward requests if we are not
@@ -171,49 +169,16 @@ public class StatefulService implements Service {
 
     private boolean checkServiceStopped(Operation op, boolean stop) {
         boolean isAlreadyStopped = this.context.processingStage == ProcessingStage.STOPPED;
+        boolean isDeleteAndStop = ServiceHost.isServiceDeleteAndStop(op);
+        boolean hasActiveUpdates = false;
 
-        if (hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-            boolean isDeleteAndStop = ServiceHost.isServiceDeleteAndStop(op);
-            // Special processing for ODL services: they have a high probability of
-            // STOP requests, due to inactivity, colliding with new client requests that
-            // re-start the service.
-            boolean hasActiveUpdates = false;
-            synchronized (this.context) {
-                isAlreadyStopped = this.context.processingStage == ProcessingStage.STOPPED;
-                if (!hasActiveUpdates && this.context.synchQueue != null) {
-                    hasActiveUpdates = true;
-                }
-                if (!hasActiveUpdates && !this.context.operationQueue.isEmpty()) {
-                    hasActiveUpdates = true;
-                }
+        synchronized (this.context) {
+            isAlreadyStopped = this.context.processingStage == ProcessingStage.STOPPED;
+            if (!hasActiveUpdates && this.context.synchQueue != null) {
+                hasActiveUpdates = true;
             }
-
-            if (isAlreadyStopped) {
-                // The service was just stopped, so we need to restart it: on demand load is exactly
-                // the functionality that causes a service to be re-started when a request arrives.
-                // If the operation supplied is a DELETE, not just a "stop", we need to retry as well
-                // so the service is properly deleted from the index
-                if (!stop || isDeleteAndStop) {
-                    getHost().retryOnDemandLoadConflict(op);
-                    return true;
-                }
-            } else if (stop && hasActiveUpdates && !isDeleteAndStop) {
-                // This method was called with the intent to stop the service. However, an ODL
-                // service with active updates should NOT stop. This can cause DELETEs to fail from
-                // the periodic logic that stops idle services.
-                // Client DELETE operations will not be cancelled: we will fall through below
-                // and accept the DELETE but cancel any queued/pending operations
-                op.fail(new CancellationException("Service is active"));
-                return true;
-            }
-        }
-
-        if (isAlreadyStopped) {
-            if (op.getAction() != Action.DELETE) {
-                logWarning("Service is stopped, cancelling operation");
-                op.fail(new CancellationException("Service is stopped"));
-            } else {
-                op.complete();
+            if (!hasActiveUpdates && !this.context.operationQueue.isEmpty()) {
+                hasActiveUpdates = true;
             }
         }
 
@@ -221,13 +186,37 @@ public class StatefulService implements Service {
             return false;
         }
 
-        return cancelPendingRequests(op, stop, isAlreadyStopped);
+        if (isAlreadyStopped) {
+            if (op.getAction() == Action.DELETE && !isDeleteAndStop) {
+                // this is a pure stop, and the service has already stopped
+                op.complete();
+            } else {
+                // this is an incoming request and the service has just stopped - retry
+                getHost().retryOnDemandLoadConflict(op);
+            }
+            return true;
+        }
+
+        if (hasActiveUpdates && !isDeleteAndStop) {
+            // This method was called with the intent to stop the service. However, a
+            // service with active updates should NOT stop. This can cause DELETEs to fail from
+            // the periodic logic that stops idle services.
+            // Client DELETE operations will not be cancelled: we will fall through below
+            // and accept the DELETE but cancel any queued/pending operations
+            op.fail(new CancellationException("Service is active"));
+            return true;
+        }
+
+        // we can stop the service and cancel pending requests
+        setProcessingStage(Service.ProcessingStage.STOPPED);
+        cancelPendingRequests(op);
+        return false;
     }
 
-    private boolean cancelPendingRequests(Operation op, boolean stop, boolean isAlreadyStopped) {
-        // even if service is stopped, check the pending queue for operations
-        setProcessingStage(Service.ProcessingStage.STOPPED);
+    private void cancelPendingRequests(Operation op) {
         Collection<Operation> opsToCancel = null;
+        boolean isDeleteAndStop = ServiceHost.isServiceDeleteAndStop(op);
+
         synchronized (this.context) {
             opsToCancel = this.context.operationQueue.toCollection();
             this.context.operationQueue.clear();
@@ -242,38 +231,34 @@ public class StatefulService implements Service {
             if (o.isFromReplication() && o.getAction() == Action.DELETE) {
                 o.complete();
             } else {
-                if (hasOption(ServiceOption.ON_DEMAND_LOAD)
-                        && (!stop || !ServiceHost.isServiceDeleteAndStop(op))) {
-                    // Pending requests need to be retried on ODL services that are being stopped.
+                if (!isDeleteAndStop) {
+                    // Pending requests need to be retried on services that are being stopped.
                     getHost().retryOnDemandLoadConflict(o);
                 } else {
                     o.fail(new CancellationException(getSelfLink()));
                 }
             }
         }
-
-        // return true only if service was stopped before we tried to stop it
-        return isAlreadyStopped;
     }
 
     // Set of local flags to avoid allocation and use of EnumSet in the fast path
     // for queueRequestInternal. The use of integer flags is the exception, not the norm
     // and only justified in very few places
-    private static final int ODL_STOP_FLAG = 0x00000002;
+    private static final int STOP_FLAG = 0x00000002;
     private static final int RETURN_TRUE_FLAG = 0x10000000;
 
     /**
      * Returns true if a request was handled (caller should not attempt to dispatch it)
      */
     private boolean queueRequestInternal(final Operation op) {
-        int odlStopped = 0;
+        int stopped = 0;
         Action a = op.getAction();
 
         if (a == Action.PATCH
                 || a == Action.PUT
                 || a == Action.DELETE
                 || a == Action.POST) {
-            odlStopped = queueUpdateRequestInternal(op, odlStopped);
+            stopped = queueUpdateRequestInternal(op, stopped);
         } else {
             if (a == Action.OPTIONS) {
                 return false;
@@ -282,21 +267,20 @@ public class StatefulService implements Service {
                 // can run in parallel with updates and each other
                 return false;
             } else {
-                odlStopped = queueGetRequestInternal(op, odlStopped);
+                stopped = queueGetRequestInternal(op, stopped);
             }
         }
 
-        if ((odlStopped & RETURN_TRUE_FLAG) != 0) {
+        if ((stopped & RETURN_TRUE_FLAG) != 0) {
             return true;
         }
 
-        if (odlStopped != 0 && !getHost().isStopping()) {
+        if (stopped != 0 && !getHost().isStopping()) {
             logWarning("Service in stage %s, retrying request", this.context.processingStage);
             getHost().retryOnDemandLoadConflict(op);
             return true;
         }
 
-        // ask to stop service, even if it might be stopped, so we can drain any pending queues
         if (checkServiceStopped(op, false)) {
             return true;
         }
@@ -304,13 +288,11 @@ public class StatefulService implements Service {
         return false;
     }
 
-    private int queueGetRequestInternal(final Operation op, int odlStopped) {
+    private int queueGetRequestInternal(final Operation op, int stopped) {
         // queue GETs, if updates are pending
         synchronized (this.context) {
             if (this.context.processingStage == ProcessingStage.STOPPED) {
-                odlStopped |= hasOption(ServiceOption.ON_DEMAND_LOAD)
-                        ? ODL_STOP_FLAG
-                        : 0;
+                stopped |= STOP_FLAG;
             } else if (this.context.isUpdateActive) {
                 if (!this.context.operationQueue.offer(op)) {
                     failRequestLimitExceeded(op, "operationQueue for GET on " + getSelfLink());
@@ -320,14 +302,14 @@ public class StatefulService implements Service {
                 this.context.getActiveCount++;
             }
         }
-        return odlStopped;
+        return stopped;
     }
 
-    private int queueUpdateRequestInternal(final Operation op, int odlStopped) {
+    private int queueUpdateRequestInternal(final Operation op, int stopped) {
         // serialize updates
         synchronized (this.context) {
             if (this.context.processingStage == ProcessingStage.STOPPED) {
-                odlStopped |= hasOption(ServiceOption.ON_DEMAND_LOAD) ? ODL_STOP_FLAG : 0;
+                stopped |= STOP_FLAG;
             } else if ((this.context.isUpdateActive || this.context.getActiveCount != 0)) {
                 if (op.isSynchronizeOwner()) {
                     // Synchronization requests are queued in a separate queue
@@ -347,7 +329,7 @@ public class StatefulService implements Service {
                 this.context.isUpdateActive = true;
             }
         }
-        return odlStopped;
+        return stopped;
     }
 
     @Override
@@ -514,6 +496,8 @@ public class StatefulService implements Service {
             // as the body. No need to load local state.
             ServiceDocument state = request.getBody(this.context.stateType);
             request.linkState(state);
+            // signal service has been accessed to delay stopping
+            getHost().getCachedServiceState(this, request);
             return false;
         }
 
@@ -1614,13 +1598,6 @@ public class StatefulService implements Service {
             toggleOption(ServiceOption.CONCURRENT_GET_HANDLING, true);
         }
 
-        if (option == ServiceOption.PERIODIC_MAINTENANCE && hasOption(ServiceOption.ON_DEMAND_LOAD)
-                || option == ServiceOption.ON_DEMAND_LOAD
-                        && hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
-            throw new IllegalArgumentException("Service option PERIODIC_MAINTENANCE and " +
-                    "ON_DEMAND_LOAD cannot co-exist.");
-        }
-
         boolean optionsChanged = false;
         synchronized (this.context) {
             if (enable) {
@@ -1693,9 +1670,8 @@ public class StatefulService implements Service {
             }
 
             if (this.context.processingStage == ProcessingStage.STOPPED
-                    && stage == ProcessingStage.AVAILABLE
-                    && hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                // an ODL service can be stopped while an attempt to start is being processed.
+                    && stage == ProcessingStage.AVAILABLE) {
+                // a service can be stopped while an attempt to start is being processed.
                 // Instead of failing the attempt that marks it available, accept the
                 // transition from STOPPED -> AVAILABLE
                 logTransition = true;

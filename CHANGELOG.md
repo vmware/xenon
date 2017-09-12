@@ -2,6 +2,16 @@
 
 ## 1.5.7-SNAPSHOT
 
+* Deprecated ServiceOption.ON_DEMAND_LOAD. While the option still exists
+  it has not effect, and is marked @Deprecated to discourage applications
+  from using it. All indexed services are now eligible for on-demand
+  stop (under memory pressure) and on-demand start. The usual rules still
+  apply; specifically, a service needs to be inactive in order to be
+  eligible for stop. Inactivity threshold is measured as a factor of the
+  service maintenance interval. A service author can override its
+  maintenance interval as usual. The stop delay factor is a host setting
+  and can be overridden via ServiceHost.setServiceStopDelayFactor().
+
 ## 1.5.6
 
 * Upgrade Netty to [4.1.15](http://netty.io/news/2017/08/25/4-0-51-Final-4-1-15-Final.html) and

@@ -536,7 +536,7 @@ public final class Utils {
             antiReqs = EnumSet.of(ServiceOption.PERSISTENCE, ServiceOption.REPLICATION);
             break;
         case PERIODIC_MAINTENANCE:
-            antiReqs = EnumSet.of(ServiceOption.ON_DEMAND_LOAD, ServiceOption.IMMUTABLE);
+            antiReqs = EnumSet.of(ServiceOption.IMMUTABLE);
             break;
         case PERSISTENCE:
             break;
@@ -563,14 +563,8 @@ public final class Utils {
             break;
         case UTILITY:
             break;
-        case ON_DEMAND_LOAD:
-            if (!options.contains(ServiceOption.FACTORY)) {
-                reqs = EnumSet.of(ServiceOption.PERSISTENCE);
-            }
-            antiReqs = EnumSet.of(ServiceOption.PERIODIC_MAINTENANCE);
-            break;
         case IMMUTABLE:
-            reqs = EnumSet.of(ServiceOption.ON_DEMAND_LOAD, ServiceOption.PERSISTENCE);
+            reqs = EnumSet.of(ServiceOption.PERSISTENCE);
             antiReqs = EnumSet.of(ServiceOption.PERIODIC_MAINTENANCE,
                     ServiceOption.INSTRUMENTATION);
             break;
