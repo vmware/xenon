@@ -160,33 +160,6 @@ class DefaultHandlerTestService extends StatefulService {
     }
 }
 
-
-/**
- * Test service options.
- */
-class MaintenanceTestService extends StatefulService {
-    public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/tests/maintenanceService";
-    /**
-     * The state includes both a reference and a primitive type so as to test both.
-     */
-    public static class MaintenanceTestState extends ServiceDocument {
-        public String name;
-    }
-
-    public MaintenanceTestService() {
-        super(MaintenanceTestState.class);
-        toggleOption(ServiceOption.PERSISTENCE, true);
-        toggleOption(ServiceOption.REPLICATION, true);
-        toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
-        toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
-    }
-
-    @Override
-    public void handlePeriodicMaintenance(Operation post) {
-        post.complete();
-    }
-}
-
 class MaintenanceVerificationService extends StatefulService {
     /**
      * See {@link TestStatefulService#periodicMaintenanceVerification()}
@@ -767,14 +740,6 @@ public class TestStatefulService extends BasicReusableHostTestCase {
 
     }
 
-    @Test(expected = IllegalStateException.class)
-    public void invalidServiceOptionsValidation() throws Throwable {
-        this.host.startService(Operation.createPost(
-                UriUtils.buildFactoryUri(host, MaintenanceTestService.class)), FactoryService
-                .create(MaintenanceTestService.class, MaintenanceTestService.MaintenanceTestState.class));
-        this.host.waitForServiceAvailable(MaintenanceTestService.FACTORY_LINK);
-    }
-
     @Test
     public void periodicMaintenanceVerification() throws Throwable {
 
@@ -943,6 +908,7 @@ public class TestStatefulService extends BasicReusableHostTestCase {
                     .setBody(doc)
             );
         }
+
         sender.sendAndWait(posts);
         sender.sendAndWait(patches);
         sender.sendAndWait(deletes);

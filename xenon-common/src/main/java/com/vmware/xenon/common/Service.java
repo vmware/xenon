@@ -151,25 +151,17 @@ public interface Service extends ServiceRequestSender {
         IDEMPOTENT_POST,
 
         /**
-         * Runtime will load factory child services the first time a client attempts to access
-         * them. Replication services might load due to synchronization, when joining node groups.
+         * @deprecated
          *
-         * Requires: FACTORY_ITEM (services created through factories)
+         * All stateful persistent services are not started on-demand
          *
          */
         ON_DEMAND_LOAD,
 
         /**
-         * Service has a single, initial version and will not accept any action other then DELETE
-         * for its entire lifetime. This option should be used to model immutable items such as logs,
-         * metrics where a high creation rate (high factory POST throughput) is desired but version
-         * tracking is not.
-         * The framework does not enforce a single version, but makes assumptions, to gain performance,
-         * that the service will only ever be created once, and deleted once. If the service developer
-         * violates these assumptions (by using {@link Operation#PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE}
-         * for example), behavior is unspecified.
+         * @deprecated
          *
-         * Requires: ON_DEMAND_LOAD
+         * All services are mutable
          */
         IMMUTABLE,
 

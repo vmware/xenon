@@ -54,7 +54,6 @@ public class ExampleService extends StatefulService {
 
         public ExampleODLService() {
             super();
-            super.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
             super.toggleOption(ServiceOption.INSTRUMENTATION, false);
         }
     }
@@ -68,8 +67,6 @@ public class ExampleService extends StatefulService {
 
         public ExampleImmutableService() {
             super();
-            super.toggleOption(ServiceOption.IMMUTABLE, true);
-            super.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
             super.toggleOption(ServiceOption.INSTRUMENTATION, false);
         }
     }

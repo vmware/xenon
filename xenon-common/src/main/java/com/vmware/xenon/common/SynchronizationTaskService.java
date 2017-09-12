@@ -37,8 +37,6 @@ public class SynchronizationTaskService
     public static final String FACTORY_LINK = ServiceUriPaths.SYNCHRONIZATION_TASKS;
     public static final String PROPERTY_NAME_SYNCHRONIZATION_LOGGING = Utils.PROPERTY_NAME_PREFIX
             + "SynchronizationTaskService.isDetailedLoggingEnabled";
-    public static final String PROPERTY_NAME_ENABLE_ODL_SYNCHRONIZATION = Utils.PROPERTY_NAME_PREFIX
-            + "enableOdlSynchronization";
 
     public static final String STAT_NAME_CHILD_SYNCH_RETRY_COUNT = "childSynchRetryCount";
     public static final String STAT_NAME_SYNCH_RETRY_COUNT = "synchRetryCount";
@@ -290,9 +288,9 @@ public class SynchronizationTaskService
         }
 
         if (this.isDetailedLoggingEnabled) {
-            logInfo("Transitioning task from %s-%s to %s-%s. Time %d",
+            logInfo("Transitioning task from %s-%s to %s-%s. Time %d. Put id %d",
                     currentStage, currentSubStage, task.taskInfo.stage,
-                    task.subStage, task.membershipUpdateTimeMicros);
+                    task.subStage, task.membershipUpdateTimeMicros, put.getId());
         }
 
         if (startStateMachine) {
@@ -328,14 +326,6 @@ public class SynchronizationTaskService
             put.fail(new IllegalArgumentException("membershipUpdateTimeMicros not set correctly: "
                     + putTask.membershipUpdateTimeMicros));
             return null;
-        }
-        if (currentTask.childOptions.contains(ServiceOption.ON_DEMAND_LOAD)) {
-            boolean odlSync =
-                    Boolean.valueOf(System.getProperty(SynchronizationTaskService.PROPERTY_NAME_ENABLE_ODL_SYNCHRONIZATION));
-            if (!odlSync) {
-                put.fail(new IllegalArgumentException("ON_DEMAND_LOAD services must synchronize on-demand."));
-                return null;
-            }
         }
         if (currentTask.membershipUpdateTimeMicros != null &&
                 currentTask.membershipUpdateTimeMicros > putTask.membershipUpdateTimeMicros) {

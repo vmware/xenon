@@ -371,7 +371,7 @@ public class TestNodeGroupService {
         Utils.registerKind(ExampleServiceState.class, CUSTOM_EXAMPLE_SERVICE_KIND);
     }
 
-    private void setUpOnDemandLoad() throws Throwable {
+    private void setUpAtLeastFiveNodes() throws Throwable {
         setUp();
         // we need at least 5 nodes, because we're going to stop 2
         // nodes and we need majority quorum
@@ -381,19 +381,10 @@ public class TestNodeGroupService {
         this.skipAvailabilityChecks = true;
         // create node group, join nodes and set majority quorum
         setUp(this.nodeCount);
-        this.host.log("Setting up node-group with ODL ExampleService Factory");
+        this.host.log("Setting up node-group with at least 5 nodes");
 
-        toggleOnDemandLoad();
         this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
         this.host.setNodeGroupQuorum(this.host.getPeerCount() / 2 + 1);
-    }
-
-    private void toggleOnDemandLoad() {
-        for (URI nodeUri : this.host.getNodeGroupMap().keySet()) {
-            URI factoryUri = UriUtils.buildUri(nodeUri, ExampleService.FACTORY_LINK);
-            this.host.toggleServiceOptions(factoryUri, EnumSet.of(ServiceOption.ON_DEMAND_LOAD),
-                    null);
-        }
     }
 
     @After
@@ -901,12 +892,6 @@ public class TestNodeGroupService {
                 },
                 UriUtils.buildFactoryUri(h, OnDemandLoadFactoryService.class));
 
-        // Verify that each peer host reports the correct value for ODL stop count.
-        for (VerificationHost vh : this.host.getInProcessHostMap().values()) {
-            this.host.waitFor("ODL services did not stop as expected",
-                    () -> checkOdlServiceStopCount(vh, this.serviceCount));
-        }
-
         // Add a new host to the cluster.
         VerificationHost newHost = this.host.setUpLocalPeerHost(0, h.getMaintenanceIntervalMicros(),
                 null);
@@ -927,24 +912,6 @@ public class TestNodeGroupService {
                     ExampleServiceState.class, UriUtils.buildUri(newHost, childServicePath));
             assertNotNull(state);
         }
-
-        // Verify that the new peer host reports the correct value for ODL stop count.
-        this.host.waitFor("ODL services did not stop as expected",
-                () -> checkOdlServiceStopCount(newHost, this.serviceCount));
-    }
-
-    private boolean checkOdlServiceStopCount(VerificationHost host, int serviceCount)
-            throws Throwable {
-        ServiceStat stopCount = host
-                .getServiceStats(host.getManagementServiceUri())
-                .get(ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT);
-        if (stopCount == null || stopCount.latestValue < serviceCount) {
-            this.host.log(Level.INFO,
-                    "Current stopCount is %s",
-                    (stopCount != null) ? String.valueOf(stopCount.latestValue) : "null");
-            return false;
-        }
-        return true;
     }
 
     @Test
@@ -1730,10 +1697,10 @@ public class TestNodeGroupService {
     }
 
     @Test
-    public void replicationWithQuorumAfterAbruptNodeStopOnDemandLoad() throws Throwable {
+    public void replicationWithQuorumAfterAbruptNodeStop() throws Throwable {
         tearDown();
         for (int i = 0; i < this.testIterationCount; i++) {
-            setUpOnDemandLoad();
+            setUpAtLeastFiveNodes();
 
             this.host.log("Running replication test with abrupt node stop");
             int hostStopCount = 2;
