@@ -54,7 +54,6 @@ public class OnDemandLoadFactoryService extends FactoryService {
     public OnDemandLoadFactoryService() {
         super(ExampleService.ExampleServiceState.class);
         super.toggleOption(ServiceOption.REPLICATION, true);
-        super.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
     }
 
     private EnumSet<ServiceOption> childServiceCaps;
