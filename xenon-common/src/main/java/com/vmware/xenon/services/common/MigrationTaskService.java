@@ -1007,19 +1007,20 @@ public class MigrationTaskService extends StatefulService {
                             URI hostUri = getHostUri(op);
                             hostUriByResult.put(doc, hostUri);
 
-                            if (!currentState.factoryChildOptions.contains(ServiceOption.ON_DEMAND_LOAD)) {
-                                // save selfLinks that were selected for migration.
-                                currentState.nonMigratedSelfLinks.remove(document.documentSelfLink);
-                                currentState.migratedSelfLinks.add(document.documentSelfLink);
-                            }
+                            // save selfLinks that were selected for migration.
+                            currentState.nonMigratedSelfLinks.remove(document.documentSelfLink);
+                            currentState.migratedSelfLinks.add(document.documentSelfLink);
                         } else {
                             ownerMissMatched++;
 
                             // save selfLinks that were not selected due to own mismatch.
-                            if (!currentState.factoryChildOptions.contains(ServiceOption.ON_DEMAND_LOAD) &&
-                                    !currentState.migratedSelfLinks.contains(document.documentSelfLink)) {
+                            /*
+                             * commenting out until ownership mismatch bug fix is in
+                             * (see https://review.ec.eng.vmware.com/#/c/20570/)
+                            if (!currentState.migratedSelfLinks.contains(document.documentSelfLink)) {
                                 currentState.nonMigratedSelfLinks.add(document.documentSelfLink);
                             }
+                            */
                         }
                     }
 

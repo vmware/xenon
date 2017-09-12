@@ -90,9 +90,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
         public ImmutableExampleService() {
             super();
-            super.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
             super.toggleOption(ServiceOption.IMMUTABLE, true);
-            // toggle instrumentation off so service stops, instead of pausing
             super.toggleOption(ServiceOption.INSTRUMENTATION, false);
         }
     }

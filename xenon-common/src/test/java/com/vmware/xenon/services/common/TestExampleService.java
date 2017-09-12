@@ -38,8 +38,6 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.AuthorizationSetupHelper;
 import com.vmware.xenon.common.Operation;
-import com.vmware.xenon.common.Service.ServiceOption;
-import com.vmware.xenon.common.ServiceConfiguration;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
@@ -497,12 +495,6 @@ public class TestExampleService {
         sender.sendAndWait(post, ExampleServiceState.class);
 
         String servicePath = UriUtils.buildUriPath(ExampleODLService.FACTORY_LINK, suffix);
-
-        // verify ODL is enabled
-        URI configUri = UriUtils.buildConfigUri(UriUtils.buildUri(host1, servicePath));
-        ServiceConfiguration configState = sender.sendGetAndWait(configUri,
-                ServiceConfiguration.class);
-        assertTrue(configState.options.contains(ServiceOption.ON_DEMAND_LOAD));
 
         for (int i = 0; i < 5; i++) {
             ExampleServiceState patchBody = new ExampleServiceState();

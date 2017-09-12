@@ -34,6 +34,7 @@ import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
+import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
  * Monitors service resources, and takes action, during periodic maintenance
@@ -301,9 +302,13 @@ class ServiceResourceTracker {
             this.persistedServiceLastAccessTimes.put(s.getSelfLink(), Utils.getNowMicrosUtc());
         }
 
-        // if caching is disabled on the serviceHost, then we don't bother updating the cache
-        // for persisted services. If it's a non-persisted service, then we DO update the cache.
-        if (ServiceHost.isServiceIndexed(s) && !this.isServiceStateCaching) {
+        // we cache the state only if:
+        // (1) the service is non-persistent, or:
+        // (2) the service is persistent, the operation is not replicated and state caching is enabled
+        boolean cacheState = !ServiceHost.isServiceIndexed(s);
+        cacheState |= !op.isFromReplication() && this.isServiceStateCaching;
+
+        if (!cacheState) {
             return;
         }
 
@@ -345,7 +350,7 @@ class ServiceResourceTracker {
         } else {
             if (ServiceHost.isServiceIndexed(s)) {
                 this.persistedServiceLastAccessTimes.put(servicePath,
-                        this.host.getStateNoCloning().lastMaintenanceTimeUtcMicros);
+                        Utils.getNowMicrosUtc());
             }
         }
 
@@ -377,6 +382,7 @@ class ServiceResourceTracker {
             // the index service tracks expiration of persisted services
             return;
         }
+
         // Issue DELETE to stop the service
         Operation deleteExp = Operation.createDelete(this.host, s.getSelfLink())
                 .setBody(state)
@@ -436,10 +442,6 @@ class ServiceResourceTracker {
         s.adjustStat(Service.STAT_NAME_CACHE_CLEAR_COUNT, 1);
         this.host.getManagementService().adjustStat(
                 ServiceHostManagementService.STAT_NAME_SERVICE_CACHE_CLEAR_COUNT, 1);
-        if (s.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-            this.host.getManagementService().adjustStat(
-                    ServiceHostManagementService.STAT_NAME_ODL_CACHE_CLEAR_COUNT, 1);
-        }
     }
 
     /**
@@ -504,36 +506,20 @@ class ServiceResourceTracker {
                 }
             }
 
-            // If this host is the OWNER for the service and we didn't find it's entry
-            // in the cache or the lastAccessTime map, and it's also a PERSISTENT service,
-            // then probably the service is just starting up. So, we will skip stop..
-            // However, if this host is not the OWNER, then we will proceed with stop.
-            // This is because state is not cached on replicas.
-            if (lastAccessTime == null &&
-                    ServiceHost.isServiceIndexed(service) &&
-                    service.hasOption(ServiceOption.DOCUMENT_OWNER)) {
+            // If we didn't find the service' entry in the cache or the lastAccessTime map,
+            // and it's a PERSISTENT service, then probably the service is just starting up.
+            // So, we will skip stop..
+            if (lastAccessTime == null && ServiceHost.isServiceIndexed(service)) {
                 continue;
             }
 
-            if (lastAccessTime != null &&
-                    hostState.lastMaintenanceTimeUtcMicros - lastAccessTime < service
-                    .getMaintenanceIntervalMicros() * 2) {
-                // Skip stop for services that have been active within a maintenance interval
-                continue;
-            }
-
-            // we still want to clear a cache for periodic services, so check here, after the cache clear
             if (service.hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
                 // Services with periodic maintenance stay resident, for now. We might stop them in the future
                 // if they have long periods
                 continue;
             }
 
-            if (!service.hasOption(ServiceOption.FACTORY_ITEM)) {
-                continue;
-            }
-
-            if (!service.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+            if (!ServiceHost.isServiceIndexed(service)) {
                 continue;
             }
 
@@ -542,15 +528,21 @@ class ServiceResourceTracker {
             }
 
             if (this.host.hasPendingServiceAvailableCompletions(service.getSelfLink())) {
-                this.host.log(Level.INFO,
-                        "Pending available completions, skipping stop on %s",
-                        service.getSelfLink());
+                continue;
+            }
+
+            if (service.getSelfLink().startsWith(ServiceUriPaths.CORE_AUTHZ)) {
+                continue;
+            }
+
+            if (serviceActiveSkipStop(lastAccessTime, hostState, service)) {
+                // Skip stop for services that have been recently active
                 continue;
             }
 
             boolean hasSoftState = hasServiceSoftState(service);
             if (cacheCleared && !hasSoftState) {
-                // if it's an on-demand-load service with no subscribers or stats,
+                // if it's a service with no subscribers or stats,
                 // instead simply stop them when the service is idle.
                 stopServiceCount++;
                 stopService(service, false, null);
@@ -558,7 +550,7 @@ class ServiceResourceTracker {
             }
 
             if (!shouldStop && !cacheCleared) {
-                // if we are not under memory pressure only stop ODL services if their
+                // if we are not under memory pressure only stop services if their
                 // cache is cleared.
                 continue;
             }
@@ -566,7 +558,7 @@ class ServiceResourceTracker {
             if (!cacheCleared) {
                 // if we're going to stop it, clear state from cache if not already cleared
                 clearCachedServiceState(service, null, null);
-                // and check again if ON_DEMAND_LOAD with no subscriptions, then we need to stop
+                // and check again if no subscriptions or stats, then we need to stop
                 if (!hasSoftState) {
                     stopServiceCount++;
                     stopService(service, false, null);
@@ -599,6 +591,31 @@ class ServiceResourceTracker {
                 this.persistedServiceLastAccessTimes.size());
     }
 
+    private boolean serviceActiveSkipStop(Long lastAccessTime, ServiceHostState hostState,
+            Service s) {
+        if (lastAccessTime == null) {
+            return false;
+        }
+
+        long serviceMaintenanceIntervalMicros = s.getMaintenanceIntervalMicros();
+        long accessedBeforeLastHostMaintenance =
+                hostState.lastMaintenanceTimeUtcMicros - lastAccessTime;
+
+        boolean active = serviceMaintenanceIntervalMicros == 0 ||
+                accessedBeforeLastHostMaintenance < serviceMaintenanceIntervalMicros *
+                hostState.serviceStopDelayFactor;
+
+        if (!active) {
+            this.host.log(Level.FINE,
+                    "Considering stopping service %s, isOwner: %b, because it was inactive for %f seconds (service maintenance interval: %d)",
+                    s.getSelfLink(), this.host.isDocumentOwner(s),
+                    accessedBeforeLastHostMaintenance / 1000000.0,
+                    s.getMaintenanceIntervalMicros());
+        }
+
+        return active;
+    }
+
     boolean checkAndOnDemandStartService(Operation inboundOp) {
         String key = inboundOp.getUri().getPath();
         if (ServiceHost.isHelperServicePath(key)) {
@@ -621,10 +638,6 @@ class ServiceResourceTracker {
         if (factoryService == null) {
             Operation.failServiceNotFound(inboundOp);
             return true;
-        }
-
-        if (!factoryService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-            return false;
         }
 
         inboundOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
@@ -657,10 +670,6 @@ class ServiceResourceTracker {
             return true;
         }
 
-        if (!parentService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-            return false;
-        }
-
         FactoryService factoryService = (FactoryService) parentService;
 
         String servicePath = inboundOp.getUri().getPath();
@@ -684,6 +693,9 @@ class ServiceResourceTracker {
         }
 
         if (!doProbe) {
+            this.host.log(Level.FINE, "Skipping probe - starting service %s on-demand due to %s %d (isFromReplication: %b, isSynchronizeOwner: %b, isSynchronizePeer: %b)",
+                    finalServicePath, inboundOp.getAction(), inboundOp.getId(),
+                    inboundOp.isFromReplication(), inboundOp.isSynchronizeOwner(), inboundOp.isSynchronizePeer());
             startServiceOnDemand(inboundOp, parentService, factoryService, finalServicePath);
             return true;
         }
@@ -709,6 +721,9 @@ class ServiceResourceTracker {
                     }
 
                     // service state exists, proceed with starting service
+                    this.host.log(Level.FINE, "Starting service %s on-demand due to %s %d (isFromReplication: %b, isSynchronizeOwner: %b, isSynchronizePeer: %b)",
+                            finalServicePath, inboundOp.getAction(), inboundOp.getId(),
+                            inboundOp.isFromReplication(), inboundOp.isSynchronizeOwner(), inboundOp.isSynchronizePeer());
                     startServiceOnDemand(inboundOp, parentService, factoryService,
                             finalServicePath);
                 });
@@ -743,13 +758,16 @@ class ServiceResourceTracker {
                 ServiceErrorResponse response = o.getErrorResponseBody();
 
                 if (response != null) {
-                    // Since we do a POST first for services using ON_DEMAND_LOAD to start the service,
+                    // Since we do a POST to start the service,
                     // we can get back a 409 status code i.e. the service has already been started or was
                     // deleted previously. Differentiate based on action, if we need to fail or succeed
                     if (response.statusCode == Operation.STATUS_CODE_CONFLICT) {
                         if (!ServiceHost.isServiceCreate(inboundOp)
                                 && response.errorCode == ServiceErrorResponse.ERROR_CODE_SERVICE_ALREADY_EXISTS) {
                             // service exists, action is not attempt to recreate, so complete as success
+                            this.host.log(Level.WARNING,
+                                    "Failed to start service %s because it already exists. Resubmitting request %s %d",
+                                    finalServicePath, inboundOp.getAction(), inboundOp.getId());
                             this.host.handleRequest(null, inboundOp);
                             return;
                         }
@@ -774,7 +792,7 @@ class ServiceResourceTracker {
                     }
 
                     // if the service we are trying to DELETE never existed, we swallow the 404 error.
-                    // This is for consistency in behavior with non ON_DEMAND_LOAD services.
+                    // This is for consistency in behavior with services already resident in memory.
                     if (inboundOp.getAction() == Action.DELETE &&
                             response.statusCode == Operation.STATUS_CODE_NOT_FOUND) {
                         inboundOp.complete();
@@ -799,6 +817,9 @@ class ServiceResourceTracker {
                 return;
             }
             // proceed with handling original client request, service now started
+            this.host.log(Level.FINE,
+                    "Successfully started service %s. Resubmitting request %s %d",
+                    finalServicePath, inboundOp.getAction(), inboundOp.getId());
             this.host.handleRequest(null, inboundOp);
         };
 
@@ -808,6 +829,9 @@ class ServiceResourceTracker {
                 .setExpiration(inboundOp.getExpirationMicrosUtc())
                 .setReplicationDisabled(true)
                 .setCompletion(c);
+        if (inboundOp.isSynchronizeOwner()) {
+            onDemandPost.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER);
+        }
 
         Service childService;
         try {
@@ -832,8 +856,6 @@ class ServiceResourceTracker {
     void retryOnDemandLoadConflict(Operation op) {
 
         op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
-        String statName = ServiceHostManagementService.STAT_NAME_ODL_STOP_CONFLICT_COUNT;
-        this.host.getManagementService().adjustStat(statName, 1);
 
         this.host.log(Level.WARNING,
                 "ODL conflict: retrying %s (%d %s) on %s",
@@ -858,10 +880,6 @@ class ServiceResourceTracker {
     }
 
     private boolean hasServiceSoftState(Service service) {
-        if (!service.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-            return false;
-        }
-
         UtilityService subUtilityService = (UtilityService) service
                 .getUtilityService(ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS);
         UtilityService statsUtilityService = (UtilityService) service
