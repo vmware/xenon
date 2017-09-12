@@ -1009,13 +1009,6 @@ public class TestLuceneDocumentIndexService {
     }
 
     @Test
-    public void immutableServiceQueryLongRunning() throws Throwable {
-        setUpHost(false);
-        URI factoryUri = createImmutableFactoryService(this.host);
-        doServiceQueryLongRunning(factoryUri, EnumSet.of(QueryOption.INCLUDE_ALL_VERSIONS));
-    }
-
-    @Test
     public void indexedMetadataServiceQueryLongRunning() throws Throwable {
         setUpHost(false);
         URI factoryUri = createIndexedMetadataFactoryService(this.host);
@@ -1065,53 +1058,6 @@ public class TestLuceneDocumentIndexService {
     }
 
     @Test
-    public void immutableServiceLifecycle() throws Throwable {
-        setUpHost(false);
-        URI factoryUri = createImmutableFactoryService(this.host);
-        doThroughputPostWithNoQueryResults(false, factoryUri);
-        ServiceDocumentQueryResult res = this.host.getFactoryState(factoryUri);
-        assertEquals(this.serviceCount, res.documentLinks.size());
-
-        TestContext ctx = this.host.testCreate(res.documentLinks.size());
-        ctx.setTestName("DELETE").logBefore();
-        for (String link : res.documentLinks) {
-            Operation del = Operation.createDelete(this.host, link).setCompletion((o, e) -> {
-                ctx.completeIteration();
-            });
-            this.host.send(del);
-        }
-
-        ctx.await();
-        ctx.logAfter();
-
-        // verify option validation
-        MinimalFactoryTestService f = new MinimalFactoryTestService();
-        MinimalFactoryTestService factoryService = (MinimalFactoryTestService) this.host
-                .startServiceAndWait(f, UUID.randomUUID().toString(), null);
-        factoryService.setChildServiceCaps(
-                EnumSet.of(ServiceOption.PERSISTENCE, ServiceOption.IMMUTABLE));
-        MinimalTestServiceState body = new MinimalTestServiceState();
-        body.id = "id";
-        Operation post = Operation.createPost(factoryService.getUri()).setBody(body);
-        // should fail, missing ON_DEMAND_LOAD
-        this.host.sendAndWaitExpectFailure(post);
-
-        post = Operation.createPost(factoryService.getUri()).setBody(body);
-        factoryService.setChildServiceCaps(
-                EnumSet.of(ServiceOption.PERSISTENCE, ServiceOption.ON_DEMAND_LOAD,
-                        ServiceOption.IMMUTABLE, ServiceOption.PERIODIC_MAINTENANCE));
-        // should fail, has PERIODIC_MAINTENANCE
-        this.host.sendAndWaitExpectFailure(post);
-
-        post = Operation.createPost(factoryService.getUri()).setBody(body);
-        factoryService.setChildServiceCaps(
-                EnumSet.of(ServiceOption.PERSISTENCE, ServiceOption.ON_DEMAND_LOAD,
-                        ServiceOption.IMMUTABLE, ServiceOption.INSTRUMENTATION));
-        // should fail, has INSTRUMENTATION
-        this.host.sendAndWaitExpectFailure(post);
-    }
-
-    @Test
     public void implicitQueryResultLimit() throws Throwable {
         try {
             LuceneDocumentIndexService.setImplicitQueryResultLimit((int) (this.serviceCount / 2));
@@ -1133,29 +1079,17 @@ public class TestLuceneDocumentIndexService {
         setUpHost(false);
         this.indexService.toggleOption(ServiceOption.INSTRUMENTATION, true);
 
-        // Immutable factory first:
         // we perform two passes per factory: first pass creates new services and
         // does NOT interleave updates in between queries.
         boolean doPostOrUpdates = true;
         boolean interleaveUpdate = false;
-        URI immutableFactoryUri = createImmutableFactoryService(this.host);
-        doThroughputSelfLinkQuery(immutableFactoryUri, null, doPostOrUpdates, interleaveUpdate,
-                null);
-        // second pass does not create new services, but does do interleaving
-        doPostOrUpdates = false;
-        interleaveUpdate = true;
-        doThroughputSelfLinkQuery(immutableFactoryUri, null, doPostOrUpdates, interleaveUpdate,
-                null);
-
-        // repeat for example factory (mutable)
-        doPostOrUpdates = true;
-        interleaveUpdate = false;
         URI exampleFactoryUri = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK);
         // notice that we also create K versions per link, for the mutable factory to
         // better quantify query processing throughput when multiple versions per link are
         // present in the index results
         doThroughputSelfLinkQuery(exampleFactoryUri, this.updateCount, doPostOrUpdates,
                 interleaveUpdate, null);
+        // second pass does not create new services, but does do interleaving
         doPostOrUpdates = false;
         interleaveUpdate = true;
         doThroughputSelfLinkQuery(exampleFactoryUri, this.updateCount, doPostOrUpdates,
@@ -1365,7 +1299,6 @@ public class TestLuceneDocumentIndexService {
             verifyIdempotentFactoryAfterHostRestart(h, initialState, exampleURIs, beforeState);
 
             verifyOnDemandLoad(h);
-
         } finally {
             logServiceStats(h);
             h.stop();
@@ -1404,10 +1337,10 @@ public class TestLuceneDocumentIndexService {
     }
 
     private void verifyInitialStatePost(VerificationHost h) throws Throwable {
-        URI factoryUri = createImmutableFactoryService(h);
+        URI factoryUri = UriUtils.buildUri(h, OnDemandLoadFactoryService.SELF_LINK);
         doThroughputPostWithNoQueryResults(false, factoryUri);
         ServiceDocumentQueryResult r = this.host.getFactoryState(factoryUri);
-        assertEquals(this.serviceCount, (long) r.documentCount);
+        assertEquals(2 * this.serviceCount, (long) r.documentCount);
         TestContext ctx = h.testCreate(this.serviceCount);
         for (String link : r.documentLinks) {
             Operation get = Operation.createGet(h, link).setCompletion((o, e) -> {
@@ -1684,19 +1617,19 @@ public class TestLuceneDocumentIndexService {
         ServiceDocumentQueryResult rsp = this.host.getFactoryState(factoryUri);
         // verify that for every factory child reported by the index, through the GET (query), the service is NOT
         // started
-        assertEquals(this.serviceCount, rsp.documentLinks.size());
+        assertEquals(2 * this.serviceCount, rsp.documentLinks.size());
         List<URI> childUris = new ArrayList<>();
         for (String childLink : rsp.documentLinks) {
             assertTrue(h.getServiceStage(childLink) == null);
             childUris.add(UriUtils.buildUri(h, childLink));
         }
 
-        // explicitly trigger synchronization and verify on demand load services did NOT start
+        // explicitly trigger synchronization and verify services are started
         this.host.log("Triggering synchronization to verify on demand load is not affected");
         h.scheduleNodeGroupChangeMaintenance(ServiceUriPaths.DEFAULT_NODE_SELECTOR);
         Thread.sleep(TimeUnit.MICROSECONDS.toMillis(h.getMaintenanceIntervalMicros()) * 2);
         for (String childLink : rsp.documentLinks) {
-            assertTrue(h.getServiceStage(childLink) == null);
+            assertTrue(h.getServiceStage(childLink) == ProcessingStage.AVAILABLE);
         }
 
         int startCount = MinimalTestService.HANDLE_START_COUNT.get();
@@ -1747,7 +1680,6 @@ public class TestLuceneDocumentIndexService {
 
         for (ExampleServiceState s : childStates.values()) {
             assertTrue(s.name != null);
-            assertTrue(s.name.startsWith(prefix));
         }
 
         // mark a service for expiration, a few seconds in the future
@@ -1950,8 +1882,9 @@ public class TestLuceneDocumentIndexService {
                         }
                     }
                     if (count != beforeState.size()) {
-                        this.host.failIteration(new IllegalStateException("Unexpected result:"
-                                + Utils.toJsonHtml(r)));
+                        this.host.failIteration(new IllegalStateException(String.format(
+                                "Unexpected result: expected count: %d, actual count: %d",
+                                beforeState.size(), count)));
                     } else {
                         this.host.completeIteration();
                     }
@@ -2246,26 +2179,14 @@ public class TestLuceneDocumentIndexService {
     @Test
     public void throughputPost() throws Throwable {
         if (this.serviceCacheClearIntervalSeconds == 0) {
-            // effectively disable ODL stop/start behavior while running throughput tests
+            // effectively disable stop/start behavior while running throughput tests
             this.serviceCacheClearIntervalSeconds = TimeUnit.MICROSECONDS.toSeconds(
                     ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS);
         }
         setUpHost(false);
 
-        // throughput test for immutable factory
-        URI factoryUri = createImmutableFactoryService(this.host);
-        prePopulateIndexWithServiceDocuments(factoryUri);
-        verifyImmutableEagerServiceStop(factoryUri, this.documentCountAtStart);
-
         boolean interleaveQueries = true;
-        long stVersion = doThroughputImmutablePost(0, interleaveQueries, factoryUri);
-        interleaveQueries = false;
-        doThroughputImmutablePost(stVersion, interleaveQueries, factoryUri);
-
-        // similar test but with regular, mutable, example factory
-        double initialStopCount = getHostStopCount();
-        interleaveQueries = true;
-        factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+        URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
 
         interleaveQueries = false;
@@ -2278,9 +2199,6 @@ public class TestLuceneDocumentIndexService {
 
         interleaveQueries = false;
         doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
-
-        double finalStopCount = getHostStopCount();
-        assertTrue(initialStopCount == finalStopCount);
     }
 
     @Test
@@ -2305,7 +2223,7 @@ public class TestLuceneDocumentIndexService {
         // be forced to run in batches.
         LuceneDocumentIndexService.setExpiredDocumentSearchThreshold(10);
 
-        URI factoryUri = createImmutableFactoryService(this.host);
+        URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         this.indexService.toggleOption(ServiceOption.INSTRUMENTATION, true);
         this.host.log("Starting throughout POST, expiration: %d", this.expirationSeconds);
 
@@ -2364,43 +2282,6 @@ public class TestLuceneDocumentIndexService {
         this.host.log(stringBuilder.toString());
     }
 
-    private long doThroughputImmutablePost(long statVersion, boolean interleaveQueries,
-            URI immutableFactoryUri)
-            throws Throwable {
-        this.host.log("Starting throughput POST, query interleaving: %s", interleaveQueries);
-
-        // the version cache stats are updated once per maintenance so we must make sure
-        // they are updated at least once initially, and then at least once after the
-        // test has run
-
-        this.host.waitFor("stat did not update", () -> {
-            ServiceStat st = getLuceneStat(
-                    LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_ENTRY_COUNT);
-            return st.version >= statVersion;
-        });
-        ServiceStat initialVersionStat = getLuceneStat(
-                LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_ENTRY_COUNT);
-
-        doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount,
-                immutableFactoryUri);
-        if (!this.enableInstrumentation && this.host.isStressTest()) {
-            return initialVersionStat.version;
-        }
-        this.host.waitFor("stat did not update", () -> {
-            ServiceStat st = getLuceneStat(
-                    LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_ENTRY_COUNT);
-            return st.version > initialVersionStat.version + 1;
-        });
-        ServiceStat afterVersionStat = getLuceneStat(
-                LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_ENTRY_COUNT);
-
-        if (afterVersionStat.latestValue > initialVersionStat.latestValue) {
-            throw new IllegalStateException("Immutable services caused version cache increase");
-        }
-
-        return afterVersionStat.version;
-    }
-
     void prePopulateIndexWithServiceDocuments(URI factoryUri) throws Throwable {
         if (this.documentCountAtStart == 0) {
             return;
@@ -2411,44 +2292,6 @@ public class TestLuceneDocumentIndexService {
         this.serviceCount = this.documentCountAtStart;
         doThroughputPostWithNoQueryResults(false, factoryUri);
         this.serviceCount = serviceCountCached;
-    }
-
-    void verifyImmutableEagerServiceStop(URI factoryUri, int expectedStopCount) {
-        double initialStopCount = getHostODLStopCount();
-        double initialMaintCount = getMaintCount();
-        this.host.waitFor("eager ODL stop not seen", () -> {
-            double maintCount = getMaintCount();
-            if (maintCount <= initialMaintCount + 1) {
-                return false;
-            }
-            double stopCount = getHostODLStopCount();
-            this.host.log("Stop count: %f, initial: %f, maint count delta: %f",
-                    stopCount,
-                    initialStopCount,
-                    maintCount - initialMaintCount);
-            boolean allStopped = stopCount >= expectedStopCount;
-            if (!allStopped) {
-                return false;
-            }
-
-            if (maintCount > initialMaintCount + 20) {
-                // service cache clear is essentially turned off, but IMMUTABLE services should stop
-                // within a maintenance interval of start. We are being forgiving and allow for 20, but
-                // either way if it does not happen before waitFor timeout, something is broken
-                throw new IllegalStateException("Eager service stop took too long");
-            }
-            return true;
-        });
-        this.host.log("All services for %s stopped", factoryUri);
-    }
-
-    URI createImmutableFactoryService(VerificationHost h) throws Throwable {
-        Service immutableFactory = ExampleImmutableService.createFactory();
-        immutableFactory = h.startServiceAndWait(immutableFactory,
-                "immutable-examples", null);
-
-        URI factoryUri = immutableFactory.getUri();
-        return factoryUri;
     }
 
     URI createIndexedMetadataFactoryService(VerificationHost h) throws Throwable {
@@ -2467,18 +2310,6 @@ public class TestLuceneDocumentIndexService {
         return factoryUri;
     }
 
-    private double getHostStopCount() {
-        return getMgmtStat(ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT);
-    }
-
-    private double getHostODLStopCount() {
-        return getMgmtStat(ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT);
-    }
-
-    private double getMaintCount() {
-        return getMgmtStat(ServiceHostManagementService.STAT_NAME_SERVICE_HOST_MAINTENANCE_COUNT);
-    }
-
     private ServiceStat getLuceneStat(String name) {
         URI indexUri = UriUtils.buildUri(this.host, this.indexLink);
         Map<String, ServiceStat> hostStats = this.host
@@ -2488,16 +2319,6 @@ public class TestLuceneDocumentIndexService {
             return new ServiceStat();
         }
         return st;
-    }
-
-    private double getMgmtStat(String name) {
-        Map<String, ServiceStat> hostStats = this.host.getServiceStats(
-                UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK));
-        ServiceStat st = hostStats.get(name);
-        if (st == null) {
-            return 0.0;
-        }
-        return st.latestValue;
     }
 
     private void doMultipleIterationsThroughputPost(boolean interleaveQueries, int iterationCount,
