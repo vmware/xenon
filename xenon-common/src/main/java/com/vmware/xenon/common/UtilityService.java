@@ -730,14 +730,6 @@ public class UtilityService implements Service {
         }
 
         if (updateBody.versionRetentionLimit != null) {
-            // Fail the request for immutable service as it is not allowed to change the version
-            // retention.
-            if (this.parent.getOptions().contains(ServiceOption.IMMUTABLE)) {
-                op.fail(new IllegalArgumentException(String.format(
-                        "Service %s has option %s, retention limit cannot be modified",
-                        this.parent.getSelfLink(), ServiceOption.IMMUTABLE)));
-                return;
-            }
             ServiceDocumentDescription serviceDocumentDescription = this.parent
                     .getDocumentTemplate().documentDescription;
             serviceDocumentDescription.versionRetentionLimit = updateBody.versionRetentionLimit;

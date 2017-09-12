@@ -333,8 +333,8 @@ public class NodeSelectorReplicationService extends StatelessService {
                 this.handleReplicationCompletion(context, innerOp, innerEx));
 
         this.getHost().scheduleCore(() -> {
-            logWarning("Service %s not found on replica. Retrying replication request ...",
-                    o.getUri().getPath());
+            logWarning("Service %s not found on replica. Retrying %s replication request (isSynchronize=%b)...",
+                    o.getUri().getPath(), op.getAction(), op.isSynchronize());
             this.getHost().getClient().send(update);
         }, this.getHost().getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
 

@@ -203,7 +203,7 @@ public class TestNodeGroupService {
     /**
      * Command line argument specifying service instance count
      */
-    public int serviceCount = 10;
+    public int serviceCount = 3;
 
     /**
      * Command line argument specifying test duration
@@ -371,7 +371,7 @@ public class TestNodeGroupService {
         Utils.registerKind(ExampleServiceState.class, CUSTOM_EXAMPLE_SERVICE_KIND);
     }
 
-    private void setUpOnDemandLoad() throws Throwable {
+    private void setUpAtLeastFiveNodes() throws Throwable {
         setUp();
         // we need at least 5 nodes, because we're going to stop 2
         // nodes and we need majority quorum
@@ -381,19 +381,10 @@ public class TestNodeGroupService {
         this.skipAvailabilityChecks = true;
         // create node group, join nodes and set majority quorum
         setUp(this.nodeCount);
-        this.host.log("Setting up node-group with ODL ExampleService Factory");
+        this.host.log("Setting up node-group with at least 5 nodes");
 
-        toggleOnDemandLoad();
         this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
         this.host.setNodeGroupQuorum(this.host.getPeerCount() / 2 + 1);
-    }
-
-    private void toggleOnDemandLoad() {
-        for (URI nodeUri : this.host.getNodeGroupMap().keySet()) {
-            URI factoryUri = UriUtils.buildUri(nodeUri, ExampleService.FACTORY_LINK);
-            this.host.toggleServiceOptions(factoryUri, EnumSet.of(ServiceOption.ON_DEMAND_LOAD),
-                    null);
-        }
     }
 
     @After
@@ -901,12 +892,6 @@ public class TestNodeGroupService {
                 },
                 UriUtils.buildFactoryUri(h, OnDemandLoadFactoryService.class));
 
-        // Verify that each peer host reports the correct value for ODL stop count.
-        for (VerificationHost vh : this.host.getInProcessHostMap().values()) {
-            this.host.waitFor("ODL services did not stop as expected",
-                    () -> checkOdlServiceStopCount(vh, this.serviceCount));
-        }
-
         // Add a new host to the cluster.
         VerificationHost newHost = this.host.setUpLocalPeerHost(0, h.getMaintenanceIntervalMicros(),
                 null);
@@ -927,24 +912,6 @@ public class TestNodeGroupService {
                     ExampleServiceState.class, UriUtils.buildUri(newHost, childServicePath));
             assertNotNull(state);
         }
-
-        // Verify that the new peer host reports the correct value for ODL stop count.
-        this.host.waitFor("ODL services did not stop as expected",
-                () -> checkOdlServiceStopCount(newHost, this.serviceCount));
-    }
-
-    private boolean checkOdlServiceStopCount(VerificationHost host, int serviceCount)
-            throws Throwable {
-        ServiceStat stopCount = host
-                .getServiceStats(host.getManagementServiceUri())
-                .get(ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT);
-        if (stopCount == null || stopCount.latestValue < serviceCount) {
-            this.host.log(Level.INFO,
-                    "Current stopCount is %s",
-                    (stopCount != null) ? String.valueOf(stopCount.latestValue) : "null");
-            return false;
-        }
-        return true;
     }
 
     @Test
@@ -1730,10 +1697,10 @@ public class TestNodeGroupService {
     }
 
     @Test
-    public void replicationWithQuorumAfterAbruptNodeStopOnDemandLoad() throws Throwable {
+    public void replicationWithQuorumAfterAbruptNodeStop() throws Throwable {
         tearDown();
         for (int i = 0; i < this.testIterationCount; i++) {
-            setUpOnDemandLoad();
+            setUpAtLeastFiveNodes();
 
             this.host.log("Running replication test with abrupt node stop");
             int hostStopCount = 2;
@@ -3044,6 +3011,8 @@ public class TestNodeGroupService {
         String bazUserLink = UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USERS,
                 "baz@vmware.com");
 
+        this.host.log("Creating users, user groups, resource groups and roles");
+
         groupHost.setSystemAuthorizationContext();
 
         // create user, user-group, resource-group, role for foo@vmware.com
@@ -3121,6 +3090,7 @@ public class TestNodeGroupService {
         groupHost.resetSystemAuthorizationContext();
 
         // verify GET will NOT clear cache
+        this.host.log("Verifying GET will NOT clear cache");
         populateAuthCacheInAllPeers(fooAuthContext);
         groupHost.setSystemAuthorizationContext();
         this.host.sendAndWaitExpectSuccess(
@@ -3148,11 +3118,14 @@ public class TestNodeGroupService {
         checkCacheInAllPeers(fooToken, true);
 
         // verify deleting role should clear the auth cache
+        this.host.log("Verifying DELETE will NOT clear cache");
         populateAuthCacheInAllPeers(fooAuthContext);
         groupHost.setSystemAuthorizationContext();
+        this.host.log("Deleting /core/authz/roles/foo-role-1");
         this.host.sendAndWaitExpectSuccess(
                 Operation.createDelete(
                         UriUtils.buildUri(groupHost, "/core/authz/roles/foo-role-1")));
+        this.host.log("Successfully deleted /core/authz/roles/foo-role-1, verifying cache clear");
         groupHost.resetSystemAuthorizationContext();
         verifyAuthCacheHasClearedInAllPeers(fooToken);
 
@@ -3160,13 +3133,16 @@ public class TestNodeGroupService {
         populateAuthCacheInAllPeers(fooAuthContext);
         // delete the user group associated with the user
         groupHost.setSystemAuthorizationContext();
+        this.host.log("Deleting /core/authz/user-groups/foo-user-group");
         this.host.sendAndWaitExpectSuccess(
                 Operation.createDelete(
                         UriUtils.buildUri(groupHost, "/core/authz/user-groups/foo-user-group")));
+        this.host.log("Successfully deleted /core/authz/user-groups/foo-user-group, verifying cache clear");
         groupHost.resetSystemAuthorizationContext();
         verifyAuthCacheHasClearedInAllPeers(fooToken);
 
         // verify creating new role should clear the auth cache (using bar@vmware.com)
+        this.host.log("Verifying creating a new role clears cache");
         populateAuthCacheInAllPeers(barAuthContext);
         groupHost.setSystemAuthorizationContext();
         Query q = Builder.create()
@@ -3175,6 +3151,7 @@ public class TestNodeGroupService {
                         Utils.buildKind(ExampleServiceState.class))
                 .build();
         TestContext ctxToCreateAnotherRoleForBar = this.host.testCreate(1);
+        this.host.log("Creating the new role bar-role-2");
         AuthorizationSetupHelper.create()
                 .setHost(groupHost)
                 .setUserSelfLink(barUserLink)
@@ -3184,11 +3161,11 @@ public class TestNodeGroupService {
                 .setCompletion(ctxToCreateAnotherRoleForBar.getCompletion())
                 .setupRole();
         ctxToCreateAnotherRoleForBar.await();
+        this.host.log("New role bar-role-2 created, verifying cache is cleared");
         groupHost.resetSystemAuthorizationContext();
 
         verifyAuthCacheHasClearedInAllPeers(barToken);
 
-        //
         populateAuthCacheInAllPeers(barAuthContext);
         groupHost.setSystemAuthorizationContext();
 
@@ -3207,27 +3184,34 @@ public class TestNodeGroupService {
         verifyAuthCacheHasClearedInAllPeers(barToken);
 
         // verify patching user should clear the auth cache
+        this.host.log("Verifying patching user clears cache");
         populateAuthCacheInAllPeers(fooAuthContext);
         groupHost.setSystemAuthorizationContext();
         UserState userState = new UserState();
         userState.userGroupLinks = new HashSet<>();
         userState.userGroupLinks.add("foo");
+        this.host.log("Patching user %s", fooUserLink);
         this.host.sendAndWaitExpectSuccess(
                 Operation.createPatch(UriUtils.buildUri(groupHost, fooUserLink))
                         .setBody(userState));
+        this.host.log("Patched user %s. Verifying cache is cleared", fooUserLink);
         groupHost.resetSystemAuthorizationContext();
         verifyAuthCacheHasClearedInAllPeers(fooToken);
 
         // verify deleting user should clear the auth cache
+        this.host.log("Verifying deleting user clears cache");
         populateAuthCacheInAllPeers(bazAuthContext);
         groupHost.setSystemAuthorizationContext();
+        this.host.log("Deleting user %s", bazUserLink);
         this.host.sendAndWaitExpectSuccess(
                 Operation.createDelete(UriUtils.buildUri(groupHost, bazUserLink)));
+        this.host.log("Deleted user %s, verifying cache is cleared", bazUserLink);
         groupHost.resetSystemAuthorizationContext();
         verifyAuthCacheHasClearedInAllPeers(bazToken);
 
         // verify patching ResourceGroup should clear the auth cache
         // uses "new-rg" resource group that has associated to user bar
+        this.host.log("Verifying patching resource group clears cache");
         TestRequestSender sender = new TestRequestSender(this.host.getPeerHost());
         groupHost.setSystemAuthorizationContext();
         Operation newResourceGroupGetOp = Operation.createGet(groupHost, newResourceGroupLink);
@@ -3238,9 +3222,11 @@ public class TestNodeGroupService {
 
         populateAuthCacheInAllPeers(barAuthContext);
         groupHost.setSystemAuthorizationContext();
+        this.host.log("Patching user group %s", newResourceGroupLink);
         this.host.sendAndWaitExpectSuccess(
                 Operation.createPatch(UriUtils.buildUri(groupHost, newResourceGroupLink))
                         .setBody(patchBody));
+        this.host.log("Patched user group %s, verifying cache is cleared", newResourceGroupLink);
         groupHost.resetSystemAuthorizationContext();
         verifyAuthCacheHasClearedInAllPeers(barToken);
 
