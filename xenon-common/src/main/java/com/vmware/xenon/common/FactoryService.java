@@ -392,13 +392,7 @@ public abstract class FactoryService extends StatelessService {
         initialState.documentSelfLink = o.getUri().getPath();
         initialState.documentKind = Utils.buildKind(this.stateType);
         initialState.documentTransactionId = o.getTransactionId();
-        if (hasChildOption(ServiceOption.IMMUTABLE)) {
-            // skip cloning since contract with service author is that state
-            // can not change after post.complete() is called in handleStart()
-            o.setBodyNoCloning(initialState);
-        } else {
-            o.setBody(initialState);
-        }
+        o.setBody(initialState);
 
         if (this.childOptions.contains(ServiceOption.REPLICATION) && !o.isFromReplication()
                 && !o.isForwardingDisabled()) {
@@ -598,10 +592,6 @@ public abstract class FactoryService extends StatelessService {
             task.querySpec.sortTerm.propertyType = propertyDescription.typeName;
         }
 
-        if (hasOption(ServiceOption.IMMUTABLE)) {
-            task.querySpec.options.add(QueryOption.INCLUDE_ALL_VERSIONS);
-        }
-
         if (this.childTemplate.documentDescription.documentIndexingOptions.contains(
                 ServiceDocumentDescription.DocumentIndexingOption.INDEX_METADATA)) {
             task.querySpec.options.add(QueryOption.INDEXED_METADATA);
@@ -670,9 +660,6 @@ public abstract class FactoryService extends StatelessService {
             countTask.querySpec = new QueryTask.QuerySpecification();
             countTask.querySpec.options.add(QueryOption.COUNT);
             countTask.querySpec.query = task.querySpec.query;
-            if (hasOption(ServiceOption.IMMUTABLE)) {
-                countTask.querySpec.options.add(QueryOption.INCLUDE_ALL_VERSIONS);
-            }
             Operation count = Operation
                     .createPost(this, ServiceUriPaths.CORE_QUERY_TASKS)
                     .setBody(countTask);
@@ -825,12 +812,6 @@ public abstract class FactoryService extends StatelessService {
             }
         }
 
-        // apply on demand load to factory so service host can decide to start a service
-        // if it receives a request and the service is not started
-        if (childService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-            toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
-        }
-
         // apply custom UI option to factory if child service has it to ensure ui consistency
         if (childService.hasOption(ServiceOption.HTML_USER_INTERFACE)) {
             toggleOption(ServiceOption.HTML_USER_INTERFACE, true);
@@ -939,18 +920,6 @@ public abstract class FactoryService extends StatelessService {
 
     @Override
     public void handleNodeGroupMaintenance(Operation maintOp) {
-        if (hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-            boolean odlSync =
-                    Boolean.valueOf(System.getProperty(SynchronizationTaskService.PROPERTY_NAME_ENABLE_ODL_SYNCHRONIZATION));
-            if (!odlSync) {
-                // on demand load child services are synchronized on first use, or when an explicit
-                // migration task runs
-                logWarning("No sync during node-group maintenance for ON_DEMAND_LOAD service");
-                setAvailable(true);
-                maintOp.complete();
-                return;
-            }
-        }
         synchronizeChildServicesIfOwner(maintOp);
     }
 
@@ -1000,16 +969,6 @@ public abstract class FactoryService extends StatelessService {
     }
 
     private void startFactorySynchronizationTask(Operation parentOp, Long membershipUpdateTimeMicros) {
-        if (this.childOptions.contains(ServiceOption.ON_DEMAND_LOAD)) {
-            boolean odlSync =
-                    Boolean.valueOf(System.getProperty(SynchronizationTaskService.PROPERTY_NAME_ENABLE_ODL_SYNCHRONIZATION));
-            if (!odlSync) {
-                setAvailable(true);
-                parentOp.complete();
-                return;
-            }
-        }
-
         SynchronizationTaskService.State task = createSynchronizationTaskState(
                 membershipUpdateTimeMicros);
         Operation post = Operation

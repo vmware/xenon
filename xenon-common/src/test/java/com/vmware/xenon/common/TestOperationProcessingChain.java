@@ -202,7 +202,7 @@ public class TestOperationProcessingChain extends BasicTestCase {
                     }
 
                     if (expectFailure) {
-                        this.host.failIteration(e);
+                        this.host.failIteration(new IllegalStateException("expected failure"));
                     } else {
                         this.host.completeIteration();
                     }

@@ -452,6 +452,7 @@ public class ServiceHost implements ServiceRequestSender {
         public long maintenanceIntervalMicros = DEFAULT_MAINTENANCE_INTERVAL_MICROS;
         public long operationTimeoutMicros = DEFAULT_OPERATION_TIMEOUT_MICROS;
         public long serviceCacheClearDelayMicros = DEFAULT_OPERATION_TIMEOUT_MICROS;
+        public int serviceStopDelayFactor = 30;
         public String operationTracingLevel;
         public SslClientAuthMode sslClientAuthMode;
         public int responsePayloadSizeLimit;
@@ -2653,9 +2654,12 @@ public class ServiceHost implements ServiceRequestSender {
                 // re-start (a POST following a DELETE, with version > delete version) arrives and since
                 // the service is attached, can fail with conflict. To avoid this. retry. Retry is bounded
                 // since sync task will fail its attempt if the service is marked deleted
-                log(Level.INFO, "Retrying (%d) startService() POST to %s in stage %s",
+                log(Level.INFO, "Retrying (%d) startService() POST to %s in stage %s (isFromReplication=%b, isSynchronize=%b)",
                         post.getId(),
-                        servicePath, existing.getProcessingStage());
+                        servicePath,
+                        existing.getProcessingStage(),
+                        post.isFromReplication(),
+                        post.isSynchronize());
                 scheduleCore(() -> {
                     startService(post, service);
                 }, this.getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
@@ -2671,6 +2675,9 @@ public class ServiceHost implements ServiceRequestSender {
             // This is a restart, do nothing, service already attached. We should have sent a PUT, but this
             // can happen if a service is just starting. This means it will replicate and there is
             // no need for explicit synch
+            log(Level.WARNING, "POST %d: service %s already attached - this is a load - not proceeding with start",
+                    post.getId(),
+                    servicePath);
             post.complete();
             return true;
         }
@@ -2687,11 +2694,11 @@ public class ServiceHost implements ServiceRequestSender {
             return true;
         }
 
-        log(Level.FINE, "Converting (%d) POST to PUT for idempotent %s in stage %s",
-                post.getId(),
+        // service exists, on IDEMPOTENT factory or sync request. Convert to a PUT
+        String convertReason = post.isSynchronize() ? "synchronizing" : "idempotent";
+        log(Level.FINE, "Converting (%d) POST to PUT for %s %s in stage %s",
+                post.getId(), convertReason,
                 servicePath, existing.getProcessingStage());
-
-        // service exists, on IDEMPOTENT factory. Convert to a PUT
         post.setAction(Action.PUT);
         post.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_POST_TO_PUT);
 
@@ -2701,14 +2708,6 @@ public class ServiceHost implements ServiceRequestSender {
 
     public static boolean isServiceIndexed(Service s) {
         return s.hasOption(ServiceOption.PERSISTENCE);
-    }
-
-    public static boolean isServiceOnDemandLoad(Service s) {
-        return s.hasOption(ServiceOption.ON_DEMAND_LOAD);
-    }
-
-    public static boolean isServiceImmutable(Service s) {
-        return s.hasOption(ServiceOption.IMMUTABLE);
     }
 
     private void processServiceStart(ProcessingStage next, Service s,
@@ -2763,15 +2762,11 @@ public class ServiceHost implements ServiceRequestSender {
                 processServiceStart(nextStage, s, post, hasClientSuppliedInitialState);
                 break;
             case LOADING_INITIAL_STATE:
-                boolean isImmutableStart = ServiceHost.isServiceCreate(post)
-                        && isServiceImmutable(s);
-                if (!isImmutableStart && isServiceIndexed(s) && (!post.isFromReplication() ||
+                if (isServiceIndexed(s) && (!post.isFromReplication() ||
                         post.isSynchronizePeer())) {
                     // Skip querying the index for existing state if any of the following is true:
-                    // 1) Service is marked IMMUTABLE. This means no previous version should exist,
-                    //     its up to the client to enforce unique links
-                    // 2) Request is from replication and is not a synch-peer request
-                    // 3) Service is NOT indexed.
+                    // 1) Request is from replication and is not a synch-peer request
+                    // 2) Service is NOT indexed.
                     loadInitialServiceState(s, post, ProcessingStage.SYNCHRONIZING,
                             hasClientSuppliedInitialState);
                 } else {
@@ -2870,9 +2865,8 @@ public class ServiceHost implements ServiceRequestSender {
                 }
 
                 if (!post.hasBody()
-                        && ServiceHost.isServiceOnDemandLoad(s)
                         && post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)) {
-                    // skip handleStart for ODL probes (the POST was issued to check if the service
+                    // skip handleStart for probes (the POST was issued to check if the service
                     // existed
                     post.complete();
                     return;
@@ -2913,22 +2907,8 @@ public class ServiceHost implements ServiceRequestSender {
                         state.documentKind = Utils.buildKind(s.getStateType());
                     }
 
-                    // Skip caching for replication requests if the service
-                    // is indexed.
-                    boolean skipCaching = post.isFromReplication() && isServiceIndexed(s);
-
-                    // A replication request for an ODL service can cause xenon to start the target service with
-                    // POST if the service was stopped in cleanup cycle. That internally triggered POST will have
-                    // isReplicationDisabled flag set.  We skip caching if this is ODL service
-                    // and isReplicationDisabled is set.
-                    skipCaching |= post.isReplicationDisabled() &&
-                            isServiceOnDemandLoad(s) &&
-                            !this.isDocumentOwner(s);
-
-                    if (!skipCaching) {
-                        this.serviceResourceTracker.updateCachedServiceState(s,
+                    this.serviceResourceTracker.updateCachedServiceState(s,
                                 state, post);
-                    }
                 }
 
                 if (!post.hasBody() || !needsIndexing) {
@@ -2996,10 +2976,8 @@ public class ServiceHost implements ServiceRequestSender {
                 }
 
                 s.setProcessingStage(Service.ProcessingStage.AVAILABLE);
-                if (!isServiceImmutable(s)) {
-                    startUiFileContentServices(s);
-                    scheduleServiceMaintenance(s);
-                }
+                startUiFileContentServices(s);
+                scheduleServiceMaintenance(s);
                 post.complete();
 
                 break;
@@ -3050,9 +3028,7 @@ public class ServiceHost implements ServiceRequestSender {
         initialState.documentAuthPrincipalLink = (post.getAuthorizationContext() != null) ? post
                 .getAuthorizationContext().getClaims().getSubject() : null;
 
-        if (!isServiceImmutable(s)) {
-            initialState = Utils.clone(initialState);
-        }
+        initialState = Utils.clone(initialState);
         post.setBodyNoCloning(initialState);
     }
 
@@ -3119,9 +3095,7 @@ public class ServiceHost implements ServiceRequestSender {
                         return;
                     }
 
-                    if (isDocumentOwner(s)) {
-                        this.serviceResourceTracker.updateCachedServiceState(s, st, op);
-                    }
+                    this.serviceResourceTracker.updateCachedServiceState(s, st, op);
 
                     op.linkState(st).complete();
                 });
@@ -3213,6 +3187,10 @@ public class ServiceHost implements ServiceRequestSender {
                     indexQueryOperation, e);
         });
         indexService.handleRequest(getLatestState);
+    }
+
+    ServiceDocument getCachedServiceState(Service s, Operation op) {
+        return this.serviceResourceTracker.getCachedServiceState(s, op);
     }
 
     void cacheServiceState(Service s, ServiceDocument st, Operation op) {
@@ -3347,9 +3325,7 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         if (!s.hasOption(ServiceOption.IDEMPOTENT_POST)) {
-            // ON_DEMAND_LOAD services might not be present in the attachedService map, but will
-            // exist in the index. This is an attempt to start such a service that already exists,
-            // operation
+            // This is an attempt to start a service that already exists
             log(Level.WARNING, "Attempt to start existing service %s.Version: %d, in body: %d",
                     stateFromStore.documentSelfLink,
                     stateFromStore.documentVersion,
@@ -3420,13 +3396,6 @@ public class ServiceHost implements ServiceRequestSender {
         if (options == null || this.managementService == null) {
             return;
         }
-
-        if (options.contains(ServiceOption.ON_DEMAND_LOAD)) {
-            this.managementService.adjustStat(
-                    ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT,
-                    1);
-        }
-
     }
 
     protected Service findService(String uriPath) {
@@ -3975,10 +3944,9 @@ public class ServiceHost implements ServiceRequestSender {
             Service parent,
             EnumSet<ServiceOption> options) {
 
-        if (options.contains(ServiceOption.ON_DEMAND_LOAD) &&
-                op.getAction() == Action.DELETE &&
+        if (op.getAction() == Action.DELETE &&
                 op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)) {
-            // This request was to stop an ODL service as part of reducing Xenon's
+            // This request was to stop a service as part of reducing Xenon's
             // memory foot-print (See ServiceResourceTracker). So we will avoid forwarding
             // the request to the owner and instead just stop the local service instance.
             if (s == null) {
@@ -4087,6 +4055,8 @@ public class ServiceHost implements ServiceRequestSender {
 
     private void queueOrFailRequestForServiceNotFoundOnOwner(
             Service parent, String path, Operation op, int availableNodeCount) {
+        this.log(Level.INFO, "(%s %d) %s failed NotFoundOnOwner - checking OnDemandStart",
+                op.getAction(), op.getId(), path);
         if (this.serviceResourceTracker.checkAndOnDemandStartService(op)) {
             return;
         }
@@ -4196,8 +4166,11 @@ public class ServiceHost implements ServiceRequestSender {
                         return false;
                     }
                 }
-                // the service might be ODL-stopped
+
+                // the service might be stopped
                 if (parentService.hasOption(ServiceOption.PERSISTENCE)) {
+                    this.log(Level.INFO, "%s %d (isFromReplication=%b) failed - service %s not found - checking OnDemandStart",
+                            inboundOp.getAction(), inboundOp.getId(), inboundOp.isFromReplication(), inboundOp.getUri().getPath());
                     if (this.serviceResourceTracker.checkAndOnDemandStartService(inboundOp)) {
                         return true;
                     }
@@ -4209,8 +4182,8 @@ public class ServiceHost implements ServiceRequestSender {
             // If this is a replicated update request but the service is not
             // AVAILABLE, then we fail the request with 404 - NOT FOUND error.
             if (!isServiceAvailable(s) && inboundOp.isUpdate()) {
-                this.log(Level.WARNING, "Service %s is not available. Failing replication request",
-                        inboundOp.getUri().getPath());
+                this.log(Level.WARNING, "Service %s is not available. Failing %s replication request (waitForService=%b, postToPut=%b)",
+                        inboundOp.getUri().getPath(), inboundOp.getAction(), waitForService, inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_POST_TO_PUT));
 
                 IllegalStateException ex = new IllegalStateException("Service not found on replica");
                 Operation.fail(inboundOp, Operation.STATUS_CODE_NOT_FOUND,
@@ -4269,11 +4242,9 @@ public class ServiceHost implements ServiceRequestSender {
                 handleRequest(null, op);
                 return;
             }
-            if (s.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                retryOnDemandLoadConflict(op);
-                return;
-            }
-            op.setStatusCode(Operation.STATUS_CODE_NOT_FOUND);
+
+            retryOnDemandLoadConflict(op);
+            return;
         }
 
         op.fail(new CancellationException("Service not available, in stage: " + stage));
@@ -5404,6 +5375,15 @@ public class ServiceHost implements ServiceRequestSender {
         return this.state.serviceCacheClearDelayMicros;
     }
 
+    public ServiceHost setServiceStopDelayFactor(int delayFactor) {
+        this.state.serviceStopDelayFactor = delayFactor;
+        return this;
+    }
+
+    public int getServiceStopDelayFactor() {
+        return this.state.serviceStopDelayFactor;
+    }
+
     public ServiceHost setProcessOwner(boolean isOwner) {
         this.state.isProcessOwner = isOwner;
         return this;
@@ -5477,20 +5457,7 @@ public class ServiceHost implements ServiceRequestSender {
         body.serializedDocument = op.getLinkedSerializedState();
         op.linkSerializedState(null);
 
-        boolean skipCaching = op.isFromReplication();
-
-        // A replication request for an ODL service can cause xenon to start the target service with
-        // POST if the service was stopped in cleanup cycle. That internally triggered POST will have
-        // isReplicationDisabled flag set.  We skip caching if this is ODL service
-        // and isReplicationDisabled is set.
-        skipCaching |= op.isReplicationDisabled() &&
-                isServiceOnDemandLoad(s) &&
-                !this.isDocumentOwner(s);
-
-        if (!skipCaching) {
-            // Do not cache state, in replicas
-            cacheServiceState(s, state, op);
-        }
+        cacheServiceState(s, state, op);
 
         Operation post = Operation.createPost(indexService.getUri())
                 .setBodyNoCloning(body)
@@ -5813,15 +5780,6 @@ public class ServiceHost implements ServiceRequestSender {
                     s.getOptions(),
                     ServiceDocumentDescriptionHelper.findAndDocumentRequestRouter(s));
 
-            if (s.getOptions().contains(ServiceOption.IMMUTABLE)) {
-                if (desc.versionRetentionLimit > ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT) {
-                    log(Level.WARNING, "Service %s has option %s, forcing retention limit",
-                            s.getSelfLink(), ServiceOption.IMMUTABLE);
-                }
-                // set retention limit to MIN value so index service skips version retention on this
-                // document type
-                desc.versionRetentionLimit = ServiceDocumentDescription.FIELD_VALUE_DISABLED_VERSION_RETENTION;
-            }
             this.descriptionCache.put(serviceTypeName, desc);
 
             // 2) Call the service's getDocumentTemplate() to allow the service author to modify it
@@ -6224,18 +6182,7 @@ public class ServiceHost implements ServiceRequestSender {
             st = s.getProcessingStage();
         }
 
-        Exception e;
-        if (s != null && s.hasOption(ServiceOption.IMMUTABLE)) {
-            // Even though we were able to detect violation of self-link uniqueness
-            // in this case, generally we do not try to enforce uniqueness for
-            // IMMUTABLE services in all cases. Instead it is the responsibility of
-            // the caller to ensure uniqueness of self-links.
-            e = new ServiceAlreadyStartedException(path,
-                    "Self-link uniqueness not guaranteed for Immutable Services.");
-            log(Level.WARNING, e.getMessage());
-        } else {
-            e = new ServiceAlreadyStartedException(path, st);
-        }
+        Exception e = new ServiceAlreadyStartedException(path, st);
 
         Operation.fail(post, Operation.STATUS_CODE_CONFLICT,
                 ServiceErrorResponse.ERROR_CODE_SERVICE_ALREADY_EXISTS,

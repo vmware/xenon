@@ -85,18 +85,6 @@ import com.vmware.xenon.services.common.TestNodeGroupService.ExampleFactoryServi
 
 public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
-    public static class ImmutableExampleService extends ExampleService {
-        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/immutables";
-
-        public ImmutableExampleService() {
-            super();
-            super.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
-            super.toggleOption(ServiceOption.IMMUTABLE, true);
-            // toggle instrumentation off so service stops, instead of pausing
-            super.toggleOption(ServiceOption.INSTRUMENTATION, false);
-        }
-    }
-
     private static final String CUSTOM_NODE_GROUP_NAME = "custom";
     private static final String CUSTOM_NODE_GROUP = UriUtils.buildUriPath(
             ServiceUriPaths.NODE_GROUP_FACTORY,
@@ -143,9 +131,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
             for (VerificationHost host : this.host.getInProcessHostMap().values()) {
                 host.startFactory(new MigrationTaskService());
-                host.startFactory(new ImmutableExampleService());
                 host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
-                host.waitForServiceAvailable(ImmutableExampleService.FACTORY_LINK);
                 host.waitForServiceAvailable(MigrationTaskService.FACTORY_LINK);
             }
 
@@ -169,9 +155,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
             destinationHost.setNodeGroupQuorum(this.nodeCount);
             for (VerificationHost host : destinationHost.getInProcessHostMap().values()) {
                 host.startFactory(new MigrationTaskService());
-                host.startFactory(new ImmutableExampleService());
                 host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
-                host.waitForServiceAvailable(ImmutableExampleService.FACTORY_LINK);
                 host.waitForServiceAvailable(MigrationTaskService.FACTORY_LINK);
             }
 
@@ -667,30 +651,6 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                 .getFactoryState(UriUtils.buildUri(
                         getDestinationHost(), newFactoryLink));
         assertEquals(this.serviceCount, result.documentLinks.size());
-    }
-
-    @Test
-    public void successMigrateImmutableDocuments() throws Throwable {
-        // For migrating immutable documents, it adds query option for count query.
-        // Check migration works fine with that path.
-
-        List<ExampleServiceState> states = createImmutableDocuments(getSourceHost(), this.serviceCount);
-
-        // start migration
-        MigrationTaskService.State migrationState = validMigrationState(ImmutableExampleService.FACTORY_LINK);
-        Operation post = Operation.createPost(this.destinationFactoryUri).setBody(migrationState);
-
-        ServiceDocument taskState = this.sender.sendAndWait(post, ServiceDocument.class);
-        State finalState = waitForServiceCompletion(taskState.documentSelfLink, getDestinationHost());
-        assertEquals(TaskStage.FINISHED, finalState.taskInfo.stage);
-
-        // validate destination
-        List<Operation> ops = new ArrayList<>();
-        for (ExampleServiceState state : states) {
-            Operation get = Operation.createGet(getDestinationHost(), state.documentSelfLink);
-            ops.add(get);
-        }
-        this.sender.sendAndWait(ops);
     }
 
     @Test
@@ -1361,20 +1321,6 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         return currentState[0];
     }
 
-    private List<ExampleServiceState> createImmutableDocuments(VerificationHost targetHost, long numOfDocs) {
-
-        List<Operation> ops = new ArrayList<>();
-        for (int i = 0; i < numOfDocs; i++) {
-            ExampleServiceState state = new ExampleService.ExampleServiceState();
-            state.name = "doc-" + i;
-            state.documentSelfLink = state.name;
-            state.counter = (long) i;
-            Operation post = Operation.createPost(targetHost, ImmutableExampleService.FACTORY_LINK).setBody(state);
-            ops.add(post);
-        }
-        return this.sender.sendAndWait(ops, ExampleServiceState.class);
-    }
-
     private List<ExampleServiceState> createExampleDocuments(URI exampleSourceFactory,
             VerificationHost host, long documentNumber) throws Throwable {
         return createExampleDocuments(exampleSourceFactory, host, documentNumber, true);
@@ -1614,9 +1560,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         if (host.isStopping() || !host.isStarted()) {
             host.start();
             host.startFactory(new MigrationTaskService());
-            host.startFactory(new ImmutableExampleService());
             host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
-            host.waitForServiceAvailable(ImmutableExampleService.FACTORY_LINK);
             host.waitForServiceAvailable(MigrationTaskService.FACTORY_LINK);
         }
         host.deleteAllChildServices(UriUtils.buildUri(host, MigrationTaskService.FACTORY_LINK));
