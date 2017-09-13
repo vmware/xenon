@@ -25,6 +25,8 @@ public class TestLocalizationUtil {
 
     private static final String SYSTEM_EX_MESSAGE = "System exception message";
 
+    private static final String ERROR_MESSAGE_BG = "Случайно тестово съобщение за грешка: argValue";
+
     private static final String ERROR_MESSAGE_DE = "Random test error message in German!: argValue";
 
     private static final String ERROR_MESSAGE_EN = "Random test error message: argValue";
@@ -50,6 +52,18 @@ public class TestLocalizationUtil {
 
         String message = LocalizationUtil.resolveMessage(this.ex, op);
         assertEquals(ERROR_MESSAGE_DE, message);
+    }
+
+    @Test
+    public void testResolveNonIso8859Message() {
+        Operation op = Operation.createGet(URI.create("127.0.0.1"))
+                .addRequestHeader(Operation.ACCEPT_LANGUAGE_HEADER, "bg,en-US;q=0.8,en;q=0.6");
+
+        Locale locale = LocalizationUtil.resolveLocale(op);
+        assertEquals(Locale.forLanguageTag("bg"), locale);
+
+        String message = LocalizationUtil.resolveMessage(this.ex, op);
+        assertEquals(ERROR_MESSAGE_BG, message);
     }
 
     @Test
