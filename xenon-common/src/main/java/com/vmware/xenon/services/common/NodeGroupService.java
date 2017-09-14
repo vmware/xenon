@@ -222,6 +222,7 @@ public class NodeGroupService extends StatefulService {
         }
 
         initState.nodes.put(self.id, self);
+        initState.membershipUpdateTimeMicros = Utils.getSystemNowMicrosUtc();
         this.cachedState = Utils.clone(initState);
         startPost.setBody(this.cachedState).complete();
     }
@@ -577,7 +578,7 @@ public class NodeGroupService extends StatefulService {
         body.documentSelfLink = UriUtils.buildUriPath(getSelfLink(), body.documentOwner);
         local.status = NodeStatus.AVAILABLE;
         body.nodes.put(local.id, local);
-
+        body.membershipUpdateTimeMicros = Utils.getSystemNowMicrosUtc();
         sendRequest(Operation.createPatch(getUri()).setBody(
                 body));
     }
@@ -674,6 +675,10 @@ public class NodeGroupService extends StatefulService {
             }
 
             if (peer.id.equals(getHost().getId())) {
+                continue;
+            }
+
+            if (peer.status == NodeStatus.REPLACED) {
                 continue;
             }
 
@@ -848,6 +853,8 @@ public class NodeGroupService extends StatefulService {
                         currentEntry.documentVersion = remoteEntry.documentVersion;
                         currentEntry.documentUpdateTimeMicros = now;
                         changes.add(NodeGroupChange.SELF_CHANGE);
+                    } else {
+                        changes.add(NodeGroupChange.PEER_STATUS_CHANGE);
                     }
                 }
                 // local instance of node group service is the only one that can update its own
