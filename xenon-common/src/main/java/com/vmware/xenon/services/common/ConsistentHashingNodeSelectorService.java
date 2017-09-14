@@ -550,11 +550,11 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
      */
     @Override
     public void handleMaintenance(Operation maintOp) {
-        performPendingRequestMaintenance();
         if (checkAndScheduleSynchronization(this.cachedGroupState.membershipUpdateTimeMicros,
                 maintOp)) {
             return;
         }
+        performPendingRequestMaintenance();
         maintOp.complete();
     }
 
@@ -594,8 +594,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return false;
         }
 
-        if (!this.isSynchronizationRequired) {
-            // this boolean is set to false on notifications for node group changes
+        if (!getHost().isPeerSynchronizationEnabled()
+                || !this.isSynchronizationRequired) {
             return false;
         }
 
@@ -610,16 +610,12 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return true;
         }
 
-        if (!getHost().isPeerSynchronizationEnabled()
-                || !this.isSynchronizationRequired) {
-            return false;
-        }
-
         this.isSynchronizationRequired = false;
         logInfo("Scheduling synchronization (%d nodes)", this.cachedGroupState.nodes.size());
         adjustStat(STAT_NAME_SYNCHRONIZATION_COUNT, 1);
         getHost().scheduleNodeGroupChangeMaintenance(getSelfLink());
-        return false;
+        maintOp.complete();
+        return true;
     }
 
     private void checkConvergence(long membershipUpdateMicros, Operation maintOp) {
@@ -658,7 +654,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                                 }
 
                                 if (!NodeGroupUtils.hasMembershipQuorum(getHost(),
-                                        this.cachedGroupState)) {
+                                        ngs)) {
                                     if (this.synchQuorumWarningCount < quorumWarningsBeforeQuiet) {
                                         logWarning("Synchronization quorum not met");
                                     } else if (this.synchQuorumWarningCount == quorumWarningsBeforeQuiet) {
@@ -749,5 +745,11 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         } else {
             return super.getUtilityService(uriPath);
         }
+    }
+
+    @Override
+    public void handleStop(Operation delete) {
+        this.pendingRequestQueue.clear();
+        delete.complete();
     }
 }
