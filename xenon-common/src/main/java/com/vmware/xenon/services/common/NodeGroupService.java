@@ -278,7 +278,7 @@ public class NodeGroupService extends StatefulService {
         NodeState localNodeState = localState.nodes.get(getHost().getId());
         localNodeState.groupReference = getPublicUri();
 
-        this.cachedState = localState;
+        this.cachedState = Utils.clone(localState);
 
         patch.setBodyNoCloning(this.cachedState).complete();
 
@@ -861,6 +861,14 @@ public class NodeGroupService extends StatefulService {
                 if (hasExpired || NodeState.isUnAvailable(remoteEntry, null)) {
                     continue;
                 }
+
+                if (selfEntry.groupReference.equals(remoteEntry.groupReference)
+                        && remoteEntry.status != NodeStatus.REPLACED) {
+                    logWarning("Local address %s has changed to id %s from %s", remoteEntry.groupReference, getHost().getId(), remoteEntry.id);
+                    changes.add(NodeGroupChange.SELF_CHANGE);
+                    continue;
+                }
+
                 if (!isLocalNode) {
                     logInfo("Adding new peer %s (%s), status %s", remoteEntry.id,
                             remoteEntry.groupReference, remoteEntry.status);
