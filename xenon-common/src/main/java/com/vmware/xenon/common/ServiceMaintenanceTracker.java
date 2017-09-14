@@ -86,8 +86,8 @@ class ServiceMaintenanceTracker {
     }
 
     public void performMaintenance(Operation op, long deadline) {
-        long now;
-        while ((now = Utils.getSystemNowMicrosUtc()) < deadline) {
+        long now = Utils.getSystemNowMicrosUtc();
+        do {
             if (this.host.isStopping()) {
                 op.fail(new CancellationException("Host is stopping"));
                 return;
@@ -135,7 +135,7 @@ class ServiceMaintenanceTracker {
 
                 performServiceMaintenance(servicePath, s);
             }
-        }
+        } while ((now = Utils.getSystemNowMicrosUtc()) < deadline);
     }
 
     private void performServiceMaintenance(String servicePath, Service s) {
