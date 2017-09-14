@@ -550,7 +550,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
     @Override
     public void handleMaintenance(Operation maintOp) {
         performPendingRequestMaintenance();
-        if (checkAndScheduleSynchronization(this.cachedGroupState.membershipUpdateTimeMicros,
+        if (this.cachedGroupState != null
+                && checkAndScheduleSynchronization(this.cachedGroupState.membershipUpdateTimeMicros,
                 maintOp)) {
             return;
         }
@@ -639,7 +640,6 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 return;
             }
             NodeGroupState ngs = o.getBody(NodeGroupState.class);
-            updateCachedNodeGroupState(ngs, null);
             Operation op = Operation.createPost(null)
                     .setReferer(getUri())
                     .setExpiration(
@@ -671,7 +671,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                                 // if node group changed since we kicked of this check, we need to wait for
                                 // newer convergence completions
                                 synchronized (this.cachedState) {
-                                    this.isNodeGroupConverged = membershipUpdateMicros == this.cachedGroupState.membershipUpdateTimeMicros;
+                                    this.isNodeGroupConverged = membershipUpdateMicros == ngs.membershipUpdateTimeMicros;
                                     if (this.isNodeGroupConverged) {
                                         this.synchQuorumWarningCount = 0;
                                     }
@@ -722,18 +722,17 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 return;
             }
 
-            if (this.cachedGroupState == null) {
-                this.cachedGroupState = ngs;
-            }
-
-            if (this.cachedGroupState.documentUpdateTimeMicros <= ngs.documentUpdateTimeMicros) {
+            if (this.cachedGroupState == null
+                    || this.cachedGroupState.documentUpdateTimeMicros < ngs.documentUpdateTimeMicros) {
                 NodeSelectorState.updateStatus(getHost(), ngs, this.cachedState);
+                // every time we update cached state, request convergence check if membership update timestamp mismatch
+                if (this.cachedState.membershipUpdateTimeMicros != ngs.membershipUpdateTimeMicros) {
+                    this.isNodeGroupConverged = false;
+                }
+                this.isSynchronizationRequired = true;
                 this.cachedState.documentUpdateTimeMicros = now;
                 this.cachedState.membershipUpdateTimeMicros = ngs.membershipUpdateTimeMicros;
                 this.cachedGroupState = ngs;
-                // every time we update cached state, request convergence check
-                this.isNodeGroupConverged = false;
-                this.isSynchronizationRequired = true;
             } else {
                 return;
             }
