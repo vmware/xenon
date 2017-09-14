@@ -383,13 +383,19 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
         ClosestNNeighbours closestNodes = new ClosestNNeighbours(neighbourCount);
 
+        NodeState localNodeState = localState.nodes.get(getHost().getId());
         long keyHash = FNVHash.compute(response.key);
         for (NodeState m : localState.nodes.values()) {
             if (NodeState.isUnAvailable(m)) {
                 availableNodes--;
                 continue;
             }
-
+            boolean shouldBeReplaced = localNodeState.groupReference.equals(m.groupReference)
+                    && (!localNodeState.id.equals(m.id));
+            if (shouldBeReplaced) {
+                availableNodes --;
+                continue;
+            }
             response.availableNodeCount++;
 
             long distance = m.getNodeIdHash() - keyHash;
@@ -730,10 +736,13 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 NodeSelectorState.updateStatus(getHost(), ngs, this.cachedState);
                 this.cachedState.documentUpdateTimeMicros = now;
                 this.cachedState.membershipUpdateTimeMicros = ngs.membershipUpdateTimeMicros;
+                if (this.cachedGroupState.membershipUpdateTimeMicros != ngs.membershipUpdateTimeMicros) {
+                    this.isNodeGroupConverged = false;
+                }
                 this.cachedGroupState = ngs;
                 // every time we update cached state, request convergence check
-                this.isNodeGroupConverged = false;
                 this.isSynchronizationRequired = true;
+                checkAndScheduleSynchronization(ngs.membershipUpdateTimeMicros, Operation.createPost(null));
             } else {
                 return;
             }
