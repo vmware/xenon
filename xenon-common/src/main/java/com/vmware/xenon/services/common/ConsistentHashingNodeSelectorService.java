@@ -550,7 +550,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
     @Override
     public void handleMaintenance(Operation maintOp) {
         performPendingRequestMaintenance();
-        if (checkAndScheduleSynchronization(this.cachedGroupState.membershipUpdateTimeMicros,
+        if (this.cachedGroupState != null
+                && checkAndScheduleSynchronization(this.cachedGroupState.membershipUpdateTimeMicros,
                 maintOp)) {
             return;
         }
@@ -721,21 +722,20 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 }
                 return;
             }
+            // node group changed, synchronization required
+            this.isSynchronizationRequired = true;
 
-            if (this.cachedGroupState == null) {
-                this.cachedGroupState = ngs;
-            }
-
-            if (this.cachedGroupState.documentUpdateTimeMicros <= ngs.documentUpdateTimeMicros) {
+            if (this.cachedGroupState == null
+                    || this.cachedGroupState.documentUpdateTimeMicros < ngs.documentUpdateTimeMicros) {
                 NodeSelectorState.updateStatus(getHost(), ngs, this.cachedState);
+                // every time we update cached state, request convergence check if membership update timestamp mismatch
+                if (this.cachedGroupState == null ||
+                        this.cachedGroupState.membershipUpdateTimeMicros != ngs.membershipUpdateTimeMicros) {
+                    this.isNodeGroupConverged = false;
+                }
                 this.cachedState.documentUpdateTimeMicros = now;
                 this.cachedState.membershipUpdateTimeMicros = ngs.membershipUpdateTimeMicros;
                 this.cachedGroupState = ngs;
-                // every time we update cached state, request convergence check
-                this.isNodeGroupConverged = false;
-                this.isSynchronizationRequired = true;
-            } else {
-                return;
             }
         }
     }
