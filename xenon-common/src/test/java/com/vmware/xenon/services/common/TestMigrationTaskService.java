@@ -262,11 +262,11 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     }
 
     private VerificationHost getDestinationHost() {
-        return destinationHost.getInProcessHostMap().values().iterator().next();
+        return destinationHost.getInProcessHostMap().values().stream().filter(h -> !h.isStopping()).iterator().next();
     }
 
     private VerificationHost getSourceHost() {
-        return this.host.getInProcessHostMap().values().iterator().next();
+        return this.host.getInProcessHostMap().values().stream().filter(h -> !h.isStopping()).iterator().next();
     }
 
     @After
