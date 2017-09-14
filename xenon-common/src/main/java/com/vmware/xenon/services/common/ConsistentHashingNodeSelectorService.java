@@ -722,11 +722,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 return;
             }
 
-            if (this.cachedGroupState == null) {
-                this.cachedGroupState = ngs;
-            }
-
-            if (this.cachedGroupState.documentUpdateTimeMicros <= ngs.documentUpdateTimeMicros) {
+            if (this.cachedGroupState == null
+                    || this.cachedGroupState.documentUpdateTimeMicros < ngs.documentUpdateTimeMicros) {
                 NodeSelectorState.updateStatus(getHost(), ngs, this.cachedState);
                 this.cachedState.documentUpdateTimeMicros = now;
                 this.cachedState.membershipUpdateTimeMicros = ngs.membershipUpdateTimeMicros;
