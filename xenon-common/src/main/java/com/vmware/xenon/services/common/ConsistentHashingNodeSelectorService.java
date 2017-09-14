@@ -656,7 +656,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                                     maintOp.complete();
                                     return;
                                 }
-
+                                // check convergence and membership quorum against the same node group state
                                 if (!NodeGroupUtils.hasMembershipQuorum(getHost(),
                                         this.cachedGroupState)) {
                                     if (this.synchQuorumWarningCount < quorumWarningsBeforeQuiet) {
@@ -672,7 +672,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                                 // if node group changed since we kicked of this check, we need to wait for
                                 // newer convergence completions
                                 synchronized (this.cachedState) {
-                                    this.isNodeGroupConverged = membershipUpdateMicros == this.cachedGroupState.membershipUpdateTimeMicros;
+                                    this.isNodeGroupConverged = this.cachedGroupState.membershipUpdateTimeMicros == membershipUpdateMicros;
                                     if (this.isNodeGroupConverged) {
                                         this.synchQuorumWarningCount = 0;
                                     }
@@ -728,13 +728,13 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             }
 
             if (this.cachedGroupState.documentUpdateTimeMicros <= ngs.documentUpdateTimeMicros) {
-                NodeSelectorState.updateStatus(getHost(), ngs, this.cachedState);
                 this.cachedState.documentUpdateTimeMicros = now;
                 this.cachedState.membershipUpdateTimeMicros = ngs.membershipUpdateTimeMicros;
                 this.cachedGroupState = ngs;
                 // every time we update cached state, request convergence check
                 this.isNodeGroupConverged = false;
                 this.isSynchronizationRequired = true;
+                NodeSelectorState.updateStatus(getHost(), ngs, this.cachedState);
             } else {
                 return;
             }
