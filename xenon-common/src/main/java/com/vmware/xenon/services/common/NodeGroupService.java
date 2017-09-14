@@ -758,6 +758,7 @@ public class NodeGroupService extends StatefulService {
                     NodeState remotePeerStateFromRsp = peerState.nodes.get(remotePeer.id);
                     if (remotePeerStateFromRsp.documentVersion > remotePeer.documentVersion) {
                         remotePeer = remotePeerStateFromRsp;
+                        updateTime = Utils.getNowMicrosUtc();
                     }
                 } else if (remotePeer.status != NodeStatus.REPLACED) {
                     logWarning("Peer address %s has changed to id %s from %s",
