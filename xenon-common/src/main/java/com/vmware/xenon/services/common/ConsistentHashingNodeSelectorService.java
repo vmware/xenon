@@ -656,7 +656,6 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                                     maintOp.complete();
                                     return;
                                 }
-
                                 if (!NodeGroupUtils.hasMembershipQuorum(getHost(),
                                         this.cachedGroupState)) {
                                     if (this.synchQuorumWarningCount < quorumWarningsBeforeQuiet) {
@@ -728,13 +727,13 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             }
 
             if (this.cachedGroupState.documentUpdateTimeMicros <= ngs.documentUpdateTimeMicros) {
-                NodeSelectorState.updateStatus(getHost(), ngs, this.cachedState);
                 this.cachedState.documentUpdateTimeMicros = now;
                 this.cachedState.membershipUpdateTimeMicros = ngs.membershipUpdateTimeMicros;
                 this.cachedGroupState = ngs;
                 // every time we update cached state, request convergence check
                 this.isNodeGroupConverged = false;
                 this.isSynchronizationRequired = true;
+                NodeSelectorState.updateStatus(getHost(), ngs, this.cachedState);
             } else {
                 return;
             }
