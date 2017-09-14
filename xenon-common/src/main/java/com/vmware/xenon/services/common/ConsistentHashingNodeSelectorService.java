@@ -130,6 +130,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         state.documentOwner = getHost().getId();
         this.cachedState = state;
         this.replicationUtility = new NodeSelectorReplicationService(this);
+        this.isSynchronizationRequired = true;
         startHelperServices(start);
     }
 
@@ -383,13 +384,19 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
         ClosestNNeighbours closestNodes = new ClosestNNeighbours(neighbourCount);
 
+        NodeState localNodeState = localState.nodes.get(getHost().getId());
         long keyHash = FNVHash.compute(response.key);
         for (NodeState m : localState.nodes.values()) {
             if (NodeState.isUnAvailable(m)) {
                 availableNodes--;
                 continue;
             }
-
+            boolean shouldBeReplaced = localNodeState.groupReference.equals(m.groupReference)
+                    && (!localNodeState.id.equals(m.id));
+            if (shouldBeReplaced) {
+                availableNodes --;
+                continue;
+            }
             response.availableNodeCount++;
 
             long distance = m.getNodeIdHash() - keyHash;

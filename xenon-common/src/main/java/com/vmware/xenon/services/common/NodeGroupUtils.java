@@ -243,12 +243,17 @@ public final class NodeGroupUtils {
             parentOp.complete();
         };
 
+        NodeState localNodeState = ngs.nodes.get(host.getId());
         List<Operation> ops = new ArrayList<>();
         for (NodeState ns : ngs.nodes.values()) {
             if (NodeState.isUnAvailable(ns)) {
                 continue;
             }
-
+            boolean shouldBeReplaced = localNodeState.groupReference.equals(ns.groupReference)
+                    && (!localNodeState.id.equals(ns.id));
+            if (shouldBeReplaced) {
+                continue;
+            }
             long expirationMicros = Math.min(
                     Utils.fromNowMicrosUtc(ngs.config.peerRequestTimeoutMicros),
                     parentOp.getExpirationMicrosUtc());
