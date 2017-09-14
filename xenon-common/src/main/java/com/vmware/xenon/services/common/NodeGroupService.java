@@ -742,6 +742,7 @@ public class NodeGroupService extends StatefulService {
             updateGossipPatchStat(sendTimeMicros, remotePeer);
 
             long updateTime = localState.membershipUpdateTimeMicros;
+            NodeState replacePeer = null;
             if (e != null) {
                 updateTime = remotePeer.status != NodeStatus.UNAVAILABLE ? Utils.getNowMicrosUtc()
                         : updateTime;
@@ -758,6 +759,7 @@ public class NodeGroupService extends StatefulService {
                     NodeState remotePeerStateFromRsp = peerState.nodes.get(remotePeer.id);
                     if (remotePeerStateFromRsp.documentVersion > remotePeer.documentVersion) {
                         remotePeer = remotePeerStateFromRsp;
+                        updateTime = Utils.getNowMicrosUtc();
                     }
                 } else if (remotePeer.status != NodeStatus.REPLACED) {
                     logWarning("Peer address %s has changed to id %s from %s",
@@ -766,6 +768,7 @@ public class NodeGroupService extends StatefulService {
                             remotePeer.id);
                     remotePeer.status = NodeStatus.REPLACED;
                     remotePeer.documentVersion++;
+                    replacePeer = peerState.nodes.get(peerState.documentOwner);
                     updateTime = Utils.getNowMicrosUtc();
                 }
                 updateTime = Math.max(updateTime, peerState.membershipUpdateTimeMicros);
@@ -773,6 +776,9 @@ public class NodeGroupService extends StatefulService {
 
             synchronized (patchBody) {
                 patchBody.nodes.put(remotePeer.id, remotePeer);
+                if (replacePeer != null) {
+                    patchBody.nodes.put(replacePeer.id, replacePeer);
+                }
                 patchBody.membershipUpdateTimeMicros = Math.max(updateTime,
                         patchBody.membershipUpdateTimeMicros);
             }
@@ -861,6 +867,13 @@ public class NodeGroupService extends StatefulService {
                 if (hasExpired || NodeState.isUnAvailable(remoteEntry, null)) {
                     continue;
                 }
+
+                if (selfEntry.groupReference.equals(remoteEntry.groupReference)) {
+                    logWarning("Local address %s has changed to id %s from %s", remoteEntry.groupReference, getHost().getId(), remoteEntry.id);
+                    remoteEntry.status = NodeStatus.REPLACED;
+                    remoteEntry.documentVersion++;
+                }
+
                 if (!isLocalNode) {
                     logInfo("Adding new peer %s (%s), status %s", remoteEntry.id,
                             remoteEntry.groupReference, remoteEntry.status);
@@ -899,6 +912,7 @@ public class NodeGroupService extends StatefulService {
                         remotePeerState.documentOwner,
                         getHost().getId(),
                         selfEntry.documentVersion);
+                changes.add(NodeGroupChange.PEER_STATUS_CHANGE);
                 continue;
             }
 

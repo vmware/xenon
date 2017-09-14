@@ -726,15 +726,16 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             if (this.cachedGroupState == null) {
                 this.cachedGroupState = ngs;
             }
-
+            // synchronization required if node group notification
+            this.isSynchronizationRequired = true;
             if (this.cachedGroupState.documentUpdateTimeMicros <= ngs.documentUpdateTimeMicros) {
                 NodeSelectorState.updateStatus(getHost(), ngs, this.cachedState);
+                if (this.cachedGroupState.membershipUpdateTimeMicros != ngs.membershipUpdateTimeMicros) {
+                    this.isNodeGroupConverged = false;
+                }
                 this.cachedState.documentUpdateTimeMicros = now;
                 this.cachedState.membershipUpdateTimeMicros = ngs.membershipUpdateTimeMicros;
                 this.cachedGroupState = ngs;
-                // every time we update cached state, request convergence check
-                this.isNodeGroupConverged = false;
-                this.isSynchronizationRequired = true;
             } else {
                 return;
             }
