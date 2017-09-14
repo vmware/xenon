@@ -332,6 +332,11 @@ public final class NodeGroupUtils {
                 if (!NodeState.isAvailable(ns, selfNode.id, false)) {
                     continue;
                 }
+                boolean shouldBeReplaced = selfNode.groupReference.equals(ns.groupReference)
+                        && (!selfNode.id.equals(ns.id));
+                if (shouldBeReplaced) {
+                    continue;
+                }
                 availableNodeCount++;
             }
         }
