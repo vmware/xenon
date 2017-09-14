@@ -704,13 +704,14 @@ public class NodeGroupService extends StatefulService {
                     .forceRemote()
                     .setCompletion(ch);
 
-            if (peer.groupReference.equals(localNode.groupReference)
-                    && peer.status != NodeStatus.REPLACED) {
+            if (peer.groupReference.equals(localNode.groupReference)) {
                 // If we just detected this is a peer node that used to listen on our address,
                 // but its obviously no longer around, mark it as REPLACED and do not send PATCH
-                peer.status = NodeStatus.REPLACED;
-                peer.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
-                peer.documentVersion++;
+                if (peer.status != NodeStatus.REPLACED) {
+                    peer.status = NodeStatus.REPLACED;
+                    peer.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+                    peer.documentVersion++;
+                }
                 ch.handle(null, null);
             } else {
                 patch.setBodyNoCloning(localState)
@@ -766,7 +767,6 @@ public class NodeGroupService extends StatefulService {
                             remotePeer.id);
                     remotePeer.status = NodeStatus.REPLACED;
                     remotePeer.documentVersion++;
-                    updateTime = Utils.getNowMicrosUtc();
                 }
                 updateTime = Math.max(updateTime, peerState.membershipUpdateTimeMicros);
             }
@@ -859,6 +859,11 @@ public class NodeGroupService extends StatefulService {
                 boolean hasExpired = remoteEntry.documentExpirationTimeMicros > 0
                         && remoteEntry.documentExpirationTimeMicros < now;
                 if (hasExpired || NodeState.isUnAvailable(remoteEntry, null)) {
+                    continue;
+                }
+                if (selfEntry.groupReference.equals(remoteEntry.groupReference)) {
+                    logWarning("Local address %s has changed to id %s from %s", remoteEntry.groupReference, getHost().getId(), remoteEntry.id);
+                    changes.add(NodeGroupChange.SELF_CHANGE);
                     continue;
                 }
                 if (!isLocalNode) {
