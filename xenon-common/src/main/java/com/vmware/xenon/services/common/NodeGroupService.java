@@ -677,6 +677,10 @@ public class NodeGroupService extends StatefulService {
                 continue;
             }
 
+            if (peer.status == NodeStatus.REPLACED) {
+                continue;
+            }
+
             NodeState remotePeer = peer;
             URI peerUri = peer.groupReference;
             // send a gossip PATCH to the peer, with our state
@@ -861,6 +865,12 @@ public class NodeGroupService extends StatefulService {
                 if (hasExpired || NodeState.isUnAvailable(remoteEntry, null)) {
                     continue;
                 }
+
+                if (selfEntry.groupReference.equals(remoteEntry.groupReference)) {
+                    logWarning("Local address %s has changed to id %s from %s", remoteEntry.groupReference, getHost().getId(), remoteEntry.id);
+                    continue;
+                }
+
                 if (!isLocalNode) {
                     logInfo("Adding new peer %s (%s), status %s", remoteEntry.id,
                             remoteEntry.groupReference, remoteEntry.status);
