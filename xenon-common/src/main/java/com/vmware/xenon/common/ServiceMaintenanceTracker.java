@@ -86,7 +86,10 @@ class ServiceMaintenanceTracker {
     }
 
     public void performMaintenance(Operation op, long deadline) {
-        long now;
+        long now = Utils.getSystemNowMicrosUtc();
+        if (now >= deadline) {
+            Utils.logWarning("now: %d, deadline %d, no service maintenance");
+        }
         while ((now = Utils.getSystemNowMicrosUtc()) < deadline) {
             if (this.host.isStopping()) {
                 op.fail(new CancellationException("Host is stopping"));
