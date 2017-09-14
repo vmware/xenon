@@ -39,7 +39,6 @@ import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.test.TestContext;
@@ -406,7 +405,6 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         return newState;
     }
 
-    @Ignore("https://www.pivotaltracker.com/story/show/150535341")
     @Test
     public void  synchAfterClusterRestart() throws Throwable {
         setUpMultiNode();
