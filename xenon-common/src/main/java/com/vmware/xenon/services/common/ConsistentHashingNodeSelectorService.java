@@ -523,6 +523,10 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return false;
         }
 
+        if (this.isNodeGroupConverged) {
+            return false;
+        }
+
         // approximate check for queue limit (not atomic)
         if (this.operationQueueLimit <= this.pendingOperationCount.get()) {
             adjustStat(STAT_NAME_LIMIT_EXCEEDED_FAILED_REQUEST_COUNT, 1);
@@ -656,9 +660,9 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                                     maintOp.complete();
                                     return;
                                 }
-
+                                // check convergence and membership quorum against the same node group state
                                 if (!NodeGroupUtils.hasMembershipQuorum(getHost(),
-                                        this.cachedGroupState)) {
+                                        ngs)) {
                                     if (this.synchQuorumWarningCount < quorumWarningsBeforeQuiet) {
                                         logWarning("Synchronization quorum not met");
                                     } else if (this.synchQuorumWarningCount == quorumWarningsBeforeQuiet) {
@@ -672,7 +676,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                                 // if node group changed since we kicked of this check, we need to wait for
                                 // newer convergence completions
                                 synchronized (this.cachedState) {
-                                    this.isNodeGroupConverged = membershipUpdateMicros == this.cachedGroupState.membershipUpdateTimeMicros;
+                                    this.isNodeGroupConverged = this.cachedGroupState.membershipUpdateTimeMicros == ngs.membershipUpdateTimeMicros;
                                     if (this.isNodeGroupConverged) {
                                         this.synchQuorumWarningCount = 0;
                                     }
@@ -728,13 +732,13 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             }
 
             if (this.cachedGroupState.documentUpdateTimeMicros <= ngs.documentUpdateTimeMicros) {
-                NodeSelectorState.updateStatus(getHost(), ngs, this.cachedState);
                 this.cachedState.documentUpdateTimeMicros = now;
                 this.cachedState.membershipUpdateTimeMicros = ngs.membershipUpdateTimeMicros;
                 this.cachedGroupState = ngs;
                 // every time we update cached state, request convergence check
                 this.isNodeGroupConverged = false;
                 this.isSynchronizationRequired = true;
+                NodeSelectorState.updateStatus(getHost(), ngs, this.cachedState);
             } else {
                 return;
             }
