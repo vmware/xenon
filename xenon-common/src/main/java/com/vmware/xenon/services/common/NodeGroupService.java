@@ -861,6 +861,12 @@ public class NodeGroupService extends StatefulService {
                 if (hasExpired || NodeState.isUnAvailable(remoteEntry, null)) {
                     continue;
                 }
+
+                if (selfEntry.groupReference.equals(remoteEntry.groupReference)) {
+                    logWarning("Local address %s has changed to id %s from %s", remoteEntry.groupReference, getHost().getId(), remoteEntry.id);
+                    remoteEntry.status = NodeStatus.REPLACED;
+                }
+
                 if (!isLocalNode) {
                     logInfo("Adding new peer %s (%s), status %s", remoteEntry.id,
                             remoteEntry.groupReference, remoteEntry.status);
