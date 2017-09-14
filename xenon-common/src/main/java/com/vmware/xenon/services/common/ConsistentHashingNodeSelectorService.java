@@ -658,7 +658,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                                 }
 
                                 if (!NodeGroupUtils.hasMembershipQuorum(getHost(),
-                                        this.cachedGroupState)) {
+                                        ngs)) {
                                     if (this.synchQuorumWarningCount < quorumWarningsBeforeQuiet) {
                                         logWarning("Synchronization quorum not met");
                                     } else if (this.synchQuorumWarningCount == quorumWarningsBeforeQuiet) {

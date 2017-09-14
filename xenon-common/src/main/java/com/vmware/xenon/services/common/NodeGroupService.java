@@ -222,6 +222,7 @@ public class NodeGroupService extends StatefulService {
         }
 
         initState.nodes.put(self.id, self);
+        initState.membershipUpdateTimeMicros = Utils.getSystemNowMicrosUtc();
         this.cachedState = Utils.clone(initState);
         startPost.setBody(this.cachedState).complete();
     }
@@ -576,8 +577,9 @@ public class NodeGroupService extends StatefulService {
         body.documentOwner = getHost().getId();
         body.documentSelfLink = UriUtils.buildUriPath(getSelfLink(), body.documentOwner);
         local.status = NodeStatus.AVAILABLE;
+        ++local.documentVersion;
         body.nodes.put(local.id, local);
-
+        body.membershipUpdateTimeMicros = Utils.getSystemNowMicrosUtc();
         sendRequest(Operation.createPatch(getUri()).setBody(
                 body));
     }
@@ -704,13 +706,14 @@ public class NodeGroupService extends StatefulService {
                     .forceRemote()
                     .setCompletion(ch);
 
-            if (peer.groupReference.equals(localNode.groupReference)
-                    && peer.status != NodeStatus.REPLACED) {
+            if (peer.groupReference.equals(localNode.groupReference)) {
                 // If we just detected this is a peer node that used to listen on our address,
                 // but its obviously no longer around, mark it as REPLACED and do not send PATCH
-                peer.status = NodeStatus.REPLACED;
-                peer.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
-                peer.documentVersion++;
+                if (peer.status != NodeStatus.REPLACED) {
+                    peer.status = NodeStatus.REPLACED;
+                    peer.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+                    peer.documentVersion++;
+                }
                 ch.handle(null, null);
             } else {
                 patch.setBodyNoCloning(localState)
@@ -848,6 +851,8 @@ public class NodeGroupService extends StatefulService {
                         currentEntry.documentVersion = remoteEntry.documentVersion;
                         currentEntry.documentUpdateTimeMicros = now;
                         changes.add(NodeGroupChange.SELF_CHANGE);
+                    } else {
+                        changes.add(NodeGroupChange.PEER_STATUS_CHANGE);
                     }
                 }
                 // local instance of node group service is the only one that can update its own
