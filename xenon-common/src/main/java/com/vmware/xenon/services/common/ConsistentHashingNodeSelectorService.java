@@ -656,9 +656,9 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                                     maintOp.complete();
                                     return;
                                 }
-
+                                // check convergence and membership quorum against the same node group state
                                 if (!NodeGroupUtils.hasMembershipQuorum(getHost(),
-                                        this.cachedGroupState)) {
+                                        ngs)) {
                                     if (this.synchQuorumWarningCount < quorumWarningsBeforeQuiet) {
                                         logWarning("Synchronization quorum not met");
                                     } else if (this.synchQuorumWarningCount == quorumWarningsBeforeQuiet) {
@@ -672,7 +672,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                                 // if node group changed since we kicked of this check, we need to wait for
                                 // newer convergence completions
                                 synchronized (this.cachedState) {
-                                    this.isNodeGroupConverged = membershipUpdateMicros == this.cachedGroupState.membershipUpdateTimeMicros;
+                                    this.isNodeGroupConverged = this.cachedGroupState.membershipUpdateTimeMicros == ngs.membershipUpdateTimeMicros;
                                     if (this.isNodeGroupConverged) {
                                         this.synchQuorumWarningCount = 0;
                                     }
