@@ -39,7 +39,6 @@ import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.test.TestContext;
@@ -406,12 +405,11 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         return newState;
     }
 
-    @Ignore("https://www.pivotaltracker.com/story/show/150535341")
     @Test
     public void  synchAfterClusterRestart() throws Throwable {
         setUpMultiNode();
         String factoryLink = ExampleService.FACTORY_LINK;
-        this.host.setNodeGroupQuorum(this.nodeCount - 1);
+        this.host.setNodeGroupQuorum(this.nodeCount);
         this.host.waitForNodeGroupConvergence();
 
         List<ExampleServiceState> exampleStates = this.host.createExampleServices(
@@ -450,6 +448,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         this.host.joinNodesAndVerifyConvergence(this.nodeCount);
         this.host.waitForNodeGroupConvergence(this.nodeCount, this.nodeCount);
 
+
         // Verify that all states are replicated and synched.
         this.host.waitForReplicatedFactoryChildServiceConvergence(
                 this.host.getNodeGroupToFactoryMap(factoryLink),
@@ -467,6 +466,10 @@ public class TestSynchronizationTaskService extends BasicTestCase {
                 VerificationHost.FAST_MAINT_INTERVAL_MILLIS, null, null);
         this.host.joinNodesAndVerifyConvergence(this.nodeCount);
         this.host.waitForNodeGroupConvergence(this.nodeCount, this.nodeCount);
+
+        URI exampleFactoryUri = UriUtils.buildUri(
+                this.host.getPeerServiceUri(ExampleService.FACTORY_LINK));
+        this.host.waitForReplicatedFactoryServiceAvailable(exampleFactoryUri);
 
         // Verify that all states are replicated and synched.
         this.host.waitForReplicatedFactoryChildServiceConvergence(
