@@ -15,6 +15,7 @@ package com.vmware.xenon.common.serialization;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
+import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Date;
 import java.util.function.Consumer;
@@ -302,6 +303,7 @@ public class JsonMapper {
         bldr.registerTypeAdapter(ZonedDateTimeConverter.TYPE, ZonedDateTimeConverter.INSTANCE);
         bldr.registerTypeHierarchyAdapter(byte[].class, new ByteArrayToBase64TypeAdapter());
         bldr.registerTypeAdapter(RequestRouteConverter.TYPE, RequestRouteConverter.INSTANCE);
+        bldr.registerTypeHierarchyAdapter(Path.class, PathConverter.INSTANCE);
         bldr.registerTypeHierarchyAdapter(Date.class, UtcDateTypeAdapter.INSTANCE);
     }
 

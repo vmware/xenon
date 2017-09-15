@@ -2,6 +2,8 @@
 
 ## 1.5.6-SNAPSHOT
 
+* Instances java.nio.file.Path are now serializable to JSON
+
 ## 1.5.5
 
 * Added JVM property - enableOdlSynchronization. If set as true, then
