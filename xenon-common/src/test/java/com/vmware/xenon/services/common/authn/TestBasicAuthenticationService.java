@@ -21,6 +21,7 @@ import static com.vmware.xenon.services.common.authn.BasicAuthenticationService.
 import static com.vmware.xenon.services.common.authn.BasicAuthenticationUtils.constructBasicAuth;
 
 import java.net.URI;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
@@ -33,7 +34,6 @@ import java.util.concurrent.TimeUnit;
 
 import io.netty.handler.codec.http.cookie.ClientCookieDecoder;
 import io.netty.handler.codec.http.cookie.Cookie;
-
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -832,30 +832,34 @@ public class TestBasicAuthenticationService extends BasicTestCase {
         AuthenticationRequest authRequest = new AuthenticationRequest();
 
         authRequest.sessionExpirationSeconds = null;
-        assertEquals(
-                Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(BasicAuthenticationService.AUTH_TOKEN_EXPIRATION_SECONDS)),
-                basicAuthenticationService.getExpirationTime(authRequest));
+
+        long expectedSec = Instant.now().getEpochSecond() + BasicAuthenticationService.AUTH_TOKEN_EXPIRATION_SECONDS;
+        long result = basicAuthenticationService.getExpirationTime(authRequest);
+        assertEquals(expectedSec, TimeUnit.MICROSECONDS.toSeconds(result));
 
         authRequest.sessionExpirationSeconds = (long) 0;
-        assertEquals(Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(0)),
-                basicAuthenticationService.getExpirationTime(authRequest));
+        result = basicAuthenticationService.getExpirationTime(authRequest);
+        expectedSec = Instant.now().getEpochSecond();
+        assertEquals(expectedSec, TimeUnit.MICROSECONDS.toSeconds(result));
 
         authRequest.sessionExpirationSeconds = (long) -1;
-        assertEquals(Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(-1)),
-                basicAuthenticationService.getExpirationTime(authRequest));
+        result = basicAuthenticationService.getExpirationTime(authRequest);
+        expectedSec = Instant.now().getEpochSecond() - 1;
+        assertEquals(expectedSec, TimeUnit.MICROSECONDS.toSeconds(result));
 
         authRequest.sessionExpirationSeconds = UPPER_SESSION_LIMIT - 1;
-        assertEquals(Utils.fromNowMicrosUtc(
-                TimeUnit.SECONDS.toMicros(authRequest.sessionExpirationSeconds)),
-                basicAuthenticationService.getExpirationTime(authRequest));
+        result = basicAuthenticationService.getExpirationTime(authRequest);
+        expectedSec = Instant.now().getEpochSecond() + UPPER_SESSION_LIMIT - 1;
+        assertEquals(expectedSec, TimeUnit.MICROSECONDS.toSeconds(result));
 
         authRequest.sessionExpirationSeconds = UPPER_SESSION_LIMIT;
-        assertEquals(Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(
-                authRequest.sessionExpirationSeconds)),
-                basicAuthenticationService.getExpirationTime(authRequest));
+        result = basicAuthenticationService.getExpirationTime(authRequest);
+        expectedSec = Instant.now().getEpochSecond() + UPPER_SESSION_LIMIT;
+        assertEquals(expectedSec, TimeUnit.MICROSECONDS.toSeconds(result));
 
         authRequest.sessionExpirationSeconds = UPPER_SESSION_LIMIT + 1;
-        assertEquals(Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(UPPER_SESSION_LIMIT)),
-                basicAuthenticationService.getExpirationTime(authRequest));
+        result = basicAuthenticationService.getExpirationTime(authRequest);
+        expectedSec = Instant.now().getEpochSecond() + UPPER_SESSION_LIMIT;
+        assertEquals(expectedSec, TimeUnit.MICROSECONDS.toSeconds(result));
     }
 }
