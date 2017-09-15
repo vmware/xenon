@@ -485,7 +485,9 @@ public class NettyChannelPool {
         }
         ForkJoinPool.commonPool().execute(() -> {
             Operation.failLimitExceeded(request,
-                    ServiceErrorResponse.ERROR_CODE_CLIENT_QUEUE_LIMIT_EXCEEDED);
+                    ServiceErrorResponse.ERROR_CODE_CLIENT_QUEUE_LIMIT_EXCEEDED,
+                    getClass().getSimpleName() + "#pendingRequest queue for " + group.getKey()
+            );
         });
     }
 

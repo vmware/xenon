@@ -410,8 +410,8 @@ public class LuceneDocumentIndexService extends StatelessService {
     private Set<String> fieldsToLoadNoExpand;
     private Set<String> fieldsToLoadWithExpand;
 
-    private RoundRobinOperationQueue queryQueue = RoundRobinOperationQueue.create();
-    private RoundRobinOperationQueue updateQueue = RoundRobinOperationQueue.create();
+    private RoundRobinOperationQueue queryQueue = RoundRobinOperationQueue.create("index-service query queue");
+    private RoundRobinOperationQueue updateQueue = RoundRobinOperationQueue.create("index-service update queue");
 
     private URI uri;
 

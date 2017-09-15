@@ -527,7 +527,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         if (this.operationQueueLimit <= this.pendingOperationCount.get()) {
             adjustStat(STAT_NAME_LIMIT_EXCEEDED_FAILED_REQUEST_COUNT, 1);
             Operation.failLimitExceeded(op,
-                    ServiceErrorResponse.ERROR_CODE_SERVICE_QUEUE_LIMIT_EXCEEDED);
+                    ServiceErrorResponse.ERROR_CODE_SERVICE_QUEUE_LIMIT_EXCEEDED,
+                    "pendingRequestQueue on " + getSelfLink());
             return true;
         }
 
