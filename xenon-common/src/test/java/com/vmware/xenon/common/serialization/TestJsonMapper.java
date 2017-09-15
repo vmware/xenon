@@ -13,16 +13,22 @@
 
 package com.vmware.xenon.common.serialization;
 
+import static org.junit.Assert.assertEquals;
+
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.logging.Logger;
 
 import org.junit.Assert;
 import org.junit.Test;
 
+import com.vmware.xenon.common.ServiceHost.Arguments;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.services.common.QueryTask.Query;
@@ -101,6 +107,15 @@ public class TestJsonMapper {
                 Assert.assertNull(dstMap.get(key));
             }
         }
+    }
 
+    public void testPathJsonSerialization() {
+        Path p = Paths.get("test");
+
+        String jsonRepr = Utils.toJson(p);
+        assertEquals("\"" + p.toAbsolutePath().toAbsolutePath() + "\"", jsonRepr);
+
+        Arguments arguments = new Arguments();
+        Logger.getAnonymousLogger().info(Utils.toJsonHtml(arguments));
     }
 }
