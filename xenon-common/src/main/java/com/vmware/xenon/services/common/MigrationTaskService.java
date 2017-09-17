@@ -31,12 +31,14 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ConcurrentSkipListSet;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.logging.Level;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.vmware.xenon.common.DeferredResult;
 import com.vmware.xenon.common.FactoryService;
@@ -316,6 +318,13 @@ public class MigrationTaskService extends StatefulService {
          * the migration process.
          */
         public Set<String> nonMigratedSelfLinks = new ConcurrentSkipListSet<>();
+
+        /**
+         * Flag to indicate that when there are documents with mismatched documentOwner
+         * field they should be migrated anyway with best effort. Used with caution
+         * that state from any one source node will be used that might not be the latest state.
+         */
+        public boolean migrateMismatchedOwnerDocuments = false;
 
         @Override
         public String toString() {
@@ -890,7 +899,8 @@ public class MigrationTaskService extends StatefulService {
                                 if (currentPageLinks.isEmpty()) {
                                     patchToFinished(null);
                                 } else {
-                                    migrate(currentState, currentPageLinks, destinationURIs, new HashMap<>());
+                                    migrate(currentState, currentPageLinks, destinationURIs,
+                                           new HashMap<>(), null);
                                 }
                             })
                             .sendWith(this);
@@ -901,29 +911,42 @@ public class MigrationTaskService extends StatefulService {
                 });
     }
 
-    private void migrate(State currentState, Set<URI> currentPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
+    private void migrate(State currentState, Set<URI> currentPageLinks, List<URI> destinationURIs,
+                         Map<String, Long> lastUpdateTimesPerOwner,
+                         Consumer<Object> migrateMismatchedCompletion) {
 
         // This method is recursively called. When a page doesn't have nextPageLink, the recursion
         // will call here with empty currentPageLinks.
         // In that case, this has processed all entries, thus self patch to mark finish, then exit.
+
         if (currentPageLinks.isEmpty()) {
             if (!currentState.nonMigratedSelfLinks.isEmpty()) {
-                logSevere("Some documents were not migrated due to ownership mismatches. SelfLinks: %s",
-                        Utils.toJson(currentState.nonMigratedSelfLinks));
+                if (!currentState.migrateMismatchedOwnerDocuments) {
+                    logSevere("Some documents were not migrated due to ownership mismatches. SelfLinks: %s",
+                            (currentState.nonMigratedSelfLinks.size()));
 
-                failTask(new IllegalStateException(
-                        String.format("%d documents were not migrated due to ownership mismatches.",
-                                currentState.nonMigratedSelfLinks.size())));
+                    failTask(new IllegalStateException(
+                            String.format("%d documents were not migrated due to ownership mismatches.",
+                                    currentState.nonMigratedSelfLinks.size())));
 
-                // These fields are only used for bookkeeping. They don't need to be
-                // persisted, hence setting them to NULL so that they get garbage collected.
-                currentState.migratedSelfLinks = null;
-                currentState.nonMigratedSelfLinks = null;
+                    adjustStat(STAT_NAME_OWNER_MISMATCH_COUNT, currentState.nonMigratedSelfLinks.size());
 
-                return;
+                    // These fields are only used for bookkeeping. They don't need to be
+                    // persisted, hence setting them to NULL so that they get garbage collected.
+                    currentState.migratedSelfLinks = null;
+                    currentState.nonMigratedSelfLinks = null;
+
+                    return;
+                } else {
+                    migrateMismatchedOwnerDocuments(currentState, destinationURIs);
+                    return;
+                }
             }
 
-            patchToFinished(lastUpdateTimesPerOwner);
+            if (migrateMismatchedCompletion == null) {
+                patchToFinished(lastUpdateTimesPerOwner);
+            }
+
             return;
         }
 
@@ -976,7 +999,7 @@ public class MigrationTaskService extends StatefulService {
                             documentOwner = queryTask.results.documentOwner;
                         }
 
-                        if (documentOwner.equals(queryTask.results.documentOwner)) {
+                        if (documentOwner.equals(queryTask.results.documentOwner) || migrateMismatchedCompletion != null) {
                             results.add(doc);
 
                             // keep last processed document update time(max) in each host
@@ -1014,7 +1037,7 @@ public class MigrationTaskService extends StatefulService {
                 if (results.isEmpty()) {
                     // The results might be empty if all the local queries returned documents the respective hosts don't own.
                     // In this case we can just move on to the next set of pages.
-                    migrate(currentState, nextPages, destinationURIs, lastUpdateTimesPerOwner);
+                    migrate(currentState, nextPages, destinationURIs, lastUpdateTimesPerOwner, null);
                     return;
                 }
 
@@ -1022,21 +1045,62 @@ public class MigrationTaskService extends StatefulService {
                 if (currentState.migrationOptions.contains(MigrationOption.ALL_VERSIONS)) {
 
                     retrieveAllVersions(results, hostUriByResult, nextPages, currentState, destinationURIs,
-                            lastUpdateTimesPerOwner);
+                            lastUpdateTimesPerOwner, migrateMismatchedCompletion);
 
                 } else {
 
-                    transformResults(currentState, results, nextPages, destinationURIs, lastUpdateTimesPerOwner);
+                    transformResults(currentState, results, nextPages, destinationURIs, lastUpdateTimesPerOwner, migrateMismatchedCompletion);
                 }
             })
             .sendWith(this);
+    }
+
+    private void migrateMismatchedOwnerDocuments(State currentState, List<URI> destinationURIs) {
+        AtomicInteger mismatchedDocs = new AtomicInteger(currentState.nonMigratedSelfLinks.size());
+        List<Operation> posts = new ArrayList<>();
+        List<URI> sourceURIs = currentState.sourceReferences;
+        for (String link : currentState.nonMigratedSelfLinks) {
+            Query countQuery = Builder.create()
+                    .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, link)
+                    .build();
+            QueryTask queryTask = QueryTask.Builder.createDirectTask()
+                    .setQuery(countQuery)
+                    .setResultLimit(DEFAULT_PAGE_SIZE)
+                    .addOptions(EnumSet.of(QueryOption.EXPAND_CONTENT))
+                    .build();
+
+            posts.add(Operation.createPost(UriUtils.buildUri(sourceURIs.stream().findAny().get(), ServiceUriPaths.CORE_LOCAL_QUERY_TASKS))
+                    .setBody(queryTask));
+        }
+
+        OperationJoin.create(posts)
+                .setCompletion((os, ts) -> {
+                    if (ts != null && ts.size() > 0) {
+                        logSevere("Document was not migrated due to query failure. SelfLink: %s, %s", ts.values().iterator().next());
+                        return;
+                    }
+
+                    for (Operation o : os.values()) {
+                        HashSet<URI> uris = new HashSet<>();
+                        uris.add(getNextPageLinkUri(o));
+                        migrate(currentState, uris, destinationURIs, new HashMap<>(), (a) -> {
+                            if (mismatchedDocs.decrementAndGet() == 0) {
+                                patchToFinished(null);
+                            }
+                        });
+                    }
+                })
+                .sendWith(this);
+
+        currentState.nonMigratedSelfLinks.clear();
     }
 
     /**
      * For ALL_VERSIONS option, retrieve all versions of target documents
      */
     private void retrieveAllVersions(Collection<Object> results, Map<Object, URI> hostUriByResult,
-            Set<URI> nextPages, State currentState, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
+            Set<URI> nextPages, State currentState, List<URI> destinationURIs, Map<String,
+            Long> lastUpdateTimesPerOwner, Consumer<Object> migrateMismatchedCompletion) {
 
         List<DeferredResult<List<Object>>> deferredResults = new ArrayList<>();
         for (Object doc : results) {
@@ -1098,11 +1162,12 @@ public class MigrationTaskService extends StatefulService {
         DeferredResult.allOf(deferredResults)
                 .thenAccept(docsList -> {
                     List<Object> allVersions = docsList.stream().flatMap(List::stream).collect(toList());
-                    transformResults(currentState, allVersions, nextPages, destinationURIs, lastUpdateTimesPerOwner);
+                    transformResults(currentState, allVersions, nextPages, destinationURIs, lastUpdateTimesPerOwner, migrateMismatchedCompletion);
                 });
     }
 
-    private void transformUsingMap(State state, Collection<Object> cleanJson, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
+    private void transformUsingMap(State state, Collection<Object> cleanJson, Set<URI> nextPageLinks, List<URI> destinationURIs,
+                                   Map<String, Long> lastUpdateTimesPerOwner, Consumer<Object> migrateMismatchedCompletion) {
         Collection<Operation> transformations = cleanJson.stream()
                 .map(doc -> {
                     return createPost(
@@ -1133,12 +1198,14 @@ public class MigrationTaskService extends StatefulService {
                         }
                     }
                     adjustStat(STAT_NAME_AFTER_TRANSFORM_COUNT, transformedJson.size());
-                    migrateEntities(transformedJson, state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                    migrateEntities(transformedJson, state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner, migrateMismatchedCompletion);
                 })
                 .sendWith(this);
     }
 
-    private void transformUsingObject(State state, Collection<Object> cleanJson, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
+    private void transformUsingObject(State state, Collection<Object> cleanJson, Set<URI> nextPageLinks,
+                                      List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner,
+                                      Consumer<Object> migrateMismatchedCompletion) {
         Collection<Operation> transformations = cleanJson.stream()
                 .map(doc -> {
                     TransformRequest transformRequest = new TransformRequest();
@@ -1168,12 +1235,14 @@ public class MigrationTaskService extends StatefulService {
                     }
 
                     adjustStat(STAT_NAME_AFTER_TRANSFORM_COUNT, transformedJson.size());
-                    migrateEntities(transformedJson, state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                    migrateEntities(transformedJson, state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner, migrateMismatchedCompletion);
                 })
                 .sendWith(this);
     }
 
-    private void transformResults(State state, Collection<Object> results, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
+    private void transformResults(State state, Collection<Object> results, Set<URI> nextPageLinks, List<URI> destinationURIs,
+                                  Map<String, Long> lastUpdateTimesPerOwner,
+                                  Consumer<Object> migrateMismatchedCompletion) {
         // scrub document self links
         Collection<Object> cleanJson = results.stream()
                 .map(d -> {
@@ -1185,28 +1254,28 @@ public class MigrationTaskService extends StatefulService {
             logInfo("Transforming results using [migrationOptions=%s] [transformLink=%s]",
                     state.migrationOptions, state.transformationServiceLink);
             if (state.migrationOptions.contains(MigrationOption.USE_TRANSFORM_REQUEST)) {
-                transformUsingObject(state, cleanJson, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                transformUsingObject(state, cleanJson, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner, migrateMismatchedCompletion);
             } else {
-                transformUsingMap(state, cleanJson, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                transformUsingMap(state, cleanJson, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner, migrateMismatchedCompletion);
             }
         } else {
             Map<Object, String> jsonMap = cleanJson.stream().collect(Collectors.toMap(e -> e, e -> state.destinationFactoryLink));
-            migrateEntities(jsonMap, state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+            migrateEntities(jsonMap, state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner, migrateMismatchedCompletion);
         }
     }
 
     private void migrateEntities(Map<Object, String> json, State state, Set<URI> nextPageLinks,
-            List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
+            List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner, Consumer<Object> migrateMismatchedCompletion) {
 
         if (json.isEmpty()) {
             // no doc to create in destination, move on to the next page
-            migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+            migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner, migrateMismatchedCompletion);
             return;
         }
         if (state.migrationOptions.contains(MigrationOption.ALL_VERSIONS)) {
             migrateEntitiesForAllVersions(json, state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
         } else {
-            migrateEntitiesForSingleVersion(json, state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+            migrateEntitiesForSingleVersion(json, state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner, migrateMismatchedCompletion);
         }
     }
 
@@ -1297,7 +1366,8 @@ public class MigrationTaskService extends StatefulService {
                 .whenComplete((operations, ignore) -> {
                     if (failureBySelfLink.isEmpty()) {
                         adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, numOfProcessedDoc);
-                        migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                        migrate(state, nextPageLinks, destinationURIs,
+                                lastUpdateTimesPerOwner, null);
                     } else {
                         if (performRetry) {
                             logInfo("Migration retry start. links=%s", failureBySelfLink.size());
@@ -1344,12 +1414,12 @@ public class MigrationTaskService extends StatefulService {
                         return;
                     }
                     adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, numOfProcessedDoc);
-                    migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                    migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner, null);
                 });
     }
 
     private void migrateEntitiesForSingleVersion(Map<Object, String> json, State state, Set<URI> nextPageLinks,
-            List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
+            List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner, Consumer<Object> migrateMismatchedCompletion) {
 
         boolean performRetry = state.migrationOptions.contains(MigrationOption.DELETE_AFTER);
         Set<Long> opIdsToDelete = new HashSet<>();
@@ -1393,8 +1463,14 @@ public class MigrationTaskService extends StatefulService {
                                 state.sourceFactoryLink, state.destinationFactoryLink, posts.size());
                         adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
 
+
+                        if (migrateMismatchedCompletion != null) {
+                            migrateMismatchedCompletion.accept(null);
+                        }
+
                         if (opIdsToDelete.isEmpty()) {
-                            migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                            migrate(state, nextPageLinks, destinationURIs,
+                                    lastUpdateTimesPerOwner, migrateMismatchedCompletion);
                         } else {
                             // Migrate deleted documents by performing DELETEs.
                             Set<Operation> deletes = opIdsToDelete.stream()
@@ -1430,14 +1506,16 @@ public class MigrationTaskService extends StatefulService {
                                                                     return;
                                                                 }
                                                                 adjustStat(STAT_NAME_DELETED_DOCUMENT_COUNT, retryOps.size());
-                                                                migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                                                                migrate(state, nextPageLinks, destinationURIs,
+                                                                        lastUpdateTimesPerOwner, migrateMismatchedCompletion);
                                                             })
                                                             .sendWith(this);
                                                     return;
                                                 }
 
                                                 adjustStat(STAT_NAME_DELETED_DOCUMENT_COUNT, deleteOps.size());
-                                                migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                                                migrate(state, nextPageLinks, destinationURIs,
+                                                        lastUpdateTimesPerOwner, migrateMismatchedCompletion);
                                             }
                                     ).sendWith(this);
                         }
@@ -1553,7 +1631,7 @@ public class MigrationTaskService extends StatefulService {
                             return;
                         }
                         adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
-                        migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                        migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner, null);
                     })
                     .sendWith(this);
             })
