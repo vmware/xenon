@@ -4355,7 +4355,8 @@ public class ServiceHost implements ServiceRequestSender {
             return false;
         }
 
-        Operation.failLimitExceeded(op, ServiceErrorResponse.ERROR_CODE_HOST_RATE_LIMIT_EXCEEDED);
+        Operation.failLimitExceeded(op, ServiceErrorResponse.ERROR_CODE_HOST_RATE_LIMIT_EXCEEDED,
+                "rate limit for " + s.getSelfLink());
         Operation nextOp = s.dequeueRequest();
         if (nextOp != null) {
             run(() -> handleRequest(null, nextOp));

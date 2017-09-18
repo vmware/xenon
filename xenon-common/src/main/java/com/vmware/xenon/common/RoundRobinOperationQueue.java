@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.common;
 
+import static java.lang.String.format;
+
 import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.Map;
@@ -27,15 +29,21 @@ public class RoundRobinOperationQueue {
     public static final int INITIAL_CAPACITY = 256;
 
     public static RoundRobinOperationQueue create() {
-        return new RoundRobinOperationQueue();
+        return create("");
+    }
+
+    public static RoundRobinOperationQueue create(String queueDescription) {
+        return new RoundRobinOperationQueue(queueDescription);
     }
 
     private final NavigableMap<String, Queue<Operation>> queues = new ConcurrentSkipListMap<>();
 
     private String activeKey = "";
 
-    private RoundRobinOperationQueue() {
+    private String description = "";
 
+    private RoundRobinOperationQueue(String description) {
+        this.description = description;
     }
 
     /**
@@ -43,14 +51,14 @@ public class RoundRobinOperationQueue {
      */
     public synchronized boolean offer(String key, Operation op) {
         if (key == null || op == null) {
-            throw new IllegalArgumentException("key and operation are required");
+            throw new IllegalArgumentException(format("key and operation are required (%s)", this.description));
         }
 
         Queue<Operation> q = this.queues.computeIfAbsent(key, (k) -> new ArrayDeque<>(INITIAL_CAPACITY));
 
         if (!q.offer(op)) {
             op.setStatusCode(Operation.STATUS_CODE_UNAVAILABLE);
-            op.fail(new CancellationException("queue limit exceeded"));
+            op.fail(new CancellationException(format("queue limit exceeded (%s)", this.description)));
             return false;
         }
 

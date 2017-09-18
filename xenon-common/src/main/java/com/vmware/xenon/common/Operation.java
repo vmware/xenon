@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.common;
 
+import static java.lang.String.format;
+
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.security.Principal;
@@ -27,7 +29,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.function.Consumer;
-
 import javax.security.cert.X509Certificate;
 
 import com.vmware.xenon.common.Service.Action;
@@ -390,7 +391,7 @@ public class Operation implements Cloneable {
     static void failOwnerMismatch(Operation op, String id, ServiceDocument body) {
         String owner = body != null ? body.documentOwner : "";
         op.setStatusCode(Operation.STATUS_CODE_CONFLICT);
-        Throwable e = new IllegalStateException(String.format(
+        Throwable e = new IllegalStateException(format(
                 "Owner in body: %s, computed locally: %s",
                 owner, id));
         ServiceErrorResponse rsp = ServiceErrorResponse.create(e, op.getStatusCode(),
@@ -404,13 +405,13 @@ public class Operation implements Cloneable {
                 new IllegalStateException("Action not supported: " + request.getAction()));
     }
 
-    public static void failLimitExceeded(Operation request, int errorCode) {
+    public static void failLimitExceeded(Operation request, int errorCode, String queueDescription) {
         // Add a header indicating retry should be attempted after some interval.
         // Currently set to just one second, subject to change in the future
         request.addResponseHeader(Operation.RETRY_AFTER_HEADER, "1");
         fail(request, Operation.STATUS_CODE_UNAVAILABLE,
                 errorCode,
-                new CancellationException("queue limit exceeded"));
+                new CancellationException(format("queue limit exceeded (%s)", queueDescription)));
     }
 
     static void failForwardedRequest(Operation op, Operation fo, Throwable fe) {

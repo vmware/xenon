@@ -155,18 +155,19 @@ public class TestEventStreams extends BasicReusableHostTestCase {
         });
         future.whenComplete(ctx.getCompletionDeferred());
         List<DeferredResult<String>> deferredResults = new ArrayList<>();
-        while (!future.isDone()) {
+        while (!future.isDone() && deferredResults.size() < 500) {
             ExampleServiceState state = new ExampleServiceState();
             state.name = "test";
             Operation postOp = Operation.createPost(this.host, ExampleService.FACTORY_LINK)
                     .setBody(state).forceRemote();
             deferredResults.add(this.host.sendWithDeferredResult(postOp, ExampleServiceState.class)
                     .thenApply(s -> s.documentSelfLink));
-            Thread.sleep(1); // Slowdown
+            Thread.sleep(3); // Slowdown
             if (Math.random() < 1 / 100.0) {
                 System.gc();
             }
         }
+        this.host.log("Requests sent: %d", deferredResults.size());
         ctx.await();
         ctx = TestContext.create(1, TimeUnit.MINUTES.toMicros(1));
         DeferredResult.allOf(deferredResults)

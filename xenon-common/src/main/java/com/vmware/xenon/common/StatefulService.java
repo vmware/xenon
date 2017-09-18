@@ -313,7 +313,7 @@ public class StatefulService implements Service {
                         : 0;
             } else if (this.context.isUpdateActive) {
                 if (!this.context.operationQueue.offer(op)) {
-                    failRequestLimitExceeded(op);
+                    failRequestLimitExceeded(op, "operationQueue for GET on " + getSelfLink());
                 }
                 return RETURN_TRUE_FLAG;
             } else {
@@ -337,10 +337,10 @@ public class StatefulService implements Service {
                                 .createFifo(Service.SYNCH_QUEUE_DEFAULT_LIMIT);
                     }
                     if (!this.context.synchQueue.offer(op)) {
-                        failRequestLimitExceeded(op);
+                        failRequestLimitExceeded(op, "synchQueue on " + getSelfLink());
                     }
                 } else if (!this.context.operationQueue.offer(op)) {
-                    failRequestLimitExceeded(op);
+                    failRequestLimitExceeded(op, "operationQueue for update on " + getSelfLink());
                 }
                 return RETURN_TRUE_FLAG;
             } else {
@@ -1209,12 +1209,12 @@ public class StatefulService implements Service {
         op.fail(e);
     }
 
-    private void failRequestLimitExceeded(final Operation op) {
+    private void failRequestLimitExceeded(final Operation op, String queueDescription) {
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
             adjustStat(Service.STAT_NAME_REQUEST_FAILURE_QUEUE_LIMIT_EXCEEDED_COUNT, 1);
         }
         Operation.failLimitExceeded(op,
-                ServiceErrorResponse.ERROR_CODE_SERVICE_QUEUE_LIMIT_EXCEEDED);
+                ServiceErrorResponse.ERROR_CODE_SERVICE_QUEUE_LIMIT_EXCEEDED, queueDescription);
     }
 
     private void updatePerOperationStats(Operation op) {

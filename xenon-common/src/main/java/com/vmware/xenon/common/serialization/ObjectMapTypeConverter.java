@@ -14,6 +14,7 @@
 package com.vmware.xenon.common.serialization;
 
 import java.lang.reflect.Type;
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -21,9 +22,11 @@ import java.util.Map.Entry;
 import com.google.gson.JsonDeserializationContext;
 import com.google.gson.JsonDeserializer;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 import com.google.gson.JsonSerializationContext;
 import com.google.gson.JsonSerializer;
 
@@ -43,7 +46,9 @@ public enum ObjectMapTypeConverter
         JsonObject mapObject = new JsonObject();
         for (Entry<String, Object> e : map.entrySet()) {
             Object v = e.getValue();
-            if (v instanceof JsonObject) {
+            if (v == null) {
+                mapObject.add(e.getKey(), JsonNull.INSTANCE);
+            } else if (v instanceof JsonObject) {
                 mapObject.add(e.getKey(), (JsonObject) v);
             } else if (v instanceof String) {
                 mapObject.add(e.getKey(), new JsonParser().parse((String) v));
@@ -63,19 +68,38 @@ public enum ObjectMapTypeConverter
             throw new JsonParseException("Expecting a json Map object but found: " + json);
         }
 
-        Map<String, Object> result = new HashMap<String, Object>();
+        Map<String, Object> result = new HashMap<>();
         JsonObject jsonObject = json.getAsJsonObject();
         for (Entry<String, JsonElement> entry : jsonObject.entrySet()) {
             String key = entry.getKey();
             JsonElement element = entry.getValue();
-            if (element.isJsonObject()) {
-                result.put(key, element.toString());
-            } else if (element.isJsonNull()) {
+            if (element.isJsonNull()) {
                 result.put(key, null);
             } else if (element.isJsonPrimitive()) {
-                result.put(key, element.getAsString());
+                JsonPrimitive elem = element.getAsJsonPrimitive();
+                Object value = null;
+                if (elem.isBoolean()) {
+                    value = elem.getAsBoolean();
+                } else if (elem.isString()) {
+                    value = elem.getAsString();
+                } else if (elem.isNumber()) {
+                    // We don't know if this is an integer, long, float or double...
+                    BigDecimal num = elem.getAsBigDecimal();
+                    try {
+                        value = num.longValueExact();
+                    } catch (ArithmeticException e) {
+                        value = num.doubleValue();
+                    }
+                } else {
+                    throw new RuntimeException("Unexpected value type for json element key:" + key
+                            + " value:" + element);
+                }
+                result.put(key, value);
             } else if (element.isJsonArray()) {
                 result.put(key, element.getAsJsonArray().toString());
+            } else if (element.isJsonObject()) {
+                result.put(key, element.toString());
+
             } else {
                 throw new JsonParseException("The json element is not valid for key:" + key
                         + " value:" + element);
