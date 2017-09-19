@@ -1004,6 +1004,59 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         assertTrue(ownerMismatchedDocuments > 0);
     }
 
+    @Ignore("https://www.pivotaltracker.com/story/show/150063470")
+    @Test
+    public void migrationWithDocumentOwnerMismatch() throws Throwable {
+        // this test dirties destination host, requires clean up
+        clearSourceAndDestInProcessPeers = true;
+
+        // create example services in the source node-group and make sure that each peer
+        // is owner of at-least one example service.
+        int peersWithDocs;
+        do {
+            createExampleDocuments(this.exampleSourceFactory, getSourceHost(), this.serviceCount, false);
+            ServiceDocumentQueryResult results = this.host.getExpandedFactoryState(this.exampleSourceFactory);
+            peersWithDocs = results.documents.values().stream()
+                    .map(doc -> (Utils.fromJson(doc, ServiceDocument.class)).documentOwner)
+                    .distinct()
+                    .collect(Collectors.toList())
+                    .size();
+        } while (peersWithDocs != this.nodeCount);
+
+        // disable peer synchronization on each source host.
+        Iterator<VerificationHost> peerIt = this.host.getInProcessHostMap().values().iterator();
+        VerificationHost peerNode = null;
+        while (peerIt.hasNext()) {
+            peerNode = peerIt.next();
+            peerNode.setPeerSynchronizationEnabled(false);
+        }
+        assertNotNull(peerNode);
+
+        // Stop the last peerNode and add a new node to the group
+        this.host.stopHost(peerNode);
+        this.host.setNodeGroupQuorum(this.nodeCount - 1);
+
+        // Kick-off migration
+        MigrationTaskService.State migrationState = validMigrationState(
+                ExampleService.FACTORY_LINK);
+        migrationState.migrateMismatchedOwnerDocuments = true;
+        String[] out = new String[1];
+        Operation op = Operation.createPost(this.destinationFactoryUri)
+                .setBody(migrationState)
+                .setReferer(this.host.getUri());
+        out[0] = getDestinationHost().getTestRequestSender().sendAndWait(op).getBody(State.class).documentSelfLink;
+
+        // Wait for the migration task to finish
+        State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
+        assertEquals(waitForServiceCompletion.taskInfo.stage, TaskStage.FINISHED);
+
+        // validate that the new factory got all the documents.
+        ServiceDocumentQueryResult result = this.host
+                .getFactoryState(UriUtils.buildUri(
+                        getDestinationHost(), ExampleService.FACTORY_LINK));
+        assertEquals(this.serviceCount, result.documentLinks.size());
+    }
+
     @Test
     public void successMigrateSameDocumentsTwiceUsingFallback() throws Throwable {
         // disable idempotent post on destination
