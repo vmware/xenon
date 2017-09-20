@@ -2,6 +2,10 @@
 
 ## 1.5.6-SNAPSHOT
 
+* Upgrade Netty to [4.1.15](http://netty.io/news/2017/08/25/4-0-51-Final-4-1-15-Final.html) and
+  netty-tcnative to [2.0.6](https://github.com/netty/netty-tcnative/releases/tag/netty-tcnative-parent-2.0.6.Final)
+
+
 ## 1.5.5
 
 * Added JVM property - enableOdlSynchronization. If set as true, then
