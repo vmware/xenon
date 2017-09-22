@@ -5701,9 +5701,14 @@ public class ServiceHost implements ServiceRequestSender {
 
             // For wildcard search on index-service(e.g.: "/core/document-index?documentSelfLink=/core/examples/*"),
             // when there is no matching in data store, it also searches available services on the host.
-            // To reflect the authorization, need to check the found service here.
-            if (!isAuthorized(s, null, get)) {
-                continue;
+            // Since document-index is already searched, only non-persisted stateful or stateless services are the
+            // target to check the authorization.
+            if (isAuthorizationEnabled()) {
+                // For non-persisted service, state is kept in resource-tracker cache.
+                ServiceDocument state = this.serviceResourceTracker.getCachedServiceState(s, get);
+                if (state != null && !isAuthorized(s, state, get)) {
+                    continue;
+                }
             }
 
             r.documentLinks.add(path);
