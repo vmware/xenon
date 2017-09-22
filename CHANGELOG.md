@@ -2,6 +2,13 @@
 
 ## 1.5.7-SNAPSHOT
 
+* New API added to synchronize the factory in a multi-node cluster.
+  Example of calling this API to start the synchronization of the example factory:
+  curl -X PATCH -H "Content-Type: application/json" localhost:8000/core/management/synch -d '{
+    "factorySelfLink": "/core/examples",
+    "kind": "com:vmware:xenon:services:common:SynchronizationRequest"
+  }'
+
 ## 1.5.6
 
 * Upgrade Netty to [4.1.15](http://netty.io/news/2017/08/25/4-0-51-Final-4-1-15-Final.html) and

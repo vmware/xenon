@@ -13,12 +13,15 @@
 
 package com.vmware.xenon.services.common;
 
+import static java.util.stream.Collectors.toList;
+
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 import java.util.logging.Level;
 
@@ -31,6 +34,7 @@ import com.vmware.xenon.common.OperationJoin.JoinedCompletionHandler;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceConfiguration;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
+import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.SynchronizationTaskService;
@@ -56,6 +60,7 @@ import com.vmware.xenon.common.UriUtils;
 public class SynchronizationManagementService extends StatelessService {
     public static final String SELF_LINK = ServiceUriPaths.CORE_SYNCHRONIZATION_MANAGEMENT;
     public static final EnumSet<ServiceOption> FACTORY_SERVICE_OPTION = EnumSet.of(ServiceOption.FACTORY);
+    public static final String FIELD_FACTORY_SELF_LINK = "factorySelfLink";
 
     public static class SynchronizationManagementState {
         public enum Status {
@@ -75,6 +80,46 @@ public class SynchronizationManagementService extends StatelessService {
     }
 
     @Override
+    public void handlePatch(Operation op) {
+        if (!op.hasBody()) {
+            op.fail(new IllegalArgumentException("body is required"));
+            return;
+        }
+
+        SynchronizationRequest synchRequest = op.getBody(SynchronizationRequest.class);
+        if (synchRequest.factorySelfLink == null || synchRequest.factorySelfLink.isEmpty()) {
+            op.fail(new IllegalArgumentException(String.format(
+                    "Factory SelfLink cannot be null or empty")));
+            return;
+        }
+
+        Operation operation = Operation.createGet(null).setCompletion((o, e) -> {
+            if (e != null) {
+                op.setBody(o.getBodyRaw());
+                op.complete();
+                return;
+            }
+            ServiceDocumentQueryResult factories = o.getBody(ServiceDocumentQueryResult.class);
+            List<String> factoryLinks = factories.documentLinks.stream().filter(f -> f.equals(synchRequest.factorySelfLink)).collect(toList());
+            if (factoryLinks.isEmpty()) {
+                op.fail(new IllegalArgumentException(String.format(
+                        "Factory SelfLink %s cannot be found", synchRequest.factorySelfLink)));
+                return;
+            }
+            String factorySelfLink = factoryLinks.get(0);
+            URI configUri = UriUtils.buildConfigUri(this.getHost(), factorySelfLink);
+            Operation.createGet(configUri)
+                    .setCompletion((oo, ee) -> {
+                        String peerNodeSelectorPath = oo.getBody(ServiceConfiguration.class).peerNodeSelectorPath;
+                        sendSynchronizationRequest(factorySelfLink, peerNodeSelectorPath, synchRequest, op);
+                    })
+                    .sendWith(this);
+        });
+
+        getHost().queryServiceUris(FACTORY_SERVICE_OPTION, true, operation);
+    }
+
+    @Override
     public void handleGet(Operation get) {
         // Get the list of all factories and fan-out their status retrieval operations.
         Operation operation = Operation.createGet(null).setCompletion((o, e) -> {
@@ -84,6 +129,12 @@ public class SynchronizationManagementService extends StatelessService {
                 return;
             }
 
+            String queryFactory = null;
+            Map<String,String> queryParams = UriUtils.parseUriQueryParams(get.getUri());
+            if (queryParams.size() > 0) {
+                queryFactory = queryParams.get(FIELD_FACTORY_SELF_LINK);
+            }
+
             List<Operation> configGets = new ArrayList<>();
             ServiceDocumentQueryResult result = new ServiceDocumentQueryResult();
             result.documents = new HashMap<>();
@@ -91,6 +142,9 @@ public class SynchronizationManagementService extends StatelessService {
             // Create config GETs for all factories to send through OperationJoin.
             ServiceDocumentQueryResult factories = o.getBody(ServiceDocumentQueryResult.class);
             for (String factorySelfLink : factories.documentLinks) {
+                if (queryFactory != null && !queryFactory.equals(factorySelfLink)) {
+                    continue;
+                }
                 URI configUri = UriUtils.buildConfigUri(this.getHost(), factorySelfLink);
 
                 // We create an entry for each factory here and that entry will only be updated by
@@ -98,6 +152,12 @@ public class SynchronizationManagementService extends StatelessService {
                 result.documents.put(factorySelfLink, new SynchronizationManagementState());
                 Operation configGet = Operation.createGet(configUri);
                 configGets.add(configGet);
+            }
+
+            if (configGets.isEmpty()) {
+                get.fail(new IllegalArgumentException(String.format(
+                        "Factory SelfLink %s cannot be found", queryFactory)));
+                return;
             }
 
             JoinedCompletionHandler joinedCompletion = (os, fs) -> {
@@ -129,6 +189,45 @@ public class SynchronizationManagementService extends StatelessService {
         this.getHost().queryServiceUris(FACTORY_SERVICE_OPTION, true, operation, null);
     }
 
+    private DeferredResult<Object> sendSynchronizationRequest(String factoryLink, String selectorPath, SynchronizationRequest synchRequest, Operation op) {
+        DeferredResult<Object> factoryStatus = new DeferredResult<>();
+        URI nodeSelectorUri = UriUtils.buildUri(getHost(), selectorPath);
+        NodeSelectorService.SelectAndForwardRequest req = new NodeSelectorService.SelectAndForwardRequest();
+        req.key = factoryLink;
+        Operation selectorPost = Operation.createPost(nodeSelectorUri)
+                .setReferer(getUri())
+                .setBodyNoCloning(req);
+
+        // URI will be filled after factory owner is determined from the Node Selector.
+        Operation factorySynchPost  = Operation.createPatch(null)
+                .setBody(synchRequest)
+                .setReferer(getUri());
+
+        // Chain of operations executed in sequence to start factory's synchronization.
+        DeferredResult
+                .allOf(getNodeSelectorAvailability(selectorPost, factoryStatus))
+                .thenCompose(a -> getFactoryOwnerFromNodeSelector(selectorPost, factorySynchPost, factorySynchPost))
+                .thenAccept(a -> sendSynchronizationRequest(factoryLink, factorySynchPost, op));
+
+        return factoryStatus;
+    }
+
+    private void sendSynchronizationRequest(
+            String factoryLink, Operation factorySynchPost, Operation op) {
+        URI uri = UriUtils.buildUri(factorySynchPost.getUri(), factoryLink);
+        uri = UriUtils.extendUri(uri, ServiceHost.SERVICE_URI_SUFFIX_SYNCHRONIZATION);
+        factorySynchPost.setUri(uri);
+        factorySynchPost.setCompletion((o, e) -> {
+            if (e != null) {
+                this.log(Level.WARNING, "Failed to start factory synchronization: %s", e);
+                op.fail(e);
+                return;
+            }
+            op.setBody(o.getBodyRaw());
+            op.complete();
+        }).sendWith(this);
+    }
+
     private DeferredResult<Object> getFactoryStatus(String factoryLink, ServiceDocumentQueryResult result, String selectorPath) {
         DeferredResult<Object> factoryStatus = new DeferredResult<>();
         URI nodeSelectorUri = UriUtils.buildUri(getHost(), selectorPath);
@@ -146,7 +245,7 @@ public class SynchronizationManagementService extends StatelessService {
         // Completion of factoryStatus in the future will notify the caller that factory's status is updated.
         // Caller will be waiting on the completion of all factoryStatuses.
         DeferredResult
-                .allOf(getNodeSelectorAvailability(result, selectorPost, factoryLink, factoryStatus))
+                .allOf(getNodeSelectorAvailability(selectorPost, factoryStatus))
                 .thenCompose(a -> getFactoryOwnerFromNodeSelector(selectorPost, synchGets, factoryStatGets))
                 .thenCompose(a -> getFactoryAvailability(result, factoryStatGets))
                 .thenCompose(a -> getSynchronizationTaskStatus(result, synchGets, factoryStatus));
@@ -248,8 +347,7 @@ public class SynchronizationManagementService extends StatelessService {
         return findSelector;
     }
 
-    private DeferredResult<Object> getNodeSelectorAvailability(
-            ServiceDocumentQueryResult result, Operation selectPost, String factoryLink, DeferredResult<Object> factoryStatus) {
+    private DeferredResult<Object> getNodeSelectorAvailability(Operation selectPost, DeferredResult<Object> factoryStatus) {
         DeferredResult<Object> findSelector = new DeferredResult<>();
         Operation selectorGet = Operation.createGet(selectPost.getUri())
                 .setReferer(getUri());
@@ -265,12 +363,8 @@ public class SynchronizationManagementService extends StatelessService {
                 return;
             }
 
-            SynchronizationManagementState factoryState =
-                    (SynchronizationManagementState) result.documents.get(factoryLink);
-
             NodeSelectorState selectorRsp = o.getBody(NodeSelectorState.class);
             if (selectorRsp.status != NodeSelectorState.Status.AVAILABLE) {
-                factoryState.status = SynchronizationManagementState.Status.UNAVAILABLE;
                 findSelector.fail(new Throwable("Node selector status: " + selectorRsp.status));
 
                 // Complete factoryStatus because we will not further proceed with this factory's status retrieval

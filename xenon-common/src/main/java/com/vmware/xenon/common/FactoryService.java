@@ -981,7 +981,7 @@ public abstract class FactoryService extends StatelessService {
         synchronizeChildServicesIfOwner(maintOp);
     }
 
-    private void synchronizeChildServicesIfOwner(Operation maintOp) {
+    void synchronizeChildServicesIfOwner(Operation maintOp) {
         // Become unavailable until synchronization is complete.
         // If we are not the owner, we stay unavailable
         setAvailable(false);

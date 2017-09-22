@@ -13,6 +13,9 @@
 
 package com.vmware.xenon.services.common;
 
+
+import static java.util.stream.Collectors.toList;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 
@@ -26,10 +29,10 @@ import com.vmware.xenon.common.NodeSelectorState;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
+import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.VerificationHost;
-
 import com.vmware.xenon.services.common.SynchronizationManagementService.SynchronizationManagementState;
 
 
@@ -64,9 +67,9 @@ public class TestSynchronizationManagementService extends BasicReusableHostTestC
         setUpMultiNode();
         this.host.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(this.host.getPeerHost(), ExampleService.FACTORY_LINK));
 
-        URI serviceUri = UriUtils.buildUri(this.host.getPeerHost(), SynchronizationManagementService.class);
+        URI uri = UriUtils.buildUri(this.host.getPeerHost(), SynchronizationManagementService.class);
 
-        Operation op = this.sender.sendAndWait(Operation.createGet(serviceUri));
+        Operation op = this.sender.sendAndWait(Operation.createGet(uri));
         ServiceDocumentQueryResult result = op.getBody(ServiceDocumentQueryResult.class);
 
         // Verify that all factories have some host
@@ -79,6 +82,25 @@ public class TestSynchronizationManagementService extends BasicReusableHostTestC
         // Verify that Example service is AVAILABLE
         SynchronizationManagementState state =
                 Utils.fromJson(result.documents.get(ExampleService.FACTORY_LINK), SynchronizationManagementState.class);
+        assertNotEquals(null, state.owner);
+        assertEquals(SynchronizationManagementState.Status.AVAILABLE, state.status);
+
+        // Verify GET with query works
+        URI serviceUri = UriUtils.extendUriWithQuery(uri, SynchronizationManagementService.FIELD_FACTORY_SELF_LINK,
+                ExampleService.FACTORY_LINK);
+        op = this.sender.sendAndWait(Operation.createGet(serviceUri));
+        result = op.getBody(ServiceDocumentQueryResult.class);
+        assertEquals(result.documents.size(), 1);
+
+        // Verify GET with query works if factory is not found
+        serviceUri = UriUtils.extendUriWithQuery(uri, SynchronizationManagementService.FIELD_FACTORY_SELF_LINK, "fake");
+        this.sender.sendAndWaitFailure(Operation.createGet(serviceUri));
+
+        // Verify GET with query works with wrong property
+        serviceUri = UriUtils.extendUriWithQuery(uri, "fake", "fake");
+        op = this.sender.sendAndWait(Operation.createGet(serviceUri));
+        result = op.getBody(ServiceDocumentQueryResult.class);
+        state = Utils.fromJson(result.documents.get(ExampleService.FACTORY_LINK), SynchronizationManagementState.class);
         assertNotEquals(null, state.owner);
         assertEquals(SynchronizationManagementState.Status.AVAILABLE, state.status);
     }
@@ -129,5 +151,48 @@ public class TestSynchronizationManagementService extends BasicReusableHostTestC
                 Utils.fromJson(result.documents.get(BadExampleFactoryService.FACTORY_LINK), SynchronizationManagementState.class);
         assertEquals(null, s.owner);
         assertEquals(SynchronizationManagementState.Status.UNAVAILABLE, s.status);
+    }
+
+    @Test
+    public void synchronizationRequest() throws Throwable {
+        setUpMultiNode();
+        VerificationHost peer = this.host.getPeerHost();
+        peer.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(peer, ExampleService.FACTORY_LINK));
+        peer.createExampleServices(peer, this.serviceCount, null);
+        URI serviceUri = UriUtils.buildUri(peer, SynchronizationManagementService.class);
+        String owner = waitForStatus(peer, SynchronizationManagementState.Status.AVAILABLE);
+        peer = this.host.getInProcessHostMap().values().stream().filter(h -> h.getId().equals(owner)).collect(toList()).get(0);
+
+        // Set factory unavailable
+        setFactoryAvailability(peer, 0.0);
+        waitForStatus(peer, SynchronizationManagementState.Status.UNAVAILABLE);
+
+        // Call the synchronization API and verify that factory is available afterwards.
+        SynchronizationRequest request = SynchronizationRequest.create();
+        request.factorySelfLink = ExampleService.FACTORY_LINK;
+        this.sender.sendAndWait(Operation.createPatch(serviceUri).setBody(request));
+        waitForStatus(peer, SynchronizationManagementState.Status.AVAILABLE);
+    }
+
+    private String waitForStatus(VerificationHost peer, SynchronizationManagementState.Status status) {
+        SynchronizationManagementState[] state = new SynchronizationManagementState[1];
+        URI serviceUri = UriUtils.buildUri(peer, SynchronizationManagementService.class);
+        peer.waitFor("Wait for the status failed: " + status, () -> {
+            Operation op = this.sender.sendAndWait(Operation.createGet(serviceUri));
+            ServiceDocumentQueryResult result = op.getBody(ServiceDocumentQueryResult.class);
+            state[0] = Utils.fromJson(result.documents.get(ExampleService.FACTORY_LINK), SynchronizationManagementState.class);
+            return status.equals(state[0].status);
+        });
+        return state[0].owner;
+    }
+
+    private void setFactoryAvailability(VerificationHost peer, double isAvailable) {
+        ServiceStats.ServiceStat body = new ServiceStats.ServiceStat();
+        body.name = Service.STAT_NAME_AVAILABLE;
+        body.latestValue = isAvailable;
+        Operation put = Operation.createPut(
+                UriUtils.buildAvailableUri(peer, ExampleService.FACTORY_LINK))
+                .setBody(body);
+        this.sender.sendAndWait(put);
     }
 }

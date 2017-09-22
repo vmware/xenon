@@ -327,6 +327,7 @@ public class ServiceHost implements ServiceRequestSender {
     public static final String SERVICE_URI_SUFFIX_STATS = "/stats";
     public static final String SERVICE_URI_SUFFIX_SUBSCRIPTIONS = "/subscriptions";
 
+    public static final String SERVICE_URI_SUFFIX_SYNCHRONIZATION = "/synchronization";
     public static final String SERVICE_URI_SUFFIX_AVAILABLE = "/available";
     public static final String SERVICE_URI_SUFFIX_CONFIG = "/config";
     public static final String SERVICE_URI_SUFFIX_TEMPLATE = "/template";
@@ -344,6 +345,7 @@ public class ServiceHost implements ServiceRequestSender {
 
     public static final String[] RESERVED_SERVICE_URI_PATHS = {
             SERVICE_URI_SUFFIX_AVAILABLE,
+            SERVICE_URI_SUFFIX_SYNCHRONIZATION,
             SERVICE_URI_SUFFIX_REPLICATION,
             SERVICE_URI_SUFFIX_STATS,
             SERVICE_URI_SUFFIX_SUBSCRIPTIONS,
@@ -4718,6 +4720,8 @@ public class ServiceHost implements ServiceRequestSender {
         } else if (serviceUriPath.endsWith(SERVICE_URI_SUFFIX_CONFIG)) {
             return true;
         } else if (serviceUriPath.endsWith(SERVICE_URI_SUFFIX_SUBSCRIPTIONS)) {
+            return true;
+        } else if (serviceUriPath.endsWith(SERVICE_URI_SUFFIX_SYNCHRONIZATION)) {
             return true;
         } else if (serviceUriPath.endsWith(SERVICE_URI_SUFFIX_TEMPLATE)) {
             return true;

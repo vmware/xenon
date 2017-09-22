@@ -46,6 +46,7 @@ import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.ServiceUriPaths;
+import com.vmware.xenon.services.common.SynchronizationRequest;
 import com.vmware.xenon.services.common.UiContentService;
 
 /**
@@ -160,6 +161,8 @@ public class UtilityService implements Service {
             handleDocumentTemplateRequest(op);
         } else if (op.getUri().getPath().endsWith(ServiceHost.SERVICE_URI_SUFFIX_CONFIG)) {
             this.parent.handleConfigurationRequest(op);
+        } else if (op.getUri().getPath().endsWith(ServiceHost.SERVICE_URI_SUFFIX_SYNCHRONIZATION)) {
+            handleSynchRequest(op);
         } else if (op.getUri().getPath().endsWith(ServiceHost.SERVICE_URI_SUFFIX_AVAILABLE)) {
             handleAvailableRequest(op);
         } else {
@@ -185,6 +188,34 @@ public class UtilityService implements Service {
     @Override
     public void handleRequest(Operation op, OperationProcessingStage opProcessingStage) {
         handleRequest(op);
+    }
+
+    private void handleSynchRequest(Operation op) {
+        if (op.getAction() == Action.PATCH || op.getAction() == Action.PUT) {
+            if (this.parent.getProcessingStage() != ProcessingStage.AVAILABLE) {
+                // processing stage takes precedence over isAvailable statistic
+                op.fail(Operation.STATUS_CODE_UNAVAILABLE);
+                return;
+            }
+
+            if (!op.hasBody()) {
+                op.fail(new IllegalArgumentException("body is required"));
+                return;
+            }
+
+            SynchronizationRequest synchRequest = op.getBody(SynchronizationRequest.class);
+            if (!synchRequest.factorySelfLink.equals(this.parent.getSelfLink())) {
+                op.fail(new IllegalArgumentException("Invalid factorySelfLink in body: " + synchRequest.factorySelfLink));
+                return;
+            }
+
+            if (this.parent instanceof FactoryService) {
+                op.complete();
+                ((FactoryService)this.parent).synchronizeChildServicesIfOwner(new Operation());
+            }
+        } else {
+            Operation.failActionNotSupported(op);
+        }
     }
 
     private void handleAvailableRequest(Operation op) {
