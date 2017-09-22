@@ -64,6 +64,7 @@ import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.common.jwt.Rfc7519Claims;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.common.jwt.Verifier;
+import com.vmware.xenon.common.test.AuthTestUtils;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
@@ -71,6 +72,7 @@ import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ExampleService;
+import com.vmware.xenon.services.common.ExampleService.ExampleNonPersistedService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.ExampleServiceHost;
 import com.vmware.xenon.services.common.FileContentService;
@@ -2464,6 +2466,86 @@ public class TestServiceHost {
         assertEquals((long) results[0].documentLinks.size(), (long) results[0].documentCount);
     }
 
+    @Test
+    public void queryServiceUrisWithAuth() throws Throwable {
+        setUp(true);
+        this.host.setAuthorizationService(new AuthorizationContextService());
+        this.host.setAuthorizationEnabled(true);
+        this.host.start();
+
+        AuthTestUtils.setSystemAuthorizationContext(this.host);
+
+        // Start Statefull with Non-Persisted service
+        this.host.startFactory(new ExampleNonPersistedService());
+        this.host.waitForServiceAvailable(ExampleNonPersistedService.FACTORY_LINK);
+
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+        // create user foo@example.com who has access to ExampleServiceState with name="foo"
+        TestContext createUserFoo = this.host.testCreate(1);
+        String userFoo = "foo@example.com";
+        AuthorizationSetupHelper.create()
+                .setHost(this.host)
+                .setUserEmail(userFoo)
+                .setUserSelfLink(userFoo)
+                .setUserPassword("password")
+                .setResourceQuery(Query.Builder.create()
+                        .addFieldClause(ServiceDocument.FIELD_NAME_KIND, Utils.buildKind(ExampleServiceState.class))
+                        .addFieldClause(ExampleServiceState.FIELD_NAME_NAME, "foo")
+                        .build())
+                .setCompletion(createUserFoo.getCompletion())
+                .start();
+        createUserFoo.await();
+
+        // create user bar@example.com who has access to ExampleServiceState with name="foo"
+        TestContext createUserBar = this.host.testCreate(1);
+        String userBar = "bar@example.com";
+        AuthorizationSetupHelper.create()
+                .setHost(this.host)
+                .setUserEmail(userBar)
+                .setUserSelfLink(userBar)
+                .setUserPassword("password")
+                .setResourceQuery(Query.Builder.create()
+                        .addFieldClause(ServiceDocument.FIELD_NAME_KIND, Utils.buildKind(ExampleServiceState.class))
+                        .addFieldClause(ExampleServiceState.FIELD_NAME_NAME, "bar")
+                        .build())
+                .setCompletion(createUserBar.getCompletion())
+                .start();
+        createUserBar.await();
+
+        // create foo & bar documents
+        ExampleServiceState exampleFoo = new ExampleServiceState();
+        exampleFoo.name = "foo";
+        exampleFoo.documentSelfLink = "foo";
+
+        ExampleServiceState exampleBar = new ExampleServiceState();
+        exampleBar.name = "bar";
+        exampleBar.documentSelfLink = "bar";
+
+        List<Operation> posts = new ArrayList<>();
+        posts.add(Operation.createPost(this.host, ExampleNonPersistedService.FACTORY_LINK).setBody(exampleFoo));
+        posts.add(Operation.createPost(this.host, ExampleNonPersistedService.FACTORY_LINK).setBody(exampleBar));
+        sender.sendAndWait(posts);
+
+        AuthTestUtils.resetAuthorizationContext(this.host);
+
+        // login as foo
+        AuthTestUtils.loginAndSetToken(this.host, "foo@example.com", "password");
+
+        Operation factoryGetFoo = Operation.createGet(this.host, ExampleNonPersistedService.FACTORY_LINK);
+        ServiceDocumentQueryResult factoryGetResultFoo = sender.sendAndWait(factoryGetFoo, ServiceDocumentQueryResult.class);
+        assertEquals(1, factoryGetResultFoo.documentLinks.size());
+        assertEquals("/core/nonpersist-examples/foo", factoryGetResultFoo.documentLinks.get(0));
+
+
+        // login as bar
+        AuthTestUtils.loginAndSetToken(this.host, "bar@example.com", "password");
+        Operation factoryGetBar = Operation.createGet(this.host, ExampleNonPersistedService.FACTORY_LINK);
+        ServiceDocumentQueryResult factoryGetResultBar = sender.sendAndWait(factoryGetBar, ServiceDocumentQueryResult.class);
+        assertEquals(1, factoryGetResultBar.documentLinks.size());
+        assertEquals("/core/nonpersist-examples/bar", factoryGetResultBar.documentLinks.get(0));
+    }
+
     /**
      * This test verify the custom Ui path resource of service
      **/
@@ -2695,7 +2777,11 @@ public class TestServiceHost {
             return;
         }
 
+        if (!this.host.isStopping()) {
+            AuthTestUtils.logout(this.host);
+        }
         this.host.tearDown();
+        this.host = null;
     }
 
 }

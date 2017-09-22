@@ -2,6 +2,12 @@
 
 ## 1.5.7-SNAPSHOT
 
+* Fix auth check for non-persisted stateful service on document-index GET.
+  Auth check for remote GET access on document-index service was introduced at xenon 1.5.5 but had
+  an issue for non-persisted stateful service when auth check query has a condition against
+  document body. It is now fixed in this version.
+
+
 ## 1.5.6
 
 * Upgrade Netty to [4.1.15](http://netty.io/news/2017/08/25/4-0-51-Final-4-1-15-Final.html) and
