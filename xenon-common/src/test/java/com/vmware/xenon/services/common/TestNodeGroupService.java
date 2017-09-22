@@ -667,6 +667,17 @@ public class TestNodeGroupService {
     }
 
     @Test
+    public void quorumUpdate() throws Throwable {
+        setUp(this.nodeCount);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+        this.host.setNodeGroupQuorum(this.nodeCount);
+        VerificationHost peerHost = this.host.getPeerHost();
+        this.host.stopHost(peerHost);
+        this.host.setNodeGroupQuorum(this.nodeCount - 1);
+        this.host.waitForNodeGroupConvergence(this.nodeCount - 1);
+    }
+
+    @Test
     public void synchronizationCollisionWithPosts() throws Throwable {
         // POST requests go through the FactoryService
         // and do not get queued with Synchronization
