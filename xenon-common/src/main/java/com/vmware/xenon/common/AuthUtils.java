@@ -18,6 +18,8 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.function.Function;
 
+import com.vmware.xenon.common.ServiceStats.ServiceStat;
+
 public final class AuthUtils {
 
     private static final ConcurrentMap<String, Function<Claims, String>> URI_BUILDERS = new ConcurrentSkipListMap<>();
@@ -66,5 +68,14 @@ public final class AuthUtils {
         }
 
         return buildAuthProviderHostUri(host, userLink);
+    }
+
+    public static void setAuthDurationStat(Service service, String prefix, double value) {
+        ServiceStat st = ServiceStatUtils.getOrCreateDailyTimeSeriesHistogramStat(service, prefix,
+                ServiceStatUtils.AGGREGATION_TYPE_AVG_MAX);
+        service.setStat(st, value);
+        st = ServiceStatUtils.getOrCreateHourlyTimeSeriesHistogramStat(service, prefix,
+                ServiceStatUtils.AGGREGATION_TYPE_AVG_MAX);
+        service.setStat(st, value);
     }
 }

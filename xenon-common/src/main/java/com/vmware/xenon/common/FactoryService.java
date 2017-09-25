@@ -23,6 +23,8 @@ import java.util.concurrent.TimeUnit;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.OperationProcessingChain.FilterReturnCode;
+import com.vmware.xenon.common.OperationProcessingChain.OperationProcessingContext;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.services.common.NodeGroupBroadcastResponse;
 import com.vmware.xenon.services.common.QueryTask;
@@ -272,8 +274,13 @@ public abstract class FactoryService extends StatelessService {
         if (op.getAction() == Action.POST) {
             if (opProcessingStage == OperationProcessingStage.PROCESSING_FILTERS) {
                 OperationProcessingChain opProcessingChain = getOperationProcessingChain();
-                if (opProcessingChain != null && !opProcessingChain.processRequest(op)) {
-                    return;
+                if (opProcessingChain != null) {
+                    OperationProcessingContext context = new OperationProcessingContext(
+                            getHost(), this, opProcessingChain);
+                    if (opProcessingChain.processRequest(op, context) !=
+                            FilterReturnCode.CONTINUE_PROCESSING) {
+                        return;
+                    }
                 }
                 opProcessingStage = OperationProcessingStage.EXECUTING_SERVICE_HANDLER;
             }

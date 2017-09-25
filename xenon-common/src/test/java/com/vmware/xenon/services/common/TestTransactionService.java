@@ -1000,8 +1000,8 @@ public class TestTransactionService extends BasicReusableHostTestCase {
                             BankAccountServiceRequest.class, "kind",
                             BankAccountServiceRequest.Kind.WITHDRAW),
                     this::handlePatchForWithdraw, "Withdraw");
-            OperationProcessingChain opProcessingChain = new OperationProcessingChain(this);
-            opProcessingChain.add(myRouter);
+            OperationProcessingChain opProcessingChain = OperationProcessingChain.create(
+                    myRouter);
             setOperationProcessingChain(opProcessingChain);
             return opProcessingChain;
         }
