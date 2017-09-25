@@ -29,6 +29,7 @@ import java.util.logging.Logger;
 
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.InstrumentationContext;
+import com.vmware.xenon.common.OperationProcessingChain.OperationProcessingContext;
 import com.vmware.xenon.common.RequestRouter.Route.RouteDocumentation;
 import com.vmware.xenon.common.RequestRouter.Route.SupportLevel;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
@@ -405,10 +406,13 @@ public class StatefulService implements Service {
                 }
 
                 OperationProcessingChain opProcessingChain = getOperationProcessingChain();
-                if (opProcessingChain != null && !opProcessingChain.processRequest(request)) {
+                if (opProcessingChain != null) {
+                    OperationProcessingContext context = opProcessingChain.createContext(getHost());
+                    opProcessingChain.processRequest(request, context, o -> {
+                        handleRequest(request, OperationProcessingStage.EXECUTING_SERVICE_HANDLER);
+                    });
                     return;
                 }
-
                 opProcessingStage = OperationProcessingStage.EXECUTING_SERVICE_HANDLER;
             }
 

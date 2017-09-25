@@ -17,11 +17,13 @@ import static org.junit.Assert.assertEquals;
 
 import java.net.URI;
 import java.util.Locale;
-import java.util.function.Predicate;
 
 import org.junit.Before;
 import org.junit.Test;
 
+import com.vmware.xenon.common.OperationProcessingChain.Filter;
+import com.vmware.xenon.common.OperationProcessingChain.FilterReturnCode;
+import com.vmware.xenon.common.OperationProcessingChain.OperationProcessingContext;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
@@ -107,7 +109,8 @@ public class TestLocalizableValidationException extends BasicReusableHostTestCas
             super(ServiceDocument.class);
             toggleOption(ServiceOption.CONCURRENT_GET_HANDLING, true);
             toggleOption(ServiceOption.CONCURRENT_UPDATE_HANDLING, true);
-            FailingServiceOperationProcessingChain processingChain = new FailingServiceOperationProcessingChain(this);
+            OperationProcessingChain processingChain = constructFailingServiceOperationProcessingChain(
+                    this);
             this.setOperationProcessingChain(processingChain);
         }
 
@@ -127,29 +130,24 @@ public class TestLocalizableValidationException extends BasicReusableHostTestCas
 
     }
 
-    public static class FailingServiceOperationProcessingChain extends OperationProcessingChain {
+    private static OperationProcessingChain constructFailingServiceOperationProcessingChain(Service s) {
+        return OperationProcessingChain.create(new Filter() {
 
-        public FailingServiceOperationProcessingChain(TestFailingStatefulService service) {
-            super(service);
-            this.add(new Predicate<Operation>() {
-
-                @Override
-                public boolean test(Operation op) {
-                    if (op.getAction() != Action.DELETE) {
-                        return true;
-                    }
-
-                    service.sendRequest(Operation.createGet(service, TestFailingStatefulService.FACTORY_LINK)
-                            .setCompletion((o, e) -> {
-                                op.fail(ex);
-                                resumeProcessingRequest(op, this);
-                            }));
-
-                    return false;
+            @Override
+            public FilterReturnCode processRequest(Operation op, OperationProcessingContext context) {
+                if (op.getAction() != Action.DELETE) {
+                    return FilterReturnCode.CONTINUE_PROCESSING;
                 }
-            });
-        }
 
+                s.sendRequest(Operation.createGet(s, TestFailingStatefulService.FACTORY_LINK)
+                        .setCompletion((o, e) -> {
+                            context.getOpProcessingChain().resumedRequestFailed(op, context, e);
+                            op.fail(ex);
+                        }));
+
+                return FilterReturnCode.SUSPEND_PROCESSING;
+            }
+        });
     }
 
 }
