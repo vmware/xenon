@@ -233,8 +233,7 @@ public class ExampleService extends StatefulService {
                         StrictUpdateRequest.KIND),
                 this::handlePatchForStrictUpdate, "Strict update version check");
 
-        OperationProcessingChain opProcessingChain = new OperationProcessingChain(this);
-        opProcessingChain.add(myRouter);
+        OperationProcessingChain opProcessingChain = OperationProcessingChain.construct(myRouter);
         setOperationProcessingChain(opProcessingChain);
         return opProcessingChain;
     }

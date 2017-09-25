@@ -493,9 +493,10 @@ public class TestAuthorization extends BasicTestCase {
 
         // PATCH operation should be allowed
         for (String selfLink : selfLinks) {
+            URI uri = UriUtils.buildUri(this.host, selfLink);
             Operation patchOperation =
-                    Operation.createPatch(UriUtils.buildUri(this.host, selfLink))
-                        .setBody(exampleServices.get(selfLink))
+                    Operation.createPatch(uri)
+                        .setBody(exampleServices.get(uri))
                         .setCompletion((o, e) -> {
                             if (o.getStatusCode() != Operation.STATUS_CODE_OK) {
                                 String message = String.format("Expected %d, got %s",

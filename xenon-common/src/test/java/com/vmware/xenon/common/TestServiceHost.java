@@ -615,8 +615,6 @@ public class TestServiceHost {
             assertEquals(bindAddress, h.getState().bindAddress);
             assertEquals(hostId, h.getState().id);
 
-            verifyAuthorizedServiceMethods(h);
-
             verifyCoreServiceOption(h);
         } finally {
             h.stop();
@@ -636,28 +634,6 @@ public class TestServiceHost {
                 ServiceConfiguration.class, coreServices);
         for (ServiceConfiguration c : cfgs.values()) {
             assertTrue(c.options.contains(ServiceOption.CORE));
-        }
-    }
-
-    private void verifyAuthorizedServiceMethods(ServiceHost h) {
-        MinimalTestService s = new MinimalTestService();
-        try {
-            h.getAuthorizationContext(s, UUID.randomUUID().toString());
-            throw new IllegalStateException("call should have failed");
-        } catch (IllegalStateException e) {
-            throw e;
-        } catch (RuntimeException e) {
-
-        }
-
-        try {
-            h.cacheAuthorizationContext(s,
-                    this.host.getGuestAuthorizationContext());
-            throw new IllegalStateException("call should have failed");
-        } catch (IllegalStateException e) {
-            throw e;
-        } catch (RuntimeException e) {
-
         }
     }
 
