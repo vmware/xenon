@@ -28,7 +28,6 @@ import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthCredentialsService;
 import com.vmware.xenon.services.common.AuthCredentialsService.AuthCredentialsServiceState;
-import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.AuthorizationTokenCacheService;
 import com.vmware.xenon.services.common.AuthorizationTokenCacheService.AuthorizationTokenCacheServiceState;
 import com.vmware.xenon.services.common.ExampleService;
@@ -57,7 +56,6 @@ public class TestExternalAuth extends BasicTestCase {
             this.externalAuthHost = createHost();
             ServiceHost.Arguments args = VerificationHost.buildDefaultServiceHostArguments(0);
             VerificationHost.initialize(this.externalAuthHost, args);
-            this.externalAuthHost.setAuthorizationService(new AuthorizationContextService());
             this.externalAuthHost.setAuthorizationEnabled(true);
             this.externalAuthHost.start();
             this.externalAuthHost.setSystemAuthorizationContext();

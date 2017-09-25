@@ -320,7 +320,6 @@ public class TestLuceneDocumentIndexService {
             this.host.setPeerSynchronizationEnabled(false);
 
             if (isAuthEnabled) {
-                this.host.setAuthorizationService(new AuthorizationContextService());
                 this.host.setAuthorizationEnabled(true);
             }
 

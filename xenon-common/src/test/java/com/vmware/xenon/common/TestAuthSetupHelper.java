@@ -30,7 +30,6 @@ import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
 import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
-import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryTask;
@@ -57,7 +56,6 @@ public class TestAuthSetupHelper extends BasicTestCase {
     @Override
     public void beforeHostStart(VerificationHost host) {
         // Enable authorization service; this is an end to end test
-        host.setAuthorizationService(new AuthorizationContextService());
         host.setAuthorizationEnabled(true);
     }
 

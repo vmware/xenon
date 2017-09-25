@@ -70,7 +70,6 @@ import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
-import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleNonPersistedService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
@@ -273,7 +272,6 @@ public class TestServiceHost {
     private void doRequestRateLimits() throws Throwable {
         setUp(true);
 
-        this.host.setAuthorizationService(new AuthorizationContextService());
         this.host.setAuthorizationEnabled(true);
         this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
         this.host.start();
@@ -615,8 +613,6 @@ public class TestServiceHost {
             assertEquals(bindAddress, h.getState().bindAddress);
             assertEquals(hostId, h.getState().id);
 
-            verifyAuthorizedServiceMethods(h);
-
             verifyCoreServiceOption(h);
         } finally {
             h.stop();
@@ -636,28 +632,6 @@ public class TestServiceHost {
                 ServiceConfiguration.class, coreServices);
         for (ServiceConfiguration c : cfgs.values()) {
             assertTrue(c.options.contains(ServiceOption.CORE));
-        }
-    }
-
-    private void verifyAuthorizedServiceMethods(ServiceHost h) {
-        MinimalTestService s = new MinimalTestService();
-        try {
-            h.getAuthorizationContext(s, UUID.randomUUID().toString());
-            throw new IllegalStateException("call should have failed");
-        } catch (IllegalStateException e) {
-            throw e;
-        } catch (RuntimeException e) {
-
-        }
-
-        try {
-            h.cacheAuthorizationContext(s,
-                    this.host.getGuestAuthorizationContext());
-            throw new IllegalStateException("call should have failed");
-        } catch (IllegalStateException e) {
-            throw e;
-        } catch (RuntimeException e) {
-
         }
     }
 
@@ -1862,7 +1836,6 @@ public class TestServiceHost {
     @Test
     public void serviceStopDueToMemoryPressure() throws Throwable {
         setUp(true);
-        this.host.setAuthorizationService(new AuthorizationContextService());
         this.host.setAuthorizationEnabled(true);
 
         if (this.serviceCount >= 1000) {
@@ -2420,7 +2393,6 @@ public class TestServiceHost {
     @Test
     public void queryServiceUrisWithAuth() throws Throwable {
         setUp(true);
-        this.host.setAuthorizationService(new AuthorizationContextService());
         this.host.setAuthorizationEnabled(true);
         this.host.start();
 

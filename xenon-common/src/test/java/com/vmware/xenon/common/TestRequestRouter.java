@@ -26,6 +26,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import com.vmware.xenon.common.OperationProcessingChain.FilterRC;
 import com.vmware.xenon.common.Service.Action;
 
 class RequestBody {
@@ -68,7 +69,7 @@ public class TestRequestRouter {
         for (int i = 0; i < NUM; i++) {
             String uri = i % 2 == 0 ? "http://localhost/?action=doX"
                     : "http://localhost/?action=doY";
-            if (this.router.test(Operation.createPatch(new URI(uri)))) {
+            if (this.router.processRequest(Operation.createPatch(new URI(uri)), null) == FilterRC.FILTER_RC_CONTINUE_PROCESSING) {
                 fail("route not found");
             }
         }
@@ -113,7 +114,8 @@ public class TestRequestRouter {
                 break;
             }
 
-            if (this.router.test(Operation.createPatch(new URI("http://localhost/")).setBody(body))) {
+            if (this.router.processRequest(Operation.createPatch(new URI("http://localhost/")).setBody(body),
+                    null) == FilterRC.FILTER_RC_CONTINUE_PROCESSING) {
                 this.zCount++;
             }
         }

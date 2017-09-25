@@ -54,7 +54,6 @@ import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthorizationCacheUtils;
-import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.GuestUserService;
@@ -119,7 +118,6 @@ public class TestAuthorization extends BasicTestCase {
     @Override
     public void beforeHostStart(VerificationHost host) {
         // Enable authorization service; this is an end to end test
-        host.setAuthorizationService(new AuthorizationContextService());
         host.setAuthorizationEnabled(true);
         CommandLineArgumentParser.parseFromProperties(this);
     }
@@ -493,9 +491,10 @@ public class TestAuthorization extends BasicTestCase {
 
         // PATCH operation should be allowed
         for (String selfLink : selfLinks) {
+            URI uri = UriUtils.buildUri(this.host, selfLink);
             Operation patchOperation =
-                    Operation.createPatch(UriUtils.buildUri(this.host, selfLink))
-                        .setBody(exampleServices.get(selfLink))
+                    Operation.createPatch(uri)
+                        .setBody(exampleServices.get(uri))
                         .setCompletion((o, e) -> {
                             if (o.getStatusCode() != Operation.STATUS_CODE_OK) {
                                 String message = String.format("Expected %d, got %s",
