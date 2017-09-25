@@ -27,11 +27,12 @@ import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.Utils;
 
 public class NodeSelectorReplicationContext {
-    public NodeSelectorReplicationContext(String location, Collection<NodeState> nodes, Operation op) {
+    public NodeSelectorReplicationContext(String location, Collection<NodeState> nodes, Operation op, boolean includeSelfNode) {
         this.location = location;
         this.nodes = nodes;
         this.parentOp = op;
         this.startTimeMicros = Utils.getSystemNowMicrosUtc();
+        this.includeSelfNode = includeSelfNode;
     }
 
     String location;
@@ -41,6 +42,7 @@ public class NodeSelectorReplicationContext {
     int failureThreshold;
     int locationThreshold;
     long startTimeMicros;
+    boolean includeSelfNode;
     private int successCount;
     private int failureCount;
     private Set<String> locations;

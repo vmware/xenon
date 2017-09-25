@@ -82,6 +82,8 @@ public class ExampleServiceHost extends ServiceHost {
         // Start the example service factory
         super.startFactory(ExampleService.class, ExampleService::createFactory);
 
+        super.startService(new MigrationBroadcastService());
+
         // Start the example task service factory: when it receives a task, it will delete
         // all example services
         super.startFactory(ExampleTaskService.class, ExampleTaskService::createFactory);

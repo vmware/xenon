@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.common;
 
+import static com.vmware.xenon.services.common.MigrationBroadcastService.HEADER_NEW_MIGRATION;
+
 import java.net.URI;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -255,6 +257,14 @@ class ServiceSynchronizationTracker {
             }
 
             SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
+
+            // for migration, document owner is already assigned when it makes replication requests
+            if (op.hasPragmaDirective(HEADER_NEW_MIGRATION)) {
+                s.toggleOption(ServiceOption.DOCUMENT_OWNER, rsp.isLocalHostOwner);
+                op.complete();
+                return;
+            }
+
             if (op.isFromReplication()) {
                 // replicated requests should not synchronize, that is done on the owner node
                 if (op.isCommit()) {

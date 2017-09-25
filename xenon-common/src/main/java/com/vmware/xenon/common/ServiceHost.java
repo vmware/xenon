@@ -5645,6 +5645,16 @@ public class ServiceHost implements ServiceRequestSender {
             String selectorPath,
             String selectionKey,
             Operation op) {
+        replicateRequest(serviceOptions, state, selectorPath, selectionKey, op,
+                SelectAndForwardRequest.REPLICATION_OPTIONS, getId());
+    }
+
+    public void replicateRequest(EnumSet<ServiceOption> serviceOptions, ServiceDocument state,
+            String selectorPath,
+            String selectionKey,
+            Operation op,
+            EnumSet<ForwardingOption> replicationOptions,
+            String documentOwner) {
         if (isStopping()) {
             op.fail(new CancellationException("Host is stopping"));
             return;
@@ -5660,13 +5670,13 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
-        state.documentOwner = getId();
+        state.documentOwner = documentOwner;
 
         SelectAndForwardRequest req = new SelectAndForwardRequest();
         req.key = selectionKey;
         req.targetPath = op.getUri().getPath();
         req.targetQuery = op.getUri().getQuery();
-        req.options = SelectAndForwardRequest.REPLICATION_OPTIONS;
+        req.options = replicationOptions;
         req.serviceOptions = serviceOptions;
         nss.selectAndForward(op, req);
     }

@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.services.common;
 
+import static java.lang.String.format;
+
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -166,7 +168,14 @@ public class ExampleService extends StatefulService {
     }
 
     @Override
+    public void handleCreate(Operation post) {
+        System.out.println("handle create");
+        super.handleCreate(post);
+    }
+
+    @Override
     public void handleStart(Operation startPost) {
+        System.out.println(format("handle start: %s", getSelfLink()));
         // Example of state validation on start:
         // 1) Require that an initial state is provided
         // 2) Require that the name field is not null
@@ -256,8 +265,8 @@ public class ExampleService extends StatefulService {
         }
 
         if (body.documentVersion != currentState.documentVersion) {
-            String errorString = String
-                    .format("Current version %d. Request version %d",
+            String errorString =
+                    format("Current version %d. Request version %d",
                             currentState.documentVersion,
                             body.documentVersion);
             patch.fail(new IllegalArgumentException(errorString));

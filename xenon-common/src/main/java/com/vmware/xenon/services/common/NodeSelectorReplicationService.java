@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.services.common;
 
+import static com.vmware.xenon.services.common.MigrationBroadcastService.HEADER_NEW_MIGRATION;
+
 import java.net.URI;
 import java.util.Collection;
 import java.util.Map;
@@ -22,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.vmware.xenon.common.NodeSelectorService;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
+import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest.ForwardingOption;
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
@@ -94,8 +97,9 @@ public class NodeSelectorReplicationService extends StatelessService {
 
         // location is usually null, unless set explicitly
         String location = getHost().getLocation();
+        boolean includeSelfNode = req.options.contains(ForwardingOption.REPLICATE_INCLUDE_SELF_NODE);
         NodeSelectorReplicationContext context = new NodeSelectorReplicationContext(
-                location, selectedNodes, outboundOp);
+                location, selectedNodes, outboundOp, includeSelfNode);
         context.locationThreshold = selfNode.locationQuorum;
 
         // success threshold is determined based on the following precedence:
@@ -196,7 +200,7 @@ public class NodeSelectorReplicationService extends StatelessService {
         handleReplicationCompletion(context, null, null);
 
         for (NodeState m : context.nodes) {
-            if (m.id.equals(this.getHost().getId())) {
+            if (!context.includeSelfNode && m.id.equals(this.getHost().getId())) {
                 continue;
             }
 
@@ -246,6 +250,11 @@ public class NodeSelectorReplicationService extends StatelessService {
         if (commitHeader != null) {
             update.addRequestHeader(Operation.REPLICATION_PHASE_HEADER, commitHeader);
         }
+
+        if (outboundOp.hasPragmaDirective(HEADER_NEW_MIGRATION)) {
+            update.addPragmaDirective(HEADER_NEW_MIGRATION);
+        }
+
 
         Utils.encodeAndTransferLinkedStateToBody(outboundOp, update, BINARY_SERIALIZATION == 1);
 

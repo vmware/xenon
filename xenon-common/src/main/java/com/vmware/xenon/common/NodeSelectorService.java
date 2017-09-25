@@ -70,11 +70,15 @@ public interface NodeSelectorService extends Service {
             REPLICATE,
             BROADCAST,
             UNICAST,
-            EXCLUDE_ENTRY_NODE
+            EXCLUDE_ENTRY_NODE,
+            REPLICATE_INCLUDE_SELF_NODE
         }
 
         public static final EnumSet<ForwardingOption> REPLICATION_OPTIONS = EnumSet
                 .of(ForwardingOption.BROADCAST, ForwardingOption.REPLICATE);
+
+        public static final EnumSet<ForwardingOption> MIGRATION_OPTIONS = EnumSet
+                .of(ForwardingOption.BROADCAST, ForwardingOption.REPLICATE, ForwardingOption.REPLICATE_INCLUDE_SELF_NODE);
 
         public static final EnumSet<ForwardingOption> UNICAST_OPTIONS = EnumSet
                 .of(ForwardingOption.UNICAST);
