@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## 1.5.7-SNAPSHOT
+## 1.5.7
 
 * Fix auth check for non-persisted stateful service on document-index GET.
   Auth check for remote GET access on document-index service was introduced at xenon 1.5.5 but had
