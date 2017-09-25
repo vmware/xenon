@@ -1732,12 +1732,6 @@ public class LuceneDocumentIndexService extends StatelessService {
             setTimeSeriesHistogramStat(STAT_NAME_QUERY_ALL_VERSIONS_DURATION_MICROS,
                     AGGREGATION_TYPE_AVG_MAX, queryTimeMicros);
             return response;
-        } else if (queryOptions.contains(QueryOption.INDEXED_METADATA)) {
-            // the termQuery has already been populated a boolean clause that checks only the latest version.
-            // simply call lucene count query instead of going through post-processing to find out appropriate
-            // version docs
-            response.documentCount = (long) searcher.count(termQuery);
-            return response;
         }
 
         response.queryTimeMicros = 0L;
