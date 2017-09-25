@@ -20,6 +20,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.vmware.xenon.common.Operation.AuthorizationContext;
+import com.vmware.xenon.common.OperationProcessingChain.FilterReturnCode;
+import com.vmware.xenon.common.OperationProcessingChain.OperationProcessingContext;
 import com.vmware.xenon.common.RequestRouter.Route.RouteDocumentation;
 import com.vmware.xenon.common.RequestRouter.Route.SupportLevel;
 import com.vmware.xenon.common.ServiceHost.ServiceNotFoundException;
@@ -109,8 +111,12 @@ public class StatelessService implements Service {
         try {
             if (opProcessingStage == OperationProcessingStage.PROCESSING_FILTERS) {
                 OperationProcessingChain opProcessingChain = getOperationProcessingChain();
-                if (opProcessingChain != null && !opProcessingChain.processRequest(op)) {
-                    return;
+                if (opProcessingChain != null) {
+                    OperationProcessingContext context = opProcessingChain.createContext(this);
+                    if (opProcessingChain.processRequest(op, context) !=
+                            FilterReturnCode.CONTINUE_PROCESSING) {
+                        return;
+                    }
                 }
                 opProcessingStage = OperationProcessingStage.EXECUTING_SERVICE_HANDLER;
             }
