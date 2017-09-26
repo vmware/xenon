@@ -1562,7 +1562,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (queryOptions.contains(QueryOption.INDEXED_METADATA)
                 && !queryOptions.contains(QueryOption.INCLUDE_ALL_VERSIONS)
                 && !queryOptions.contains(QueryOption.TIME_SNAPSHOT)) {
-            Query currentClause = NumericDocValuesField.newExactQuery(
+            Query currentClause = NumericDocValuesField.newSlowExactQuery(
                     LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 1L);
             builder.add(currentClause, Occur.MUST);
         }
@@ -3253,7 +3253,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         Query selfLinkClause = new TermQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK,
                 info.selfLink));
-        Query currentClause = NumericDocValuesField.newExactQuery(
+        Query currentClause = NumericDocValuesField.newSlowExactQuery(
                 LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_CURRENT, 1L);
 
         Query booleanQuery = new BooleanQuery.Builder()

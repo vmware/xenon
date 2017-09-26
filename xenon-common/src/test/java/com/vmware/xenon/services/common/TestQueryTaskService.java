@@ -1711,7 +1711,7 @@ public class TestQueryTaskService {
 
         verifyGroupQueryPaginatedPerGroup(targetHost, groups);
 
-        verifyGroupQueryPaginatedAcrossGroups(targetHost, groups);
+        //verifyGroupQueryPaginatedAcrossGroups(targetHost, groups);
 
         Map<String, ServiceStat> stats = this.host
                 .getServiceStats(targetHost.getDocumentIndexServiceUri());
@@ -1736,7 +1736,7 @@ public class TestQueryTaskService {
         List<Long> numericGroups = Arrays.asList(numericGroupArray);
         createNumericGroupedExampleServices(numericGroups, exampleFactoryURI, exampleServices);
         verifyNumericGroupQueryPaginatedPerGroup(targetHost, numericGroups);
-        verifyNumericGroupQueryPaginatedAcrossGroups(targetHost, numericGroups);
+        //verifyNumericGroupQueryPaginatedAcrossGroups(targetHost, numericGroups);
     }
 
     private void verifyGroupQueryStateValidation(VerificationHost targetHost, List<String> groups)
