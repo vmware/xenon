@@ -1,5 +1,7 @@
 # CHANGELOG
 
+## 1.6.0-SNAPSHOT
+
 ## 1.5.7
 
 * Fix auth check for non-persisted stateful service on document-index GET.
