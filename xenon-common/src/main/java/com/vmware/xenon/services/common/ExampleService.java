@@ -74,6 +74,20 @@ public class ExampleService extends StatefulService {
         }
     }
 
+    public static class ExampleNonPersistedService extends ExampleService {
+        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/nonpersist-examples";
+
+        public static FactoryService createFactory() {
+            return FactoryService.create(ExampleNonPersistedService.class);
+        }
+
+        public ExampleNonPersistedService() {
+            super();
+            toggleOption(ServiceOption.PERSISTENCE, false);
+            super.toggleOption(ServiceOption.INSTRUMENTATION, false);
+        }
+    }
+
     /**
      * Request for strict update version check of a service.  This shows an example of implementing
      * compareAndSet operation in a service.  We implement handler that will check the supplied documentVersion

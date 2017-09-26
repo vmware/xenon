@@ -1,6 +1,27 @@
 # CHANGELOG
 
-## 1.5.7-SNAPSHOT
+## 1.6.0-SNAPSHOT
+
+## 1.5.7
+
+* Fix auth check for non-persisted stateful service on document-index GET.
+  Auth check for remote GET access on document-index service was introduced at xenon 1.5.5 but had
+  an issue for non-persisted stateful service when auth check query has a condition against
+  document body. It is now fixed in this version.
+
+* New API support added to synchronize a single stateful child service in a multi-node cluster.
+  Example of API call:
+  curl -X PATCH -H "Content-Type: application/json" localhost:8000/core/management/synch -d '{
+    "documentSelfLink": "/core/examples/example-child-id",
+    "kind": "com:vmware:xenon:services:common:SynchronizationRequest"
+  }'
+
+* New API added to synchronize the factory in a multi-node cluster.
+  Example of calling this API to start the synchronization of the example factory:
+  curl -X PATCH -H "Content-Type: application/json" localhost:8000/core/management/synch -d '{
+    "documentSelfLink": "/core/examples",
+    "kind": "com:vmware:xenon:services:common:SynchronizationRequest"
+  }'
 
 ## 1.5.6
 

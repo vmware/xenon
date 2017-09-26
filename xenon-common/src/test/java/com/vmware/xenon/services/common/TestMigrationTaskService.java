@@ -45,7 +45,6 @@ import java.util.stream.Collectors;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.BasicReusableHostTestCase;
@@ -56,6 +55,7 @@ import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
+import com.vmware.xenon.common.ServiceHost.Arguments;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
@@ -271,6 +271,14 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
     @After
     public void cleanUp() throws Throwable {
+
+        if (clearSourceAndDestInProcessPeers) {
+            this.host.tearDownInProcessPeers();
+            destinationHost.tearDownInProcessPeers();
+            clearSourceAndDestInProcessPeers = false;
+            return;
+        }
+
         for (VerificationHost host : this.host.getInProcessHostMap().values()) {
             checkReusableHostAndCleanup(host);
         }
@@ -287,12 +295,6 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         }
         for (VerificationHost host : destinationHost.getInProcessHostMap().values()) {
             host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
-        }
-
-        if (clearSourceAndDestInProcessPeers) {
-            this.host.tearDownInProcessPeers();
-            destinationHost.tearDownInProcessPeers();
-            clearSourceAndDestInProcessPeers = false;
         }
     }
 
@@ -947,7 +949,6 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                 ExampleServiceState.class, uris);
     }
 
-    @Ignore("https://www.pivotaltracker.com/story/show/150063470")
     @Test
     public void failMigrationWithDocumentOwnerMismatch() throws Throwable {
         // this test dirties destination host, requires clean up
@@ -970,14 +971,20 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         Iterator<VerificationHost> peerIt = this.host.getInProcessHostMap().values().iterator();
         VerificationHost peerNode = null;
         while (peerIt.hasNext()) {
-            peerNode = peerIt.next();
-            peerNode.setPeerSynchronizationEnabled(false);
+            VerificationHost h = peerIt.next();
+            // ensure owner node of the factory still alive
+            if (!h.isOwner(ExampleService.FACTORY_LINK, ServiceUriPaths.DEFAULT_NODE_SELECTOR)) {
+                peerNode = h;
+            }
+            h.setPeerSynchronizationEnabled(false);
         }
         assertNotNull(peerNode);
 
-        // Stop the last peerNode and add a new node to the group
+        // Stop the last peerNode and add a new node with the same id to the group, factory owner stay the same
         this.host.stopHost(peerNode);
-        VerificationHost newHost = VerificationHost.create(0);
+        Arguments arg = VerificationHost.buildDefaultServiceHostArguments(0);
+        arg.id = peerNode.getId();
+        VerificationHost newHost = VerificationHost.create(arg);
         newHost.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(
                 VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
         newHost.setPeerSynchronizationEnabled(false);
@@ -1004,7 +1011,6 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         assertTrue(ownerMismatchedDocuments > 0);
     }
 
-    @Ignore("https://www.pivotaltracker.com/story/show/150063470")
     @Test
     public void migrationWithDocumentOwnerMismatch() throws Throwable {
         // this test dirties destination host, requires clean up
@@ -1013,7 +1019,9 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         // create example services in the source node-group and make sure that each peer
         // is owner of at-least one example service.
         int peersWithDocs;
+        int iteration = 0;
         do {
+            ++iteration;
             createExampleDocuments(this.exampleSourceFactory, getSourceHost(), this.serviceCount, false);
             ServiceDocumentQueryResult results = this.host.getExpandedFactoryState(this.exampleSourceFactory);
             peersWithDocs = results.documents.values().stream()
@@ -1027,14 +1035,19 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         Iterator<VerificationHost> peerIt = this.host.getInProcessHostMap().values().iterator();
         VerificationHost peerNode = null;
         while (peerIt.hasNext()) {
-            peerNode = peerIt.next();
-            peerNode.setPeerSynchronizationEnabled(false);
+            VerificationHost h = peerIt.next();
+            // ensure owner node of the factory still alive
+            if (!h.isOwner(ExampleService.FACTORY_LINK, ServiceUriPaths.DEFAULT_NODE_SELECTOR)) {
+                peerNode = h;
+            }
+            h.setPeerSynchronizationEnabled(false);
         }
         assertNotNull(peerNode);
 
-        // Stop the last peerNode and add a new node to the group
-        this.host.stopHost(peerNode);
+        // Stop the last peerNode
         this.host.setNodeGroupQuorum(this.nodeCount - 1);
+        this.host.stopHost(peerNode);
+        this.host.waitForNodeGroupConvergence(this.nodeCount - 1);
 
         // Kick-off migration
         MigrationTaskService.State migrationState = validMigrationState(
@@ -1048,13 +1061,14 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
         // Wait for the migration task to finish
         State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
-        assertEquals(waitForServiceCompletion.taskInfo.stage, TaskStage.FINISHED);
+        assertEquals(TaskStage.FINISHED, waitForServiceCompletion.taskInfo.stage);
 
         // validate that the new factory got all the documents.
         ServiceDocumentQueryResult result = this.host
                 .getFactoryState(UriUtils.buildUri(
                         getDestinationHost(), ExampleService.FACTORY_LINK));
-        assertEquals(this.serviceCount, result.documentLinks.size());
+        // all documents migrated
+        assertEquals(this.serviceCount * iteration, result.documentLinks.size());
     }
 
     @Test
