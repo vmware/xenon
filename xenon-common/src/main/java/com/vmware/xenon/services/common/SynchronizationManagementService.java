@@ -31,6 +31,7 @@ import com.vmware.xenon.common.OperationJoin;
 import com.vmware.xenon.common.OperationJoin.JoinedCompletionHandler;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceConfiguration;
+import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceStats;
@@ -59,7 +60,6 @@ import com.vmware.xenon.common.Utils;
 public class SynchronizationManagementService extends StatelessService {
     public static final String SELF_LINK = ServiceUriPaths.CORE_SYNCHRONIZATION_MANAGEMENT;
     public static final EnumSet<ServiceOption> FACTORY_SERVICE_OPTION = EnumSet.of(ServiceOption.FACTORY);
-    public static final String FIELD_FACTORY_LINK = "factoryLink";
 
     public static class SynchronizationManagementState {
         public enum Status {
@@ -92,13 +92,13 @@ public class SynchronizationManagementService extends StatelessService {
             return;
         }
 
-        if (synchRequest.factoryLink == null || synchRequest.factoryLink.isEmpty()) {
+        if (synchRequest.documentSelfLink == null || synchRequest.documentSelfLink.isEmpty()) {
             op.fail(new IllegalArgumentException(String.format(
-                    "Factory SelfLink cannot be null or empty")));
+                    "%s cannot be null or empty", ServiceDocument.FIELD_NAME_SELF_LINK)));
             return;
         }
 
-        URI uri = UriUtils.buildUri(this.getHost(), synchRequest.factoryLink);
+        URI uri = UriUtils.buildUri(this.getHost(), synchRequest.documentSelfLink);
         uri = UriUtils.buildConfigUri(uri);
         Operation.createGet(uri).setCompletion((o, e) -> {
             if (e != null) {
@@ -108,7 +108,7 @@ public class SynchronizationManagementService extends StatelessService {
             }
 
             String peerNodeSelectorPath = o.getBody(ServiceConfiguration.class).peerNodeSelectorPath;
-            sendSynchronizationRequest(synchRequest.factoryLink, peerNodeSelectorPath, synchRequest, op);
+            sendSynchronizationRequest(synchRequest.documentSelfLink, peerNodeSelectorPath, synchRequest, op);
         }).sendWith(this);
     }
 
@@ -125,7 +125,7 @@ public class SynchronizationManagementService extends StatelessService {
             String queryFactory = null;
             Map<String,String> queryParams = UriUtils.parseUriQueryParams(get.getUri());
             if (queryParams.size() > 0) {
-                queryFactory = queryParams.get(FIELD_FACTORY_LINK);
+                queryFactory = queryParams.get(ServiceDocument.FIELD_NAME_SELF_LINK);
             }
 
             List<Operation> configGets = new ArrayList<>();
@@ -149,7 +149,7 @@ public class SynchronizationManagementService extends StatelessService {
 
             if (configGets.isEmpty()) {
                 get.fail(new IllegalArgumentException(String.format(
-                        "Factory SelfLink %s cannot be found", queryFactory)));
+                        "Factory %s cannot be found", queryFactory)));
                 return;
             }
 

@@ -191,37 +191,81 @@ public class UtilityService implements Service {
     }
 
     private void handleSynchRequest(Operation op) {
-        if (op.getAction() == Action.PATCH || op.getAction() == Action.PUT) {
-            if (this.parent.getProcessingStage() != ProcessingStage.AVAILABLE) {
-                // processing stage takes precedence over isAvailable statistic
-                op.fail(Operation.STATUS_CODE_UNAVAILABLE);
-                return;
-            }
-
-            if (!op.hasBody()) {
-                op.fail(new IllegalArgumentException("body is required"));
-                return;
-            }
-
-            SynchronizationRequest synchRequest = op.getBody(SynchronizationRequest.class);
-            if (synchRequest.kind == null || !synchRequest.kind.equals(Utils.buildKind(SynchronizationRequest.class))) {
-                op.fail(new IllegalArgumentException(String.format(
-                        "Invalid 'kind' in the request body")));
-                return;
-            }
-
-            if (!synchRequest.factoryLink.equals(this.parent.getSelfLink())) {
-                op.fail(new IllegalArgumentException("Invalid factorySelfLink in body: " + synchRequest.factoryLink));
-                return;
-            }
-
-            if (this.parent instanceof FactoryService) {
-                op.complete();
-                ((FactoryService)this.parent).synchronizeChildServicesIfOwner(new Operation());
-            }
-        } else {
+        if (op.getAction() != Action.PATCH && op.getAction() != Action.PUT) {
             Operation.failActionNotSupported(op);
+            return;
         }
+
+        if (this.parent.getProcessingStage() != ProcessingStage.AVAILABLE) {
+            // processing stage takes precedence over isAvailable statistic
+            op.fail(Operation.STATUS_CODE_UNAVAILABLE);
+            return;
+        }
+
+        if (!op.hasBody()) {
+            op.fail(new IllegalArgumentException("body is required"));
+            return;
+        }
+
+        SynchronizationRequest synchRequest = op.getBody(SynchronizationRequest.class);
+        if (synchRequest.kind == null || !synchRequest.kind.equals(Utils.buildKind(SynchronizationRequest.class))) {
+            op.fail(new IllegalArgumentException(String.format(
+                    "Invalid 'kind' in the request body")));
+            return;
+        }
+
+        if (!synchRequest.documentSelfLink.equals(this.parent.getSelfLink())) {
+            op.fail(new IllegalArgumentException("Invalid param in the body: " + synchRequest.documentSelfLink));
+            return;
+        }
+
+        // Synchronize the FactoryService
+        if (this.parent instanceof FactoryService) {
+            ((FactoryService)this.parent).synchronizeChildServicesIfOwner(new Operation());
+            op.complete();
+            return;
+        }
+
+        if (this.parent instanceof StatelessService) {
+            op.fail(new IllegalArgumentException("Nothing to synchronize for stateless service: " +
+                    synchRequest.documentSelfLink));
+            return;
+        }
+
+        // Synchronize the single child service.
+        synchronizeChildService(this.parent.getSelfLink(), op);
+    }
+
+    private void synchronizeChildService(String link, Operation op) {
+        // To trigger synchronization of the child-service, we make
+        // a SYNCH-OWNER request. The request body is an empty document
+        // with just the documentSelfLink property set to the link
+        // of the child-service. This is done so that the FactoryService
+        // routes the request to the DOCUMENT_OWNER.
+        ServiceDocument d = new ServiceDocument();
+        d.documentSelfLink = UriUtils.getLastPathSegment(link);
+        String factoryLink = UriUtils.getParentPath(link);
+
+        Operation.CompletionHandler c = (o, e) -> {
+            if (e != null) {
+                String msg = String.format("Synchronization failed for service %s with status code %d, message %s",
+                        o.getUri().getPath(), o.getStatusCode(), e.getMessage());
+                this.parent.getHost().log(Level.WARNING, msg);
+                op.fail(new IllegalStateException(msg));
+                return;
+            }
+
+            op.complete();
+        };
+
+        Operation.createPost(this, factoryLink)
+                .setBody(d)
+                .setCompletion(c)
+                .setReferer(getUri())
+                .setConnectionSharing(true)
+                .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
+                .sendWith(this.parent);
     }
 
     private void handleAvailableRequest(Operation op) {

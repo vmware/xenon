@@ -20,6 +20,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 
 import java.net.URI;
+import java.util.List;
 
 import org.junit.Test;
 
@@ -28,6 +29,7 @@ import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.NodeSelectorState;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
+import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.UriUtils;
@@ -86,14 +88,14 @@ public class TestSynchronizationManagementService extends BasicReusableHostTestC
         assertEquals(SynchronizationManagementState.Status.AVAILABLE, state.status);
 
         // Verify GET with query works
-        URI serviceUri = UriUtils.extendUriWithQuery(uri, SynchronizationManagementService.FIELD_FACTORY_LINK,
+        URI serviceUri = UriUtils.extendUriWithQuery(uri, ServiceDocument.FIELD_NAME_SELF_LINK,
                 ExampleService.FACTORY_LINK);
         op = this.sender.sendAndWait(Operation.createGet(serviceUri));
         result = op.getBody(ServiceDocumentQueryResult.class);
         assertEquals(result.documents.size(), 1);
 
         // Verify GET with query works if factory is not found
-        serviceUri = UriUtils.extendUriWithQuery(uri, SynchronizationManagementService.FIELD_FACTORY_LINK, "fake");
+        serviceUri = UriUtils.extendUriWithQuery(uri, ServiceDocument.FIELD_NAME_SELF_LINK, "fake");
         this.sender.sendAndWaitFailure(Operation.createGet(serviceUri));
 
         // Verify GET with query works with wrong property
@@ -158,7 +160,7 @@ public class TestSynchronizationManagementService extends BasicReusableHostTestC
         setUpMultiNode();
         VerificationHost peer = this.host.getPeerHost();
         peer.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(peer, ExampleService.FACTORY_LINK));
-        peer.createExampleServices(peer, this.serviceCount, null);
+        List<URI> exampleServices = peer.createExampleServices(peer, this.serviceCount, null);
         URI serviceUri = UriUtils.buildUri(peer, SynchronizationManagementService.class);
         String owner = waitForStatus(peer, SynchronizationManagementState.Status.AVAILABLE);
         peer = this.host.getInProcessHostMap().values().stream().filter(h -> h.getId().equals(owner)).collect(toList()).get(0);
@@ -169,17 +171,21 @@ public class TestSynchronizationManagementService extends BasicReusableHostTestC
 
         // Call the synchronization API and verify that factory is available afterwards.
         SynchronizationRequest request = SynchronizationRequest.create();
-        request.factoryLink = ExampleService.FACTORY_LINK;
+        request.documentSelfLink = ExampleService.FACTORY_LINK;
         this.sender.sendAndWait(Operation.createPatch(serviceUri).setBody(request));
         waitForStatus(peer, SynchronizationManagementState.Status.AVAILABLE);
 
+        // Verify synchronization on a single child service passes.
+        request.documentSelfLink = exampleServices.get(0).getPath();
+        this.sender.sendAndWait(Operation.createPatch(serviceUri).setBody(request));
+
         // Verify calling with fake factory fails.
-        request.factoryLink = "/core/fake-factory";
+        request.documentSelfLink = "/core/fake-factory";
         this.sender.sendAndWaitFailure(Operation.createPatch(serviceUri).setBody(request));
 
         // Verify calling with fake kind fails.
         request.kind = "fake";
-        request.factoryLink = ExampleService.FACTORY_LINK;
+        request.documentSelfLink = ExampleService.FACTORY_LINK;
         this.sender.sendAndWaitFailure(Operation.createPatch(serviceUri).setBody(request));
     }
 

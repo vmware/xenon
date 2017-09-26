@@ -26,5 +26,9 @@ public class SynchronizationRequest {
     }
 
     public String kind;
-    public String factoryLink;
+
+    /**
+     * SelfLink of factory or stateful child-service to be synchronized.
+     */
+    public String documentSelfLink;
 }
