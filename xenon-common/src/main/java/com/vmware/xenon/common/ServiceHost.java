@@ -102,7 +102,9 @@ import com.vmware.xenon.services.common.GraphQueryTaskService;
 import com.vmware.xenon.services.common.GuestUserService;
 import com.vmware.xenon.services.common.LocalQueryTaskFactoryService;
 import com.vmware.xenon.services.common.LuceneDocumentIndexBackupService;
+import com.vmware.xenon.services.common.LuceneDocumentIndexBackupService.LuceneDocumentIndexBackupStrategy;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService;
+import com.vmware.xenon.services.common.LuceneLocalFileBackupStrategy;
 import com.vmware.xenon.services.common.NodeGroupFactoryService;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
 import com.vmware.xenon.services.common.NodeGroupUtils;
@@ -1612,7 +1614,7 @@ public class ServiceHost implements ServiceRequestSender {
                 LuceneDocumentIndexService luceneDocumentIndexService = (LuceneDocumentIndexService) this.documentIndexService;
                 Service[] queryServiceArray = new Service[] {
                         luceneDocumentIndexService,
-                        new LuceneDocumentIndexBackupService(luceneDocumentIndexService),
+                        new LuceneDocumentIndexBackupService(luceneDocumentIndexService, getLuceneBackupStrategy()),
                         new QueryTaskFactoryService(),
                         new LocalQueryTaskFactoryService(),
                         TaskFactoryService.create(GraphQueryTaskService.class),
@@ -1703,6 +1705,18 @@ public class ServiceHost implements ServiceRequestSender {
             }, this.state.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
         }
     }
+
+    /**
+     * Provide backup strategy for {@link LuceneDocumentIndexBackupService}.
+     *
+     * Default uses local filesystem as its target store.
+     *
+     * @return a backup strategy
+     */
+    protected LuceneDocumentIndexBackupStrategy getLuceneBackupStrategy() {
+        return new LuceneLocalFileBackupStrategy();
+    }
+
 
     public List<URI> getInitialPeerHosts() {
         return normalizePeerNodeList(this.state.initialPeerNodes);
