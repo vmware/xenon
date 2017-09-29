@@ -654,6 +654,42 @@ public class TestLuceneDocumentIndexService {
     }
 
     @Test
+    public void forceDeleteDocument() throws Throwable {
+        setUpHost(false);
+        TestRequestSender sender = this.host.getTestRequestSender();
+        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
+
+        // Create example document
+        ExampleServiceState state = new ExampleServiceState();
+        state.name = "test";
+        state.documentSelfLink = ExampleService.FACTORY_LINK + "/example";
+        Operation post = Operation.createPost(this.host, ExampleService.FACTORY_LINK)
+                .setBody(state);
+        sender.sendAndWait(post);
+
+        // Force delete the document
+        LuceneDocumentIndexService.ForceDeleteRequest request = new LuceneDocumentIndexService.ForceDeleteRequest();
+        request.documentSelfLink = state.documentSelfLink;
+        request.documentKind = LuceneDocumentIndexService.ForceDeleteRequest.KIND;
+        Operation delete = Operation.createPatch(this.host, LuceneDocumentIndexService.SELF_LINK)
+                .setBody(request);
+        sender.sendAndWait(delete);
+
+        // Verify it is not available on both lucene index and host.
+        URI uri = UriUtils.buildUri(this.host, LuceneDocumentIndexService.SELF_LINK);
+        uri = UriUtils.extendUriWithQuery(uri, ServiceDocument.FIELD_NAME_SELF_LINK, state.documentSelfLink);
+        Operation operation = sender.sendAndWait(Operation.createGet(uri));
+        assertFalse(operation.hasBody());
+        sender.sendAndWaitFailure(Operation.createGet(this.host, state.documentSelfLink));
+
+        // Verify delete request fails if service not found.
+        request.documentSelfLink = "/not-found-service";
+        delete = Operation.createPatch(this.host, LuceneDocumentIndexService.SELF_LINK)
+                .setBody(request);
+        sender.sendAndWaitFailure(delete);
+    }
+
+    @Test
     public void testLuceneQueryConversion() throws Throwable {
         Query topLevelQuery = Query.Builder.create()
                 .addFieldClause("name", "foo", Occurance.SHOULD_OCCUR)

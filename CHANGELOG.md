@@ -11,6 +11,14 @@
   maintenance interval. The stop delay factor is a host setting
   and can be overridden via ServiceHost.setServiceStopDelayFactor().
 
+* Added API in LuceneDocumentIndexService to force delete a document.
+  This is useful for DevOps to clean any bad document that is not deletable
+  with usual route of DELETE to the service. This bad document situation
+  can come because of different reasons including a bug in service delete handler.
+  Also the normal DELETE would be forwarded to the document-owner for
+  processing and we might want to avoid any forwarding and directly fix the index.
+  This deleted document from the index by this API is not recoverable afterwards
+  and should be used with care.
 
 ## 1.5.7
 
