@@ -3872,11 +3872,13 @@ public class TestQueryTaskService {
         assertNotNull(initialRefreshCount);
 
         // direct query, without searcher refresh
+        LuceneDocumentIndexService.setSearcherRefreshIntervalMicros(TimeUnit.HOURS.toMicros(1));
         task = QueryTask.create(new QuerySpecification()).setDirect(true);
         task.querySpec.options.add(QueryOption.DO_NOT_REFRESH);
         pageServiceURIs = new ArrayList<>();
         targetServiceURIs = new ArrayList<>();
         doPaginatedQueryTest(task, 0, sc, resultLimit, pageServiceURIs, targetServiceURIs);
+        LuceneDocumentIndexService.setSearcherRefreshIntervalMicros(0);
 
         Long finalRefreshCount = getPaginatedSearcherRefreshCount();
         assertNotNull(finalRefreshCount);
