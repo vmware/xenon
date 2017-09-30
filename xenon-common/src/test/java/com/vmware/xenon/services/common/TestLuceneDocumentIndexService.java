@@ -300,7 +300,7 @@ public class TestLuceneDocumentIndexService {
     public Integer expirationSeconds = null;
 
     private final String EXAMPLES_BODIES_FILE = "example_bodies.json";
-    private final String INDEX_DIR_NAME = "lucene510";
+    private final String INDEX_DIR_NAME = "lucene650";
 
     private FaultInjectionLuceneDocumentIndexService indexService;
 
