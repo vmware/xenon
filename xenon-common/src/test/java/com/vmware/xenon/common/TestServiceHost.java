@@ -67,7 +67,6 @@ import com.vmware.xenon.common.jwt.Verifier;
 import com.vmware.xenon.common.test.AuthTestUtils;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
-import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthorizationContextService;
@@ -1120,19 +1119,13 @@ public class TestServiceHost {
     private void doMaintenanceAndStatsReporting() throws Throwable {
         setUp(true);
 
-        // induce host to clear service state cache by setting mem limit low
-        this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, 0.0001);
-        this.host.setServiceMemoryLimit(LuceneDocumentIndexService.SELF_LINK, 0.0001);
         long maintIntervalMillis = 100;
         long maintenanceIntervalMicros = TimeUnit.MILLISECONDS.toMicros(maintIntervalMillis);
         this.host.setMaintenanceIntervalMicros(maintenanceIntervalMicros);
         this.host.setServiceCacheClearDelayMicros(TimeUnit.MILLISECONDS
-                .toMicros(maintIntervalMillis / 2));
+                .toMicros(maintIntervalMillis * 5));
         this.host.start();
 
-        verifyMaintenanceDelayStat(maintenanceIntervalMicros);
-
-        long opCount = 2;
         EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE,
                 ServiceOption.INSTRUMENTATION, ServiceOption.PERIODIC_MAINTENANCE);
 
@@ -1142,23 +1135,11 @@ public class TestServiceHost {
                 null);
 
         long start = System.nanoTime() / 1000;
+        long slowMaintInterval = this.host.getMaintenanceIntervalMicros() * 10;
         List<Service> slowMaintServices = this.host.doThroughputServiceStart(null,
                 this.serviceCount, MinimalTestService.class, this.host.buildMinimalTestState(),
                 caps,
-                null, maintenanceIntervalMicros * 10);
-
-        List<URI> uris = new ArrayList<>();
-        for (Service s : services) {
-            uris.add(s.getUri());
-        }
-
-        this.host.doPutPerService(opCount, EnumSet.of(TestProperty.FORCE_REMOTE),
-                services);
-
-        long cacheMissCount = 0;
-        long cacheClearCount = 0;
-        ServiceStat cacheClearStat = null;
-        Map<URI, ServiceStats> servicesWithMaintenance = new HashMap<>();
+                null, slowMaintInterval);
 
         double maintCount = getHostMaintenanceCount();
         this.host.waitFor("wait for main.", () -> {
@@ -1166,113 +1147,8 @@ public class TestServiceHost {
             return latestCount > maintCount + 10;
         });
 
-        Date exp = this.host.getTestExpiration();
-        while (new Date().before(exp)) {
-            // issue GET to actually make the cache miss occur (if the cache has been cleared)
-            this.host.getServiceState(null, MinimalTestServiceState.class, uris);
-
-            // verify each service show at least a couple of maintenance requests
-            URI[] statUris = buildStatsUris(this.serviceCount, services);
-            Map<URI, ServiceStats> stats = this.host.getServiceState(null,
-                    ServiceStats.class, statUris);
-
-            for (Entry<URI, ServiceStats> e : stats.entrySet()) {
-                long maintFailureCount = 0;
-                ServiceStats s = e.getValue();
-
-                for (ServiceStat st : s.entries.values()) {
-
-                    if (st.name.equals(Service.STAT_NAME_CACHE_MISS_COUNT)) {
-                        cacheMissCount += (long) st.latestValue;
-                        continue;
-                    }
-
-                    if (st.name.equals(Service.STAT_NAME_CACHE_CLEAR_COUNT)) {
-                        cacheClearCount += (long) st.latestValue;
-                        continue;
-                    }
-                    if (st.name.equals(MinimalTestService.STAT_NAME_MAINTENANCE_SUCCESS_COUNT)) {
-                        servicesWithMaintenance.put(e.getKey(), e.getValue());
-                        continue;
-                    }
-                    if (st.name.equals(MinimalTestService.STAT_NAME_MAINTENANCE_FAILURE_COUNT)) {
-                        maintFailureCount++;
-                        continue;
-                    }
-                }
-
-                assertTrue("maintenance failed", maintFailureCount == 0);
-            }
-
-            // verify that every single service has seen at least one maintenance interval
-            if (servicesWithMaintenance.size() < this.serviceCount) {
-                this.host.log("Services with maintenance: %d, expected %d",
-                        servicesWithMaintenance.size(), this.serviceCount);
-                Thread.sleep(maintIntervalMillis * 2);
-                continue;
-            }
-
-            if (cacheMissCount < 1) {
-                this.host.log("No cache misses seen");
-                Thread.sleep(maintIntervalMillis * 2);
-                continue;
-            }
-
-            if (cacheClearCount < 1) {
-                this.host.log("No cache clears seen");
-                Thread.sleep(maintIntervalMillis * 2);
-                continue;
-            }
-
-            Map<String, ServiceStat> mgmtStats = this.host.getServiceStats(this.host.getManagementServiceUri());
-            cacheClearStat = mgmtStats.get(ServiceHostManagementService.STAT_NAME_SERVICE_CACHE_CLEAR_COUNT);
-            if (cacheClearStat == null || cacheClearStat.latestValue < 1) {
-                this.host.log("Cache clear stat on management service not seen");
-                Thread.sleep(maintIntervalMillis * 2);
-                continue;
-            }
-            break;
-        }
         long end = System.nanoTime() / 1000;
-
-        if (cacheClearStat == null || cacheClearStat.latestValue < 1) {
-            throw new IllegalStateException(
-                    "Cache clear stat on management service not observed");
-        }
-
-        this.host.log("State cache misses: %d, cache clears: %d", cacheMissCount, cacheClearCount);
-
-        double expectedMaintIntervals = Math.max(1,
-                (end - start) / this.host.getMaintenanceIntervalMicros());
-
-        // allow variance up to 2x of expected intervals. We have the interval set to 100ms
-        // and we are running tests on VMs, in over subscribed CI. So we expect significant
-        // scheduling variance. This test is extremely consistent on a local machine
-        expectedMaintIntervals *= 2;
-
-        for (Entry<URI, ServiceStats> e : servicesWithMaintenance.entrySet()) {
-
-            ServiceStat maintStat = e.getValue().entries.get(Service.STAT_NAME_MAINTENANCE_COUNT);
-            this.host.log("%s has %f intervals", e.getKey(), maintStat.latestValue);
-            if (maintStat.latestValue > expectedMaintIntervals + 2) {
-                String error = String.format("Expected %f, got %f. Too many stats for service %s",
-                        expectedMaintIntervals + 2,
-                        maintStat.latestValue,
-                        e.getKey());
-                throw new IllegalStateException(error);
-            }
-
-        }
-
-
-        if (cacheMissCount < 1) {
-            throw new IllegalStateException(
-                    "No cache misses observed through stats");
-        }
-
-        long slowMaintInterval = this.host.getMaintenanceIntervalMicros() * 10;
-        end = System.nanoTime() / 1000;
-        expectedMaintIntervals = Math.max(1, (end - start) / slowMaintInterval);
+        double expectedMaintIntervals = Math.max(1, (end - start) / slowMaintInterval);
 
         // verify that services with slow maintenance did not get more than one maint cycle
         URI[] statUris = buildStatsUris(this.serviceCount, slowMaintServices);
@@ -1304,7 +1180,7 @@ public class TestServiceHost {
         this.host.testWait();
 
         this.host.testStart(slowMaintServices.size());
-        // delete all minimal service instances
+        // delete all slow minimal service instances
         for (Service s : slowMaintServices) {
             this.host.send(Operation.createDelete(s.getUri()).setBody(new ServiceDocument())
                     .setCompletion(this.host.getCompletion()));
@@ -1506,85 +1382,49 @@ public class TestServiceHost {
         return st != null && st.timeSeriesStats != null;
     }
 
-    private void verifyMaintenanceDelayStat(long intervalMicros) throws Throwable {
-        // verify state on maintenance delay takes hold
-        this.host.setMaintenanceIntervalMicros(intervalMicros);
-        MinimalTestService ts = new MinimalTestService();
-        ts.delayMaintenance = true;
-        ts.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
-        ts.toggleOption(ServiceOption.INSTRUMENTATION, true);
-        MinimalTestServiceState body = new MinimalTestServiceState();
-        body.id = UUID.randomUUID().toString();
-        ts = (MinimalTestService) this.host.startServiceAndWait(ts, UUID.randomUUID().toString(),
-                body);
-        MinimalTestService finalTs = ts;
-        this.host.waitFor("Maintenance delay stat never reported", () -> {
-            ServiceStats stats = this.host.getServiceState(null, ServiceStats.class,
-                    UriUtils.buildStatsUri(finalTs.getUri()));
-            if (stats.entries == null || stats.entries.isEmpty()) {
-                Thread.sleep(intervalMicros / 1000);
-                return false;
-            }
-
-            ServiceStat delayStat = stats.entries
-                    .get(Service.STAT_NAME_MAINTENANCE_COMPLETION_DELAYED_COUNT);
-            ServiceStat durationStat = stats.entries.get(Service.STAT_NAME_MAINTENANCE_DURATION);
-            if (delayStat == null) {
-                Thread.sleep(intervalMicros / 1000);
-                return false;
-            }
-
-            if (durationStat == null || (durationStat != null && durationStat.logHistogram == null)) {
-                return false;
-            }
-            return true;
-        });
-
-        ts.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, false);
-    }
-
     @Test
     public void testCacheClearAndRefresh() throws Throwable {
         setUp(false);
-        this.host.setServiceCacheClearDelayMicros(TimeUnit.MILLISECONDS.toMicros(1));
+        this.host.setServiceCacheClearDelayMicros(TimeUnit.MILLISECONDS.toMicros(100));
 
-        URI factoryUri = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK);
-        Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(null,
-                this.serviceCount,
-                ExampleServiceState.class, (op) -> {
-                    ExampleServiceState st = new ExampleServiceState();
-                    st.name = UUID.randomUUID().toString();
-                    op.setBody(st);
-                }, factoryUri);
+        // no INSTRUMENTATION, as it prevents cache eviction
+        EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE, ServiceOption.FACTORY_ITEM);
 
-        this.host.waitFor("Service state cache eviction failed to occur", () -> {
-            for (URI serviceUri : states.keySet()) {
-                Map<String, ServiceStat> stats = this.host.getServiceStats(serviceUri);
-                ServiceStat cacheMissStat = stats.get(Service.STAT_NAME_CACHE_MISS_COUNT);
-                if (cacheMissStat != null && cacheMissStat.latestValue > 0) {
-                    throw new IllegalStateException("Upexpected cache miss stat value "
-                            + cacheMissStat.latestValue);
-                }
+        // Start the factory service. it will be needed to start services on-demand
+        MinimalFactoryTestService factoryService = new MinimalFactoryTestService();
+        factoryService.setChildServiceCaps(caps);
+        this.host.startServiceAndWait(factoryService, "service", null);
 
-                ServiceStat cacheClearStat = stats.get(Service.STAT_NAME_CACHE_CLEAR_COUNT);
-                if (cacheClearStat == null || cacheClearStat.latestValue == 0) {
+        // Start some test services
+        List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
+                MinimalTestService.class, this.host.buildMinimalTestState(), caps, null);
+
+        // wait for some host maintenance intervals
+        double maintCount = getHostMaintenanceCount();
+        this.host.waitFor("wait for main.", () -> {
+            double latestCount = getHostMaintenanceCount();
+            return latestCount > maintCount + 1;
+        });
+
+        // verify services have stopped
+        this.host.waitFor("wait for services to stop.", () -> {
+            for (Service service : services) {
+                if (this.host.getServiceStage(service.getSelfLink()) != null) {
                     return false;
-                } else if (cacheClearStat.latestValue > 1) {
-                    throw new IllegalStateException("Unexpected cache clear stat value "
-                            + cacheClearStat.latestValue);
                 }
             }
 
             return true;
         });
 
+        // reset cache clear delay to default value
         this.host.setServiceCacheClearDelayMicros(
-                ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS);
+                ServiceHostState.DEFAULT_SERVICE_CACHE_CLEAR_DELAY_MICROS);
 
         // Perform a GET on each service to repopulate the service state cache
-        TestContext ctx = this.host.testCreate(states.size());
-        for (URI serviceUri : states.keySet()) {
-            Operation get = Operation.createGet(serviceUri).setCompletion(ctx.getCompletion());
+        TestContext ctx = this.host.testCreate(services.size());
+        for (Service service : services) {
+            Operation get = Operation.createGet(service.getUri()).setCompletion(ctx.getCompletion());
             this.host.send(get);
         }
         this.host.testWait(ctx);
@@ -1592,21 +1432,56 @@ public class TestServiceHost {
         // Now do many more overlapping gets -- since the operations above have returned, these
         // should all hit the cache.
         int requestCount = 10;
-        ctx = this.host.testCreate(requestCount * states.size());
-        for (URI serviceUri : states.keySet()) {
+        ctx = this.host.testCreate(requestCount * services.size());
+        for (Service service : services) {
             for (int i = 0; i < requestCount; i++) {
-                Operation get = Operation.createGet(serviceUri).setCompletion(ctx.getCompletion());
+                Operation get = Operation.createGet(service.getUri()).setCompletion(ctx.getCompletion());
                 this.host.send(get);
             }
         }
         this.host.testWait(ctx);
 
-        for (URI serviceUri : states.keySet()) {
-            Map<String, ServiceStat> stats = this.host.getServiceStats(serviceUri);
-            ServiceStat cacheMissStat = stats.get(Service.STAT_NAME_CACHE_MISS_COUNT);
-            assertNotNull(cacheMissStat);
-            assertEquals(1, cacheMissStat.latestValue, 0.01);
+        Map<String, ServiceStat> mgmtStats = this.host.getServiceStats(this.host.getManagementServiceUri());
+
+        // verify cache miss count
+        ServiceStat cacheMissStat = mgmtStats.get(ServiceHostManagementService.STAT_NAME_SERVICE_CACHE_MISS_COUNT);
+        assertNotNull(cacheMissStat);
+        assertTrue(cacheMissStat.latestValue >= this.serviceCount);
+
+        // verify cache hit count
+        ServiceStat cacheHitStat = mgmtStats.get(ServiceHostManagementService.STAT_NAME_SERVICE_CACHE_HIT_COUNT);
+        assertNotNull(cacheHitStat);
+        assertTrue(cacheHitStat.latestValue >= requestCount * this.serviceCount);
+
+        // now set host cache clear delay to a short value but the services' cached clear
+        // delay to a long value, and verify that the services are stopped only after
+        // the long value
+        List<Service> cachedServices = this.host.doThroughputServiceStart(this.serviceCount,
+                MinimalTestService.class, this.host.buildMinimalTestState(), caps, null);
+        for (Service service : cachedServices) {
+            service.setCacheClearDelayMicros(TimeUnit.SECONDS.toMicros(5));
         }
+        this.host.setServiceCacheClearDelayMicros(TimeUnit.MILLISECONDS.toMicros(100));
+
+        double newMaintCount = getHostMaintenanceCount();
+        this.host.waitFor("wait for main.", () -> {
+            double latestCount = getHostMaintenanceCount();
+            return latestCount > newMaintCount + 1;
+        });
+
+        for (Service service : cachedServices) {
+            assertNotNull(this.host.getServiceStage(service.getSelfLink()));
+        }
+
+        this.host.waitFor("wait for main.", () -> {
+            double latestCount = getHostMaintenanceCount();
+            return latestCount > newMaintCount + 5;
+        });
+
+        for (Service service : cachedServices) {
+            assertNull(this.host.getServiceStage(service.getSelfLink()));
+        }
+
     }
 
     @Test

@@ -45,6 +45,7 @@ public class StatefulService implements Service {
 
     private static class AdditionalContext {
         public long maintenanceInterval;
+        private Long cacheClearDelayMicros;
         public transient OperationProcessingChain opProcessingChain;
         public String nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
         public String documentIndexLink = ServiceUriPaths.CORE_DOCUMENT_INDEX;
@@ -2036,11 +2037,26 @@ public class StatefulService implements Service {
     }
 
     @Override
+    public void setCacheClearDelayMicros(long micros) {
+        allocateExtraContext();
+        this.context.extras.cacheClearDelayMicros = micros;
+    }
+
+    @Override
     public long getMaintenanceIntervalMicros() {
         if (this.context.extras == null) {
             return this.getHost().getMaintenanceIntervalMicros();
         }
         return this.context.extras.maintenanceInterval;
+    }
+
+    @Override
+    public long getCacheClearDelayMicros() {
+        if (this.context.extras != null && this.context.extras.cacheClearDelayMicros != null) {
+            return this.context.extras.cacheClearDelayMicros;
+        }
+
+        return getHost().getServiceCacheClearDelayMicros();
     }
 
     @Override

@@ -446,15 +446,7 @@ public class ServiceHost implements ServiceRequestSender {
         public static final long DEFAULT_MAINTENANCE_INTERVAL_MICROS = TimeUnit.SECONDS
                 .toMicros(1);
         public static final long DEFAULT_OPERATION_TIMEOUT_MICROS = TimeUnit.SECONDS.toMicros(60);
-        /**
-         * Inactive services are eligible for stop under memory pressure.
-         * The inactivity threshold is measured as a factor of the host
-         * maintenance interval. The default is 30, which seems suitable
-         * for both production (where the default maintenance interval is
-         * 1 sec) and testing (where the maintenance interval is sometimes
-         * 100 micros).
-         */
-        public static final int DEFAULT_SERVICE_STOP_DELAY_FACTOR = 30;
+        public static final long DEFAULT_SERVICE_CACHE_CLEAR_DELAY_MICROS = TimeUnit.SECONDS.toMicros(60);
 
         public String bindAddress;
         public int httpPort;
@@ -462,8 +454,7 @@ public class ServiceHost implements ServiceRequestSender {
         public URI publicUri;
         public long maintenanceIntervalMicros = DEFAULT_MAINTENANCE_INTERVAL_MICROS;
         public long operationTimeoutMicros = DEFAULT_OPERATION_TIMEOUT_MICROS;
-        public long serviceCacheClearDelayMicros = DEFAULT_OPERATION_TIMEOUT_MICROS;
-        public int serviceStopDelayFactor = DEFAULT_SERVICE_STOP_DELAY_FACTOR;
+        public long serviceCacheClearDelayMicros = DEFAULT_SERVICE_CACHE_CLEAR_DELAY_MICROS;
         public String operationTracingLevel;
         public SslClientAuthMode sslClientAuthMode;
         public int responsePayloadSizeLimit;
@@ -3083,10 +3074,6 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
-        if (s.hasOption(ServiceOption.INSTRUMENTATION)) {
-            s.adjustStat(Service.STAT_NAME_CACHE_MISS_COUNT, 1);
-        }
-
         Operation getOp = Operation.createGet(op.getUri())
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)
                 .transferRefererFrom(op)
@@ -3374,10 +3361,8 @@ public class ServiceHost implements ServiceRequestSender {
         if (service == null) {
             throw new IllegalArgumentException("service is required");
         }
-        stopService(service.getSelfLink());
-    }
 
-    private void stopService(String path) {
+        String path = service.getSelfLink();
         EnumSet<ServiceOption> options = null;
         synchronized (this.state) {
             Service existing = this.attachedServices.remove(path);
@@ -3395,7 +3380,7 @@ public class ServiceHost implements ServiceRequestSender {
             }
 
             this.serviceSynchTracker.removeService(path);
-            this.serviceResourceTracker.clearCachedServiceState(existing, path, null);
+            this.serviceResourceTracker.clearCachedServiceState(service, null);
 
             this.state.serviceCount--;
         }
@@ -4153,6 +4138,10 @@ public class ServiceHost implements ServiceRequestSender {
             return false;
         }
 
+        // service was not found in attached services or is not available -
+        // we will regard that as a cache miss
+        this.serviceResourceTracker.updateCacheMissStats();
+
         if (isHelperServicePath(path)) {
             path = UriUtils.getParentPath(path);
         }
@@ -4188,7 +4177,7 @@ public class ServiceHost implements ServiceRequestSender {
             // If this is a replicated update request but the service is not
             // AVAILABLE, then we fail the request with 404 - NOT FOUND error.
             if (!isServiceAvailable(s) && inboundOp.isUpdate()) {
-                this.log(Level.WARNING, "Service %s is not available. Failing %s replication request",
+                this.log(Level.WARNING, "Service %s is not available. Failing replication request",
                         inboundOp.getUri().getPath());
 
                 IllegalStateException ex = new IllegalStateException("Service not found on replica");
@@ -5384,15 +5373,6 @@ public class ServiceHost implements ServiceRequestSender {
         return this.state.serviceCacheClearDelayMicros;
     }
 
-    public ServiceHost setServiceStopDelayFactor(int delayFactor) {
-        this.state.serviceStopDelayFactor = delayFactor;
-        return this;
-    }
-
-    public int getServiceStopDelayFactor() {
-        return this.state.serviceStopDelayFactor;
-    }
-
     public ServiceHost setProcessOwner(boolean isOwner) {
         this.state.isProcessOwner = isOwner;
         return this;
@@ -5475,10 +5455,11 @@ public class ServiceHost implements ServiceRequestSender {
                         unmarkAsPendingDelete(s);
                     }
                     if (e != null) {
-                        this.serviceResourceTracker.clearCachedServiceState(s, null, op);
+                        this.serviceResourceTracker.clearCachedServiceState(s, op);
                         op.fail(e);
                         return;
                     }
+
                     op.complete();
                 });
 
