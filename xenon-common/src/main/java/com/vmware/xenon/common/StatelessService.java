@@ -35,6 +35,7 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
 public class StatelessService implements Service {
 
     private long maintenanceIntervalMicros;
+    private Long cacheClearDelayMicros;
     private OperationProcessingChain opProcessingChain;
     private ProcessingStage stage = ProcessingStage.CREATED;
     private ServiceHost host;
@@ -624,8 +625,19 @@ public class StatelessService implements Service {
     }
 
     @Override
+    public void setCacheClearDelayMicros(long micros) {
+        this.cacheClearDelayMicros = micros;
+    }
+
+    @Override
     public long getMaintenanceIntervalMicros() {
         return this.maintenanceIntervalMicros;
+    }
+
+    @Override
+    public long getCacheClearDelayMicros() {
+        return this.cacheClearDelayMicros != null ? this.cacheClearDelayMicros :
+            this.host.getServiceCacheClearDelayMicros();
     }
 
     @Override

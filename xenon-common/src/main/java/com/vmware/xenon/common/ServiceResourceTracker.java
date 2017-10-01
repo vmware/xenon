@@ -30,7 +30,6 @@ import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceClient.ConnectionPoolMetrics;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
-import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
@@ -295,9 +294,15 @@ class ServiceResourceTracker {
         this.isServiceStateCaching = enable;
     }
 
-    public void updateCachedServiceState(Service s,
-             ServiceDocument st, Operation op) {
+    public void resetCachedServiceState(Service s, ServiceDocument st, Operation op) {
+        updateCachedServiceState(s, st, op, false);
+    }
 
+    public void updateCachedServiceState(Service s, ServiceDocument st, Operation op) {
+        updateCachedServiceState(s, st, op, true);
+    }
+
+    private void updateCachedServiceState(Service s, ServiceDocument st, Operation op, boolean checkVersion) {
         if (ServiceHost.isServiceIndexed(s) && !isTransactional(op)) {
             this.persistedServiceLastAccessTimes.put(s.getSelfLink(), Utils.getNowMicrosUtc());
         }
@@ -315,7 +320,7 @@ class ServiceResourceTracker {
         if (!isTransactional(op)) {
             synchronized (s.getSelfLink()) {
                 ServiceDocument cachedState = this.cachedServiceStates.put(s.getSelfLink(), st);
-                if (cachedState != null && cachedState.documentVersion > st.documentVersion) {
+                if (checkVersion && cachedState != null && cachedState.documentVersion > st.documentVersion) {
                     // restore cached state, discarding update, if the existing version is higher
                     this.cachedServiceStates.put(s.getSelfLink(), cachedState);
                 }
@@ -347,43 +352,38 @@ class ServiceResourceTracker {
             CachedServiceStateKey key = new CachedServiceStateKey(servicePath,
                     op.getTransactionId());
             state = this.cachedTransactionalServiceStates.get(key);
-        } else {
-            if (ServiceHost.isServiceIndexed(s)) {
-                this.persistedServiceLastAccessTimes.put(servicePath,
-                        Utils.getNowMicrosUtc());
-            }
         }
 
         if (state == null) {
-            // either the operational is not transactional or no transactional state found -
+            // either the operation is not transactional or no transactional state found -
             // look for the state in the non-transactional map
             state = this.cachedServiceStates.get(servicePath);
         }
 
         if (state == null) {
+            updateCacheMissStats();
             return null;
         }
 
-        if (state.documentExpirationTimeMicros > 0
-                && state.documentExpirationTimeMicros < state.documentUpdateTimeMicros) {
-            // state expired, clear from cache
-            stopService(s, true, state);
+        if (!ServiceHost.isServiceIndexed(s) &&
+                state.documentExpirationTimeMicros > 0 &&
+                state.documentExpirationTimeMicros < state.documentUpdateTimeMicros) {
+            // service is indexed and state expired - stop and clear from cache
+            stopServiceAndClearFromCache(s, state);
             return null;
         }
 
+        if (ServiceHost.isServiceIndexed(s) && !isTransactional(op)) {
+            this.persistedServiceLastAccessTimes.put(servicePath,
+                    Utils.getNowMicrosUtc());
+        }
+
+        updateCacheHitStats();
         return state;
     }
 
-    private void stopService(Service s, boolean isExpired, ServiceDocument state) {
-        if (s == null) {
-            return;
-        }
-        if (isExpired && s.hasOption(ServiceOption.PERSISTENCE)) {
-            // the index service tracks expiration of persisted services
-            return;
-        }
-
-        // Issue DELETE to stop the service
+    private void stopServiceAndClearFromCache(Service s, ServiceDocument state) {
+        // Issue DELETE to stop the service and clear it from cache
         Operation deleteExp = Operation.createDelete(this.host, s.getSelfLink())
                 .setBody(state)
                 .disableFailureLogging(true)
@@ -394,30 +394,15 @@ class ServiceResourceTracker {
         this.host.sendRequest(deleteExp);
     }
 
-    public void clearCachedServiceState(Service s, String servicePath, Operation op) {
-        this.clearCachedServiceState(s, servicePath, op, false);
-    }
-
-    private void clearCachedServiceState(Service s, String servicePath, Operation op,
-            boolean keepLastAccessTime) {
-        if (s != null && servicePath == null) {
-            servicePath = s.getSelfLink();
-        }
+    public void clearCachedServiceState(Service s, Operation op) {
+        String servicePath = s.getSelfLink();
 
         if (!isTransactional(op)) {
-            if (!keepLastAccessTime) {
-                this.persistedServiceLastAccessTimes.remove(servicePath);
-            }
+            this.persistedServiceLastAccessTimes.remove(servicePath);
 
             ServiceDocument doc = this.cachedServiceStates.remove(servicePath);
-            if (s == null) {
-                s = this.host.findService(servicePath, true);
-            }
-            if (s == null) {
-                return;
-            }
             if (doc != null) {
-                updateCacheClearStats(s);
+                updateCacheClearStats();
             }
             return;
         }
@@ -434,14 +419,23 @@ class ServiceResourceTracker {
             return;
         }
         if (doc != null) {
-            updateCacheClearStats(s);
+            updateCacheClearStats();
         }
     }
 
-    private void updateCacheClearStats(Service s) {
-        s.adjustStat(Service.STAT_NAME_CACHE_CLEAR_COUNT, 1);
+    public void updateCacheMissStats() {
+        this.host.getManagementService().adjustStat(
+                ServiceHostManagementService.STAT_NAME_SERVICE_CACHE_MISS_COUNT, 1);
+    }
+
+    private void updateCacheClearStats() {
         this.host.getManagementService().adjustStat(
                 ServiceHostManagementService.STAT_NAME_SERVICE_CACHE_CLEAR_COUNT, 1);
+    }
+
+    private void updateCacheHitStats() {
+        this.host.getManagementService().adjustStat(
+                ServiceHostManagementService.STAT_NAME_SERVICE_CACHE_HIT_COUNT, 1);
     }
 
     /**
@@ -452,119 +446,36 @@ class ServiceResourceTracker {
         updateStats(now);
         ServiceHostState hostState = this.host.getStateNoCloning();
         int stopServiceCount = 0;
-        long memoryLimitHighMB = this.host.getServiceMemoryLimitMB(ServiceHost.ROOT_PATH,
-                MemoryLimitType.HIGH_WATERMARK);
-
-        long memoryInUseMB = hostState.serviceCount
-                * ServiceHost.DEFAULT_SERVICE_INSTANCE_COST_BYTES;
-        memoryInUseMB /= (1024 * 1024);
-
-        boolean shouldStop = memoryLimitHighMB <= memoryInUseMB;
 
         for (Service service : this.attachedServices.values()) {
-            // skip factory services, they do not have state
-            if (service.hasOption(ServiceOption.FACTORY)) {
-                continue;
-            }
-
-            ServiceDocument s = this.cachedServiceStates.get(service.getSelfLink());
-            Long lastAccessTime = this.persistedServiceLastAccessTimes.get(service.getSelfLink());
-            boolean cacheCleared = s == null;
-
-            if (s != null) {
-                if (!ServiceHost.isServiceIndexed(service)) {
-                    // we do not clear cache or stop in memory services but we do check expiration
-                    if (s.documentExpirationTimeMicros > 0
-                            && s.documentExpirationTimeMicros < now) {
-                        stopService(service, true, s);
-                    }
-                    continue;
-                }
-
-                if (service.hasOption(ServiceOption.TRANSACTION_PENDING)) {
-                    // don't clear cache for services under active transactions, for perf reasons.
-                    // transactional cached state will be cleared at the end of transaction
-                    continue;
-                }
-
-                if (lastAccessTime == null) {
-                    lastAccessTime = s.documentUpdateTimeMicros;
-                }
-
-                long cacheClearDelayMicros = hostState.serviceCacheClearDelayMicros;
-                if (ServiceHost.isServiceImmutable(service)) {
-                    cacheClearDelayMicros = 0;
-                }
-
-                if ((cacheClearDelayMicros + lastAccessTime) < now) {
-                    // The cached entry is old and should be cleared.
-                    // Note that we are not going to clear the lastAccessTime here
-                    // because we will need it in future maintenance runs to determine
-                    // if the service should be stopped.
-                    clearCachedServiceState(service, null, null, true);
-                    cacheCleared = true;
-                }
-            }
-
-            // If we didn't find the service' entry in the cache or the lastAccessTime map,
-            // and it's a PERSISTENT service, then probably the service is just starting up.
-            // So, we will skip stop..
-            if (lastAccessTime == null && ServiceHost.isServiceIndexed(service)) {
-                continue;
-            }
-
-            if (service.hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
-                // Services with periodic maintenance stay resident, for now. We might stop them in the future
-                // if they have long periods
-                continue;
-            }
+            ServiceDocument state = this.cachedServiceStates.get(service.getSelfLink());
 
             if (!ServiceHost.isServiceIndexed(service)) {
+                // service is not persistent - just check if it's expired, and
+                // if so - stop and clear from cache
+                if (state != null &&
+                        state.documentExpirationTimeMicros > 0 &&
+                        state.documentExpirationTimeMicros < now) {
+                    stopServiceAndClearFromCache(service, state);
+                }
                 continue;
             }
 
-            if (this.host.isServiceStarting(service, service.getSelfLink())) {
+            // service is persistent - check whether it's exempt from cache
+            // eviction (e.g. it has soft state)
+            if (serviceExemptFromCacheEviction(service)) {
                 continue;
             }
 
-            if (this.host.hasPendingServiceAvailableCompletions(service.getSelfLink())) {
-                continue;
-            }
-
-            if (service.getSelfLink().startsWith(ServiceUriPaths.CORE_AUTHZ)) {
-                continue;
-            }
-
-            if (serviceActiveSkipStop(lastAccessTime, hostState, service)) {
+            Long lastAccessTime = this.persistedServiceLastAccessTimes.get(service.getSelfLink());
+            if (serviceActive(lastAccessTime, service, now)) {
                 // Skip stop for services that have been recently active
                 continue;
             }
 
-            boolean hasSoftState = hasServiceSoftState(service);
-            if (cacheCleared && !hasSoftState) {
-                // if it's a service with no subscribers or stats,
-                // instead simply stop them when the service is idle.
-                stopServiceCount++;
-                stopService(service, false, null);
-                continue;
-            }
-
-            if (!shouldStop && !cacheCleared) {
-                // if we are not under memory pressure only stop services if their
-                // cache is cleared.
-                continue;
-            }
-
-            if (!cacheCleared) {
-                // if we're going to stop it, clear state from cache if not already cleared
-                clearCachedServiceState(service, null, null);
-                // and check again if no subscriptions or stats, then we need to stop
-                if (!hasSoftState) {
-                    stopServiceCount++;
-                    stopService(service, false, null);
-                    continue;
-                }
-            }
+            // stop service and update count
+            stopServiceAndClearFromCache(service, state);
+            stopServiceCount++;
 
             if (deadlineMicros < Utils.getSystemNowMicrosUtc()) {
                 break;
@@ -591,26 +502,65 @@ class ServiceResourceTracker {
                 this.persistedServiceLastAccessTimes.size());
     }
 
-    private boolean serviceActiveSkipStop(Long lastAccessTime, ServiceHostState hostState,
-            Service s) {
+    private boolean serviceExemptFromCacheEviction(Service service) {
+        if (service.hasOption(ServiceOption.FACTORY)) {
+            // skip factory services, they do not have state
+            return true;
+        }
+
+        if (service.hasOption(ServiceOption.TRANSACTION_PENDING)) {
+            // don't clear cache for services under active transactions, for perf reasons.
+            // transactional cached state will be cleared at the end of transaction
+            return true;
+        }
+
+        if (service.hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
+            // Services with periodic maintenance stay resident, for now. We might stop them in the future
+            // if they have long periods
+            return true;
+        }
+
+        if (this.host.isServiceStarting(service, service.getSelfLink())) {
+            // service is just starting - doesn't make sense to evict it from cache
+            return true;
+        }
+
+        if (this.host.hasPendingServiceAvailableCompletions(service.getSelfLink())) {
+            // service has pending available completions - keep in memory
+            return true;
+        }
+
+        if (service.getSelfLink().startsWith(ServiceUriPaths.CORE_AUTHZ)) {
+            // we keep authz resources (users, groups, roles, etc.) resident in memory
+            // for perf reasons
+            return true;
+        }
+
+        if (hasServiceSoftState(service)) {
+            // service has soft state like subscriptions or stats - keep in memory
+            return true;
+        }
+
+        // service is not exempt from cache eviction
+        return false;
+    }
+
+    private boolean serviceActive(Long lastAccessTime, Service s, long now) {
         if (lastAccessTime == null) {
             return false;
         }
 
-        long serviceMaintenanceIntervalMicros = s.getMaintenanceIntervalMicros();
-        long accessedBeforeLastHostMaintenance =
-                hostState.lastMaintenanceTimeUtcMicros - lastAccessTime;
+        long cacheClearDelayMicros = s.getCacheClearDelayMicros();
+        if (ServiceHost.isServiceImmutable(s)) {
+            cacheClearDelayMicros = 0;
+        }
 
-        boolean active = serviceMaintenanceIntervalMicros == 0 ||
-                accessedBeforeLastHostMaintenance < serviceMaintenanceIntervalMicros *
-                hostState.serviceStopDelayFactor;
-
+        boolean active = (cacheClearDelayMicros + lastAccessTime) > now;
         if (!active) {
             this.host.log(Level.FINE,
-                    "Considering stopping service %s, isOwner: %b, because it was inactive for %f seconds (service maintenance interval: %d)",
+                    "Considering stopping service %s, isOwner: %b, because it was inactive for %f seconds",
                     s.getSelfLink(), this.host.isDocumentOwner(s),
-                    accessedBeforeLastHostMaintenance / 1000000.0,
-                    s.getMaintenanceIntervalMicros());
+                    TimeUnit.MICROSECONDS.toSeconds(now - lastAccessTime));
         }
 
         return active;

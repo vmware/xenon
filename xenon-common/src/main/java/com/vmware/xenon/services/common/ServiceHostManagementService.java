@@ -89,6 +89,8 @@ public class ServiceHostManagementService extends StatefulService {
 
     public static final String STAT_NAME_SERVICE_COUNT = "serviceCount";
     public static final String STAT_NAME_SERVICE_CACHE_CLEAR_COUNT = "serviceCacheClearCount";
+    public static final String STAT_NAME_SERVICE_CACHE_MISS_COUNT = "serviceCacheMissCount";
+    public static final String STAT_NAME_SERVICE_CACHE_HIT_COUNT = "serviceCacheHitCount";
     public static final String STAT_NAME_RATE_LIMITED_OP_COUNT = "rateLimitedOperationCount";
     public static final String STAT_NAME_PENDING_SERVICE_DELETION_COUNT = "pendingServiceDeletionCount";
 
