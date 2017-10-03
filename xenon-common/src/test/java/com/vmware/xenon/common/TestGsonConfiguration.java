@@ -20,6 +20,7 @@ import static org.junit.Assert.assertTrue;
 import java.lang.reflect.Type;
 import java.net.URI;
 import java.util.Base64;
+import java.util.EnumSet;
 import java.util.UUID;
 import java.util.function.BiFunction;
 
@@ -124,7 +125,9 @@ public class TestGsonConfiguration {
         doc.sensitiveUsageOption = "sensitive information";
         doc.sensitivePropertyOptions = "sensitive properties";
 
-        String compactRedacted = Utils.toJson(true, false, doc);
+        String compactRedacted = Utils.toJson(
+                EnumSet.of(JsonMapper.JsonOptions.COMPACT, JsonMapper.JsonOptions.EXCLUDE_SENSITIVE),
+                doc);
 
         JsonElement expectedRedacted = readJson("{ \"value\": { "
                 + "\"a\": \"fred\", "
@@ -135,7 +138,7 @@ public class TestGsonConfiguration {
         assertEquals(expectedRedacted, readJson(compactRedacted));
 
         // Testing with pretty print
-        String prettyRedacted = Utils.toJson(true, true, doc);
+        String prettyRedacted = Utils.toJson(EnumSet.of(JsonMapper.JsonOptions.EXCLUDE_SENSITIVE), doc);
 
         assertTrue(prettyRedacted.length() > compactRedacted.length());
 
@@ -262,7 +265,7 @@ public class TestGsonConfiguration {
 
     }
 
-    private static class SomeComplexObject {
+    public static class SomeComplexObject {
 
         public String a;
         public String b;
@@ -271,7 +274,7 @@ public class TestGsonConfiguration {
 
         }
 
-        SomeComplexObject(String a, String b) {
+        public SomeComplexObject(String a, String b) {
             this.a = a;
             this.b = b;
         }

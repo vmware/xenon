@@ -432,28 +432,15 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         this.host.waitForServiceAvailable(factoryService.getUri());
 
         f = new MinimalFactoryTestService();
-        f.setChildServiceCaps(EnumSet.of(ServiceOption.PERSISTENCE, ServiceOption.ON_DEMAND_LOAD));
-        factoryService = (MinimalFactoryTestService) this.host
-                .startServiceAndWait(f, UUID.randomUUID().toString(), null);
-        this.host.waitForServiceAvailable(factoryService.getUri());
-
-        f = new MinimalFactoryTestService();
-        f.setChildServiceCaps(EnumSet.of(ServiceOption.ON_DEMAND_LOAD));
+        f.toggleOption(ServiceOption.REPLICATION, true);
+        f.setChildServiceCaps(EnumSet.of(ServiceOption.REPLICATION));
         factoryService = (MinimalFactoryTestService) this.host
                 .startServiceAndWait(f, UUID.randomUUID().toString(), null);
         this.host.waitForServiceAvailable(factoryService.getUri());
 
         f = new MinimalFactoryTestService();
         f.toggleOption(ServiceOption.REPLICATION, true);
-        f.setChildServiceCaps(EnumSet.of(ServiceOption.ON_DEMAND_LOAD, ServiceOption.REPLICATION));
-        factoryService = (MinimalFactoryTestService) this.host
-                .startServiceAndWait(f, UUID.randomUUID().toString(), null);
-        this.host.waitForServiceAvailable(factoryService.getUri());
-
-        f = new MinimalFactoryTestService();
-        f.toggleOption(ServiceOption.REPLICATION, true);
-        f.setChildServiceCaps(EnumSet.of(ServiceOption.ON_DEMAND_LOAD,
-                ServiceOption.PERSISTENCE,
+        f.setChildServiceCaps(EnumSet.of(ServiceOption.PERSISTENCE,
                 ServiceOption.REPLICATION));
         factoryService = (MinimalFactoryTestService) this.host
                 .startServiceAndWait(f, UUID.randomUUID().toString(), null);

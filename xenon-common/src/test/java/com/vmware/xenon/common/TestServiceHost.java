@@ -2065,20 +2065,16 @@ public class TestServiceHost {
         this.host.start();
 
         EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE,
-                ServiceOption.INSTRUMENTATION, ServiceOption.ON_DEMAND_LOAD, ServiceOption.FACTORY_ITEM);
+                ServiceOption.INSTRUMENTATION, ServiceOption.FACTORY_ITEM);
 
         // Start the factory service. it will be needed to start services on-demand
         MinimalFactoryTestService factoryService = new MinimalFactoryTestService();
         factoryService.setChildServiceCaps(caps);
         this.host.startServiceAndWait(factoryService, "service", null);
 
-        // Start some test services with ServiceOption.ON_DEMAND_LOAD
-        List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
+        // Start some test services
+        this.host.doThroughputServiceStart(this.serviceCount,
                 MinimalTestService.class, this.host.buildMinimalTestState(), caps, null);
-        List<URI> statsUris = new ArrayList<>();
-        for (Service s : services) {
-            statsUris.add(UriUtils.buildStatsUri(s.getUri()));
-        }
 
         // guarantee at least a few maintenance intervals have passed.
         Thread.sleep(maintenanceIntervalMillis * 10);
@@ -2089,17 +2085,6 @@ public class TestServiceHost {
                 () -> {
                     Map<String, ServiceStat> stats = this.host.getServiceStats(this.host
                             .getManagementServiceUri());
-
-                    ServiceStat odlCacheClears = stats
-                            .get(ServiceHostManagementService.STAT_NAME_ODL_CACHE_CLEAR_COUNT);
-                    if (odlCacheClears == null || odlCacheClears.latestValue < this.serviceCount) {
-                        this.host.log(
-                                "ODL Service Cache Clears %s were less than expected %d",
-                                odlCacheClears == null ? "null" : String
-                                        .valueOf(odlCacheClears.latestValue),
-                                this.serviceCount);
-                        return false;
-                    }
 
                     ServiceStat cacheClears = stats
                             .get(ServiceHostManagementService.STAT_NAME_SERVICE_CACHE_CLEAR_COUNT);
@@ -2150,21 +2135,18 @@ public class TestServiceHost {
 
         long maintenanceIntervalMicros = TimeUnit.MILLISECONDS.toMicros(100);
 
-        // induce host to stop ON_DEMAND_SERVICE more often by setting maintenance interval short
+        // induce host to stop service more often by setting maintenance interval short
         this.host.setMaintenanceIntervalMicros(maintenanceIntervalMicros);
         this.host.setServiceCacheClearDelayMicros(maintenanceIntervalMicros / 2);
         this.host.start();
 
-        // Start some test services with ServiceOption.ON_DEMAND_LOAD
+        // Start some test services
         EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE,
-                ServiceOption.ON_DEMAND_LOAD,
                 ServiceOption.FACTORY_ITEM);
 
         MinimalFactoryTestService factoryService = new MinimalFactoryTestService();
         factoryService.setChildServiceCaps(caps);
         this.host.startServiceAndWait(factoryService, "/service", null);
-
-        final double stopCount = getODLStopCountStat() != null ? getODLStopCountStat().latestValue : 0;
 
         // Test DELETE works on ODL service as it works on non-ODL service.
         // Delete on non-existent service should fail, and should not leave any side effects behind.
@@ -2173,7 +2155,7 @@ public class TestServiceHost {
 
         this.host.sendAndWaitExpectFailure(deleteOp);
 
-        // create a ON_DEMAND_LOAD service
+        // create a service
         MinimalTestServiceState initialState = new MinimalTestServiceState();
         initialState.id = "foo";
         initialState.documentSelfLink = "/foo";
@@ -2184,23 +2166,14 @@ public class TestServiceHost {
 
         String servicePath = "/service/foo";
 
-        // wait for the service to be stopped and stat to be populated
-        // This also verifies that ON_DEMAND_LOAD service will stop while it is idle for some duration
-        this.host.waitFor("Waiting ON_DEMAND_LOAD service to be stopped",
+        // wait for the service to be stopped.
+        // This verifies that a service will stop while it is idle for some duration
+        this.host.waitFor("Waiting for service to be stopped",
                 () -> this.host.getServiceStage(servicePath) == null
-                        && getODLStopCountStat() != null
-                        && getODLStopCountStat().latestValue > stopCount
         );
-        long lastODLStopTime = getODLStopCountStat().lastUpdateMicrosUtc;
 
         int requestCount = 10;
         int requestDelayMills = 40;
-
-        // Keep the time right before sending the last request.
-        // Use this time to check the service was not stopped at this moment. Since we keep
-        // sending the request with 40ms apart, when last request has sent, service should not
-        // be stopped(within maintenance window and cacheclear delay).
-        long beforeLastRequestSentTime = 0;
 
         // send 10 GET request 40ms apart to make service receive GET request during a couple
         // of maintenance windows
@@ -2209,50 +2182,34 @@ public class TestServiceHost {
             Operation get = Operation
                     .createGet(this.host, servicePath)
                     .setCompletion(testContextForGet.getCompletion());
-            beforeLastRequestSentTime = Utils.getNowMicrosUtc();
             this.host.send(get);
             Thread.sleep(requestDelayMills);
         }
         testContextForGet.await();
 
         // wait for the service to be stopped
-        final long beforeLastGetSentTime = beforeLastRequestSentTime;
-        this.host.waitFor("Waiting ON_DEMAND_LOAD service to be stopped",
-                () -> {
-                    long currentStopTime = getODLStopCountStat().lastUpdateMicrosUtc;
-                    return lastODLStopTime < currentStopTime
-                            && beforeLastGetSentTime < currentStopTime
-                            && this.host.getServiceStage(servicePath) == null;
-                }
+        this.host.waitFor("Waiting for service to be stopped",
+                () -> this.host.getServiceStage(servicePath) == null
         );
-
-        long afterGetODLStopTime = getODLStopCountStat().lastUpdateMicrosUtc;
 
         // send 10 update request 40ms apart to make service receive PATCH request during a couple
         // of maintenance windows
         TestContext ctx = this.host.testCreate(requestCount);
         for (int i = 0; i < requestCount; i++) {
             Operation patch = createMinimalTestServicePatch(servicePath, ctx);
-            beforeLastRequestSentTime = Utils.getNowMicrosUtc();
             this.host.send(patch);
             Thread.sleep(requestDelayMills);
         }
         ctx.await();
 
         // wait for the service to be stopped
-        final long beforeLastPatchSentTime = beforeLastRequestSentTime;
-        this.host.waitFor("Waiting ON_DEMAND_LOAD service to be stopped",
-                () -> {
-                    long currentStopTime = getODLStopCountStat().lastUpdateMicrosUtc;
-                    return afterGetODLStopTime < currentStopTime
-                            && beforeLastPatchSentTime < currentStopTime
-                            && this.host.getServiceStage(servicePath) == null;
-                }
+        this.host.waitFor("Waiting for service to be stopped",
+                () -> this.host.getServiceStage(servicePath) == null
         );
 
         double maintCount = getHostMaintenanceCount();
-        // issue multiple PATCHs while directly stopping a ODL service to induce collision
-        // of stop with active requests. First prevent automatic stop of ODL by extending
+        // issue multiple PATCHs while directly stopping the service to induce collision
+        // of stop with active requests. First prevent automatic stop by extending
         // cache clear time
         this.host.setServiceCacheClearDelayMicros(TimeUnit.DAYS.toMicros(1));
         this.host.waitFor("wait for main.", () -> {
@@ -2261,7 +2218,7 @@ public class TestServiceHost {
         });
 
 
-        // first cause a on demand load (start)
+        // first cause a start
         Operation patch = createMinimalTestServicePatch(servicePath, null);
         this.host.sendAndWaitExpectSuccess(patch);
 
@@ -2357,12 +2314,6 @@ public class TestServiceHost {
             patch.setCompletion(ctx.getCompletion());
         }
         return patch;
-    }
-
-    private ServiceStat getODLStopCountStat() throws Throwable {
-        URI managementServiceUri = this.host.getManagementServiceUri();
-        return this.host.getServiceStats(managementServiceUri)
-                .get(ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT);
     }
 
     private ServiceStat getRateLimitOpCountStat() throws Throwable {

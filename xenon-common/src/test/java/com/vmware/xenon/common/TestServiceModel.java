@@ -220,7 +220,15 @@ public class TestServiceModel extends BasicReusableHostTestCase {
             Operation delete = Operation
                     .createDelete(exampleUri)
                     .setReferer(this.host.getUri())
-                    .setCompletion(ctx.getCompletion());
+                    .setCompletion((o, e) -> {
+                        this.host.log(Level.INFO, "Delete completed for %s. Failure: %s",
+                                exampleUri, e != null ? e.getMessage() : "none");
+                        if (e != null) {
+                            ctx.failIteration(e);
+                            return;
+                        }
+                        ctx.completeIteration();
+                    });
             operations.add(delete);
         }
 

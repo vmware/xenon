@@ -15,8 +15,11 @@ package com.vmware.xenon.common.serialization;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
+import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Date;
+import java.util.EnumSet;
+import java.util.Set;
 import java.util.function.Consumer;
 
 import com.google.gson.ExclusionStrategy;
@@ -34,9 +37,11 @@ import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.Utils;
 
 /**
- * A helper that serializes/deserializes service documents to/from JSON. The implementation uses a
- * pair of {@link Gson} instances: one for compact printing; the other for pretty-printed,
- * HTML-friendly output.
+ * A helper that serializes/deserializes service documents to/from JSON. The implementation
+ * supports a variety of {@link JsonOptions}.
+ *
+ * The implementation creates and utilizes {@link Gson} instances for each supported option
+ * configuration.
  */
 public class JsonMapper {
 
@@ -55,17 +60,34 @@ public class JsonMapper {
     private static final int MAX_SERIALIZATION_ATTEMPTS = 100;
     private static final String JSON_INDENT = "  ";
 
+    /** Describes supported JSON serialization options. */
+    public enum JsonOptions {
+        /**
+         * Output JSON in compact form (without spaces or newlines). If this option is not used,
+         * JSON will be in a pretty-printed, HTML-friendly output.
+         */
+        COMPACT,
+
+        /** Exclude fields annotated with {@link ServiceDocumentDescription.PropertyUsageOption#SENSITIVE} */
+        EXCLUDE_SENSITIVE,
+
+        /** Exclude built-in fields. See {@link ServiceDocument#isBuiltInDocumentField(String)} */
+        EXCLUDE_BUILTIN
+    }
+
     private final Gson compact;
     private Gson hashing;
     private final Gson compactSensitive;
+    private final Gson compactExcludeBuiltin;
+    private final Gson compactSensitiveAndExcludeBuiltin;
     private boolean jsonSuppressGsonSerializationErrors = JSON_SUPPRESS_GSON_SERIALIZATION_ERRORS;
 
     /**
      * Instantiates a mapper with default GSON configurations.
      */
     public JsonMapper() {
-        this(createDefaultGson(true, false),
-                createDefaultGson(true, true));
+        this(createDefaultGson(EnumSet.of(JsonOptions.COMPACT)),
+                createDefaultGson(EnumSet.of(JsonOptions.COMPACT, JsonOptions.EXCLUDE_SENSITIVE)));
     }
 
     /**
@@ -75,8 +97,8 @@ public class JsonMapper {
      * and compact instances.
      */
     public JsonMapper(Consumer<GsonBuilder> gsonConfigCallback) {
-        this(createCustomGson(true, false, gsonConfigCallback),
-                createCustomGson(true, true, gsonConfigCallback));
+        this(createCustomGson(EnumSet.of(JsonOptions.COMPACT), gsonConfigCallback),
+                createCustomGson(EnumSet.of(JsonOptions.COMPACT, JsonOptions.EXCLUDE_SENSITIVE), gsonConfigCallback));
         this.hashing = createHashingGson(gsonConfigCallback);
     }
 
@@ -87,6 +109,8 @@ public class JsonMapper {
         this.compact = compact;
         this.compactSensitive = compactSensitive;
         this.hashing = createHashingGson(null);
+        this.compactExcludeBuiltin = createDefaultGson(EnumSet.of(JsonOptions.COMPACT, JsonOptions.EXCLUDE_BUILTIN));
+        this.compactSensitiveAndExcludeBuiltin = createDefaultGson(EnumSet.of(JsonOptions.COMPACT, JsonOptions.EXCLUDE_BUILTIN, JsonOptions.EXCLUDE_SENSITIVE));
     }
 
     private Gson createHashingGson(Consumer<GsonBuilder> gsonConfigCallback) {
@@ -101,20 +125,6 @@ public class JsonMapper {
             gsonConfigCallback.accept(bldr);
         }
         return bldr.create();
-    }
-
-    /**
-     * Use {@link #JsonMapper(Gson, Gson)} instead.
-     * The extra parameters are ignored.
-     *
-     * @param compact
-     * @param pretty
-     * @param compactSensitive
-     * @param prettySensitive
-     */
-    @Deprecated
-    public JsonMapper(Gson compact, Gson pretty, Gson compactSensitive, Gson prettySensitive) {
-        this(compact, compactSensitive);
     }
 
     /**
@@ -181,30 +191,32 @@ public class JsonMapper {
         }
     }
 
+    private Gson getGsonForOptions(Set<JsonOptions> options) {
+        if (options.containsAll(EnumSet.of(JsonOptions.EXCLUDE_BUILTIN, JsonOptions.EXCLUDE_SENSITIVE))) {
+            return this.compactSensitiveAndExcludeBuiltin;
+        }
+        if (options.contains(JsonOptions.EXCLUDE_BUILTIN)) {
+            return this.compactExcludeBuiltin;
+        }
+        if (options.contains(JsonOptions.EXCLUDE_SENSITIVE)) {
+            return this.compactSensitive;
+        }
+        return this.compact;
+    }
+
     /**
-     * Outputs a JSON representation of the given object using useHTMLFormatting to create pretty-printed,
-     * HTML-friendly JSON or compact JSON. If hideSensitiveFields is set the JSON will not include fields
-     * with the annotation {@link com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption#SENSITIVE}.
+     * Outputs a JSON representation of the given {@code body} based on the provided JSON {@code options}
      */
-    public void toJson(boolean hideSensitiveFields, boolean useHtmlFormatting, Object body, Appendable appendable) {
+    public void toJson(Set<JsonOptions> options, Object body, Appendable appendable) {
+        Gson gson = getGsonForOptions(options);
         for (int i = 1; ; i++) {
             try {
-                if (hideSensitiveFields) {
-                    if (useHtmlFormatting) {
-                        this.compactSensitive.toJson(body, body.getClass(), makePrettyJsonWriter(appendable));
-                        return;
-                    } else {
-                        this.compactSensitive.toJson(body, appendable);
-                        return;
-                    }
+                if (!options.contains(JsonOptions.COMPACT)) {
+                    gson.toJson(body, body.getClass(), makePrettyJsonWriter(appendable));
+                    return;
                 } else {
-                    if (useHtmlFormatting) {
-                        this.compact.toJson(body, body.getClass(), makePrettyJsonWriter(appendable));
-                        return;
-                    } else {
-                        this.compact.toJson(body, appendable);
-                        return;
-                    }
+                    gson.toJson(body, appendable);
+                    return;
                 }
             } catch (IllegalStateException e) {
                 handleIllegalStateException(e, i);
@@ -267,32 +279,35 @@ public class JsonMapper {
         this.jsonSuppressGsonSerializationErrors = suppressErrors;
     }
 
-    private static Gson createDefaultGson(boolean isCompact, boolean isSensitive) {
-        return createDefaultGsonBuilder(isCompact, isSensitive).create();
+    private static Gson createDefaultGson(EnumSet<JsonOptions> options) {
+        return createDefaultGsonBuilder(options).create();
     }
 
-    private static Gson createCustomGson(boolean isCompact, boolean isSensitive,
-            Consumer<GsonBuilder> gsonConfigCallback) {
-        GsonBuilder bldr = createDefaultGsonBuilder(isCompact, isSensitive);
+    private static Gson createCustomGson(EnumSet<JsonOptions> options, Consumer<GsonBuilder> gsonConfigCallback) {
+        GsonBuilder bldr = createDefaultGsonBuilder(options);
         gsonConfigCallback.accept(bldr);
         return bldr.create();
     }
 
-    public static GsonBuilder createDefaultGsonBuilder(boolean isCompact, boolean isSensitive) {
+
+    public static GsonBuilder createDefaultGsonBuilder(EnumSet<JsonOptions> options) {
         GsonBuilder bldr = new GsonBuilder();
 
         registerCommonGsonTypeAdapters(bldr);
 
-        if (!isCompact) {
+        if (!options.contains(JsonOptions.COMPACT)) {
             bldr.setPrettyPrinting();
         }
 
         bldr.disableHtmlEscaping();
 
-        if (isSensitive) {
+        if (options.contains(JsonOptions.EXCLUDE_SENSITIVE)) {
             bldr.addSerializationExclusionStrategy(new SensitiveAnnotationExclusionStrategy());
         }
 
+        if (options.contains(JsonOptions.EXCLUDE_BUILTIN)) {
+            bldr.addSerializationExclusionStrategy(new BuiltInServiceDocumentFieldsExclusionStrategy());
+        }
         return bldr;
     }
 
@@ -302,6 +317,7 @@ public class JsonMapper {
         bldr.registerTypeAdapter(ZonedDateTimeConverter.TYPE, ZonedDateTimeConverter.INSTANCE);
         bldr.registerTypeHierarchyAdapter(byte[].class, new ByteArrayToBase64TypeAdapter());
         bldr.registerTypeAdapter(RequestRouteConverter.TYPE, RequestRouteConverter.INSTANCE);
+        bldr.registerTypeHierarchyAdapter(Path.class, PathConverter.INSTANCE);
         bldr.registerTypeHierarchyAdapter(Date.class, UtcDateTypeAdapter.INSTANCE);
     }
 
@@ -382,6 +398,19 @@ public class JsonMapper {
         @Override
         public boolean shouldSkipClass(Class<?> aClass) {
             return false;
+        }
+    }
+
+    /** Excludes all "built-in" fields, such as {@code documentVersion}. */
+    private static class BuiltInServiceDocumentFieldsExclusionStrategy implements ExclusionStrategy {
+        @Override
+        public boolean shouldSkipClass(Class<?> aClass) {
+            return false;
+        }
+
+        @Override
+        public boolean shouldSkipField(FieldAttributes fieldAttributes) {
+            return ServiceDocument.isBuiltInDocumentField(fieldAttributes.getName());
         }
     }
 }

@@ -151,10 +151,9 @@ public interface Service extends ServiceRequestSender {
         IDEMPOTENT_POST,
 
         /**
-         * Runtime will load factory child services the first time a client attempts to access
-         * them. Replication services might load due to synchronization, when joining node groups.
+         * Deprecated
          *
-         * Requires: FACTORY_ITEM (services created through factories)
+         * All stateful persistent services are now started on-demand
          *
          */
         ON_DEMAND_LOAD,
@@ -169,7 +168,8 @@ public interface Service extends ServiceRequestSender {
          * violates these assumptions (by using {@link Operation#PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE}
          * for example), behavior is unspecified.
          *
-         * Requires: ON_DEMAND_LOAD
+         * Requires: PERSISTENCE
+         * Not compatible with: PERIODIC_MAINTENANCE, INSTRUMENTATION
          */
         IMMUTABLE,
 
