@@ -41,6 +41,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Random;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -54,7 +55,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.logging.Level;
-
 import javax.xml.bind.DatatypeConverter;
 
 import org.apache.lucene.search.IndexSearcher;
@@ -84,6 +84,7 @@ import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
+import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.SynchronizationTaskService;
 import com.vmware.xenon.common.TestResults;
 import com.vmware.xenon.common.TestUtilityService;
@@ -105,6 +106,7 @@ import com.vmware.xenon.services.common.LuceneDocumentIndexService.PaginatedSear
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
+import com.vmware.xenon.services.common.TestLuceneDocumentIndexService.AnotherPersistentService.AnotherPersistentState;
 
 class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexService {
 
@@ -145,6 +147,10 @@ class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexServic
         }
 
         return searchersByExpirationTime;
+    }
+
+    public TreeMap<Long, PaginatedSearcherInfo> getPaginatedSearchersByExpirationTime() {
+        return this.paginatedSearchersByCreationTime;
     }
 
     /*
@@ -205,6 +211,24 @@ public class TestLuceneDocumentIndexService {
             template.documentDescription.documentIndexingOptions = EnumSet.of(
                     ServiceDocumentDescription.DocumentIndexingOption.INDEX_METADATA);
             return template;
+        }
+    }
+
+    public static class AnotherPersistentService extends StatefulService {
+        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/another-persistents";
+
+        public static FactoryService createFactory() {
+            return FactoryService.create(AnotherPersistentService.class);
+        }
+
+        public static class AnotherPersistentState extends ServiceDocument {
+        }
+
+        public AnotherPersistentService() {
+            super(AnotherPersistentState.class);
+            toggleOption(ServiceOption.PERSISTENCE, true);
+            toggleOption(ServiceOption.REPLICATION, true);
+            toggleOption(ServiceOption.OWNER_SELECTION, true);
         }
     }
 
@@ -1012,6 +1036,98 @@ public class TestLuceneDocumentIndexService {
 
             }
         });
+    }
+
+    @Test
+    public void reusePaginatedSearcher() throws Throwable {
+        setUpHost(false);
+
+        this.host.startFactory(AnotherPersistentService.class, AnotherPersistentService::createFactory);
+        this.host.waitForServiceAvailable(AnotherPersistentService.FACTORY_LINK);
+
+
+        // populate ExampleServiceState data. This populates "indexService.documentKindUpdateInfo"
+        List<Operation> posts = new ArrayList<>();
+        for (int i = 0; i < this.serviceCount; i++) {
+            ExampleServiceState state = new ExampleServiceState();
+            state.name = UUID.randomUUID().toString();
+            posts.add(Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(state));
+        }
+        this.host.getTestRequestSender().sendAndWait(posts);
+
+
+        int paginatedSearcherSize;
+        long expiration = Utils.fromNowMicrosUtc(TimeUnit.MINUTES.toMicros(10));
+
+        QueryTask queryTask;
+
+        Query query = Query.Builder.create()
+                .addFieldClause(ServiceDocument.FIELD_NAME_KIND, Utils.buildKind(ExampleServiceState.class))
+                .build();
+
+        // create a paginated query.
+        queryTask = QueryTask.Builder.create().setQuery(query).setResultLimit(2).build();
+        queryTask.documentExpirationTimeMicros = expiration;
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+
+        // verify paginated searcher is NOT reused for the first paginated query.
+        paginatedSearcherSize = this.indexService.getPaginatedSearchersByExpirationTime().size();
+        assertEquals("new searcher should be created", 1, paginatedSearcherSize);
+
+
+        // create a NON ExampleServiceState paginated searcher.
+        // Since document for this kind(String) has not created/updated, existing searcher should be reused.
+        queryTask = QueryTask.Builder.create()
+                .setQuery(Query.Builder.create()
+                        .addFieldClause(ServiceDocument.FIELD_NAME_KIND, Utils.buildKind(String.class))
+                        .build())
+                .setResultLimit(2)
+                .build();
+        queryTask.documentExpirationTimeMicros = expiration;
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+
+        // verify no searcher is reused so far
+        paginatedSearcherSize = this.indexService.getPaginatedSearchersByExpirationTime().size();
+        assertEquals("existing searcher should be reused", 1, paginatedSearcherSize);
+
+
+        // now create a query task with ExampleServiceState
+        queryTask = QueryTask.Builder.create().setQuery(query).setResultLimit(2).build();
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+
+        // a searcher should be reused
+        paginatedSearcherSize = this.indexService.getPaginatedSearchersByExpirationTime().size();
+        assertEquals("searcher should be re-used", 1, paginatedSearcherSize);
+
+        // Another query task, searcher should be reused
+        queryTask = QueryTask.Builder.create().setQuery(query).setResultLimit(2).build();
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+        paginatedSearcherSize = this.indexService.getPaginatedSearchersByExpirationTime().size();
+        assertEquals("searcher should be re-used", 1, paginatedSearcherSize);
+
+
+        // create another service that does NOT use ExampleServiceState kind.
+        this.host.getTestRequestSender().sendAndWait(
+                Operation.createPost(this.host, AnotherPersistentService.FACTORY_LINK)
+                        .setBody(new AnotherPersistentState()));
+
+        // Even AnotherPersistentState is updated, still searcher should be reused for ExampleServiceState
+        queryTask = QueryTask.Builder.create().setQuery(query).setResultLimit(2).build();
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+        paginatedSearcherSize = this.indexService.getPaginatedSearchersByExpirationTime().size();
+        assertEquals("searcher should be re-used", 1, paginatedSearcherSize);
+
+        // update a ExampleService
+        ExampleServiceState state = new ExampleServiceState();
+        state.name = UUID.randomUUID().toString();
+        Operation post = Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(state);
+        this.host.getTestRequestSender().sendAndWait(post);
+
+        // if ExampleService is updated, new searcher should be used
+        queryTask = QueryTask.Builder.create().setQuery(query).setResultLimit(2).build();
+        this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+        paginatedSearcherSize = this.indexService.getPaginatedSearchersByExpirationTime().size();
+        assertEquals("searcher should be re-used", 2, paginatedSearcherSize);
     }
 
     @Test
