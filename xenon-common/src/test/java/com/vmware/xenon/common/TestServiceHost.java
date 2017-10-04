@@ -1470,7 +1470,8 @@ public class TestServiceHost {
         });
 
         for (Service service : cachedServices) {
-            assertNotNull(this.host.getServiceStage(service.getSelfLink()));
+            ProcessingStage processingStage = this.host.getServiceStage(service.getSelfLink());
+            assertTrue(processingStage == ProcessingStage.AVAILABLE);
         }
 
         this.host.waitFor("wait for main.", () -> {
@@ -1479,7 +1480,8 @@ public class TestServiceHost {
         });
 
         for (Service service : cachedServices) {
-            assertNull(this.host.getServiceStage(service.getSelfLink()));
+            ProcessingStage processingStage = this.host.getServiceStage(service.getSelfLink());
+            assertTrue(processingStage == null || processingStage == ProcessingStage.STOPPED);
         }
 
     }
