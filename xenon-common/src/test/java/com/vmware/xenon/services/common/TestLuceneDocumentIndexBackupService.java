@@ -34,6 +34,7 @@ import org.junit.rules.TemporaryFolder;
 import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
+import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.test.TestRequestSender;
@@ -76,15 +77,12 @@ public class TestLuceneDocumentIndexBackupService {
         host.addPrivilegedService(InMemoryLuceneDocumentIndexService.class);
 
         InMemoryLuceneDocumentIndexService inMemoryIndexService = new InMemoryLuceneDocumentIndexService();
-        LuceneDocumentIndexBackupService inMemoryIndexBackupService = new LuceneDocumentIndexBackupService(inMemoryIndexService);
         Service inMemoryExampleFactory = InMemoryExampleService.createFactory();
 
         host.startService(Operation.createPost(host, ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX), inMemoryIndexService);
-        host.startService(Operation.createPost(host, ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX_BACKUP), inMemoryIndexBackupService);
         host.startService(Operation.createPost(host, InMemoryExampleService.FACTORY_LINK), inMemoryExampleFactory);
 
-        host.waitForServiceAvailable(ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX,
-                ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX_BACKUP, InMemoryExampleService.FACTORY_LINK);
+        host.waitForServiceAvailable(ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX, InMemoryExampleService.FACTORY_LINK);
 
         return host;
     }
@@ -136,9 +134,10 @@ public class TestLuceneDocumentIndexBackupService {
         b.kind = BackupRequest.KIND;
         b.destination = backupDirUri;
         b.backupType = BackupType.DIRECTORY;
-        b.backupServiceLink = ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX_BACKUP;
+        b.backupServiceLink = ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP;
+        b.indexServiceLink = ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX;
 
-        Operation backupOp = Operation.createPatch(this.host, ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX_BACKUP).setBody(b);
+        Operation backupOp = Operation.createPatch(this.host, ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP).setBody(b);
         this.host.getTestRequestSender().sendAndWait(backupOp, BackupResponse.class);
 
         // destroy and spin up new host
@@ -149,8 +148,9 @@ public class TestLuceneDocumentIndexBackupService {
         RestoreRequest r = new RestoreRequest();
         r.kind = RestoreRequest.KIND;
         r.destination = backupDirUri;
+        r.indexServiceLink = ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX;
 
-        Operation restoreOp = Operation.createPatch(this.host, ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX_BACKUP).setBody(r);
+        Operation restoreOp = Operation.createPatch(this.host, ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP).setBody(r);
         this.host.getTestRequestSender().sendAndWait(restoreOp);
         this.host.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(this.host, InMemoryExampleService.FACTORY_LINK));
 
@@ -206,10 +206,11 @@ public class TestLuceneDocumentIndexBackupService {
         BackupRequest b = new BackupRequest();
         b.kind = BackupRequest.KIND;
         b.destination = backupUri;
-        b.backupServiceLink = ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX_BACKUP;
+        b.backupServiceLink = ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP;
+        b.indexServiceLink = ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX;
 
         // backup with zip
-        Operation backupOp = Operation.createPatch(this.host, ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX_BACKUP).setBody(b);
+        Operation backupOp = Operation.createPatch(this.host, ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP).setBody(b);
         this.host.getTestRequestSender().sendAndWait(backupOp);
 
         // destroy and spin up new host
@@ -219,9 +220,11 @@ public class TestLuceneDocumentIndexBackupService {
         RestoreRequest r = new RestoreRequest();
         r.kind = RestoreRequest.KIND;
         r.destination = backupUri;
+        r.backupServiceLink = ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP;
+        r.indexServiceLink = ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX;
 
         // restore
-        Operation restoreOp = Operation.createPatch(this.host, ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX_BACKUP).setBody(r);
+        Operation restoreOp = Operation.createPatch(this.host, ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP).setBody(r);
         this.host.getTestRequestSender().sendAndWait(restoreOp);
         this.host.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(this.host, InMemoryExampleService.FACTORY_LINK));
 
@@ -331,10 +334,11 @@ public class TestLuceneDocumentIndexBackupService {
         b.kind = BackupRequest.KIND;
         b.destination = backupDirUri;
         b.backupType = BackupType.DIRECTORY;
-        b.backupServiceLink = ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX_BACKUP;
+        b.backupServiceLink = ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP;
+        b.indexServiceLink = ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX;
 
         // perform initial backup
-        Operation backupOp = Operation.createPatch(this.host, ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX_BACKUP).setBody(b);
+        Operation backupOp = Operation.createPatch(this.host, ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP).setBody(b);
         this.host.getTestRequestSender().sendAndWait(backupOp, BackupResponse.class);
 
         // create more data
@@ -350,10 +354,11 @@ public class TestLuceneDocumentIndexBackupService {
 
 
         // perform incremental backup
-        backupOp = Operation.createPatch(this.host, ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX_BACKUP).setBody(b);
+        backupOp = Operation.createPatch(this.host, ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP).setBody(b);
         this.host.getTestRequestSender().sendAndWait(backupOp, BackupResponse.class);
 
 
+        assertEquals(ProcessingStage.AVAILABLE, ProcessingStage.AVAILABLE);
         // destroy and spin up new host
         this.host.tearDown();
         this.host = createVerificationHost();
@@ -362,8 +367,10 @@ public class TestLuceneDocumentIndexBackupService {
         RestoreRequest r = new RestoreRequest();
         r.kind = RestoreRequest.KIND;
         r.destination = backupDirUri;
+        r.backupServiceLink = ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP;
+        r.indexServiceLink = ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX;
 
-        Operation restoreOp = Operation.createPatch(this.host, ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX_BACKUP).setBody(r);
+        Operation restoreOp = Operation.createPatch(this.host, ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP).setBody(r);
         this.host.getTestRequestSender().sendAndWait(restoreOp);
         this.host.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(this.host, InMemoryExampleService.FACTORY_LINK));
 

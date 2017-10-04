@@ -452,6 +452,18 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     /**
+     * Special GET request/response body to retrieve lucene related info.
+     *
+     * Internal usage only mainly for backup/restore.
+     */
+    public static class InternalDocumentIndexInfo {
+        public IndexWriter indexWriter;
+        public String indexDirectory;
+        public LuceneDocumentIndexService luceneIndexService;
+        public Semaphore writerSync;
+    }
+
+    /**
      * NOTE: use restore API in ServiceHostManagementService instead of this class.
      **/
     public static class RestoreRequest extends ServiceDocument {
@@ -938,7 +950,17 @@ public class LuceneDocumentIndexService extends StatelessService {
                 OperationContext.setFrom(op);
                 switch (op.getAction()) {
                 case GET:
-                    handleGetImpl(op);
+                    // handle special GET request. Internal call only. Currently from backup/restore services.
+                    if (!op.isRemote() && op.hasBody() && op.getBodyRaw() instanceof InternalDocumentIndexInfo) {
+                        InternalDocumentIndexInfo response = new InternalDocumentIndexInfo();
+                        response.indexWriter = this.writer;
+                        response.indexDirectory = this.indexDirectory;
+                        response.luceneIndexService = this;
+                        response.writerSync = this.writerSync;
+                        op.setBodyNoCloning(response).complete();
+                    } else {
+                        handleGetImpl(op);
+                    }
                     break;
                 case PATCH:
                     ServiceDocument sd = (ServiceDocument) op.getBodyRaw();

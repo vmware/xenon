@@ -1603,7 +1603,7 @@ public class ServiceHost implements ServiceRequestSender {
                 LuceneDocumentIndexService luceneDocumentIndexService = (LuceneDocumentIndexService) this.documentIndexService;
                 Service[] queryServiceArray = new Service[] {
                         luceneDocumentIndexService,
-                        new LuceneDocumentIndexBackupService(luceneDocumentIndexService),
+                        new LuceneDocumentIndexBackupService(),
                         new QueryTaskFactoryService(),
                         new LocalQueryTaskFactoryService(),
                         TaskFactoryService.create(GraphQueryTaskService.class),
