@@ -18,20 +18,18 @@ import java.net.URISyntaxException;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.OperationProcessingChain.OperationProcessingContext;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
-import com.vmware.xenon.services.common.NodeGroupBroadcastResponse;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.QueryTaskUtils;
 import com.vmware.xenon.services.common.ServiceUriPaths;
+
 
 /**
  * Implements a POST handler for creating new service instances. Derived implementations should
@@ -197,58 +195,83 @@ public abstract class FactoryService extends StatelessService {
                                 + "declared in child service class (%s)", getStateType(),
                                 childStateTypeDeclaredInChild));
             }
+
+            startPost.complete();
+
+            if (this.hasChildOption(ServiceOption.REPLICATION)) {
+                startSynchronizationController(null);
+            } else {
+                setAvailable(true);
+            }
+
         } catch (Throwable e) {
             logSevere(e);
             startPost.fail(e);
             return;
         }
 
+    }
+
+    private void startSynchronizationController(ServiceMaintenanceRequest request) {
         String path = UriUtils.buildUriPath(
-                SynchronizationTaskService.FACTORY_LINK,
+                SynchronizationControllerService.FACTORY_LINK,
                 UriUtils.convertPathCharsFromLink(this.getSelfLink()));
 
-        // Create a place-holder Synchronization-Task for this factory service
-        Operation post = Operation
-                .createPost(UriUtils.buildUri(this.getHost(), path))
-                .setBody(createSynchronizationTaskState(null))
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        logSevere(e);
-                        startPost.fail(e);
-                        return;
-                    }
+        this.getHost().registerForServiceAvailability((o, e) -> {
+            Operation post = Operation
+                    .createPost(UriUtils.buildUri(this.getHost(), path))
+                    .setBody(createSynchronizationControllerState(request))
+                    .setCompletion((oo, ee) -> {
+                        if (ee != null) {
+                            logSevere(ee);
+                            return;
+                        }
+                    });
 
-                    if (!ServiceHost.isServiceIndexed(this)) {
-                        setAvailable(true);
-                        startPost.complete();
-                        return;
-                    }
+            SynchronizationControllerService service = new SynchronizationControllerService();
 
-                    // complete factory start POST immediately. Asynchronously
-                    // kick-off the synchronization-task to load all child
-                    // services. Requests to a child not yet loaded will be
-                    // queued by the framework.
-                    Operation clonedOp = startPost.clone();
-                    startPost.complete();
+            this.getHost().startService(post, service);
+        }, SynchronizationControllerService.FACTORY_LINK);
+    }
 
-                    if (!this.childOptions.contains(ServiceOption.REPLICATION)) {
-                        clonedOp.setCompletion((op, t) -> {
-                            if (t != null && !getHost().isStopping()) {
-                                logWarning("Failure in kicking-off synchronization-task: %s", t.getMessage());
-                                return;
-                            }
-                        });
 
-                        startFactorySynchronizationTask(clonedOp, null);
-                        return;
-                    }
-                    // when the node group becomes available, the maintenance handler will initiate
-                    // service start and synchronization
-                });
+    private void putSynchronizationController(ServiceMaintenanceRequest request) {
 
-        SynchronizationTaskService service = SynchronizationTaskService
-                .create(() -> createChildServiceSafe());
-        this.getHost().startService(post, service);
+        String path = UriUtils.buildUriPath(
+                SynchronizationControllerService.FACTORY_LINK,
+                UriUtils.convertPathCharsFromLink(this.getSelfLink()));
+
+        this.getHost().registerForServiceAvailability((o, e) -> {
+            Operation patch = Operation
+                    .createPatch(UriUtils.buildUri(this.getHost(), path))
+                    .setBody(createSynchronizationControllerState(request))
+                    .setCompletion((oo, ee) -> {
+                        if (ee != null) {
+                            logSevere(ee);
+                        }
+                    });
+
+            this.sendRequest(patch);
+        }, path);
+    }
+
+    private SynchronizationControllerService.State createSynchronizationControllerState(ServiceMaintenanceRequest request) {
+
+        SynchronizationControllerService.State state = new SynchronizationControllerService.State();
+
+        if (request != null) {
+            state.nodeGroupState = request.nodeGroupState;
+        }
+
+        Service childService = createChildServiceSafe();
+        state.documentSelfLink = UriUtils.convertPathCharsFromLink(this.getSelfLink());
+        state.factorySelfLink = this.getSelfLink();
+        state.factoryStateKind = Utils.buildKind(this.getStateType());
+        state.nodeSelectorLink = this.nodeSelectorLink;
+        state.childDocumentIndexLink = childService.getDocumentIndexPath();
+        state.childOptions = childService.getOptions();
+        state.updateType = SynchronizationControllerService.UpdateType.SYNCHROINZE;
+        return state;
     }
 
     /**
@@ -933,12 +956,6 @@ public abstract class FactoryService extends StatelessService {
         return r;
     }
 
-    private void logTaskFailureWarning(String fmt, Object... args) {
-        if (!getHost().isStopping()) {
-            logWarning(fmt, args);
-        }
-    }
-
     private ServiceDocument getChildTemplate(String childLink) {
         if (this.childTemplate == null) {
             try {
@@ -974,213 +991,9 @@ public abstract class FactoryService extends StatelessService {
 
     @Override
     public void handleNodeGroupMaintenance(Operation maintOp) {
-        synchronizeChildServicesIfOwner(maintOp);
-    }
-
-    void synchronizeChildServicesIfOwner(Operation maintOp) {
-        // Become unavailable until synchronization is complete.
-        // If we are not the owner, we stay unavailable
-        setAvailable(false);
-        OperationContext opContext = OperationContext.getOperationContext();
-        // Only one node is responsible for synchronizing the child services of a given factory.
-        // Ask the runtime if this is the owner node, using the factory self link as the key.
-        Operation selectOwnerOp = maintOp.clone().setExpiration(Utils.fromNowMicrosUtc(
-                getHost().getOperationTimeoutMicros()));
-        selectOwnerOp.setCompletion((o, e) -> {
-            OperationContext.restoreOperationContext(opContext);
-            if (e != null) {
-                logWarning("owner selection failed: %s", e.toString());
-                scheduleSynchronizationRetry(maintOp);
-                maintOp.fail(e);
-                return;
-            }
-            SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
-            if (!rsp.isLocalHostOwner) {
-                // We do not need to do anything
-                maintOp.complete();
-                return;
-            }
-
-            if (rsp.availableNodeCount > 1) {
-                verifyFactoryOwnership(maintOp, rsp);
-                return;
-            }
-
-            synchronizeChildServicesAsOwner(maintOp, rsp.membershipUpdateTimeMicros);
-        });
-
-        getHost().selectOwner(this.nodeSelectorLink, this.getSelfLink(), selectOwnerOp);
-    }
-
-    private void synchronizeChildServicesAsOwner(Operation maintOp, long membershipUpdateTimeMicros) {
-        maintOp.nestCompletion((o, e) -> {
-            if (e != null) {
-                logWarning("Synchronization failed: %s", e.toString());
-            }
-            maintOp.complete();
-        });
-        startFactorySynchronizationTask(maintOp, membershipUpdateTimeMicros);
-    }
-
-    private void startFactorySynchronizationTask(Operation parentOp, Long membershipUpdateTimeMicros) {
-        SynchronizationTaskService.State task = createSynchronizationTaskState(
-                membershipUpdateTimeMicros);
-        Operation post = Operation
-                .createPost(this, ServiceUriPaths.SYNCHRONIZATION_TASKS)
-                .setBody(task)
-                .setCompletion((o, e) -> {
-                    boolean retrySynch = false;
-
-                    if (o.getStatusCode() >= Operation.STATUS_CODE_FAILURE_THRESHOLD) {
-                        ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
-                        logTaskFailureWarning("HTTP error on POST to synch task: %s", Utils.toJsonHtml(rsp));
-
-                        // Ignore if the request failed because the current synch-request
-                        // was considered out-dated by the synchronization-task.
-                        if (o.getStatusCode() == Operation.STATUS_CODE_BAD_REQUEST &&
-                                rsp.getErrorCode() == ServiceErrorResponse.ERROR_CODE_OUTDATED_SYNCH_REQUEST) {
-                            parentOp.complete();
-                            return;
-                        }
-
-                        retrySynch = true;
-                    }
-
-                    if (e != null) {
-                        logTaskFailureWarning("Failure on POST to synch task: %s", e.getMessage());
-                        parentOp.fail(e);
-                        retrySynch = true;
-                    } else {
-                        SynchronizationTaskService.State rsp = null;
-                        rsp = o.getBody(SynchronizationTaskService.State.class);
-                        if (rsp.taskInfo.stage.equals(TaskState.TaskStage.FAILED)) {
-                            logTaskFailureWarning("Synch task failed %s", Utils.toJsonHtml(rsp));
-                            retrySynch = true;
-                        }
-                        parentOp.complete();
-                    }
-
-                    if (retrySynch) {
-                        scheduleSynchronizationRetry(parentOp);
-                        return;
-                    }
-
-                    setStat(STAT_NAME_SYNCH_TASK_RETRY_COUNT, 0);
-                });
-        sendRequest(post);
-    }
-
-    private void scheduleSynchronizationRetry(Operation parentOp) {
-        if (getHost().isStopping()) {
-            return;
-        }
-
-        adjustStat(STAT_NAME_SYNCH_TASK_RETRY_COUNT, 1);
-
-        ServiceStats.ServiceStat stat = getStat(STAT_NAME_SYNCH_TASK_RETRY_COUNT);
-        if (stat != null && stat.latestValue  > 0) {
-            if (stat.latestValue > MAX_SYNCH_RETRY_COUNT) {
-                logSevere("Synchronization task failed after %d tries", (long)stat.latestValue - 1);
-                adjustStat(STAT_NAME_CHILD_SYNCH_FAILURE_COUNT, 1);
-                return;
-            }
-        }
-
-        // Clone the parent operation for reuse outside the schedule call for
-        // the original operation to be freed in current thread.
-        Operation op = parentOp.clone();
-
-        // Use exponential backoff algorithm in retry logic. The idea is to exponentially
-        // increase the delay for each retry based on the number of previous retries.
-        // This is done to reduce the load of retries on the system by all the synch tasks
-        // of all factories at the same time, and giving system more time to stabilize
-        // in next retry then the previous retry.
-        long delay = getExponentialDelay();
-
-        logWarning("Scheduling retry of child service synchronization task in %d seconds",
-                TimeUnit.MICROSECONDS.toSeconds(delay));
-        getHost().scheduleCore(() -> synchronizeChildServicesIfOwner(op),
-                delay, TimeUnit.MICROSECONDS);
-    }
-
-    /**
-     * Exponential backoff rely on synch task retry count stat. If this stat is not available
-     * then we will fall back to constant delay for each retry.
-     * To get exponential delay, multiply retry count's power of 2 with constant delay.
-     */
-    private long getExponentialDelay() {
-        long delay = getHost().getMaintenanceIntervalMicros();
-        ServiceStats.ServiceStat stat = getStat(STAT_NAME_SYNCH_TASK_RETRY_COUNT);
-        if (stat != null && stat.latestValue > 0) {
-            return (1 << ((long)stat.latestValue)) * delay;
-        }
-
-        return delay;
-    }
-
-    private SynchronizationTaskService.State createSynchronizationTaskState(
-            Long membershipUpdateTimeMicros) {
-        SynchronizationTaskService.State task = new SynchronizationTaskService.State();
-        task.documentSelfLink = UriUtils.convertPathCharsFromLink(this.getSelfLink());
-        task.factorySelfLink = this.getSelfLink();
-        task.factoryStateKind = Utils.buildKind(this.getStateType());
-        task.membershipUpdateTimeMicros = membershipUpdateTimeMicros;
-        task.nodeSelectorLink = this.nodeSelectorLink;
-        task.queryResultLimit = SELF_QUERY_RESULT_LIMIT;
-        task.taskInfo = TaskState.create();
-        task.taskInfo.isDirect = true;
-        return task;
-    }
-
-    private void verifyFactoryOwnership(Operation maintOp, SelectOwnerResponse ownerResponse) {
-        // Local node thinks it's the owner. Let's confirm that
-        // majority of the nodes in the node-group
-        NodeSelectorService.SelectAndForwardRequest request =
-                new NodeSelectorService.SelectAndForwardRequest();
-        request.key = this.getSelfLink();
-
-        Operation broadcastSelectOp = Operation
-                .createPost(UriUtils.buildUri(this.getHost(), this.nodeSelectorLink))
-                .setReferer(this.getHost().getUri())
-                .setBody(request)
-                .setCompletion((op, t) -> {
-                    if (t != null) {
-                        logWarning("owner selection failed: %s", t.toString());
-                        maintOp.fail(t);
-                        return;
-                    }
-
-                    NodeGroupBroadcastResponse response = op.getBody(NodeGroupBroadcastResponse.class);
-                    for (Map.Entry<URI, String> r : response.jsonResponses.entrySet()) {
-                        NodeSelectorService.SelectOwnerResponse rsp = null;
-                        try {
-                            rsp = Utils.fromJson(r.getValue(), NodeSelectorService.SelectOwnerResponse.class);
-                        } catch (Exception e) {
-                            logWarning("Exception thrown in de-serializing json response. %s", e.toString());
-
-                            // Ignore if the remote node returned a bad response. Most likely this is because
-                            // the remote node is offline and if so, ownership check for the remote node is
-                            // irrelevant.
-                            continue;
-                        }
-                        if (rsp == null || rsp.ownerNodeId == null) {
-                            logWarning("%s responded with '%s'", r.getKey(), r.getValue());
-                        }
-                        if (!rsp.ownerNodeId.equals(this.getHost().getId())) {
-                            logWarning("SelectOwner response from %s does not indicate that " +
-                                            "local node %s is the owner for factory %s. JsonResponse: %s",
-                                    r.getKey().toString(), this.getHost().getId(), this.getSelfLink(), r.getValue());
-                            maintOp.complete();
-                            return;
-                        }
-                    }
-
-                    logInfo("%s elected as owner for factory %s. Starting synch ...",
-                            getHost().getId(), this.getSelfLink());
-                    synchronizeChildServicesAsOwner(maintOp, ownerResponse.membershipUpdateTimeMicros);
-                });
-
-        getHost().broadcastRequest(this.nodeSelectorLink, this.getSelfLink(), true, broadcastSelectOp);
+        ServiceMaintenanceRequest request = maintOp.getBody(ServiceMaintenanceRequest.class);
+        putSynchronizationController(request);
+        maintOp.complete();
     }
 
     public abstract Service createServiceInstance() throws Throwable;

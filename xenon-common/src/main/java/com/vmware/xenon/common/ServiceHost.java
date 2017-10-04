@@ -1660,6 +1660,9 @@ public class ServiceHost implements ServiceRequestSender {
         coreServices.add(new SystemUserService());
         coreServices.add(new GuestUserService());
 
+        addPrivilegedService(SynchronizationControllerService.class);
+        coreServices.add(SynchronizationControllerService.createFactory());
+
         Service transactionFactoryService = new TransactionFactoryService();
         coreServices.add(transactionFactoryService);
         addPrivilegedService(TransactionService.class);

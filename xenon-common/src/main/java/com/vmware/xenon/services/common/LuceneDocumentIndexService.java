@@ -2610,6 +2610,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             indexDocHelper.addExpirationTimeField(s.documentExpirationTimeMicros);
         }
         indexDocHelper.addVersionField(s.documentVersion);
+        if (s.documentOwner != null) {
+            indexDocHelper.addOwnerField(s.documentOwner);
+        }
 
         if (desc.documentIndexingOptions.contains(DocumentIndexingOption.INDEX_METADATA)) {
             indexDocHelper.addIndexingIdField(link, s.documentEpoch, s.documentVersion);
