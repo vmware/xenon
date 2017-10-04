@@ -20,13 +20,11 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.TaskService;
-
 /**
  * A Task service used to synchronize child Services for a specific FactoryService.
  */
@@ -47,16 +45,6 @@ public class SynchronizationTaskService
     // We are using exponential backoff for synchronization retry.
     public static final int MAX_CHILD_SYNCH_RETRY_COUNT = Integer.getInteger(
             PROPERTY_NAME_MAX_CHILD_SYNCH_RETRY_COUNT, 3);
-
-
-    public static SynchronizationTaskService create(Supplier<Service> childServiceInstantiator) {
-        if (childServiceInstantiator.get() == null) {
-            throw new IllegalArgumentException("childServiceInstantiator created null child service");
-        }
-        SynchronizationTaskService taskService = new SynchronizationTaskService();
-        taskService.childServiceInstantiator = childServiceInstantiator;
-        return taskService;
-    }
 
     public enum SubStage {
         QUERY, SYNCHRONIZE, RESTART, CHECK_NG_AVAILABILITY
@@ -121,9 +109,9 @@ public class SynchronizationTaskService
          */
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public int synchCompletionCount;
-    }
 
-    private Supplier<Service> childServiceInstantiator;
+        public QueryTask.Query query;
+    }
 
     private final boolean isDetailedLoggingEnabled = Boolean
             .getBoolean(PROPERTY_NAME_SYNCHRONIZATION_LOGGING);
@@ -168,11 +156,8 @@ public class SynchronizationTaskService
         // in the CREATED stage. This is because, handleStart only creates a
         // place-holder task per factoryService without actually kicking-off
         // the state-machine.
-        Service childTemplate = this.childServiceInstantiator.get();
         initialState.taskInfo = new TaskState();
         initialState.taskInfo.stage = TaskState.TaskStage.CREATED;
-        initialState.childOptions = childTemplate.getOptions();
-        initialState.childDocumentIndexLink = childTemplate.getDocumentIndexPath();
         initialState.documentExpirationTimeMicros = Long.MAX_VALUE;
     }
 
@@ -182,8 +167,12 @@ public class SynchronizationTaskService
         if (task == null) {
             return null;
         }
-        if (this.childServiceInstantiator == null) {
-            post.fail(new IllegalArgumentException("childServiceInstantiator must be set."));
+        if (task.childOptions == null) {
+            post.fail(new IllegalArgumentException("childOptions must be set."));
+            return null;
+        }
+        if (task.childDocumentIndexLink == null) {
+            post.fail(new IllegalArgumentException("childDocumentIndexLink must be set."));
             return null;
         }
         if (task.factorySelfLink == null) {
@@ -204,10 +193,6 @@ public class SynchronizationTaskService
         }
         if (task.taskInfo != null && task.taskInfo.stage != TaskState.TaskStage.CREATED) {
             post.fail(new IllegalArgumentException("taskInfo.stage must be set to CREATED."));
-            return null;
-        }
-        if (task.childOptions != null) {
-            post.fail(new IllegalArgumentException("childOptions must not be set."));
             return null;
         }
         if (task.membershipUpdateTimeMicros != null) {
@@ -281,6 +266,7 @@ public class SynchronizationTaskService
         // See documentation above for State class.
         task.membershipUpdateTimeMicros = body.membershipUpdateTimeMicros;
         task.queryResultLimit = body.queryResultLimit;
+        task.query = body.query;
         if (startStateMachine) {
             task.taskInfo.stage = TaskState.TaskStage.STARTED;
             task.subStage = SubStage.QUERY;
@@ -471,7 +457,8 @@ public class SynchronizationTaskService
                         return;
                     }
 
-                    ServiceDocumentQueryResult rsp = o.getBody(QueryTask.class).results;
+                    QueryTask body = o.getBody(QueryTask.class);
+                    ServiceDocumentQueryResult rsp = body.results;
 
                     // Query returned zero results.Self-patch the task
                     // to FINISHED state.
@@ -513,6 +500,9 @@ public class SynchronizationTaskService
                 .setTermMatchValue(task.factoryStateKind);
         queryTask.querySpec.query.addBooleanClause(kindClause);
 
+        if (task.query != null) {
+            queryTask.querySpec.query.addBooleanClause(task.query);
+        }
         // set timeout based on peer synchronization upper limit
         long timeoutMicros = TimeUnit.SECONDS.toMicros(
                 getHost().getPeerSynchronizationTimeLimitSeconds());
@@ -813,15 +803,16 @@ public class SynchronizationTaskService
 
     private void setFactoryAvailability(
             State task, boolean isAvailable, Consumer<Operation> action, Operation parentOp) {
-        ServiceStats.ServiceStat body = new ServiceStats.ServiceStat();
-        body.name = Service.STAT_NAME_AVAILABLE;
-        body.latestValue = isAvailable ? STAT_VALUE_TRUE : STAT_VALUE_FALSE;
 
-        Operation put = Operation.createPut(
-                UriUtils.buildAvailableUri(this.getHost(), task.factorySelfLink))
-                .setBody(body)
-                .setConnectionSharing(true)
-                .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION)
+        String path = UriUtils.buildUriPath(
+                SynchronizationControllerService.FACTORY_LINK,
+                UriUtils.convertPathCharsFromLink(task.factorySelfLink));
+
+        SynchronizationControllerService.State update = new SynchronizationControllerService.State();
+        update.isAvailable = isAvailable;
+        update.updateType = SynchronizationControllerService.UpdateType.TASK_STATUS_UPDATE;
+        Operation patch = Operation.createPatch(this.getHost(), path)
+                .setBody(update)
                 .setCompletion((o, e) -> {
                     if (parentOp != null) {
                         parentOp.complete();
@@ -835,7 +826,7 @@ public class SynchronizationTaskService
                         action.accept(o);
                     }
                 });
-        sendRequest(put);
+        sendRequest(patch);
     }
 
     private Consumer<State> subStageSetter(SubStage subStage) {

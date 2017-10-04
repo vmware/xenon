@@ -158,6 +158,14 @@ class LuceneIndexDocumentHelper {
         }
     };
 
+    private final StringFieldContext ownerField = new StringFieldContext() {
+        @Override
+        public void initialize() {
+            this.stringField = new StringField(ServiceDocument.FIELD_NAME_OWNER, "",
+                    Store.NO);
+        }
+    };
+
     private final StringFieldContext authPrincipalLinkField = new StringFieldContext() {
         @Override
         public void initialize() {
@@ -214,6 +222,7 @@ class LuceneIndexDocumentHelper {
         this.versionField.initialize();
         this.tombstoneTimeField.initialize();
         this.indexingIdField.initialize();
+        this.ownerField.initialize();
     }
 
     void addSelfLinkField(String selfLink) {
@@ -246,6 +255,11 @@ class LuceneIndexDocumentHelper {
 
     void addVersionField(long version) {
         updateLongFieldContext(version, this.versionField);
+    }
+
+    void addOwnerField(String owner) {
+        this.ownerField.stringField.setStringValue(owner);
+        this.doc.add(this.ownerField.stringField);
     }
 
     void addUpdateTimeField(long updateTimeMicros) {
