@@ -228,6 +228,7 @@ public class TestNodeGroupService {
     private String replicationTargetFactoryLink = ExampleService.FACTORY_LINK;
     private String replicationNodeSelector = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
     private long replicationFactor;
+    private int replicationQuorum = this.nodeCount;
 
     private Map<String, URI> replicationTargetLinks;
     private Map<String, URI> replicationTargetLinksOriginal;
@@ -2544,6 +2545,7 @@ public class TestNodeGroupService {
                 // the limited replication selector to use the minimum between majority of replication
                 // factor, versus node group membership quorum
                 this.host.setNodeGroupQuorum(this.nodeCount);
+                this.host.setNodeSelectorReplicationQuorum(this.replicationNodeSelector, this.replicationQuorum);
                 // since we have disabled peer synch, trigger it explicitly so factories become available
                 this.host.scheduleSynchronizationIfAutoSyncDisabled(this.replicationNodeSelector);
 
