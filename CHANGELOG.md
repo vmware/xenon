@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 1.1.0-CR0-2
+
+* Upgrade netty to 4.1.6.Final
+
 ## 1.1.0-CR0-1
 
 * Bug fix related to properly loading the state of ON_DEMAND_LOAD services when the
