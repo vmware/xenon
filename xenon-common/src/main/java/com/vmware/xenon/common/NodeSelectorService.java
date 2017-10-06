@@ -164,4 +164,9 @@ public interface NodeSelectorService extends Service {
      * Note: The body should be cloned before queuing or using in a different thread context
      */
     void selectAndForward(Operation op, SelectAndForwardRequest body);
+
+    /**
+     * set replication quorum
+     */
+    void updateReplicationQuorum(Operation op, int replicationQuorum);
 }

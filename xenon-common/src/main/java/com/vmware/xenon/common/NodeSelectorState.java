@@ -57,6 +57,7 @@ public class NodeSelectorState extends ServiceDocument {
 
     public String nodeGroupLink;
     public Long replicationFactor;
+    public int replicationQuorum;
     public int membershipQuorum;
     public long membershipUpdateTimeMicros;
     public Status status;
