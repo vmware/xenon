@@ -228,6 +228,7 @@ public class TestNodeGroupService {
     private String replicationTargetFactoryLink = ExampleService.FACTORY_LINK;
     private String replicationNodeSelector = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
     private long replicationFactor;
+    private int replicationQuorum = 1;
 
     private Map<String, URI> replicationTargetLinks;
     private Map<String, URI> replicationTargetLinksOriginal;
@@ -2522,6 +2523,44 @@ public class TestNodeGroupService {
         doReplication();
     }
 
+    @Test
+    public void replicationThreshold() throws Throwable {
+        int originalNodeCount = this.nodeCount;
+        int originalReplicationQuorum = this.replicationQuorum;
+        this.nodeCount = 5;
+        this.replicationQuorum = 4;
+        this.isPeerSynchronizationEnabled = false;
+        this.replicationNodeSelector = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
+        // success threshold: 4, failure threshold: (5 - 4) + 1 = 2
+        this.replicationTargetFactoryLink = ExampleService.FACTORY_LINK;
+        setUp(this.nodeCount);
+        this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+        this.host.setNodeGroupQuorum(3);
+        this.host.setNodeSelectorReplicationQuorum(this.replicationNodeSelector, this.replicationQuorum);
+        // stop one node
+        VerificationHost nodeToStop = this.host.getPeerHost();
+        this.host.stopHost(nodeToStop);
+        this.host.waitForNodeUnavailable(ServiceUriPaths.DEFAULT_NODE_GROUP, this.host.getInProcessHostMap().values(), nodeToStop);
+        this.host.waitForNodeGroupConvergence();
+        // replication quorum met
+        this.host.doExampleServiceUpdateAndQueryByVersion(this.host.getPeerHostUri(),
+                this.serviceCount);
+        // stop one node
+        nodeToStop = this.host.getPeerHost();
+        this.host.stopHost(nodeToStop);
+        this.host.waitForNodeUnavailable(ServiceUriPaths.DEFAULT_NODE_GROUP, this.host.getInProcessHostMap().values(), nodeToStop);
+        this.host.waitForNodeGroupConvergence();
+        ExampleServiceState state = new ExampleServiceState();
+        state.counter = 123L;
+        state.name = state.documentSelfLink = UUID.randomUUID().toString();
+        Operation post = Operation.createPost(UriUtils.buildUri(this.host.getPeerHost(), this.replicationTargetFactoryLink)).setBody(state);
+        TestRequestSender.FailureResponse rsp = this.host.getTestRequestSender().sendAndWaitFailure(post);
+        assertTrue(rsp.failure.getMessage().contains(String.format("Fail: 2, quorum: %d, failure threshold: %d",
+                this.replicationQuorum, this.nodeCount - this.replicationQuorum + 1)));
+        this.nodeCount = originalNodeCount;
+        this.replicationQuorum = originalReplicationQuorum;
+    }
+
     private void doReplication() throws Throwable {
         this.isPeerSynchronizationEnabled = false;
         CommandLineArgumentParser.parseFromProperties(this);
@@ -2544,6 +2583,7 @@ public class TestNodeGroupService {
                 // the limited replication selector to use the minimum between majority of replication
                 // factor, versus node group membership quorum
                 this.host.setNodeGroupQuorum(this.nodeCount);
+                this.host.setNodeSelectorReplicationQuorum(this.replicationNodeSelector, this.replicationQuorum);
                 // since we have disabled peer synch, trigger it explicitly so factories become available
                 this.host.scheduleSynchronizationIfAutoSyncDisabled(this.replicationNodeSelector);
 

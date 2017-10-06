@@ -1,5 +1,8 @@
 # CHANGELOG
 
+* Provide configurable replication quorum which decide the success
+  and failure threshold of a service update
+
 ## 1.6.0-SNAPSHOT
 
 * Deprecated ServiceOption.ON_DEMAND_LOAD. While the option still exists
