@@ -118,6 +118,7 @@ import com.vmware.xenon.services.common.NodeGroupService.NodeGroupConfig;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeGroupService.UpdateQuorumRequest;
 import com.vmware.xenon.services.common.NodeGroupUtils;
+import com.vmware.xenon.services.common.NodeSelectorReplicationService;
 import com.vmware.xenon.services.common.NodeState;
 import com.vmware.xenon.services.common.NodeState.NodeOption;
 import com.vmware.xenon.services.common.NodeState.NodeStatus;
@@ -2740,6 +2741,16 @@ public class VerificationHost extends ExampleServiceHost {
             }
             return true;
         });
+    }
+
+    public void setNodeSelectorReplicationQuorum(String nodeSelectorPath, int quorum) throws Throwable {
+        List<Operation> ops = new ArrayList<>();
+        for (ServiceHost host : this.getInProcessHostMap().values()) {
+            NodeSelectorReplicationService.ReplicationQuorumUpdateRequest body = new NodeSelectorReplicationService.ReplicationQuorumUpdateRequest();
+            body.replicationQuorum = quorum;
+            ops.add(Operation.createPost(UriUtils.buildUri(host, nodeSelectorPath + "/" + SERVICE_URI_SUFFIX_REPLICATION)).setBody(body));
+        }
+        this.sender.sendAndWait(ops);
     }
 
     public <T extends ServiceDocument> void validateDocumentPartitioning(

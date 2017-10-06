@@ -489,7 +489,10 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         if (this.cachedGroupState == null) {
             op.fail(null);
         }
-        this.replicationUtility.replicateUpdate(this.cachedGroupState, op, body, response);
+        // DELETE actions propagate and committed by all members regardless of replication quorum
+        int replicationQuorum = op.getAction() == Action.DELETE ?
+                0 : this.cachedState.replicationQuorum;
+        this.replicationUtility.replicateUpdate(this.cachedGroupState, op, body, response, replicationQuorum);
     }
 
     /**
@@ -739,6 +742,25 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 return;
             }
         }
+    }
+
+    @Override
+    public void updateReplicationQuorum(Operation op, int replicationQuorum) {
+        if (!(replicationQuorum > 0)) {
+            op.fail(new IllegalArgumentException("positive replication quorum required"));
+            return;
+        }
+        int replicationFactor = this.cachedState.replicationFactor != null ?
+                this.cachedState.replicationFactor.intValue() : this.cachedGroupState.nodes.size();
+        if (replicationQuorum > replicationFactor) {
+            String errorMsg = String.format(
+                    "replicationQuorum %d > replicationFactor %d", replicationQuorum, replicationFactor);
+            op.fail(new IllegalArgumentException(errorMsg));
+            return;
+        }
+        logInfo("replicationQuorum update from %d to %d", this.cachedState.replicationQuorum, replicationQuorum);
+        this.cachedState.replicationQuorum = replicationQuorum;
+        op.complete();
     }
 
     @Override
