@@ -15,6 +15,9 @@
    Revamped JSON output methods to use JsonOptions enum instead of various boolean flags.
    Deprecated JSON output methods that use boolean flags in favor of the new design.
 
+ * Provide configurable replication quorum which decides the success and failure threshold.
+   Api: PATCH PATH/TO/NODESELECTOR/replication -d '{replicationQuorum:REPLICATIONQUORUM}'
+
 ## 1.5.7
 
 * Fix auth check for non-persisted stateful service on document-index GET.
