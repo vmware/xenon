@@ -21,6 +21,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import com.vmware.xenon.common.FNVHash;
 import com.vmware.xenon.common.NodeSelectorService;
@@ -489,7 +490,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         if (this.cachedGroupState == null) {
             op.fail(null);
         }
-        this.replicationUtility.replicateUpdate(this.cachedGroupState, op, body, response);
+        this.replicationUtility.replicateUpdate(this.cachedGroupState, op, body, response, this.cachedState.replicationQuorum);
     }
 
     /**
@@ -739,6 +740,21 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 return;
             }
         }
+    }
+
+    @Override
+    public void updateReplicationQuorum(Operation op, int replicationQuorum) {
+        int replicationFactor = this.cachedState.replicationFactor != null ?
+                this.cachedState.replicationFactor.intValue() : this.cachedGroupState.nodes.size();
+        if (replicationQuorum > replicationFactor) {
+            String errorMsg = String.format(
+                    "replicationQuorum %d > replicationFactor %d", replicationQuorum, replicationFactor);
+            op.fail(new IllegalArgumentException(errorMsg));
+            return;
+        }
+        logInfo("replicationQuorum update from %d to %d", this.cachedState.replicationQuorum, replicationQuorum);
+        this.cachedState.replicationQuorum = replicationQuorum;
+        op.complete();
     }
 
     @Override

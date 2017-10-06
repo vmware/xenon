@@ -228,6 +228,7 @@ public class TestNodeGroupService {
     private String replicationTargetFactoryLink = ExampleService.FACTORY_LINK;
     private String replicationNodeSelector = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
     private long replicationFactor;
+    private int replicationQuorum = 1;
 
     private Map<String, URI> replicationTargetLinks;
     private Map<String, URI> replicationTargetLinksOriginal;
@@ -2494,12 +2495,14 @@ public class TestNodeGroupService {
 
     @Test
     public void replication() throws Throwable {
+        this.replicationQuorum = (this.nodeCount / 2) + 1;
         this.replicationTargetFactoryLink = ExampleService.FACTORY_LINK;
         doReplication();
     }
 
     @Test
     public void replicationSsl() throws Throwable {
+        this.replicationQuorum = (this.nodeCount / 2) + 1;
         this.replicationUriScheme = ServiceHost.HttpScheme.HTTPS_ONLY;
         this.replicationTargetFactoryLink = ExampleService.FACTORY_LINK;
         doReplication();
@@ -2508,6 +2511,7 @@ public class TestNodeGroupService {
     @Test
     public void replication1x() throws Throwable {
         this.replicationFactor = 1L;
+        this.replicationQuorum = 1;
         this.replicationNodeSelector = ServiceUriPaths.DEFAULT_1X_NODE_SELECTOR;
         this.replicationTargetFactoryLink = Replication1xExampleFactoryService.SELF_LINK;
         doReplication();
@@ -2516,6 +2520,7 @@ public class TestNodeGroupService {
     @Test
     public void replication3x() throws Throwable {
         this.replicationFactor = 3L;
+        this.replicationQuorum = 2;
         this.replicationNodeSelector = ServiceUriPaths.DEFAULT_3X_NODE_SELECTOR;
         this.replicationTargetFactoryLink = Replication3xExampleFactoryService.SELF_LINK;
         this.nodeCount = Math.max(5, this.nodeCount);
@@ -2544,6 +2549,7 @@ public class TestNodeGroupService {
                 // the limited replication selector to use the minimum between majority of replication
                 // factor, versus node group membership quorum
                 this.host.setNodeGroupQuorum(this.nodeCount);
+                this.host.setNodeSelectorReplicationQuorum(this.replicationNodeSelector, this.replicationQuorum);
                 // since we have disabled peer synch, trigger it explicitly so factories become available
                 this.host.scheduleSynchronizationIfAutoSyncDisabled(this.replicationNodeSelector);
 
