@@ -1059,8 +1059,8 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
                 return super.getOperationProcessingChain();
             }
 
-            OperationProcessingChain opProcessingChain = new OperationProcessingChain(this);
-            opProcessingChain.add(new TransactionalRequestFilter(this));
+            OperationProcessingChain opProcessingChain = OperationProcessingChain.create(
+                    new TransactionalRequestFilter(this));
             setOperationProcessingChain(opProcessingChain);
             return opProcessingChain;
         }
@@ -1109,9 +1109,9 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
                             BankAccountServiceRequest.class, "kind",
                             BankAccountServiceRequest.Kind.WITHDRAW),
                     this::handlePatchForWithdraw, "Withdraw");
-            OperationProcessingChain opProcessingChain = new OperationProcessingChain(this);
-            opProcessingChain.add(new TransactionalRequestFilter(this));
-            opProcessingChain.add(myRouter);
+            OperationProcessingChain opProcessingChain = OperationProcessingChain.create(
+                    new TransactionalRequestFilter(this),
+                    myRouter);
             setOperationProcessingChain(opProcessingChain);
             return opProcessingChain;
         }
@@ -1185,8 +1185,8 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
                 return super.getOperationProcessingChain();
             }
 
-            OperationProcessingChain opProcessingChain = new OperationProcessingChain(this);
-            opProcessingChain.add(new TransactionalRequestFilter(this));
+            OperationProcessingChain opProcessingChain = OperationProcessingChain.create(
+                    new TransactionalRequestFilter(this));
             setOperationProcessingChain(opProcessingChain);
             return opProcessingChain;
         }
@@ -1213,8 +1213,8 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
                 return super.getOperationProcessingChain();
             }
 
-            OperationProcessingChain opProcessingChain = new OperationProcessingChain(this);
-            opProcessingChain.add(new TransactionalRequestFilter(this));
+            OperationProcessingChain opProcessingChain = OperationProcessingChain.create(
+                    new TransactionalRequestFilter(this));
             setOperationProcessingChain(opProcessingChain);
             return opProcessingChain;
         }

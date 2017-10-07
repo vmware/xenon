@@ -23,12 +23,14 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Predicate;
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.OperationJoin;
 import com.vmware.xenon.common.OperationProcessingChain;
+import com.vmware.xenon.common.OperationProcessingChain.Filter;
+import com.vmware.xenon.common.OperationProcessingChain.FilterReturnCode;
+import com.vmware.xenon.common.OperationProcessingChain.OperationProcessingContext;
 import com.vmware.xenon.common.RequestRouter;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
@@ -157,7 +159,7 @@ public class SimpleTransactionService extends StatefulService {
 
     static long DEFAULT_DURATION_MICROS = TimeUnit.MINUTES.toMicros(5);
 
-    public static class TransactionalRequestFilter implements Predicate<Operation> {
+    public static class TransactionalRequestFilter implements Filter {
         private Service service;
         private long transactionExpirationTimeMicros;
 
@@ -166,28 +168,27 @@ public class SimpleTransactionService extends StatefulService {
         }
 
         @Override
-        public boolean test(Operation request) {
+        public FilterReturnCode processRequest(Operation request, OperationProcessingContext context) {
             ClearTransactionRequest clearTransactionRequest = getIfClearTransactionRequest(request);
 
             // TODO: generalize transaction requests protocol through headers
             if (clearTransactionRequest != null) {
-                handleClearTransaction(request, this.service.getState(request),
-                        clearTransactionRequest);
-                return false;
+                FilterReturnCode rc = handleClearTransaction(request, this.service.getState(request),
+                        clearTransactionRequest, context);
+                return rc;
             }
 
             if (validateTransactionConflictsAndMarkState(request, this.service.getState(request))) {
                 request.fail(new IllegalStateException("transactional conflict"));
-                return false;
+                return FilterReturnCode.FAILED_STOP_PROCESSING;
             }
 
             if (request.getTransactionId() != null) {
-                handleEnrollInTransaction(request);
-                // we're not dropping the request, we will resume it on registration completion
-                return false;
+                handleEnrollInTransaction(request, context);
+                return FilterReturnCode.SUSPEND_PROCESSING;
             }
 
-            return true;
+            return FilterReturnCode.CONTINUE_PROCESSING;
         }
 
         private ClearTransactionRequest getIfClearTransactionRequest(
@@ -284,12 +285,13 @@ public class SimpleTransactionService extends StatefulService {
             }
         }
 
-        private void handleClearTransaction(Operation request,
+        private FilterReturnCode handleClearTransaction(Operation request,
                 ServiceDocument currentState,
-                ClearTransactionRequest clearTransactionRequest) {
+                ClearTransactionRequest clearTransactionRequest,
+                OperationProcessingContext context) {
             if (currentState == null) {
                 request.complete();
-                return;
+                return FilterReturnCode.SUCCESS_STOP_PROCESSING;
             }
 
             if (!request.getTransactionId().equals(currentState.documentTransactionId)) {
@@ -301,7 +303,7 @@ public class SimpleTransactionService extends StatefulService {
                     this.service.getHost().log(Level.WARNING, warning);
                 }
                 request.complete();
-                return;
+                return FilterReturnCode.SUCCESS_STOP_PROCESSING;
             }
 
             if (clearTransactionRequest.transactionOutcome == TransactionOutcome.ABORT
@@ -319,6 +321,7 @@ public class SimpleTransactionService extends StatefulService {
                 Operation previousStateGet = Operation.createGet(previousStateQueryUri)
                         .setCompletion((o, e) -> {
                             if (e != null) {
+                                context.getOpProcessingChain().resumedRequestFailed(request, context, e);
                                 request.fail(e);
                                 return;
                             }
@@ -330,17 +333,19 @@ public class SimpleTransactionService extends StatefulService {
                                     clearTransactionRequest.originalVersion);
                             previousState.documentTransactionId = null;
                             this.service.setState(request, previousState);
+                            context.getOpProcessingChain().resumedRequestCompleted(request, context);
                             request.complete();
                         });
                 this.service.sendRequest(previousStateGet);
-                return;
+                return FilterReturnCode.SUSPEND_PROCESSING;
             }
 
             currentState.documentTransactionId = null;
             request.complete();
+            return FilterReturnCode.SUCCESS_STOP_PROCESSING;
         }
 
-        private void handleEnrollInTransaction(Operation request) {
+        private void handleEnrollInTransaction(Operation request, OperationProcessingContext context) {
             String serviceSelfLink = this.service.getSelfLink();
             if (Action.POST == request.getAction()) {
                 ServiceDocument body = request.getBody(this.service.getStateType());
@@ -368,13 +373,13 @@ public class SimpleTransactionService extends StatefulService {
                     .setCompletion(
                             (o, e) -> {
                                 if (e != null) {
+                                    context.getOpProcessingChain().resumedRequestFailed(request, context, e);
                                     request.fail(e);
                                     return;
                                 }
                                 EnrollResponse enrollRespone = o.getBody(EnrollResponse.class);
                                 this.transactionExpirationTimeMicros = enrollRespone.transactionExpirationTimeMicros;
-                                this.service.getOperationProcessingChain()
-                                        .resumeProcessingRequest(request, this);
+                                context.getOpProcessingChain().resumeProcessingRequest(request, context);
                             });
             this.service.sendRequest(enrollRequest);
         }
@@ -437,8 +442,7 @@ public class SimpleTransactionService extends StatefulService {
                         EndTransactionRequest.class, "kind",
                         EndTransactionRequest.KIND),
                 this::handlePatchForEndTransaction, "Commit or abort transaction");
-        OperationProcessingChain opProcessingChain = new OperationProcessingChain(this);
-        opProcessingChain.add(myRouter);
+        OperationProcessingChain opProcessingChain = OperationProcessingChain.create(myRouter);
         setOperationProcessingChain(opProcessingChain);
         return opProcessingChain;
     }

@@ -16,11 +16,7 @@ package com.vmware.xenon.services.common;
 import static java.util.stream.Collectors.toList;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
-
-import static com.vmware.xenon.common.test.VerificationHost.buildDefaultServiceHostArguments;
 
 import java.io.File;
 import java.io.IOException;
@@ -28,10 +24,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
-import org.apache.lucene.index.IndexWriter;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -46,7 +39,6 @@ import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
-import com.vmware.xenon.services.common.LuceneDocumentIndexBackupService.LuceneDocumentIndexBackupStrategy;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService.BackupResponse;
 import com.vmware.xenon.services.common.ServiceHostManagementService.BackupRequest;
 import com.vmware.xenon.services.common.ServiceHostManagementService.BackupType;
@@ -389,63 +381,5 @@ public class TestLuceneDocumentIndexBackupService {
         assertEquals(Long.valueOf(allData.size()), result.documentCount);
     }
 
-    @Test
-    public void backupStrategy() throws Throwable {
-
-        // value holders
-        AtomicBoolean validateCalled = new AtomicBoolean(false);
-        AtomicBoolean performCalled = new AtomicBoolean(false);
-        AtomicReference<BackupRequest> backupRequestAtValidateRequest = new AtomicReference<>();
-        AtomicReference<Operation> originalOpAtPerform = new AtomicReference<>();
-        AtomicReference<BackupRequest> backupRequestAtPerform = new AtomicReference<>();
-        AtomicReference<LuceneDocumentIndexService> indexServiceAtPerform = new AtomicReference<>();
-        AtomicReference<String> indexDirectoryAtPerform = new AtomicReference<>();
-        AtomicReference<IndexWriter> writerAtPerform = new AtomicReference<>();
-
-        LuceneDocumentIndexBackupStrategy strategy = new LuceneDocumentIndexBackupStrategy() {
-            @Override
-            public Exception validateRequest(BackupRequest backupRequest) {
-                validateCalled.set(true);
-                backupRequestAtValidateRequest.set(backupRequest);
-                return null;
-            }
-
-            @Override
-            public void perform(Operation originalOp, BackupRequest backupRequest, LuceneDocumentIndexService indexService,
-                    String indexDirectory, IndexWriter writer) throws IOException {
-                performCalled.set(true);
-                originalOpAtPerform.set(originalOp);
-                backupRequestAtPerform.set(backupRequest);
-                indexServiceAtPerform.set(indexService);
-                indexDirectoryAtPerform.set(indexDirectory);
-                writerAtPerform.set(writer);
-                originalOp.complete();
-            }
-        };
-
-        this.host.tearDown();
-        this.host = new VerificationHost() {
-            @Override
-            protected LuceneDocumentIndexBackupStrategy getLuceneBackupStrategy() {
-                return strategy;
-            }
-        };
-        VerificationHost.initialize(this.host, buildDefaultServiceHostArguments(0));
-        this.host.start();
-
-        BackupRequest b = new BackupRequest();
-        b.kind = BackupRequest.KIND;
-        b.backupType = BackupType.DIRECTORY;
-
-        Operation backupOp = Operation.createPatch(this.host, ServiceUriPaths.CORE_DOCUMENT_INDEX_BACKUP).setBody(b);
-        this.host.getTestRequestSender().sendAndWait(backupOp, BackupResponse.class);
-
-        assertTrue("validate method should be called", validateCalled.get());
-        assertTrue("perform method should be called", performCalled.get());
-        assertNotNull("passed index service should not be null", indexServiceAtPerform.get());
-        assertEquals(indexServiceAtPerform.get().indexDirectory, indexDirectoryAtPerform.get());
-        assertEquals(indexServiceAtPerform.get().writer, writerAtPerform.get());
-        assertSame(backupRequestAtValidateRequest.get(), backupRequestAtPerform.get());
-    }
 
 }

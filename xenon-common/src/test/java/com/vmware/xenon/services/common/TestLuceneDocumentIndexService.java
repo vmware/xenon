@@ -787,6 +787,8 @@ public class TestLuceneDocumentIndexService {
 
         // verify that a new index searcher is picked up when DO_NOT_REFRESH is specified
         // and the query is issued one maintenance interval after the index has been updated
+        LuceneDocumentIndexService.setSearcherRefreshIntervalMicros(
+                TimeUnit.HOURS.toMicros(1));
         this.host.doFactoryChildServiceStart(null, this.serviceCount, ExampleServiceState.class,
                 (o) -> {
                     ExampleServiceState b = new ExampleServiceState();
@@ -820,7 +822,7 @@ public class TestLuceneDocumentIndexService {
             }
             return false;
         });
-        LuceneDocumentIndexService.setSearcherRefreshIntervalMicros(null);
+        LuceneDocumentIndexService.setSearcherRefreshIntervalMicros(0);
         // Create a new direct paginated searcher with a long expiration and the SINGLE_USE option,
         // traverse all of the results pages, and verify that the pages and the index searcher were
         // closed.

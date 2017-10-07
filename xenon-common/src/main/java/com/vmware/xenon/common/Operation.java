@@ -893,13 +893,9 @@ public class Operation implements Cloneable {
     /**
      * Sets (overwrites) the authorization context of this operation.
      *
-     * The visibility of this method is intentionally package-local. It is intended to
-     * only be called by functions in this package, so that we can apply white listing
-     * to limit the set of services that is able to set it.
-     *
-     * @param ctx the authorization context to set.
+     * Infrastructure use only.
      */
-    Operation setAuthorizationContext(AuthorizationContext ctx) {
+    public Operation setAuthorizationContext(AuthorizationContext ctx) {
         this.authorizationCtx = ctx;
         return this;
     }

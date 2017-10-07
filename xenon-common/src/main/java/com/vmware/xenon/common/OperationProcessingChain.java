@@ -15,9 +15,9 @@ package com.vmware.xenon.common;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
-
-import com.vmware.xenon.common.Service.OperationProcessingStage;
+import java.util.logging.Level;
 
 /**
  * A chain of filters, each of them is a {@link Predicate<Operation>}. When {@link #processRequest} is called
@@ -26,31 +26,131 @@ import com.vmware.xenon.common.Service.OperationProcessingStage;
  * <code>false</code> to stop processing.
  */
 public class OperationProcessingChain {
-    private Service service;
-    private List<Predicate<Operation>> filters;
 
-    public OperationProcessingChain(Service service) {
-        this.service = service;
-        this.filters = new ArrayList<>();
+    public enum FilterReturnCode {
+        /**
+         * The filter has done processing the operation. The operation should
+         * continue to the next filter in chain.
+         */
+        CONTINUE_PROCESSING,
+
+        /**
+         * The filter has failed the operation. The operation should not
+         * be passed to the next filter in chain.
+         */
+        FAILED_STOP_PROCESSING,
+
+        /*
+         * The filter has marked the operation as successfully completed. The
+         * operation should not be passed to the next filter in chain.
+         */
+        SUCCESS_STOP_PROCESSING,
+
+        /**
+         * The filter intends to continue processing the operation
+         * asynchronously. The operation should not be passed to the next
+         * filter in chain.
+         */
+        SUSPEND_PROCESSING
     }
 
-    public OperationProcessingChain add(Predicate<Operation> filter) {
-        this.filters.add(filter);
+    public static class OperationProcessingContext {
+        private ServiceHost host;
+        private OperationProcessingChain opProcessingChain;
+        private int currentFilterPosition;
+        private Consumer<Operation> operationConsumer;
+
+        private OperationProcessingContext(ServiceHost host, OperationProcessingChain opProcessingChain) {
+            this.host = host;
+            this.opProcessingChain = opProcessingChain;
+            this.currentFilterPosition = -1;
+        }
+
+        public ServiceHost getHost() {
+            return this.host;
+        }
+
+        public OperationProcessingChain getOpProcessingChain() {
+            return this.opProcessingChain;
+        }
+
+        public int getCurrentFilterPosition() {
+            return this.currentFilterPosition;
+        }
+    }
+
+    public interface Filter {
+        FilterReturnCode processRequest(Operation op, OperationProcessingContext context);
+
+        default void init() {}
+
+        default void close() {}
+    }
+
+    public OperationProcessingContext createContext(ServiceHost host) {
+        return new OperationProcessingContext(host, this);
+    }
+
+    public OperationProcessingChain setLogLevel(Level logLevel) {
+        this.logLevel = logLevel;
         return this;
     }
 
-    public List<Predicate<Operation>> getFilters() {
-        return this.filters;
+    public OperationProcessingChain toggleLogging(boolean loggingEnabled) {
+        this.loggingEnabled = loggingEnabled;
+        return this;
     }
 
-    public boolean processRequest(Operation op) {
-        for (Predicate<Operation> filter : this.filters) {
-            if (!filter.test(op)) {
-                return false;
-            }
+    public OperationProcessingChain setLogFilter(Predicate<Operation> logFilter) {
+        this.logFilter = logFilter;
+        return this;
+    }
+
+    private Level logLevel;
+    private boolean loggingEnabled;
+    private Predicate<Operation> logFilter;
+
+    private List<Filter> filters;
+
+    private OperationProcessingChain() {
+        this.filters = new ArrayList<>();
+    }
+
+    public static OperationProcessingChain create(Filter... filters) {
+        OperationProcessingChain opProcessingChain = new OperationProcessingChain();
+        for (Filter filter : filters) {
+            filter.init();
+            opProcessingChain.filters.add(filter);
         }
 
-        return true;
+        return opProcessingChain;
+    }
+
+    public void close() {
+        for (Filter filter : this.filters) {
+            filter.close();
+        }
+        this.filters.clear();
+    }
+
+
+    /**
+     * Processes an operation by passing it through the chain of filters.
+     * After the filters in the chain have processed the operation, the provided
+     * consumerOperation's accept() method is invoked if and when the caller
+     * should continue processing the operation.
+     */
+    public void processRequest(Operation op, OperationProcessingContext context,
+            Consumer<Operation> operationConsumer) {
+        // sticking the operation consumer in the context, so that we can find it
+        // in case a filter decides to suspend processing of the operation and later
+        // resume it. This detail is abstracted from the caller of this public method.
+        context.operationConsumer = operationConsumer;
+
+        FilterReturnCode rc = processRequest(op, context, 0);
+        if (rc == FilterReturnCode.CONTINUE_PROCESSING) {
+            operationConsumer.accept(op);
+        }
     }
 
     /**
@@ -59,25 +159,109 @@ public class OperationProcessingChain {
      * and if the chain end is reached, i.e. the request has not been dropped by any
      * filter, the request is passed to the service for continued processing.
      */
-    public void resumeProcessingRequest(Operation op, Predicate<Operation> invokingFilter) {
-        int invokingFilterPosition = this.filters.indexOf(invokingFilter);
-        if (invokingFilterPosition < 0) {
-            return;
+    public void resumeProcessingRequest(Operation op, OperationProcessingContext context) {
+        if (shouldLog(op)) {
+            log(op, context, "operation processing resumed", this.logLevel);
         }
 
-        for (int i = invokingFilterPosition + 1; i < this.filters.size(); i++) {
-            Predicate<Operation> filter = this.filters.get(i);
-            if (!filter.test(op)) {
-                return;
+        FilterReturnCode rc = FilterReturnCode.CONTINUE_PROCESSING;
+
+        if (context.currentFilterPosition < this.filters.size() - 1) {
+            rc = processRequest(op, context, context.currentFilterPosition + 1);
+        }
+
+        if (rc == FilterReturnCode.CONTINUE_PROCESSING) {
+            context.operationConsumer.accept(op);
+        }
+    }
+
+    /**
+     * Enables a filter that has previously suspended the operation to notify
+     * the processing chain it has resumed processing and completed the operation.
+     */
+    public void resumedRequestCompleted(Operation op, OperationProcessingContext context) {
+        if (shouldLog(op)) {
+            log(op, context, "Operation completed", this.logLevel);
+        }
+    }
+
+    /**
+     * Enables a filter that has previously suspended the operation to notify
+     * the processing chain it has resumed processing and failed the operation.
+     */
+    public void resumedRequestFailed(Operation op, OperationProcessingContext context, Throwable e) {
+        if (shouldLog(op)) {
+            log(op, context, "Operation failed: " + e.getMessage(), this.logLevel);
+        }
+    }
+
+    public Filter findFilter(Predicate<Filter> tester) {
+        return this.filters.stream().filter(tester).findFirst().orElse(null);
+    }
+
+    private FilterReturnCode processRequest(Operation op, OperationProcessingContext context, int startIndex) {
+        boolean shouldLog = shouldLog(op);
+
+        for (int i = startIndex; i < this.filters.size(); i++) {
+            Filter filter = this.filters.get(i);
+            context.currentFilterPosition = i;
+            FilterReturnCode rc = filter.processRequest(op, context);
+
+            String msg = shouldLog ? String.format("returned %s", rc) : null;
+
+            switch (rc) {
+            case CONTINUE_PROCESSING:
+                if (shouldLog) {
+                    log(op, context, msg, this.logLevel);
+                }
+                continue;
+
+            case SUCCESS_STOP_PROCESSING:
+                if (shouldLog) {
+                    msg += ". Operation completed - stopping processing";
+                    log(op, context, msg, this.logLevel);
+                }
+                return rc;
+
+            case FAILED_STOP_PROCESSING:
+                if (shouldLog) {
+                    msg += ". Operation failed - stopping processing";
+                    log(op, context, msg, this.logLevel);
+                }
+                return rc;
+
+            case SUSPEND_PROCESSING:
+                if (shouldLog) {
+                    msg += ". Operation will be resumed asynchronously - suspend processing";
+                    log(op, context, msg, this.logLevel);
+                }
+                return rc;
+
+            default:
+                msg += ". Unexpected returned code - failing operation and stopping processing";
+                log(op, context, msg, Level.SEVERE);
             }
         }
 
-        this.service.getHost().run(() -> {
-            this.service
-                    .handleRequest(
-                            op,
-                            OperationProcessingStage.EXECUTING_SERVICE_HANDLER);
+        return FilterReturnCode.CONTINUE_PROCESSING;
+    }
 
-        });
+    private boolean shouldLog(Operation op) {
+        boolean shouldLog = this.loggingEnabled;
+        if (this.logFilter != null) {
+            shouldLog &= this.logFilter.test(op);
+        }
+
+        return shouldLog;
+    }
+
+    private void log(Operation op, OperationProcessingContext context, String msg, Level logLevel) {
+        String hostId = context.host != null ? context.host.getId() : "";
+        Filter filter = this.filters.get(context.currentFilterPosition);
+        String filterName = filter != null ? filter.getClass().getSimpleName() : "";
+        String logMsg = String.format("(host: %s, operation %d %s) filter %s: %s",
+                hostId, op.getId(), op.getAction(),  filterName, msg);
+        Level level = logLevel != null ? logLevel : Level.INFO;
+        Utils.log(getClass(), op.getUri().getPath(), level, logMsg);
     }
 }

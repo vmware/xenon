@@ -20,6 +20,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.vmware.xenon.common.Operation.AuthorizationContext;
+import com.vmware.xenon.common.OperationProcessingChain.OperationProcessingContext;
 import com.vmware.xenon.common.RequestRouter.Route.RouteDocumentation;
 import com.vmware.xenon.common.RequestRouter.Route.SupportLevel;
 import com.vmware.xenon.common.ServiceHost.ServiceNotFoundException;
@@ -35,6 +36,7 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
 public class StatelessService implements Service {
 
     private long maintenanceIntervalMicros;
+    private Long cacheClearDelayMicros;
     private OperationProcessingChain opProcessingChain;
     private ProcessingStage stage = ProcessingStage.CREATED;
     private ServiceHost host;
@@ -108,7 +110,11 @@ public class StatelessService implements Service {
         try {
             if (opProcessingStage == OperationProcessingStage.PROCESSING_FILTERS) {
                 OperationProcessingChain opProcessingChain = getOperationProcessingChain();
-                if (opProcessingChain != null && !opProcessingChain.processRequest(op)) {
+                if (opProcessingChain != null) {
+                    OperationProcessingContext context = opProcessingChain.createContext(getHost());
+                    opProcessingChain.processRequest(op, context, o -> {
+                        handleRequest(op, OperationProcessingStage.EXECUTING_SERVICE_HANDLER);
+                    });
                     return;
                 }
                 opProcessingStage = OperationProcessingStage.EXECUTING_SERVICE_HANDLER;
@@ -624,8 +630,19 @@ public class StatelessService implements Service {
     }
 
     @Override
+    public void setCacheClearDelayMicros(long micros) {
+        this.cacheClearDelayMicros = micros;
+    }
+
+    @Override
     public long getMaintenanceIntervalMicros() {
         return this.maintenanceIntervalMicros;
+    }
+
+    @Override
+    public long getCacheClearDelayMicros() {
+        return this.cacheClearDelayMicros != null ? this.cacheClearDelayMicros :
+            this.host.getServiceCacheClearDelayMicros();
     }
 
     @Override

@@ -3872,11 +3872,13 @@ public class TestQueryTaskService {
         assertNotNull(initialRefreshCount);
 
         // direct query, without searcher refresh
+        LuceneDocumentIndexService.setSearcherRefreshIntervalMicros(TimeUnit.HOURS.toMicros(1));
         task = QueryTask.create(new QuerySpecification()).setDirect(true);
         task.querySpec.options.add(QueryOption.DO_NOT_REFRESH);
         pageServiceURIs = new ArrayList<>();
         targetServiceURIs = new ArrayList<>();
         doPaginatedQueryTest(task, 0, sc, resultLimit, pageServiceURIs, targetServiceURIs);
+        LuceneDocumentIndexService.setSearcherRefreshIntervalMicros(0);
 
         Long finalRefreshCount = getPaginatedSearcherRefreshCount();
         assertNotNull(finalRefreshCount);
@@ -4240,7 +4242,8 @@ public class TestQueryTaskService {
         double currentStat;
         double newStat;
         int counter = 0;
-
+        LuceneDocumentIndexService.setSearcherRefreshIntervalMicros(
+                TimeUnit.HOURS.toMicros(1));
         for (int i = 0; i < iter; i++) {
             newState.textValue = "current";
             newState = putSimpleStateOnQueryTargetServices(services, newState);
@@ -4282,7 +4285,7 @@ public class TestQueryTaskService {
                 counter++;
             }
         }
-
+        LuceneDocumentIndexService.setSearcherRefreshIntervalMicros(0);
         assertTrue(String.format("Could not re-use index searcher in %d attempts", iter),
                 counter > 0);
     }

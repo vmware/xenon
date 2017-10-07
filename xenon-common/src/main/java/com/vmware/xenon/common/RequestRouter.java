@@ -28,6 +28,9 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
+import com.vmware.xenon.common.OperationProcessingChain.Filter;
+import com.vmware.xenon.common.OperationProcessingChain.FilterReturnCode;
+import com.vmware.xenon.common.OperationProcessingChain.OperationProcessingContext;
 import com.vmware.xenon.common.Service.Action;
 
 /**
@@ -36,7 +39,7 @@ import com.vmware.xenon.common.Service.Action;
  * The primary benefit of using a RequestRouter to map incoming requests to handlers is that the API is being modeled in a way that can later be parsed, for example
  * API documentation can be auto-generated. In addition, it encourages separating logic of each logical operation into its own method/code block.
  */
-public class RequestRouter implements Predicate<Operation> {
+public class RequestRouter implements Filter {
 
     public static class Parameter {
         public String name;
@@ -357,19 +360,20 @@ public class RequestRouter implements Predicate<Operation> {
         this.routes.put(action, actionRoutes);
     }
 
-    public boolean test(Operation op) {
+    @Override
+    public FilterReturnCode processRequest(Operation op, OperationProcessingContext context) {
         List<Route> actionRoutes = this.routes.get(op.getAction());
         if (actionRoutes != null) {
             for (Route route : actionRoutes) {
                 if (route.matcher.test(op)) {
                     route.handler.accept(op);
-                    return false;
+                    return FilterReturnCode.SUCCESS_STOP_PROCESSING;
                 }
             }
         }
 
         // no match found - processing of the request should continue
-        return true;
+        return FilterReturnCode.CONTINUE_PROCESSING;
     }
 
     public Map<Action, List<Route>> getRoutes() {
@@ -381,18 +385,9 @@ public class RequestRouter implements Predicate<Operation> {
             return null;
         }
 
-        List<Predicate<Operation>> filters = opProcessingChain.getFilters();
-        if (filters.isEmpty()) {
-            return null;
-        }
+        RequestRouter requestRouter = (RequestRouter) opProcessingChain.findFilter(
+                filter -> filter instanceof RequestRouter);
 
-        // we are assuming as convention that if a RequestRouter exists in the chain, it is
-        // the last element as it invokes the service handler by itself and then drops the request
-        Predicate<Operation> lastElement = filters.get(filters.size() - 1);
-        if (lastElement instanceof RequestRouter) {
-            return (RequestRouter) lastElement;
-        }
-
-        return null;
+        return requestRouter;
     }
 }

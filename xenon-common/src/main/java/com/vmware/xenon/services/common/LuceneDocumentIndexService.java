@@ -168,7 +168,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private static int queryPageResultLimit = DEFAULT_QUERY_PAGE_RESULT_LIMIT;
 
-    private static Long searcherRefreshIntervalMicros = null;
+    private static long searcherRefreshIntervalMicros = 0;
 
     private static int metadataUpdateMaxQueueDepth = DEFAULT_METADATA_UPDATE_MAX_QUEUE_DEPTH;
 
@@ -220,11 +220,11 @@ public class LuceneDocumentIndexService extends StatelessService {
         return versionRetentionServiceThreshold;
     }
 
-    public static Long getSearcherRefreshIntervalMicros() {
+    public static long getSearcherRefreshIntervalMicros() {
         return searcherRefreshIntervalMicros;
     }
 
-    public static void setSearcherRefreshIntervalMicros(Long interval) {
+    public static void setSearcherRefreshIntervalMicros(long interval) {
         searcherRefreshIntervalMicros = interval;
     }
 
@@ -3065,8 +3065,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 // we need a new searcher check to see if enough time has elapsed
                 // since the index was updated
                 if (needNewSearcher) {
-                    if (searcherRefreshIntervalMicros == null ||
-                            (indexUpdateTime + searcherRefreshIntervalMicros)
+                    if ((indexUpdateTime + searcherRefreshIntervalMicros)
                             >= Utils.getSystemNowMicrosUtc()) {
                         return false;
                     }

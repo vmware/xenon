@@ -29,6 +29,7 @@ import java.util.logging.Logger;
 
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.InstrumentationContext;
+import com.vmware.xenon.common.OperationProcessingChain.OperationProcessingContext;
 import com.vmware.xenon.common.RequestRouter.Route.RouteDocumentation;
 import com.vmware.xenon.common.RequestRouter.Route.SupportLevel;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
@@ -45,6 +46,7 @@ public class StatefulService implements Service {
 
     private static class AdditionalContext {
         public long maintenanceInterval;
+        private Long cacheClearDelayMicros;
         public transient OperationProcessingChain opProcessingChain;
         public String nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
         public String documentIndexLink = ServiceUriPaths.CORE_DOCUMENT_INDEX;
@@ -404,10 +406,13 @@ public class StatefulService implements Service {
                 }
 
                 OperationProcessingChain opProcessingChain = getOperationProcessingChain();
-                if (opProcessingChain != null && !opProcessingChain.processRequest(request)) {
+                if (opProcessingChain != null) {
+                    OperationProcessingContext context = opProcessingChain.createContext(getHost());
+                    opProcessingChain.processRequest(request, context, o -> {
+                        handleRequest(request, OperationProcessingStage.EXECUTING_SERVICE_HANDLER);
+                    });
                     return;
                 }
-
                 opProcessingStage = OperationProcessingStage.EXECUTING_SERVICE_HANDLER;
             }
 
@@ -2036,11 +2041,26 @@ public class StatefulService implements Service {
     }
 
     @Override
+    public void setCacheClearDelayMicros(long micros) {
+        allocateExtraContext();
+        this.context.extras.cacheClearDelayMicros = micros;
+    }
+
+    @Override
     public long getMaintenanceIntervalMicros() {
         if (this.context.extras == null) {
             return this.getHost().getMaintenanceIntervalMicros();
         }
         return this.context.extras.maintenanceInterval;
+    }
+
+    @Override
+    public long getCacheClearDelayMicros() {
+        if (this.context.extras != null && this.context.extras.cacheClearDelayMicros != null) {
+            return this.context.extras.cacheClearDelayMicros;
+        }
+
+        return getHost().getServiceCacheClearDelayMicros();
     }
 
     @Override

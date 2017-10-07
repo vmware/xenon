@@ -85,8 +85,6 @@ public class UtilityService implements Service {
             register(Service.STAT_NAME_MAINTENANCE_COMPLETION_DELAYED_COUNT);
             register(Service.STAT_NAME_DOCUMENT_OWNER_TOGGLE_ON_MAINT_COUNT);
             register(Service.STAT_NAME_DOCUMENT_OWNER_TOGGLE_OFF_MAINT_COUNT);
-            register(Service.STAT_NAME_CACHE_MISS_COUNT);
-            register(Service.STAT_NAME_CACHE_CLEAR_COUNT);
             register(Service.STAT_NAME_VERSION_CONFLICT_COUNT);
             register(Service.STAT_NAME_VERSION_IN_CONFLICT);
             register(Service.STAT_NAME_MAINTENANCE_DURATION);
@@ -1136,7 +1134,16 @@ public class UtilityService implements Service {
     }
 
     @Override
+    public void setCacheClearDelayMicros(long micros) {
+    }
+
+    @Override
     public long getMaintenanceIntervalMicros() {
+        return 0;
+    }
+
+    @Override
+    public long getCacheClearDelayMicros() {
         return 0;
     }
 
