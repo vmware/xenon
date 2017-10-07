@@ -376,9 +376,11 @@ public abstract class FactoryService extends StatelessService {
                 }
             }
 
-            if (!isValidDocumentId(suffix)) {
-                o.fail(new IllegalArgumentException(suffix + " is an invalid id"));
-                return;
+            if (!o.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK)) {
+                if (!isValidDocumentId(suffix)) {
+                    o.fail(new IllegalArgumentException(suffix + " is an invalid id"));
+                    return;
+                }
             }
 
             // check suffix does not already contain the prefix i.e. the factory's self link
