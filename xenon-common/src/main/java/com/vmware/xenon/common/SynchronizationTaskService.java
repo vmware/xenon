@@ -458,8 +458,6 @@ public class SynchronizationTaskService
                 .createPost(this, ServiceUriPaths.CORE_QUERY_TASKS)
                 .setBody(queryTask)
                 .setConnectionSharing(true)
-                .setExpiration(
-                        Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
                 .setCompletion((o, e) -> {
                     if (getHost().isStopping()) {
                         sendSelfCancellationPatch(task, "host is stopping");
@@ -576,8 +574,6 @@ public class SynchronizationTaskService
         sendRequest(Operation.createGet(task.queryPageReference)
                 .setConnectionSharing(true)
                 .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION)
-                .setExpiration(
-                        Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
                 .setCompletion(c));
     }
 
@@ -782,8 +778,6 @@ public class SynchronizationTaskService
                 .setConnectionSharing(true)
                 .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
-                .setExpiration(
-                        Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
                 .setRetryCount(0);
         try {
             sendRequest(synchRequest);
