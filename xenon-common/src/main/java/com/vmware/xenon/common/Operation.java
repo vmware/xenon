@@ -414,7 +414,7 @@ public class Operation implements Cloneable {
                 new CancellationException(format("queue limit exceeded (%s)", queueDescription)));
     }
 
-    static void failForwardedRequest(Operation op, Operation fo, Throwable fe) {
+    public static void failForwardedRequest(Operation op, Operation fo, Throwable fe) {
         op.setStatusCode(fo.getStatusCode());
         op.setBodyNoCloning(fo.getBodyRaw()).fail(fe);
     }
@@ -1877,19 +1877,6 @@ public class Operation implements Cloneable {
     }
 
     /**
-     * Value indicating the service target is replicated and might not yet be available. Set this to
-     * true to enable availability registration for a service that might not be locally present yet.
-     * It prevents the operation failing with 404 (not found)
-     *
-     * @param enable - true or false
-     * @return
-     */
-    public Operation setTargetReplicated(boolean enable) {
-        toggleOption(OperationOption.REPLICATED_TARGET, enable);
-        return this;
-    }
-
-    /**
      * Value indicating whether the target service is replicated and might not yet be available
      * locally
      *
@@ -2007,7 +1994,7 @@ public class Operation implements Cloneable {
         return hasOption(OperationOption.NOTIFICATION_DISABLED);
     }
 
-    boolean isForwardingDisabled() {
+    public boolean isForwardingDisabled() {
         return hasPragmaDirective(PRAGMA_DIRECTIVE_NO_FORWARDING);
     }
 
@@ -2028,11 +2015,11 @@ public class Operation implements Cloneable {
         return isSynchronizeOwner() || isSynchronizePeer();
     }
 
-    boolean isSynchronizeOwner() {
+    public boolean isSynchronizeOwner() {
         return hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER);
     }
 
-    boolean isSynchronizePeer() {
+    public boolean isSynchronizePeer() {
         return hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_PEER);
     }
 
