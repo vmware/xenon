@@ -417,9 +417,6 @@ public class TestNodeGroupService {
         this.host.toggleNegativeTestMode(false);
         this.host.tearDown();
         this.host = null;
-
-        System.clearProperty(
-                NodeSelectorReplicationService.PROPERTY_NAME_REPLICA_NOT_FOUND_TIMEOUT_MICROS);
     }
 
     @Test
@@ -3784,10 +3781,6 @@ public class TestNodeGroupService {
         // Artificially setting the replica not found timeout to
         // a lower-value, to reduce the wait time before owner
         // retries
-        System.setProperty(
-                NodeSelectorReplicationService.PROPERTY_NAME_REPLICA_NOT_FOUND_TIMEOUT_MICROS,
-                Long.toString(TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS)));
-
         this.nodeCount = 2;
         setUp(this.nodeCount);
         VerificationHost hostOne = null;
@@ -4685,7 +4678,6 @@ public class TestNodeGroupService {
                     // send patch to self, so the select owner logic gets invoked and in theory
                     // queues or cancels the request
                     Operation op = Operation.createPatch(this, uri.getPath()).setBody(body)
-                            .setTargetReplicated(true)
                             .setCompletion((o, e) -> {
                                 if (e != null) {
                                     this.outboundRequestFailureCompletion.incrementAndGet();

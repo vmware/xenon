@@ -1031,12 +1031,11 @@ public class UtilityService implements Service {
 
     @Override
     public boolean hasOption(ServiceOption cap) {
-        return false;
+        return cap == ServiceOption.UTILITY;
     }
 
     @Override
     public void toggleOption(ServiceOption cap, boolean enable) {
-        throw new RuntimeException();
     }
 
     @Override
