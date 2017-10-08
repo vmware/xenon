@@ -21,11 +21,13 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.OperationProcessingChain.OperationProcessingContext;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
+import com.vmware.xenon.common.filters.ForwardRequestFilter;
 import com.vmware.xenon.services.common.NodeGroupBroadcastResponse;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
@@ -541,6 +543,11 @@ public abstract class FactoryService extends StatelessService {
                                 initialState.documentEpoch = 0L;
                             }
 
+                            boolean debug = o.getUri().getPath().contains("/core/examples") && o.isSynchronizeOwner();
+                            if (debug) {
+                                this.getHost().log(Level.INFO, "forwardRequest(): (op %d %s) Owner host for %s is %s (isLocalHostOwner=%b, isSynchronizeOwner=%b).",
+                                        o.getId(), o.getAction(), o.getUri().getPath(), rsp.ownerNodeId, rsp.isLocalHostOwner, o.isSynchronizeOwner());
+                            }
                             if (rsp.isLocalHostOwner) {
                                 // add parent link header only on requests that target this node, to avoid the overhead
                                 // if we need to forward.
@@ -568,7 +575,7 @@ public abstract class FactoryService extends StatelessService {
                                     .setCompletion(fc);
 
 
-                            getHost().prepareForwardRequest(forwardOp);
+                            ForwardRequestFilter.prepareForwardRequest(forwardOp);
 
                             // fix up selfLink so it does not have factory prefix
                             if (initialState.documentSelfLink.startsWith(getSelfLink())) {
