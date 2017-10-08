@@ -26,6 +26,7 @@ import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.OperationProcessingChain.OperationProcessingContext;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
+import com.vmware.xenon.common.filters.ForwardRequestFilter;
 import com.vmware.xenon.services.common.NodeGroupBroadcastResponse;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
@@ -572,7 +573,7 @@ public abstract class FactoryService extends StatelessService {
                                     .setCompletion(fc);
 
 
-                            getHost().prepareForwardRequest(forwardOp);
+                            ForwardRequestFilter.prepareForwardRequest(forwardOp);
 
                             // fix up selfLink so it does not have factory prefix
                             if (initialState.documentSelfLink.startsWith(getSelfLink())) {

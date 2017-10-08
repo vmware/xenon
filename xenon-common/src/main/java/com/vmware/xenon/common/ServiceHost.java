@@ -69,7 +69,6 @@ import javax.net.ssl.TrustManagerFactory;
 import com.vmware.xenon.common.FileUtils.ResourceEntry;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest.ForwardingOption;
-import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Operation.OperationOption;
@@ -78,7 +77,6 @@ import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.Builder;
-import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
 import com.vmware.xenon.common.ServiceHost.RequestRateInfo.Option;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.SslClientAuthMode;
@@ -89,7 +87,9 @@ import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
 import com.vmware.xenon.common.filters.AuthenticationFilter;
 import com.vmware.xenon.common.filters.AuthorizationFilter;
+import com.vmware.xenon.common.filters.ForwardRequestFilter;
 import com.vmware.xenon.common.filters.RequestRateLimitsFilter;
+import com.vmware.xenon.common.filters.ServiceAvailabilityFilter;
 import com.vmware.xenon.common.http.netty.NettyHttpListener;
 import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
 import com.vmware.xenon.common.jwt.JWTUtils;
@@ -758,7 +758,9 @@ public class ServiceHost implements ServiceRequestSender {
         return OperationProcessingChain.create(
                 new AuthenticationFilter(),
                 this.authorizationFilter,
-                new RequestRateLimitsFilter());
+                new RequestRateLimitsFilter(),
+                new ForwardRequestFilter(),
+                new ServiceAvailabilityFilter());
     }
 
     private void allocateExecutors() {
@@ -1343,6 +1345,14 @@ public class ServiceHost implements ServiceRequestSender {
 
     public Service getManagementService() {
         return this.managementService;
+    }
+
+    public ServiceResourceTracker getServiceResourceTracker() {
+        return this.serviceResourceTracker;
+    }
+
+    public OperationTracker getOperationTracker() {
+        return this.operationTracker;
     }
 
     public ServiceHost setAuthenticationService(Service service) {
@@ -3410,7 +3420,7 @@ public class ServiceHost implements ServiceRequestSender {
         return findService(uriPath, true);
     }
 
-    protected Service findService(String uriPath, boolean doExactMatch) {
+    public Service findService(String uriPath, boolean doExactMatch) {
         Service s = this.attachedServices.get(uriPath);
         if (s != null) {
             return s;
@@ -3518,16 +3528,15 @@ public class ServiceHost implements ServiceRequestSender {
         OperationProcessingContext context = this.opProcessingChain.createContext(this);
         final Operation finalInboundOp = inboundOp;
         this.opProcessingChain.processRequest(inboundOp, context, o -> {
-            handleRequestAfterOpProcessingChain(service, finalInboundOp);
+            handleRequestAfterOpProcessingChain(context.getService(), finalInboundOp);
         });
 
         return true;
     }
 
     private void handleRequestAfterOpProcessingChain(Service service, Operation inboundOp) {
-        String path;
         if (service == null) {
-            path = inboundOp.getUri().getPath();
+            String path = inboundOp.getUri().getPath();
             if (path == null) {
                 Operation.failServiceNotFound(inboundOp);
                 return;
@@ -3535,16 +3544,6 @@ public class ServiceHost implements ServiceRequestSender {
 
             // request service using either prefix or longest match
             service = findService(path, false);
-        } else {
-            path = service.getSelfLink();
-        }
-
-        if (queueRequestUntilServiceAvailable(inboundOp, service, path)) {
-            return;
-        }
-
-        if (queueOrForwardRequest(service, path, inboundOp)) {
-            return;
         }
 
         if (service == null) {
@@ -3567,251 +3566,6 @@ public class ServiceHost implements ServiceRequestSender {
         return;
     }
 
-    /**
-     * Forwards request to a peer, if local node is not the owner for the service. This method is
-     * part of the consensus logic for the replication protocol. It serves the following functions:
-     *
-     * 1) If this request came from a client, it performs the role of finding the owner, on behalf
-     * of the client
-     *
-     * 2) If this request came from a peer node AND the local node is the owner, then it handles
-     * request, initiating the replication state machine
-     *
-     * 3) If the request came from a peer owner node, the local node is acting as a certifier
-     * replica and needs to verify it agrees on epoch,  owner and the state version.
-     *
-     * In both cases 2 and 3 the request will be handled locally.
-     *
-     * Note that we do not require the service to be present locally. We will use the URI path to
-     * select an owner and forward.
-     *
-     * @return
-     */
-    private boolean queueOrForwardRequest(Service s, String path, Operation op) {
-        if (s == null && op.isFromReplication()) {
-            if (op.getAction() == Action.DELETE) {
-
-                // If this is a synchronization request, we should accept the ServiceDocument
-                // in the request. The local node has an out-dated copy of the document
-                // which is why we are receiving this request in the first place.
-                if (op.isSynchronizePeer()) {
-                    Service factory = findService(
-                            UriUtils.getParentPath(op.getUri().getPath()));
-                    if (factory != null) {
-                        Service childService;
-                        try {
-                            childService = ((FactoryService) factory).createServiceInstance();
-                        } catch (Throwable t) {
-                            op.fail(t);
-                            return true;
-                        }
-                        saveServiceState(childService, op, op.getBody(childService.getStateType()));
-                    }
-                } else {
-                    op.complete();
-                }
-            } else {
-                Operation.failServiceNotFound(op);
-            }
-            return true;
-        }
-
-        Service parent = null;
-        EnumSet<ServiceOption> options;
-        if (s != null) {
-            // Common path, service is known.
-            options = s.getOptions();
-
-            if (options == null) {
-                return false;
-            } else if (options.contains(ServiceOption.UTILITY)) {
-                // find the parent service, which will have the complete option set
-                // relevant to forwarding
-                path = UriUtils.getParentPath(path);
-                parent = findService(path);
-                if (parent == null) {
-                    Operation.failServiceNotFound(op);
-                    return true;
-                }
-                options = parent.getOptions();
-            }
-
-            if (options == null
-                    || !options.contains(ServiceOption.OWNER_SELECTION)
-                    || options.contains(ServiceOption.FACTORY)) {
-                return false;
-            }
-        } else {
-            // Service is unknown.
-            // Find the service options indirectly, if there is a parent factory.
-            if (isHelperServicePath(path)) {
-                path = UriUtils.getParentPath(path);
-            }
-
-            String factoryPath = UriUtils.getParentPath(path);
-            if (factoryPath == null) {
-                Operation.failServiceNotFound(op);
-                return true;
-            }
-
-            parent = findService(factoryPath);
-            if (parent == null) {
-                Operation.failServiceNotFound(op);
-                return true;
-            }
-            options = parent.getOptions();
-
-            if (options == null ||
-                    !options.contains(ServiceOption.FACTORY) ||
-                    !options.contains(ServiceOption.REPLICATION)) {
-                return false;
-            }
-        }
-
-        if (op.isForwardingDisabled()) {
-            return false;
-        }
-
-        return selectAndForwardRequestToOwner(s, path, op, parent, options);
-    }
-
-    private boolean selectAndForwardRequestToOwner(Service s, String path, Operation op,
-            Service parent,
-            EnumSet<ServiceOption> options) {
-
-        if (op.getAction() == Action.DELETE &&
-                op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)) {
-            // This request was to stop a service as part of reducing Xenon's
-            // memory foot-print (See ServiceResourceTracker). So we will avoid forwarding
-            // the request to the owner and instead just stop the local service instance.
-            if (s == null) {
-                op.complete();
-                return true;
-            }
-            return false;
-        }
-
-        String nodeSelectorPath;
-        if (parent != null) {
-            nodeSelectorPath = parent.getPeerNodeSelectorPath();
-        } else {
-            nodeSelectorPath = s.getPeerNodeSelectorPath();
-        }
-
-        op.setStatusCode(Operation.STATUS_CODE_OK);
-
-        String servicePath = path;
-        Service parentService = parent;
-        CompletionHandler ch = (o, e) -> {
-            if (e != null) {
-                log(Level.SEVERE, "Owner selection failed for service %s, op %d. Error: %s", op
-                        .getUri().getPath(), op.getId(), e.toString());
-                op.setRetryCount(0).fail(e);
-                run(() -> {
-                    handleRequest(s, null);
-                });
-                return;
-            }
-
-            // fail or forward the request if we do not agree with the sender, who the owner is
-            SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
-
-            if (op.isFromReplication()) {
-                ServiceDocument body = op.getBody(s.getStateType());
-                if (rsp.isLocalHostOwner) {
-                    Operation.failOwnerMismatch(op, rsp.ownerNodeId, body);
-                    return;
-                }
-
-                queueOrScheduleRequest(s, op);
-                return;
-            }
-
-            forwardRequestToOwner(s, op, servicePath, parentService, rsp);
-        };
-
-        Operation selectOwnerOp = Operation
-                .createPost(null)
-                .setExpiration(op.getExpirationMicrosUtc())
-                .setCompletion(ch);
-        selectOwner(nodeSelectorPath, path, selectOwnerOp);
-        return true;
-    }
-
-    private void forwardRequestToOwner(Service s, Operation op, String servicePath,
-            Service parentService, SelectOwnerResponse rsp) {
-        CompletionHandler fc = (fo, fe) -> {
-            if (fe != null) {
-                retryOrFailRequest(op, fo, fe);
-                return;
-            }
-
-            op.setStatusCode(fo.getStatusCode());
-            op.setBodyNoCloning(fo.getBodyRaw());
-
-            op.setContentType(fo.getContentType());
-            op.setContentLength(fo.getContentLength());
-            op.transferResponseHeadersFrom(fo);
-
-            op.complete();
-        };
-
-        Operation forwardOp = op.clone().setCompletion(fc);
-        if (rsp.isLocalHostOwner) {
-            if (s == null) {
-                queueOrFailRequestForServiceNotFoundOnOwner(
-                        parentService, servicePath, op, rsp.availableNodeCount);
-                return;
-            }
-            queueOrScheduleRequest(s, forwardOp);
-            return;
-        }
-
-        if (op.isForwarded()) {
-            // this was forwarded from another node, but we do not think we own the service
-            Operation.failOwnerMismatch(op, op.getUri().getPath(), null);
-            return;
-        }
-
-        // Forwarded operations are retried until the parent operation, from the client,
-        // expires. Since a peer might have become unresponsive, we want short time outs
-        // and retries, to whatever peer we select, on each retry.
-        forwardOp.setExpiration(Utils.fromNowMicrosUtc(
-                this.state.operationTimeoutMicros / 10));
-        forwardOp.setUri(SelectOwnerResponse.buildUriToOwner(rsp, op));
-
-        prepareForwardRequest(forwardOp);
-        // Local host is not the owner, but is the entry host for a client. Forward to owner
-        // node
-        sendRequest(forwardOp);
-    }
-
-    private void queueOrFailRequestForServiceNotFoundOnOwner(
-            Service parent, String path, Operation op, int availableNodeCount) {
-        if (this.serviceResourceTracker.checkAndOnDemandStartService(op)) {
-            return;
-        }
-
-        boolean synchService = parent != null &&
-                parent.hasOption(ServiceOption.FACTORY) &&
-                parent.hasOption(ServiceOption.REPLICATION) &&
-                op.getAction() != Action.POST &&
-                availableNodeCount > 1 &&
-                !op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY);
-
-        if (!synchService) {
-            if (op.getAction() == Action.DELETE) {
-                // do not queue DELETE actions for services not present, complete with success
-                op.complete();
-                return;
-            }
-            checkPragmaAndRegisterForAvailability(path, op);
-            return;
-        }
-
-        this.serviceSynchTracker.failWithNotFoundOrSynchronize(parent, path, op);
-    }
-
     void checkPragmaAndRegisterForAvailability(String path, Operation op) {
         if (!op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)) {
             Operation.failServiceNotFound(op);
@@ -3829,130 +3583,6 @@ public class ServiceHost implements ServiceRequestSender {
 
     void retryOnDemandLoadConflict(Operation op, Service s) {
         this.serviceResourceTracker.retryOnDemandLoadConflict(op, s);
-    }
-
-    private void retryOrFailRequest(Operation op, Operation fo, Throwable fe) {
-        boolean shouldRetry = false;
-
-        if (fo.hasBody()) {
-            ServiceErrorResponse rsp = fo.clone().getBody(ServiceErrorResponse.class);
-            if (rsp != null && rsp.details != null) {
-                shouldRetry = rsp.details.contains(ErrorDetail.SHOULD_RETRY);
-            }
-        }
-
-        if (fo.getStatusCode() == Operation.STATUS_CODE_TIMEOUT) {
-            // the I/O code might have timed out, but we will keep retrying until the operation
-            // expiration is reached
-            shouldRetry = true;
-        }
-
-        if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED)) {
-            // only retry on the node the client directly communicates with. Any node that receives
-            // a forwarded operation will have forwarding disabled set, and should not retry
-            shouldRetry = false;
-        }
-
-        if (op.getExpirationMicrosUtc() < Utils.getSystemNowMicrosUtc()) {
-            op.setBodyNoCloning(fo.getBodyRaw())
-                    .fail(new CancellationException("Expired at " + op.getExpirationMicrosUtc()));
-            return;
-        }
-
-        if (!shouldRetry) {
-            Operation.failForwardedRequest(op, fo, fe);
-            return;
-        }
-
-        this.operationTracker.trackOperationForRetry(Utils.getNowMicrosUtc(), fe, op);
-    }
-
-    /**
-     * Determine if the request should be queued because the target service is in the process
-     * of being started or, if its parent suffix is registered to a factory, the factory is not yet available
-     */
-    boolean queueRequestUntilServiceAvailable(Operation inboundOp, Service s, String path) {
-        if (s != null && s.getProcessingStage() == ProcessingStage.AVAILABLE) {
-            return false;
-        }
-
-        // service was not found in attached services or is not available -
-        // we will regard that as a cache miss
-        this.serviceResourceTracker.updateCacheMissStats();
-
-        if (isHelperServicePath(path)) {
-            path = UriUtils.getParentPath(path);
-        }
-
-        boolean waitForService = isServiceStarting(s, path);
-
-        String parentPath = UriUtils.getParentPath(path);
-        if (parentPath != null && !waitForService) {
-            Service parentService = this.findService(parentPath);
-            // Only wait for factory if the logical parent of this service
-            // is a factory which itself is starting
-            if (parentService != null) {
-                if (parentService.hasOption(ServiceOption.FACTORY)) {
-                    waitForService = isServiceStarting(parentService, parentPath);
-                    FactoryService parent = (FactoryService) parentService;
-                    if (!inboundOp.isFromReplication()
-                            && parent.hasChildOption(ServiceOption.OWNER_SELECTION)) {
-                        // owner must do registration for availability, so proceed to queueOrForward
-                        return false;
-                    }
-                }
-
-                // the service might be stopped
-                if (parentService.hasOption(ServiceOption.PERSISTENCE)) {
-                    if (this.serviceResourceTracker.checkAndOnDemandStartService(inboundOp)) {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        if (inboundOp.isFromReplication()) {
-            // If this is a replicated update request but the service is not
-            // AVAILABLE, then we fail the request with 404 - NOT FOUND error.
-            if (!isServiceAvailable(s) && inboundOp.isUpdate()) {
-                this.log(Level.WARNING, "Service %s is not available. Failing replication request",
-                        inboundOp.getUri().getPath());
-
-                IllegalStateException ex = new IllegalStateException("Service not found on replica");
-                Operation.fail(inboundOp, Operation.STATUS_CODE_NOT_FOUND,
-                        ServiceErrorResponse.ERROR_CODE_SERVICE_NOT_FOUND_ON_REPLICA, ex);
-                return true;
-            }
-        }
-
-        if (inboundOp
-                .hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)) {
-            waitForService = true;
-        }
-
-        if (waitForService || inboundOp.isFromReplication()) {
-            if (inboundOp.getAction() == Action.DELETE) {
-                // do not register for availability on DELETE action, allow downstream code to forward
-                return false;
-            }
-
-            if (isStopping()) {
-                // host is stopping, request will fail downstream
-                return false;
-            }
-
-            // service is in the process of starting
-            inboundOp.nestCompletion((o) -> {
-                inboundOp.setTargetReplicated(false);
-                handleRequest(null, inboundOp);
-            });
-
-            registerForServiceAvailability(inboundOp, path);
-            return true;
-        }
-
-        // indicate we are not waiting for service start, request should be forwarded or failed
-        return false;
     }
 
     public void queueOrScheduleRequest(Service s, Operation op) {
@@ -4479,7 +4109,7 @@ public class ServiceHost implements ServiceRequestSender {
         registerForServiceAvailability(op, checkReplica, nodeSelectorPath, servicePaths);
     }
 
-    void registerForServiceAvailability(Operation opTemplate, String... servicePaths) {
+    public void registerForServiceAvailability(Operation opTemplate, String... servicePaths) {
         registerForServiceAvailability(opTemplate, false, ServiceUriPaths.DEFAULT_NODE_SELECTOR,
                 servicePaths);
     }
@@ -5091,7 +4721,7 @@ public class ServiceHost implements ServiceRequestSender {
         this.client = client;
     }
 
-    void saveServiceState(Service s, Operation op, ServiceDocument state) {
+    public void saveServiceState(Service s, Operation op, ServiceDocument state) {
         // If this request doesn't originate from replication (which might happen asynchronously, i.e. through
         // (re-)synchronization after a node group change), don't update the documentAuthPrincipalLink because
         // it will be set to the system user. The specified state is expected to have the documentAuthPrincipalLink

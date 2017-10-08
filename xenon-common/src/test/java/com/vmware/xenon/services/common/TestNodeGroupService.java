@@ -92,6 +92,7 @@ import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.common.test.VerificationHost.WaitHandler;
+import com.vmware.xenon.services.common.ExampleService.ExampleNonPersistedService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.ExampleTaskService.ExampleTaskServiceState;
 import com.vmware.xenon.services.common.MinimalTestService.MinimalTestServiceErrorResponse;
@@ -417,9 +418,6 @@ public class TestNodeGroupService {
         this.host.toggleNegativeTestMode(false);
         this.host.tearDown();
         this.host = null;
-
-        System.clearProperty(
-                NodeSelectorReplicationService.PROPERTY_NAME_REPLICA_NOT_FOUND_TIMEOUT_MICROS);
     }
 
     @Test
@@ -2440,16 +2438,11 @@ public class TestNodeGroupService {
     public void replicationWithOutOfOrderPostAndUpdates() throws Throwable {
         // This test verifies that if a replica receives
         // replication requests of POST and PATCH/PUT
-        // out-of-order, xenon can still handle it
-        // by doing retries for failed out-of-order
-        // updates. To verify this, we setup a node
-        // group and set quorum to just 1, so that the post
-        // returns as soon as the owner commits the post,
-        // so that we increase the chance of out-of-order
-        // update replication requests.
+        // out-of-order, for persistent services, xenon
+        // can still handle it.
         setUp(this.nodeCount);
         this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
-        this.host.setNodeGroupQuorum(1);
+        this.host.setNodeGroupQuorum(this.nodeCount / 2 + 1);
 
         waitForReplicatedFactoryServiceAvailable(
                 this.host.getPeerServiceUri(ExampleService.FACTORY_LINK),
@@ -2466,6 +2459,57 @@ public class TestNodeGroupService {
         for (int i = 0; i < this.serviceCount; i++) {
             Operation post = Operation
                     .createPost(peer, ExampleService.FACTORY_LINK)
+                    .setBody(state)
+                    .setReferer(this.host.getUri())
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            ctx.failIteration(e);
+                            return;
+                        }
+
+                        ExampleServiceState rsp = o.getBody(ExampleServiceState.class);
+                        for (int k = 0; k < this.updateCount; k++) {
+                            ExampleServiceState update = new ExampleServiceState();
+                            state.counter = (long) k;
+                            Operation patch = Operation
+                                    .createPatch(peer, rsp.documentSelfLink)
+                                    .setBody(update)
+                                    .setReferer(this.host.getUri())
+                                    .setCompletion(ctx.getCompletion());
+                            this.host.sendRequest(patch);
+                        }
+
+                    });
+            this.host.sendRequest(post);
+        }
+        ctx.await();
+    }
+
+    @Test
+    public void replicationInMemoryWithOutOfOrderPostAndUpdates() throws Throwable {
+        // This test verifies that if a replica receives
+        // replication requests of POST and PATCH/PUT
+        // out-of-order, for in-memory services, xenon
+        // can still handle it.
+        setUp(this.nodeCount);
+        this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+        this.host.setNodeGroupQuorum(this.nodeCount / 2 + 1);
+
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            h.startServiceAndWait(ExampleNonPersistedService.createFactory(),
+                    ExampleNonPersistedService.FACTORY_LINK, null);
+        }
+
+        ExampleServiceState state = new ExampleServiceState();
+        state.name = "testing";
+        state.counter = 1L;
+
+        VerificationHost peer = this.host.getPeerHost();
+
+        TestContext ctx = this.host.testCreate(this.serviceCount * this.updateCount);
+        for (int i = 0; i < this.serviceCount; i++) {
+            Operation post = Operation
+                    .createPost(peer, ExampleNonPersistedService.FACTORY_LINK)
                     .setBody(state)
                     .setReferer(this.host.getUri())
                     .setCompletion((o, e) -> {
@@ -3784,10 +3828,6 @@ public class TestNodeGroupService {
         // Artificially setting the replica not found timeout to
         // a lower-value, to reduce the wait time before owner
         // retries
-        System.setProperty(
-                NodeSelectorReplicationService.PROPERTY_NAME_REPLICA_NOT_FOUND_TIMEOUT_MICROS,
-                Long.toString(TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS)));
-
         this.nodeCount = 2;
         setUp(this.nodeCount);
         VerificationHost hostOne = null;
@@ -4685,7 +4725,6 @@ public class TestNodeGroupService {
                     // send patch to self, so the select owner logic gets invoked and in theory
                     // queues or cancels the request
                     Operation op = Operation.createPatch(this, uri.getPath()).setBody(body)
-                            .setTargetReplicated(true)
                             .setCompletion((o, e) -> {
                                 if (e != null) {
                                     this.outboundRequestFailureCompletion.incrementAndGet();
