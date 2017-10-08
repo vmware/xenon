@@ -116,11 +116,26 @@ public class OperationProcessingChain {
         this.filters = new ArrayList<>();
     }
 
+    /**
+     * Backward compatibility constructor. The provided
+     * service is not used. Use {@link #create(Filter...)}
+     * going forward.
+     */
+    public OperationProcessingChain(Service service) {
+        this();
+    }
+
+    public OperationProcessingChain add(Filter filter) {
+        filter.init();
+        this.filters.add(filter);
+
+        return this;
+    }
+
     public static OperationProcessingChain create(Filter... filters) {
         OperationProcessingChain opProcessingChain = new OperationProcessingChain();
         for (Filter filter : filters) {
-            filter.init();
-            opProcessingChain.filters.add(filter);
+            opProcessingChain.add(filter);
         }
 
         return opProcessingChain;
