@@ -56,6 +56,7 @@ public class OperationProcessingChain {
 
     public static class OperationProcessingContext {
         private ServiceHost host;
+        private Service service;
         private OperationProcessingChain opProcessingChain;
         private int currentFilterPosition;
         private Consumer<Operation> operationConsumer;
@@ -70,12 +71,20 @@ public class OperationProcessingChain {
             return this.host;
         }
 
+        public Service getService() {
+            return this.service;
+        }
+
         public OperationProcessingChain getOpProcessingChain() {
             return this.opProcessingChain;
         }
 
         public int getCurrentFilterPosition() {
             return this.currentFilterPosition;
+        }
+
+        public void setService(Service service) {
+            this.service = service;
         }
     }
 
@@ -257,10 +266,11 @@ public class OperationProcessingChain {
 
     private void log(Operation op, OperationProcessingContext context, String msg, Level logLevel) {
         String hostId = context.host != null ? context.host.getId() : "";
+        String path = op.getUri() != null ? op.getUri().getPath() : "";
         Filter filter = this.filters.get(context.currentFilterPosition);
         String filterName = filter != null ? filter.getClass().getSimpleName() : "";
-        String logMsg = String.format("(host: %s, operation %d %s) filter %s: %s",
-                hostId, op.getId(), op.getAction(),  filterName, msg);
+        String logMsg = String.format("(host: %s, op %d %s %s) filter %s: %s",
+                hostId, op.getId(), op.getAction(),  path, filterName, msg);
         Level level = logLevel != null ? logLevel : Level.INFO;
         Utils.log(getClass(), op.getUri().getPath(), level, logMsg);
     }

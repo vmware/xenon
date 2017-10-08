@@ -245,7 +245,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         if (Operation.PRAGMA_DIRECTIVE_REPLICATED.equals(pragma)) {
             // replication requests will have a single PRAGMA directive. Set the right
             // options and remove the header to avoid further allocations
-            request.setFromReplication(true).setTargetReplicated(true);
+            request.setFromReplication(true);
         } else if (pragma != null) {
             request.addRequestHeader(Operation.PRAGMA_HEADER, pragma);
             if (pragma.contains(Operation.PRAGMA_DIRECTIVE_FORWARDED)) {
@@ -256,7 +256,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         if (pragma != null && pragma.contains(Operation.PRAGMA_DIRECTIVE_REPLICATED)) {
             // synchronization requests will have additional directives, so check again here
             // if the request is replicated
-            request.setFromReplication(true).setTargetReplicated(true);
+            request.setFromReplication(true);
         }
 
         request.setContextId(getAndRemove(headers, NettyHttpServiceClient.CONTEXT_ID_HEADER_ASCII));
