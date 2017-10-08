@@ -414,7 +414,7 @@ public class Operation implements Cloneable {
                 new CancellationException(format("queue limit exceeded (%s)", queueDescription)));
     }
 
-    static void failForwardedRequest(Operation op, Operation fo, Throwable fe) {
+    public static void failForwardedRequest(Operation op, Operation fo, Throwable fe) {
         op.setStatusCode(fo.getStatusCode());
         op.setBodyNoCloning(fo.getBodyRaw()).fail(fe);
     }
@@ -2007,7 +2007,7 @@ public class Operation implements Cloneable {
         return hasOption(OperationOption.NOTIFICATION_DISABLED);
     }
 
-    boolean isForwardingDisabled() {
+    public boolean isForwardingDisabled() {
         return hasPragmaDirective(PRAGMA_DIRECTIVE_NO_FORWARDING);
     }
 
@@ -2032,7 +2032,7 @@ public class Operation implements Cloneable {
         return hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER);
     }
 
-    boolean isSynchronizePeer() {
+    public boolean isSynchronizePeer() {
         return hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_PEER);
     }
 

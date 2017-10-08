@@ -101,11 +101,11 @@ public class TestQueryTaskService {
     private static final double DOUBLE_MIN_OFFSET = -2.0;
     private static final int SERVICE_LINK_COUNT = 10;
 
-    public int iterationCount = 2;
-    public int serviceCount = 50;
-    public int queryCount = 10;
-    public int updateCount = 10;
-    public int deletedServiceCount = 25;
+    public int iterationCount = 1;
+    public int serviceCount = 4;
+    public int queryCount = 1;
+    public int updateCount = 1;
+    public int deletedServiceCount = 2;
 
     private VerificationHost host;
 

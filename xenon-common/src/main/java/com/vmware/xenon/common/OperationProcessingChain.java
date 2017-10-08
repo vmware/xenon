@@ -56,6 +56,7 @@ public class OperationProcessingChain {
 
     public static class OperationProcessingContext {
         private ServiceHost host;
+        private Service service;
         private OperationProcessingChain opProcessingChain;
         private int currentFilterPosition;
         private Consumer<Operation> operationConsumer;
@@ -70,12 +71,20 @@ public class OperationProcessingChain {
             return this.host;
         }
 
+        public Service getService() {
+            return this.service;
+        }
+
         public OperationProcessingChain getOpProcessingChain() {
             return this.opProcessingChain;
         }
 
         public int getCurrentFilterPosition() {
             return this.currentFilterPosition;
+        }
+
+        public void setService(Service service) {
+            this.service = service;
         }
     }
 

@@ -1447,6 +1447,7 @@ public class TestNodeGroupService {
         List<URI> targetServiceConfig = new ArrayList<>();
         for (URI child : targetServices) {
             targetServiceStats.add(UriUtils.buildStatsUri(child));
+            this.host.log("DEBUG: config URI: %s", UriUtils.buildConfigUri(child));
             targetServiceConfig.add(UriUtils.buildConfigUri(child));
         }
 
