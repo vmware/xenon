@@ -603,19 +603,45 @@ class ServiceSynchronizationTracker {
             body.nodeGroupState = ngs;
             maintOp.setBodyNoCloning(body);
 
-            long n = now;
-            // allow overlapping node group change maintenance requests
-            this.host
-                    .run(() -> {
-                        OperationContext.setAuthorizationContext(this.host
-                                .getSystemAuthorizationContext());
-                        this.host.log(Level.FINE, " Synchronizing %s (last:%d, sl: %d now:%d)",
-                                link,
-                                lastSynchTime, selectorSynchTime, n);
-                        s.adjustStat(Service.STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT, 1);
-                        s.handleMaintenance(maintOp);
-                    });
+            this.host.log(Level.FINE, " Synchronizing %s (last:%d, sl: %d now:%d)",
+                    link,
+                    lastSynchTime, selectorSynchTime, now);
+            if (s.hasOption(ServiceOption.OWNER_SELECTION)) {
+                // set service DocumentOwner option before invoking its handleMaitenance,
+                // for the sake of services that rely on ownership check during their
+                // handleMaintenance(), as it might not be set at this point
+                CompletionHandler ch = (o, e) -> {
+                    if (e != null) {
+                        this.host.log(Level.SEVERE, "Owner selection failed for service %s. Error: %s",
+                                s.getSelfLink(), e.toString());
+                        return;
+                    }
+
+                    SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
+                    s.toggleOption(ServiceOption.DOCUMENT_OWNER, rsp.isLocalHostOwner);
+
+                    runServiceHandleMaintenance(s, maintOp);
+                };
+
+                Operation selectOwnerOp = Operation
+                        .createPost(null)
+                        .setExpiration(maintOp.getExpirationMicrosUtc())
+                        .setCompletion(ch);
+                this.host.selectOwner(serviceSelectorPath, s.getSelfLink(), selectOwnerOp);
+            } else {
+                runServiceHandleMaintenance(s, maintOp);
+            }
         }
+    }
+
+    private void runServiceHandleMaintenance(Service s, Operation maintOp) {
+        // allow overlapping node group change maintenance requests
+        this.host.run(() -> {
+            OperationContext.setAuthorizationContext(this.host
+                    .getSystemAuthorizationContext());
+            s.adjustStat(Service.STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT, 1);
+            s.handleMaintenance(maintOp);
+        });
     }
 
     public void close() {
