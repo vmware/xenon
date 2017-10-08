@@ -15,7 +15,6 @@ package com.vmware.xenon.services.common;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -31,7 +30,6 @@ public class NodeSelectorReplicationContext {
         this.location = location;
         this.nodes = nodes;
         this.parentOp = op;
-        this.startTimeMicros = Utils.getSystemNowMicrosUtc();
     }
 
     String location;
@@ -40,7 +38,6 @@ public class NodeSelectorReplicationContext {
     int successThreshold;
     int failureThreshold;
     int locationThreshold;
-    long startTimeMicros;
     private int successCount;
     private int failureCount;
     private Set<String> locations;
@@ -58,7 +55,6 @@ public class NodeSelectorReplicationContext {
         String failureMsg = null;
         Operation op = this.parentOp;
         int errorCode = 0;
-        boolean shouldRetry = false;
 
         if (e != null && o != null) {
             h.log(Level.WARNING,
@@ -80,7 +76,6 @@ public class NodeSelectorReplicationContext {
                 this.completionStatus = Status.SUCCEEDED;
             } else if (e != null && ++this.failureCount == this.failureThreshold) {
                 this.completionStatus = Status.FAILED;
-                shouldRetry = parentOpShouldRetry();
                 failureMsg = String
                         .format("(Original id: %d) %s to %s failed. Success: %d,  Fail: %d, quorum: %d, failure threshold: %d",
                                 op.getId(),
@@ -124,9 +119,6 @@ public class NodeSelectorReplicationContext {
             Exception ex = new IllegalStateException(failureMsg);
             ServiceErrorResponse sep = Utils.toServiceErrorResponse(ex);
             sep.statusCode = this.failureStatus;
-            if (shouldRetry) {
-                sep.details = EnumSet.of(ServiceErrorResponse.ErrorDetail.SHOULD_RETRY);
-            }
             op.setBody(sep);
             op.fail(ex);
             return;
@@ -152,16 +144,5 @@ public class NodeSelectorReplicationContext {
             this.failureErrorCodes = new ArrayList<>();
         }
         this.failureErrorCodes.add(errorCode);
-    }
-
-    private boolean parentOpShouldRetry() {
-        if (this.failureErrorCodes != null) {
-            for (Integer errorCode : this.failureErrorCodes) {
-                if (errorCode == ServiceErrorResponse.ERROR_CODE_SERVICE_NOT_FOUND_ON_REPLICA) {
-                    return true;
-                }
-            }
-        }
-        return false;
     }
 }

@@ -30,7 +30,7 @@ import com.vmware.xenon.common.Service.ProcessingStage;
  * Performs periodic maintenance and expiration tracking on operations. Utilized by
  * service host for all operation related maintenance.
  */
-class OperationTracker {
+public class OperationTracker {
     public static ConcurrentSkipListSet<Operation> createOperationSet() {
         return new ConcurrentSkipListSet<>(new Comparator<Operation>() {
             @Override

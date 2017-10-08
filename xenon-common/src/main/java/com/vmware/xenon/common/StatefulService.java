@@ -1429,10 +1429,6 @@ public class StatefulService implements Service {
         }
 
         completeSynchronizationRequest(request, failure, isStateUpdated);
-
-        if (wasOwner) {
-            return;
-        }
     }
 
     private void handleSynchFailure(Operation request, Operation synchRsp, Throwable e) {
@@ -1472,10 +1468,15 @@ public class StatefulService implements Service {
             logWarning("isUpdated:%s, e:%d v:%d, cause:%s (%d",
                     isStateUpdated, this.context.epoch, this.context.version, failure,
                     request.getId());
-            request.setStatusCode(Operation.STATUS_CODE_CONFLICT);
-            failRequest(request, new IllegalStateException(
-                    "Synchronization complete, original failure: " + failure.toString()), true);
-            return;
+            // there could be a delay between becoming an owner and maintenance->synchronization
+            // detecting that and marking this service as the owner, so checking again before
+            // we fail
+            if (!hasOption(ServiceOption.DOCUMENT_OWNER)) {
+                request.setStatusCode(Operation.STATUS_CODE_CONFLICT);
+                failRequest(request, new IllegalStateException(
+                        "Synchronization complete, original failure: " + failure.toString()), true);
+                return;
+            }
         }
 
         // avoid replicating this synchronization request, on completion
@@ -1710,12 +1711,6 @@ public class StatefulService implements Service {
     }
 
     private void prepareRequest(Operation op) {
-        if (this.hasOption(ServiceOption.REPLICATION)) {
-            // assume target is also replicated. If they are not, there is only a tiny performance
-            // hit due to the availability registration and instant completion
-            op.setTargetReplicated(true);
-        }
-
         // avoid URI allocation and parsing by using cached host URI string
         StringBuilder sb = Utils.getBuilder();
         sb.append(getHost().getPublicUriAsString()).append(getSelfLink());
