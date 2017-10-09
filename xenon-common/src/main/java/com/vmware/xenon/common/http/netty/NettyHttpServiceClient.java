@@ -398,9 +398,9 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     private void connectChannel(NettyChannelPool pool, Operation op,
             String remoteHost, int port) {
-        op.nestCompletion((o, e) -> {
+        op.nestCompletionCloneSafe((o, e) -> {
             if (o.getStatusCode() == Operation.STATUS_CODE_TIMEOUT) {
-                failWithTimeout(op, op.getBodyRaw());
+                failWithTimeout(o, op.getBodyRaw());
                 return;
             }
             if (e != null) {
@@ -417,8 +417,8 @@ public class NettyHttpServiceClient implements ServiceClient {
                     rsp = ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST,
                             EnumSet.of(ErrorDetail.SHOULD_RETRY));
                 }
-                op.setBodyNoCloning(rsp);
-                fail(e, op, originalBody);
+                o.setBodyNoCloning(rsp);
+                fail(e, o, originalBody);
                 return;
             }
             sendHttpRequest(op);
@@ -575,13 +575,13 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
 
             boolean doCookieJarUpdate = !isXenonToXenon;
-            op.nestCompletion((o, e) -> {
+            op.nestCompletionCloneSafe((o, e) -> {
                 if (e != null) {
-                    fail(e, op, originalBody);
+                    fail(e, o, originalBody);
                     return;
                 }
 
-                stopTracking(op);
+                stopTracking(o);
 
                 if (doCookieJarUpdate) {
                     updateCookieJarFromResponseHeaders(o);
@@ -590,7 +590,7 @@ public class NettyHttpServiceClient implements ServiceClient {
                 // After request is sent control is transferred to the
                 // NettyHttpServerResponseHandler. The response handler will nest completions
                 // and call complete() when response is received, which will invoke this completion
-                op.complete();
+                o.complete();
             });
 
             op.toggleOption(OperationOption.SOCKET_ACTIVE, true);

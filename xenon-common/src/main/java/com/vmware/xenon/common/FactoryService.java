@@ -293,13 +293,13 @@ public abstract class FactoryService extends StatelessService {
                 opProcessingStage = OperationProcessingStage.EXECUTING_SERVICE_HANDLER;
             }
             if (opProcessingStage == OperationProcessingStage.EXECUTING_SERVICE_HANDLER) {
-                op.nestCompletion((o, e) -> {
+                op.nestCompletionCloneSafe((o, e) -> {
                     if (e != null) {
                         logWarning("Service start failed: %s", Utils.toString(e));
-                        op.fail(e);
+                        o.fail(e);
                         return;
                     }
-                    handlePostCompletion(op);
+                    handlePostCompletion(o);
                 });
                 handlePost(op);
             }
@@ -1030,11 +1030,11 @@ public abstract class FactoryService extends StatelessService {
     }
 
     private void synchronizeChildServicesAsOwner(Operation maintOp, long membershipUpdateTimeMicros) {
-        maintOp.nestCompletion((o, e) -> {
+        maintOp.nestCompletionCloneSafe((o, e) -> {
             if (e != null) {
                 logWarning("Synchronization failed: %s", e.toString());
             }
-            maintOp.complete();
+            o.complete();
         });
         startFactorySynchronizationTask(maintOp, membershipUpdateTimeMicros);
     }

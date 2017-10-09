@@ -47,7 +47,7 @@ public interface ServiceRequestSender {
      */
     default DeferredResult<Operation> sendWithDeferredResult(Operation op) {
         DeferredResult<Operation> deferred = new DeferredResult<Operation>();
-        op.nestCompletion((response, e) -> {
+        op.nestCompletionCloneSafe((response, e) -> {
             if (e != null) {
                 deferred.fail(e);
             } else {
