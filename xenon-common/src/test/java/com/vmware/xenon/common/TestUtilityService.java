@@ -497,6 +497,7 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         int numBins = 4;
         long interval = 1000;
         double value = 100;
+        List<Double> values = new ArrayList<>();
         // set data to fill up the specified number of bins
         TimeSeriesStats timeSeriesStats = new TimeSeriesStats(numBins, interval,
                 EnumSet.allOf(AggregationType.class));
@@ -506,10 +507,12 @@ public class TestUtilityService extends BasicReusableHostTestCase {
             timeSeriesStats.add(startTime, value, 1);
         }
         assertTrue(timeSeriesStats.bins.size() == numBins);
+
         // insert additional unique datapoints; the earliest entries should be dropped
         for (int i = 0; i < numBins / 2; i++) {
             startTime += TimeUnit.MILLISECONDS.toMicros(interval);
             value += 1;
+            values.add(value);
             timeSeriesStats.add(startTime, value, 1);
         }
         assertTrue(timeSeriesStats.bins.size() == numBins);
@@ -527,11 +530,13 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         for (int i = 0; i < numBins / 2; i++) {
             newValue++;
             count++;
+            values.add(value);
             timeSeriesStats.add(startTime, newValue, 2);
             accumulatedValue += newValue;
         }
         TimeBin lastBin = timeSeriesStats.bins.get(timeSeriesStats.bins.lastKey());
         assertTrue(lastBin.avg.equals(accumulatedValue / count));
+        assertTrue(lastBin.var.equals((1.0 * numBins) / 2.0));
         assertTrue(lastBin.sum.equals((2 * count) - 1));
         assertTrue(lastBin.count == count);
         assertTrue(lastBin.max.equals(newValue));
