@@ -317,17 +317,16 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
     private void submitRequest(ChannelHandlerContext ctx, Operation request,
             Integer streamId, String originalPath, double startTime) {
         AtomicBoolean isStreamingEnabled = new AtomicBoolean();
-        request.nestCompletion((o, e) -> {
+        request.nestCompletionCloneSafe((o, e) -> {
             if (!isStreamingEnabled.get()) {
-                request.setBodyNoCloning(o.getBodyRaw());
-                sendResponse(ctx, request, streamId, originalPath, startTime);
+                sendResponse(ctx, o, streamId, originalPath, startTime);
             } else {
                 if (e != null) {
                     ServerSentEvent errorEvent = new ServerSentEvent().setEvent(ServerSentEvent.EVENT_TYPE_ERROR)
                             .setData(Utils.toJson(o.getBody(ServiceErrorResponse.class)));
-                    request.sendServerSentEvent(errorEvent);
+                    o.sendServerSentEvent(errorEvent);
                 }
-                concludeRequest(ctx, request, true);
+                concludeRequest(ctx, o, true);
             }
         });
         request.nestHeadersReceivedHandler(ignore -> {
