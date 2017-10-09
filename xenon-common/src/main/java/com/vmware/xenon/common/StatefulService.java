@@ -355,10 +355,10 @@ public class StatefulService implements Service {
 
                 if (ServiceHost.isServiceStop(request)) {
                     // local shutdown induced delete. By pass two stage operation processing
-                    request.nestCompletion((o, e) -> {
-                        processPending(request);
+                    request.nestCompletionCloneSafe((o, e) -> {
+                        processPending(o);
                         if (e == null) {
-                            handleStopCompletion(request);
+                            handleStopCompletion(o);
                         }
                     });
 
@@ -385,7 +385,7 @@ public class StatefulService implements Service {
                     return;
                 }
 
-                request.nestCompletion(this::handleRequestCompletion);
+                request.nestCompletionCloneSafe(this::handleRequestCompletion);
 
                 isCompletionNested = true;
 
@@ -924,15 +924,15 @@ public class StatefulService implements Service {
             return false;
         }
 
-        op.nestCompletion((o, e) -> {
+        op.nestCompletionCloneSafe((o, e) -> {
             if (e != null) {
                 ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
                 // only proceed with synchronization if a retry is requested
                 if (rsp != null && rsp.details != null
                         && rsp.details.contains(ErrorDetail.SHOULD_RETRY)) {
-                    synchronizeWithPeers(op, e);
+                    synchronizeWithPeers(o, e);
                 } else {
-                    failRequest(op, e);
+                    failRequest(o, e);
                 }
                 return;
             }
@@ -1049,15 +1049,15 @@ public class StatefulService implements Service {
      */
     private void processCompletionStageIndexing(Operation op) {
         try {
-            op.nestCompletion((o, failure) -> {
+            op.nestCompletionCloneSafe((o, failure) -> {
                 if (failure != null) {
-                    if (op.isWithinTransaction()) {
-                        processPending(op);
+                    if (o.isWithinTransaction()) {
+                        processPending(o);
                     }
-                    failRequest(op, failure);
+                    failRequest(o, failure);
                     return;
                 }
-                checkAndNestAuthupdateCompletionStage(op);
+                checkAndNestAuthupdateCompletionStage(o);
             });
 
             ServiceDocument mergedState = op.getLinkedState();
@@ -1081,15 +1081,15 @@ public class StatefulService implements Service {
         if (!this.getHost().isAuthorizationEnabled() || !this.getHost().isPrivilegedService(this)) {
             processCompletionStageTransactionNotification(op, null);
         } else {
-            op.nestCompletion((o, failure) -> {
+            op.nestCompletionCloneSafe((o, failure) -> {
                 if (failure != null) {
-                    if (op.isWithinTransaction()) {
-                        processPending(op);
+                    if (o.isWithinTransaction()) {
+                        processPending(o);
                     }
-                    failRequest(op, failure);
+                    failRequest(o, failure);
                     return;
                 }
-                processCompletionStageTransactionNotification(op, null);
+                processCompletionStageTransactionNotification(o, null);
             });
             processCompletionStageUpdateAuthzArtifacts(op);
         }
@@ -1239,18 +1239,18 @@ public class StatefulService implements Service {
     }
 
     private void loadAndLinkState(Operation op) {
-        op.nestCompletion((o, e) -> {
+        op.nestCompletionCloneSafe((o, e) -> {
             if (e != null) {
-                failRequest(op, e);
+                failRequest(o, e);
                 return;
             }
 
-            ServiceDocument linkedState = op.getLinkedState();
+            ServiceDocument linkedState = o.getLinkedState();
 
             if (linkedState == null && hasOption(ServiceOption.PERSISTENCE)) {
                 // the only way the document index will return null for state is if that state is
                 // permanently deleted from the index. We need to fail the request
-                failRequest(op, new IllegalStateException(
+                failRequest(o, new IllegalStateException(
                         "Service state permanently deleted from index"), false);
                 return;
             }
@@ -1266,7 +1266,7 @@ public class StatefulService implements Service {
             }
 
             // state has already been linked with the operation
-            handleRequest(op, OperationProcessingStage.PROCESSING_FILTERS);
+            handleRequest(o, OperationProcessingStage.PROCESSING_FILTERS);
         });
         getHost().loadServiceState(this, op);
     }
@@ -1499,7 +1499,7 @@ public class StatefulService implements Service {
         }
 
         // proceed with normal completion pipeline, including indexing
-        request.nestCompletion(this::handleRequestCompletion);
+        request.nestCompletionCloneSafe(this::handleRequestCompletion);
         request.complete();
     }
 

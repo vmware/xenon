@@ -1521,7 +1521,7 @@ public class Operation implements Cloneable {
             this.completion = h;
         } else {
             this.completion = (o, e) -> {
-                o.nestCompletion(h);
+                o.nestCompletionCloneSafe(h);
                 existing.handle(o, e);
             };
         }

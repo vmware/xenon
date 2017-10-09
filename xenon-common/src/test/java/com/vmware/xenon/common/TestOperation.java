@@ -248,7 +248,7 @@ public class TestOperation extends BasicReusableHostTestCase {
         ctx = testCreate(1);
         Operation opWithFail = Operation.createGet(this.host.getUri()).setCompletion(
                 ctx.getExpectedFailureCompletion());
-        opWithFail.nestCompletion((o, e) -> {
+        opWithFail.nestCompletionCloneSafe((o, e) -> {
             if (e != null) {
                 // the fail() below is triggered due to the fail() right before ctx.await(),
                 // and it should result in the original completion being triggered
@@ -326,6 +326,32 @@ public class TestOperation extends BasicReusableHostTestCase {
         op.complete();
 
         assertArrayEquals(new Integer[]{2, 1, 10, 20}, list.toArray(new Integer[list.size()]));
+    }
+
+    @Test
+    public void nestCompletionwithClones() throws Throwable {
+        Operation op = Operation.createGet(this.host.getUri());
+        List<Integer> list = new ArrayList<>();
+        op.setCompletion((o, e) -> {
+            list.add(0);
+            o.complete();
+            list.add(1);
+        });
+        op.nestCompletion((o, e) -> {
+            list.add(2);
+            o.complete();
+            list.add(3);
+        });
+
+        Operation actual = op.clone();
+        actual.complete();
+        assertArrayEquals(new Integer[]{2, 0, 1,3}, list.toArray());
+
+        /* Check that successive clones also behave correctly */
+        list.clear();;
+        Operation actual2 = op.clone();
+        actual2.complete();
+        assertArrayEquals(new Integer[]{2, 0, 1,3}, list.toArray());
     }
 
     @Test
