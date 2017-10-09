@@ -11,9 +11,13 @@
   maintenance interval. The stop delay factor is a host setting
   and can be overridden via ServiceHost.setServiceStopDelayFactor().
 
- * Added support to exclude built-in fields like 'documentVersion' when outputting to JSON.
-   Revamped JSON output methods to use JsonOptions enum instead of various boolean flags.
-   Deprecated JSON output methods that use boolean flags in favor of the new design.
+* Added support to exclude built-in fields like 'documentVersion' when outputting to JSON.
+  Revamped JSON output methods to use JsonOptions enum instead of various boolean flags.
+  Deprecated JSON output methods that use boolean flags in favor of the new design.
+
+* Breaking change: Restrict service creation with an ID that is not a valid URI.
+  Caller cannot create a service with '/example/({id}}' as documentSelfLink. Any documentSelfLink
+  supplied by the caller should be parsable by URI.create().
 
 ## 1.5.7
 

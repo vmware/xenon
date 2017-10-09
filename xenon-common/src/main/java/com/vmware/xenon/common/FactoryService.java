@@ -14,6 +14,7 @@
 package com.vmware.xenon.common;
 
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -380,9 +381,11 @@ public abstract class FactoryService extends StatelessService {
                 }
             }
 
-            if (!isValidDocumentId(suffix)) {
-                o.fail(new IllegalArgumentException(suffix + ": document id cannot have '/'"));
-                return;
+            if (!o.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK)) {
+                if (!isValidDocumentId(suffix)) {
+                    o.fail(new IllegalArgumentException(suffix + " is an invalid id"));
+                    return;
+                }
             }
 
             // check suffix does not already contain the prefix i.e. the factory's self link
@@ -439,6 +442,12 @@ public abstract class FactoryService extends StatelessService {
         }
 
         if (id.contains(UriUtils.URI_PATH_CHAR)) {
+            return false;
+        }
+
+        try {
+            new URI(id);
+        } catch (URISyntaxException e) {
             return false;
         }
 

@@ -194,9 +194,10 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         }
 
         String query = decodedQuery == null ? targetUri.getRawQuery() : decodedQuery;
-        URI uri = new URI(UriUtils.HTTP_SCHEME, targetUri.getUserInfo(),
+        URI hostUri = this.host.getUri();
+        URI uri = new URI(hostUri.getScheme(), targetUri.getUserInfo(),
                 ServiceHost.LOCAL_HOST,
-                this.host.getPort(), targetUri.getPath(), query, targetUri.getFragment());
+                hostUri.getPort(), targetUri.getPath(), query, targetUri.getFragment());
         request.setUri(uri);
 
         if (!request.hasReferer() && request.isFromReplication()) {

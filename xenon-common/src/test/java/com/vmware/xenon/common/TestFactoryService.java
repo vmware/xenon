@@ -1115,11 +1115,12 @@ public class TestFactoryService extends BasicReusableHostTestCase {
     public void testFactoryPostHandling() throws Throwable {
         startFactoryService();
 
-        this.host.testStart(4);
+        this.host.testStart(5);
         idempotentPostReturnsUpdatedOpBody();
         checkDerivedSelfLinkWhenProvidedSelfLinkIsJustASuffix();
         checkDerivedSelfLinkWhenProvidedSelfLinkAlreadyContainsAPath();
         failPostWhenProvidedSelfLinkContainsUriPathChar();
+        failPostWhenProvidedSelfLinkContainsInvalidPathChar();
         this.host.testWait();
     }
 
@@ -1513,6 +1514,23 @@ public class TestFactoryService extends BasicReusableHostTestCase {
             throws Throwable {
         SomeDocument doc = new SomeDocument();
         doc.documentSelfLink = "reddy/x3";
+
+        this.host.send(Operation.createPost(this.factoryUri)
+                .setBody(doc)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.completeIteration();
+                        return;
+                    }
+
+                    this.host.failIteration(new Throwable());
+                }));
+    }
+
+    private void failPostWhenProvidedSelfLinkContainsInvalidPathChar()
+            throws Throwable {
+        SomeDocument doc = new SomeDocument();
+        doc.documentSelfLink = "{{reddyx3}}";
 
         this.host.send(Operation.createPost(this.factoryUri)
                 .setBody(doc)
