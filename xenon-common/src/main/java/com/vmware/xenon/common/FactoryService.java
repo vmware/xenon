@@ -615,6 +615,11 @@ public abstract class FactoryService extends StatelessService {
         task.setDirect(true);
         task.indexLink = this.documentIndexLink;
 
+        if (!UriUtils.hasODataExpandParamValue(op.getUri())) {
+            task.querySpec.options.remove(QueryOption.EXPAND_CONTENT);
+        }
+
+
         // restrict results to same kind and self link prefix as factory children
         String kind = Utils.buildKind(getStateType());
         QueryTask.Query kindClause = new QueryTask.Query()

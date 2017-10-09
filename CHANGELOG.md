@@ -19,6 +19,13 @@
   Caller cannot create a service with '/example/({id}}' as documentSelfLink. Any documentSelfLink
   supplied by the caller should be parsable by URI.create().
 
+* OData access to FactoryService now always requires expand parameter to expand documents.
+  Previously, when GET request has any odata parameter(e.g.: `$count`), response was always
+  expanded regardless of presence of expand parameter.
+  It is changed to always require `$expand` parameter in order to expand the response.
+  This only applies to GET on factory.
+
+
 ## 1.5.7
 
 * Fix auth check for non-persisted stateful service on document-index GET.
