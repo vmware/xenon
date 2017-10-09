@@ -1347,15 +1347,15 @@ public class LuceneDocumentIndexService extends StatelessService {
             // but they populate appropriate auth context such as system-user.
             // For non-wildcard selfLink request, auth check is performed as part of queryIndex().
             if (get.isRemote() && getHost().isAuthorizationEnabled()) {
-                get.nestCompletion((op, ex) -> {
+                get.nestCompletionCloneSafe((op, ex) -> {
                     if (ex != null) {
-                        get.fail(ex);
+                        op.fail(ex);
                         return;
                     }
 
                     if (get.getAuthorizationContext().isSystemUser() || !op.hasBody()) {
                         // when there is no matching document, we cannot evaluate the auth, thus simply complete.
-                        get.complete();
+                        op.complete();
                         return;
                     }
 
@@ -1373,10 +1373,10 @@ public class LuceneDocumentIndexService extends StatelessService {
                     // which doesn't convert the document object.
                     ServiceDocument doc = (ServiceDocument) op.getBodyRaw();
                     if (!QueryFilterUtils.evaluate(queryFilter, doc, getHost())) {
-                        get.fail(Operation.STATUS_CODE_FORBIDDEN);
+                        op.fail(Operation.STATUS_CODE_FORBIDDEN);
                         return;
                     }
-                    get.complete();
+                    op.complete();
                 });
             }
 
