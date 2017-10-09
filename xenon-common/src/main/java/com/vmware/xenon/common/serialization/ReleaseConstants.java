@@ -20,6 +20,7 @@ public final class ReleaseConstants {
     public static final int RELEASE_VERSION_1_4_2 = 142;
     public static final int RELEASE_VERSION_1_5_1 = 151;
     public static final int RELEASE_VERSION_1_5_2 = 152;
+    public static final int RELEASE_VERSION_1_6_0 = 160;
 
     private ReleaseConstants() {
     }

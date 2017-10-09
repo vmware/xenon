@@ -49,7 +49,6 @@ public final class SortedKeysMapViewAdapterFactory implements TypeAdapterFactory
         }
 
         @Override
-        @SuppressWarnings("unchecked")
         public Set<Entry<K, V>> entrySet() {
             try {
                 SortedSet<Entry<K, V>> res = new TreeSet<>(COMP);
