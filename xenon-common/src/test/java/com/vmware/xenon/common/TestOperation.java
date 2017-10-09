@@ -329,6 +329,32 @@ public class TestOperation extends BasicReusableHostTestCase {
     }
 
     @Test
+    public void nestCompletionwithClones() throws Throwable {
+        Operation op = Operation.createGet(this.host.getUri());
+        List<Integer> list = new ArrayList<>();
+        op.setCompletion((o, e) -> {
+            list.add(0);
+            o.complete();
+            list.add(1);
+        });
+        op.nestCompletion((o, e) -> {
+            list.add(2);
+            o.complete();
+            list.add(3);
+        });
+
+        Operation actual = op.clone();
+        actual.complete();
+        assertArrayEquals(new Integer[]{2, 0, 1,3}, list.toArray());
+
+        /* Check that successive clones also behave correctly */
+        list.clear();;
+        Operation actual2 = op.clone();
+        actual2.complete();
+        assertArrayEquals(new Integer[]{2, 0, 1,3}, list.toArray());
+    }
+
+    @Test
     public void appendCompletionCheckOrderAndOperationIdentity() throws Throwable {
 
         List<Integer> list = new ArrayList<>();
