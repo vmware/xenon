@@ -2365,14 +2365,14 @@ public class ServiceHost implements ServiceRequestSender {
         unSubscribeBody.reference = notificationTarget;
         sendRequest(unsubscribe
                 .setBodyNoCloning(unSubscribeBody)
-                .nestCompletion(
+                .nestCompletionCloneSafe(
                         (deleteOp, deleteEx) -> {
                             if (deleteEx != null) {
-                                unsubscribe.fail(new IllegalStateException(
+                                deleteOp.fail(new IllegalStateException(
                                         "Deletion of notification callback failed"));
                                 return;
                             }
-                            unsubscribe.complete();
+                            deleteOp.complete();
                         }));
         // delete the notification target
         sendRequest(Operation
@@ -2511,10 +2511,10 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         // make sure we detach the service on start failure
-        post.nestCompletion((o, e) -> {
+        post.nestCompletionCloneSafe((o, e) -> {
             this.operationTracker.removeStartOperation(post);
             if (e == null) {
-                post.complete();
+                o.complete();
                 return;
             }
             stopService(service);
