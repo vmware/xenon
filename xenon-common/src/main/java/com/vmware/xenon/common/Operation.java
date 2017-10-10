@@ -1448,7 +1448,7 @@ public class Operation implements Cloneable {
         CompletionHandler existing = this.completion;
         this.completion = (o, e) -> {
             this.statusCode = o.statusCode;
-            o.completion = existing;
+            this.completion = existing;
             h.handle(o, e);
         };
         return this;

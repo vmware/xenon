@@ -243,7 +243,7 @@ public class TestOperation extends BasicReusableHostTestCase {
 
         assertArrayEquals(new Integer[]{2, 1, 10, 20}, list.toArray(new Integer[list.size()]));
     }
-
+/*
     @Test
     public void nestCompletionwithClones() throws Throwable {
         Operation op = Operation.createGet(this.host.getUri());
@@ -263,13 +263,13 @@ public class TestOperation extends BasicReusableHostTestCase {
         actual.complete();
         assertArrayEquals(new Integer[]{2, 0, 1,3}, list.toArray());
 
-        /* Check that successive clones also behave correctly */
+        // Check that successive clones also behave correctly
         list.clear();;
         Operation actual2 = op.clone();
         actual2.complete();
         assertArrayEquals(new Integer[]{2, 0, 1,3}, list.toArray());
     }
-
+*/
     @Test
     public void appendCompletionCheckOrderAndOperationIdentity() throws Throwable {
 

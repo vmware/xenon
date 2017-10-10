@@ -579,7 +579,7 @@ public class ServiceHost implements ServiceRequestSender {
     private final Map<String, ServiceDocumentDescription> descriptionCachePerFactoryLink = new HashMap<>();
     private final ServiceDocumentDescription.Builder descriptionBuilder = Builder.create();
 
-    private ExecutorService executor;
+    public ExecutorService executor;
     private ScheduledExecutorService scheduledExecutor;
 
     private final ConcurrentHashMap<String, Service> attachedServices = new ConcurrentHashMap<>();
@@ -3985,7 +3985,7 @@ public class ServiceHost implements ServiceRequestSender {
         op.fail(new CancellationException("Service not available, in stage: " + stage));
     }
 
-    private void queueOrScheduleRequestInternal(Service s, Operation op) {
+    public void queueOrScheduleRequestInternal(Service s, Operation op) {
         if (!s.queueRequest(op)) {
             Runnable r = () -> {
                 OperationContext opCtx = extractAndApplyContext(op);
