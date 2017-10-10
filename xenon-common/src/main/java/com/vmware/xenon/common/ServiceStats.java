@@ -21,6 +21,10 @@ import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
 
+import com.esotericsoftware.kryo.serializers.VersionFieldSerializer.Since;
+
+import com.vmware.xenon.common.serialization.ReleaseConstants;
+
 /**
  * Document describing the <service>/stats REST API
  */
@@ -50,6 +54,8 @@ public class ServiceStats extends ServiceDocument {
 
         public static class TimeBin {
             public Double avg;
+            @Since(ReleaseConstants.RELEASE_VERSION_1_6_0)
+            public Double var;
             public Double min;
             public Double max;
             public Double sum;
@@ -99,10 +105,16 @@ public class ServiceStats extends ServiceDocument {
                 if (this.aggregationType.contains(AggregationType.AVG)) {
                     if (dataBin.avg == null) {
                         dataBin.avg = value;
+                        dataBin.var = 0.0;
                         dataBin.count = 1;
                     } else {
-                        dataBin.avg = ((dataBin.avg * dataBin.count) + value) / (dataBin.count + 1);
+                        // Use Welford's algorithm for online computation of average and variance
+                        // see https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance
                         dataBin.count++;
+                        double diff = value - dataBin.avg;
+                        dataBin.avg += diff / dataBin.count;
+                        double diffAfter = value - dataBin.avg;
+                        dataBin.var += diff * diffAfter;
                     }
                 }
                 if (this.aggregationType.contains(AggregationType.SUM)) {
