@@ -3276,7 +3276,7 @@ public class VerificationHost extends ExampleServiceHost {
                 response.getStatusCode());
         assertEquals(message, expectedStatusCode, response.getStatusCode());
 
-        return response.getBody(documentType);
+        return response.hasBody() ? response.getBody(documentType) : null;
     }
 
     protected TemporaryFolder getTemporaryFolder() {

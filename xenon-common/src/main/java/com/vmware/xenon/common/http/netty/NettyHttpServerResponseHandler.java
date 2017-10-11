@@ -191,7 +191,7 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
                 return;
             }
             // skip body decode, request had no body
-            request.setContentLength(0).complete();
+            request.setContentLength(0).setBodyNoCloning(null).complete();
             return;
         }
 
