@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2015 VMware, Inc. All Rights Reserved.
+ * Copyright (c) 2014-2017 VMware, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy of
@@ -129,7 +129,7 @@ public class ExampleService extends StatefulService {
         @UsageOption(option = PropertyUsageOption.OPTIONAL)
         @PropertyOptions(indexing = { PropertyIndexingOption.EXPAND,
                 PropertyIndexingOption.FIXED_ITEM_NAME })
-        @Documentation(description = "@KEYVALUE", exampleString = "{ \"key1\" : \"value1\", \"key2\", \"value2\" }")
+        @Documentation(description = "@KEYVALUE", exampleString = "{ \"key1\" : \"value1\", \"key2\": \"value2\" }")
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public Map<String, String> keyValues = new HashMap<>();
         @Documentation(description = "Version counter")

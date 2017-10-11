@@ -33,6 +33,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -70,6 +71,7 @@ import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService.CommitInfo;
+import com.vmware.xenon.services.common.LuceneDocumentIndexService.InternalDocumentIndexInfo;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService.MaintenanceRequest;
 import com.vmware.xenon.services.common.ServiceHostManagementService.BackupRequest;
 import com.vmware.xenon.services.common.ServiceHostManagementService.BackupType;
@@ -80,10 +82,6 @@ import com.vmware.xenon.services.common.ServiceHostManagementService.RestoreRequ
  *
  * This service works with both default index service {@link LuceneDocumentIndexService}, and in-memory index service
  * {@link InMemoryLuceneDocumentIndexService}.
- *
- * Since in-memory index is opt-in service, manual registration of this service is required to perform in-memory index backup/restore.
- * To register, initialize this service with in-memory index service, and start the service with
- * {@link ServiceUriPaths#CORE_IN_MEMORY_DOCUMENT_INDEX_BACKUP}".
  *
  * @see ServiceHostManagementService
  * @see LuceneDocumentIndexService
@@ -177,12 +175,6 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
         service.adjustStat(dailyStatKey, 1);
     }
 
-    private LuceneDocumentIndexService indexService;
-
-    public LuceneDocumentIndexBackupService(LuceneDocumentIndexService indexService) {
-        this.indexService = indexService;
-    }
-
     @Override
     public void handlePatch(Operation patch) {
 
@@ -220,34 +212,48 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
             return;
         }
 
-        if (this.indexService.writer == null) {
-            op.fail(new CancellationException("writer is null"));
-            return;
-        }
-
-        // call maintenance request, then perform backup
-        MaintenanceRequest maintenanceRequest = new MaintenanceRequest();
-        Operation post = Operation.createPost(this, this.indexService.getSelfLink()).setBody(maintenanceRequest);
-        sendWithDeferredResult(post)
-                .whenComplete((o, x) -> {
-                    if (x != null) {
-                        op.fail(x);
+        // make a special get to index-service to retrieve lucene index-writer
+        Operation.createGet(this, backupRequest.indexServiceLink)
+                .setBodyNoCloning(new InternalDocumentIndexInfo())
+                .setCompletion((oo, ex) -> {
+                    if (ex != null) {
+                        op.fail(ex);
                         return;
                     }
 
-                    // perform backup
-                    try {
-                        handleBackupInternal(op, backupRequest);
-                    } catch (Exception e) {
-                        logSevere("Failed to handle backup request. %s", Utils.toString(e));
-                        op.fail(e);
+                    InternalDocumentIndexInfo indexInfo = oo.getBody(InternalDocumentIndexInfo.class);
+
+                    if (indexInfo.indexWriter == null) {
+                        op.fail(new CancellationException("writer is null"));
                         return;
                     }
-                });
+
+                    // call maintenance request, then perform backup
+                    MaintenanceRequest maintenanceRequest = new MaintenanceRequest();
+                    Operation post = Operation.createPost(this, backupRequest.indexServiceLink).setBody(maintenanceRequest);
+                    sendWithDeferredResult(post)
+                            .whenComplete((o, x) -> {
+                                if (x != null) {
+                                    op.fail(x);
+                                    return;
+                                }
+
+                                // perform backup
+                                try {
+                                    handleBackupInternal(op, backupRequest, indexInfo);
+                                } catch (Exception e) {
+                                    logSevere("Failed to handle backup request. %s", Utils.toString(e));
+                                    op.fail(e);
+                                    return;
+                                }
+                            });
+                })
+                .setExpiration(Utils.fromNowMicrosUtc(TimeUnit.DAYS.toMicros(1)))
+                .sendWith(this);
     }
 
-    private void handleBackupInternal(Operation originalOp, BackupRequest backupRequest) throws IOException {
-        String indexDirectoryName = this.indexService.indexDirectory;
+    private void handleBackupInternal(Operation originalOp, BackupRequest backupRequest, InternalDocumentIndexInfo indexInfo) throws IOException {
+        String indexDirectoryName = indexInfo.indexDirectory;
         boolean isStreamBackup = STREAM == backupRequest.backupType;
 
         Path localDestinationPath;
@@ -262,7 +268,7 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
         // take snapshot
         boolean isZipBackup = EnumSet.of(ZIP, STREAM).contains(backupRequest.backupType);
         try {
-            takeSnapshot(localDestinationPath, isZipBackup);
+            takeSnapshot(localDestinationPath, isZipBackup, indexInfo);
         } catch (IOException e) {
             logSevere(e);
             Files.deleteIfExists(localDestinationPath);
@@ -298,10 +304,13 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
     }
 
 
-    private void takeSnapshot(Path destinationPath, boolean isZipBackup) throws IOException {
+    private void takeSnapshot(Path destinationPath, boolean isZipBackup, InternalDocumentIndexInfo indexInfo) throws IOException {
 
-        IndexWriter writer = this.indexService.writer;
-        boolean isInMemoryIndex = isInMemoryIndex();
+        IndexWriter writer = indexInfo.indexWriter;
+        boolean isInMemoryIndex = indexInfo.indexDirectory == null;
+
+        URI storageSandbox = getHost().getStorageSandbox();
+
 
         SnapshotDeletionPolicy snapshotter = null;
         IndexCommit commit = null;
@@ -323,7 +332,7 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                         fileList.addAll(files);
                     } else {
 
-                        Path indexDirectoryPath = getIndexDirectoryPath();
+                        Path indexDirectoryPath = Paths.get(storageSandbox).resolve(indexInfo.indexDirectory);
                         List<URI> files = commit.getFileNames().stream()
                                 .map(indexDirectoryPath::resolve)
                                 .map(Path::toUri)
@@ -362,7 +371,7 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                         copyInMemoryLuceneIndexToDirectory(commit, tempDir);
                         indexDirectoryPath = tempDir;
                     } else {
-                        indexDirectoryPath = getIndexDirectoryPath();
+                        indexDirectoryPath = Paths.get(storageSandbox).resolve(indexInfo.indexDirectory);
                     }
 
                     // add files exist in source but not in dest
@@ -397,12 +406,6 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
             }
             writer.deleteUnusedFiles();
         }
-    }
-
-    private Path getIndexDirectoryPath() {
-        String indexDirectoryName = this.indexService.indexDirectory;
-        URI storageSandbox = getHost().getStorageSandbox();
-        return Paths.get(storageSandbox).resolve(indexDirectoryName);
     }
 
     private void copyInMemoryLuceneIndexToDirectory(IndexCommit commit, Path directoryPath) throws IOException {
@@ -465,17 +468,30 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                         op.fail(x);
                     }
 
-                    // perform restore from local file/dir
-                    restoreFromLocal(op, backupFilePath, restoreRequest.timeSnapshotBoundaryMicros);
+                    // request to retrieve lucene index writer from index service
+                    Operation.createGet(this, restoreRequest.indexServiceLink)
+                            .setBodyNoCloning(new InternalDocumentIndexInfo())
+                            .setCompletion((oo, ex) -> {
+                                if (ex != null) {
+                                    op.fail(ex);
+                                    return;
+                                }
 
-                    if (isFromRemote) {
-                        try {
-                            Files.deleteIfExists(backupFilePath);
-                        } catch (IOException e) {
-                            logWarning("Failed to delete temporary backup file %s: %s",
-                                    backupFilePath, Utils.toString(e));
-                        }
-                    }
+                                InternalDocumentIndexInfo indexInfo = oo.getBody(InternalDocumentIndexInfo.class);
+
+                                // perform restore from local file/dir
+                                restoreFromLocal(op, backupFilePath, restoreRequest.timeSnapshotBoundaryMicros, indexInfo);
+
+                                if (isFromRemote) {
+                                    try {
+                                        Files.deleteIfExists(backupFilePath);
+                                    } catch (IOException e) {
+                                        logWarning("Failed to delete temporary backup file %s: %s",
+                                                backupFilePath, Utils.toString(e));
+                                    }
+                                }
+                            })
+                            .sendWith(this);
                 });
 
 
@@ -489,21 +505,22 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
     }
 
 
-    private void restoreFromLocal(Operation op, Path restoreFrom, Long timeSnapshotBoundaryMicros) {
+    private void restoreFromLocal(Operation op, Path restoreFrom, Long timeSnapshotBoundaryMicros, InternalDocumentIndexInfo indexInfo) {
 
-        IndexWriter w = this.indexService.writer;
+        LuceneDocumentIndexService luceneIndexService = indexInfo.luceneIndexService;
+        IndexWriter w = indexInfo.indexWriter;
         if (w == null) {
             op.fail(new CancellationException("writer is null"));
             return;
         }
 
-        boolean isInMemoryIndex = isInMemoryIndex();
+        boolean isInMemoryIndex = indexInfo.indexDirectory == null;
         boolean restoreFromZipFile = Files.isRegularFile(restoreFrom);
 
         // resolve index directory path for filesystem based index
         Path restoreTo = null;
         if (!isInMemoryIndex) {
-            restoreTo = getIndexDirectoryPath();
+            restoreTo = Paths.get(getHost().getStorageSandbox()).resolve(indexInfo.indexDirectory);
         }
 
         Set<Path> pathToDeleteAtFinally = new HashSet<>();
@@ -511,10 +528,10 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
         final int semaphoreCount = QUERY_THREAD_COUNT + UPDATE_THREAD_COUNT - 1;
         try {
 
-            this.indexService.writerSync.acquire(semaphoreCount);
-            this.indexService.close(w);
+            indexInfo.writerSync.acquire(semaphoreCount);
+            luceneIndexService.close(w);
 
-           // extract zip file to temp directory
+            // extract zip file to temp directory
             if (restoreFromZipFile && isInMemoryIndex) {
                 Path tempDir = Files.createTempDirectory("restore-" + Utils.getSystemNowMicrosUtc());
                 pathToDeleteAtFinally.add(tempDir);
@@ -534,7 +551,7 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                 logInfo("restoring index %s from %s md5sum(%s)", restoreTo, restoreFrom,
                         FileUtils.md5sum(restoreFrom.toFile()));
                 FileUtils.extractZipArchive(restoreFrom.toFile(), restoreTo);
-                newWriter = this.indexService.createWriter(restoreTo.toFile(), true);
+                newWriter = luceneIndexService.createWriter(restoreTo.toFile(), true);
             } else {
                 // perform restore from directory
 
@@ -548,19 +565,18 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                         to.copyFrom(from, filename, filename, IOContext.DEFAULT);
                     }
 
-                    newWriter = this.indexService.createWriterWithLuceneDirectory(to, true);
-
+                    newWriter = luceneIndexService.createWriterWithLuceneDirectory(to, true);
                 } else {
                     logInfo("restoring index %s from directory %s", restoreTo, restoreFrom);
 
                     // Copy whatever was there out just in case.
                     if (Files.list(restoreTo).count() > 0) {
                         logInfo("archiving existing index %s", restoreTo);
-                        this.indexService.archiveCorruptIndexFiles(restoreTo.toFile());
+                        luceneIndexService.archiveCorruptIndexFiles(restoreTo.toFile());
                     }
 
                     FileUtils.copyFiles(restoreFrom.toFile(), restoreTo.toFile());
-                    newWriter = this.indexService.createWriter(restoreTo.toFile(), true);
+                    newWriter = luceneIndexService.createWriter(restoreTo.toFile(), true);
                 }
             }
 
@@ -569,7 +585,7 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                 performTimeSnapshotRecovery(timeSnapshotBoundaryMicros, newWriter);
             }
 
-            this.indexService.setWriterUpdateTimeMicros(Utils.getNowMicrosUtc());
+            luceneIndexService.setWriterUpdateTimeMicros(Utils.getNowMicrosUtc());
 
             op.complete();
             logInfo("restore complete");
@@ -577,7 +593,7 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
             logSevere(e);
             op.fail(e);
         } finally {
-            this.indexService.writerSync.release(semaphoreCount);
+            luceneIndexService.writerSync.release(semaphoreCount);
 
             for (Path path : pathToDeleteAtFinally) {
                 try {
@@ -683,9 +699,5 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
         newWriter.updateNumericDocValue(indexingIdTerm,
                 LuceneIndexDocumentHelper.FIELD_NAME_INDEXING_METADATA_VALUE_TOMBSTONE_TIME,
                 LuceneIndexDocumentHelper.ACTIVE_DOCUMENT_TOMBSTONE_TIME);
-    }
-
-    private boolean isInMemoryIndex() {
-        return this.indexService.indexDirectory == null;
     }
 }

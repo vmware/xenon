@@ -54,7 +54,6 @@ public class ServiceStats extends ServiceDocument {
 
         public static class TimeBin {
             public Double avg;
-            @Since(ReleaseConstants.RELEASE_VERSION_1_6_0)
             public Double var;
             public Double min;
             public Double max;
