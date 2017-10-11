@@ -100,16 +100,10 @@ public class TestRoleService extends BasicReusableHostTestCase {
         assertEquals(state.priority, responseState.priority);
         assertEquals(state.policy, responseState.policy);
 
-        responseState = (RoleState) this.host.verifyPost(RoleState.class,
+        this.host.verifyPost(RoleState.class,
                 ServiceUriPaths.CORE_AUTHZ_ROLES,
                 state,
                 Operation.STATUS_CODE_NOT_MODIFIED);
-
-        assertEquals(state.userGroupLink, responseState.userGroupLink);
-        assertEquals(state.resourceGroupLink, responseState.resourceGroupLink);
-        assertEquals(state.verbs, responseState.verbs);
-        assertEquals(state.priority, responseState.priority);
-        assertEquals(state.policy, responseState.policy);
 
         state.verbs.add(Action.PATCH);
 

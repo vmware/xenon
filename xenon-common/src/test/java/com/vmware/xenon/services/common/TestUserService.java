@@ -69,12 +69,10 @@ public class TestUserService extends BasicReusableHostTestCase {
 
         assertEquals(state.email,responseState.email);
 
-        responseState = (UserState) this.host.verifyPost(UserState.class,
+        this.host.verifyPost(UserState.class,
                 ServiceUriPaths.CORE_AUTHZ_USERS,
                 state,
                 Operation.STATUS_CODE_NOT_MODIFIED);
-
-        assertEquals(state.email,responseState.email);
 
         state.email = "john@doe.com";
 

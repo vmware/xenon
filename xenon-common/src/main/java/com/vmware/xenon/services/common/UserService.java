@@ -101,6 +101,8 @@ public class UserService extends StatefulService {
                 && ((currentState.userGroupLinks == null && newState.userGroupLinks == null)
                 || (currentState.userGroupLinks != null && newState.userGroupLinks != null
                     && currentState.userGroupLinks.equals(newState.userGroupLinks)))) {
+            // HTTP-304 spec doesn't define behavior for PUT
+            // setting this status code here is relying on current xenon behavior and may change in future.
             op.setStatusCode(Operation.STATUS_CODE_NOT_MODIFIED);
         } else {
             setState(op, newState);
