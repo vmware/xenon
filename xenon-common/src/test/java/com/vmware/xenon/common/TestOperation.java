@@ -17,9 +17,12 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+
+import static com.vmware.xenon.common.Operation.STATUS_CODE_NOT_MODIFIED;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -37,8 +40,89 @@ import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.MinimalTestService;
+import com.vmware.xenon.services.common.ServiceUriPaths;
 
 public class TestOperation extends BasicReusableHostTestCase {
+
+    public static class NotModifiedOwnerSelectedService extends StatefulService {
+
+        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/tests/304-stateful-ownerselected";
+
+        public static class State extends ServiceDocument {
+            public String name;
+        }
+
+        public NotModifiedOwnerSelectedService() {
+            super(NotModifiedOwnerSelectedService.State.class);
+            toggleOption(ServiceOption.PERSISTENCE, true);
+            toggleOption(ServiceOption.REPLICATION, true);
+            toggleOption(ServiceOption.OWNER_SELECTION, true);
+        }
+
+        @Override
+        public void handleGet(Operation get) {
+            completeWith304(get);
+        }
+
+        @Override
+        public void handlePatch(Operation patch) {
+            // this is not defined behavior on http-304 spec
+            completeWith304(patch);
+        }
+
+        @Override
+        public void handlePut(Operation put) {
+            // this is not defined behavior on http-304 spec
+            completeWith304(put);
+        }
+
+        private void completeWith304(Operation op) {
+            NotModifiedOwnerSelectedService.State bogusBody = new NotModifiedOwnerSelectedService.State();
+            bogusBody.name = "should not be a body";
+            op.setBody(bogusBody);
+            op.setStatusCode(STATUS_CODE_NOT_MODIFIED);
+            op.complete();
+        }
+    }
+
+    public static class NotModifiedNonOwnerSelectedService extends NotModifiedOwnerSelectedService {
+
+        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/tests/304-stateful-non-owner";
+
+        public NotModifiedNonOwnerSelectedService() {
+            super();
+            toggleOption(ServiceOption.OWNER_SELECTION, false);
+        }
+    }
+
+    public static class NotModifiedStatelessService extends StatelessService {
+
+        public static final String SELF_LINK = ServiceUriPaths.CORE + "/tests/304-stateless";
+
+        @Override
+        public void handleGet(Operation get) {
+            completeWith304(get);
+        }
+
+        @Override
+        public void handlePatch(Operation patch) {
+            // this is not defined behavior on http-304 spec
+            completeWith304(patch);
+        }
+
+        @Override
+        public void handlePut(Operation put) {
+            // this is not defined behavior on http-304 spec
+            completeWith304(put);
+        }
+
+        private void completeWith304(Operation op) {
+            op.setBody("should not be a body");
+            op.setStatusCode(STATUS_CODE_NOT_MODIFIED);
+            op.complete();
+        }
+    }
+
     private List<Service> services;
 
     @Test
@@ -752,4 +836,74 @@ public class TestOperation extends BasicReusableHostTestCase {
         op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_NOTIFICATION);
         assertFalse(op.isNotification());
     }
+
+    @Test
+    public void notModifiedResponse() throws Throwable {
+        this.host.startFactory(new NotModifiedOwnerSelectedService());
+        this.host.startFactory(new NotModifiedNonOwnerSelectedService());
+        this.host.startService(new NotModifiedStatelessService());
+        this.host.waitForServiceAvailable(NotModifiedOwnerSelectedService.FACTORY_LINK,
+                NotModifiedNonOwnerSelectedService.FACTORY_LINK, NotModifiedStatelessService.SELF_LINK);
+
+        String ownerServicePath = UriUtils.buildUriPath(NotModifiedOwnerSelectedService.FACTORY_LINK, "/foo");
+        String nonOwnerServicePath = UriUtils.buildUriPath(NotModifiedNonOwnerSelectedService.FACTORY_LINK, "/foo");
+
+        NotModifiedOwnerSelectedService.State ownerServiceState = new NotModifiedOwnerSelectedService.State();
+        ownerServiceState.name = "initial-owner-name";
+        ownerServiceState.documentSelfLink = ownerServicePath;
+
+        NotModifiedOwnerSelectedService.State nonOwnerServiceState = new NotModifiedOwnerSelectedService.State();
+        nonOwnerServiceState.name = "initial-non-owner-name";
+        nonOwnerServiceState.documentSelfLink = nonOwnerServicePath;
+
+        Operation ownerPost = Operation.createPost(this.host, NotModifiedOwnerSelectedService.FACTORY_LINK).setBody(ownerServiceState);
+        this.sender.sendAndWait(ownerPost);
+
+        Operation nonOwnerPost = Operation.createPost(this.host, NotModifiedNonOwnerSelectedService.FACTORY_LINK).setBody(nonOwnerServiceState);
+        this.sender.sendAndWait(nonOwnerPost);
+
+        // check for GET
+        performAndVerify304Response(ownerServicePath, Action.GET, false);
+        performAndVerify304Response(ownerServicePath, Action.GET, true);
+        performAndVerify304Response(nonOwnerServicePath, Action.GET, false);
+        performAndVerify304Response(nonOwnerServicePath, Action.GET, true);
+        performAndVerify304Response(NotModifiedStatelessService.SELF_LINK, Action.GET, false);
+        performAndVerify304Response(NotModifiedStatelessService.SELF_LINK, Action.GET, true);
+
+
+        // check for PUT and PATCH
+        // (HTTP 304 behavior for PUT and PATCH are not specified. Currently, xenon applies same behavior for PUT/PATCH)
+
+        // check owner service
+        performAndVerify304Response(ownerServicePath, Action.PUT, false);
+        performAndVerify304Response(ownerServicePath, Action.PUT, true);
+        performAndVerify304Response(ownerServicePath, Action.PATCH, false);
+        performAndVerify304Response(ownerServicePath, Action.PATCH, true);
+
+        // check non-owner service
+        performAndVerify304Response(nonOwnerServicePath, Action.PUT, false);
+        performAndVerify304Response(nonOwnerServicePath, Action.PUT, true);
+        performAndVerify304Response(nonOwnerServicePath, Action.PATCH, false);
+        performAndVerify304Response(nonOwnerServicePath, Action.PATCH, true);
+
+        // check stateless service
+        performAndVerify304Response(NotModifiedStatelessService.SELF_LINK, Action.PUT, false);
+        performAndVerify304Response(NotModifiedStatelessService.SELF_LINK, Action.PUT, true);
+        performAndVerify304Response(NotModifiedStatelessService.SELF_LINK, Action.PATCH, false);
+        performAndVerify304Response(NotModifiedStatelessService.SELF_LINK, Action.PATCH, true);
+    }
+
+    private void performAndVerify304Response(String servicePath, Action action, boolean isRemote) {
+        NotModifiedOwnerSelectedService.State dummyBody = new NotModifiedOwnerSelectedService.State();
+        Operation op = Operation.createGet(this.host, servicePath).setBody(dummyBody);
+        op.setAction(action);
+        if (isRemote) {
+            op.forceRemote();
+        }
+        Operation resultOp = this.sender.sendAndWait(op);
+        assertNull(resultOp.getBodyRaw());
+        assertEquals(isRemote, resultOp.isRemote());
+        assertEquals(STATUS_CODE_NOT_MODIFIED, resultOp.getStatusCode());
+    }
+
 }

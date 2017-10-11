@@ -762,6 +762,10 @@ public class StatefulService implements Service {
 
         if (op.getStatusCode() == Operation.STATUS_CODE_NOT_MODIFIED) {
             isStateUpdated = false;
+            // nullify the body since HTTP-304 cannot have body in response.
+            // It is defined for GET, but not defined for other actions.
+            // For now, apply the same behavior to all http actions.
+            op.setBody(null);
         } else if (op.getTransactionId() != null && linkedState != null &&
                 op.getTransactionId().equals(linkedState.documentTransactionId)) {
             isStateUpdated = true;

@@ -90,13 +90,10 @@ public class TestUserGroupService extends BasicReusableHostTestCase {
         assertEquals(state.query.term.propertyName, responseState.query.term.propertyName);
         assertEquals(state.query.term.matchValue, responseState.query.term.matchValue);
 
-        responseState = (UserGroupState) this.host.verifyPost(UserGroupState.class,
+        this.host.verifyPost(UserGroupState.class,
                 ServiceUriPaths.CORE_AUTHZ_USER_GROUPS,
                 state,
                 Operation.STATUS_CODE_NOT_MODIFIED);
-
-        assertEquals(state.query.term.propertyName, responseState.query.term.propertyName);
-        assertEquals(state.query.term.matchValue, responseState.query.term.matchValue);
 
         state.query.setTermMatchValue("valueModified");
 

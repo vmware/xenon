@@ -121,6 +121,18 @@ public class StatelessService implements Service {
             }
 
             if (opProcessingStage == OperationProcessingStage.EXECUTING_SERVICE_HANDLER) {
+
+                op.nestCompletion(o -> {
+                    if (op.getStatusCode() == Operation.STATUS_CODE_NOT_MODIFIED) {
+                        // nullify the body since HTTP-304 cannot have body in response.
+                        // It is defined for GET, but not defined for other actions.
+                        // For now, apply the same behavior to all http actions.
+                        // If we want to apply only for GET, this logic can move to handleGetCompletion
+                        op.setBodyNoCloning(null);
+                    }
+                    op.complete();
+                });
+
                 if (op.getAction() == Action.GET) {
                     if (ServiceHost.isForServiceNamespace(this, op)) {
                         handleGet(op);

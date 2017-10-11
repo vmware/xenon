@@ -21,6 +21,7 @@ import static org.junit.Assert.fail;
 
 import java.util.EnumSet;
 import java.util.List;
+import java.util.stream.Stream;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -380,7 +381,7 @@ public class TestOperationSequence extends BasicReusableHostTestCase {
                         host.failIteration(exc.values().iterator().next());
                     } else {
                         assertEquals(ops.values().size(), 3);
-                        join2.setOperations(ops.values().stream().map((op) -> createServicePatch(op)));
+                        join2.setOperations(Stream.of(createServicePatch(op1), createServicePatch(op2), createServicePatch(op3)));
                     }
                 })
                 .next(join2)

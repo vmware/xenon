@@ -161,6 +161,7 @@ public class ExampleService extends StatefulService {
         toggleOption(ServiceOption.REPLICATION, true);
         toggleOption(ServiceOption.INSTRUMENTATION, true);
         toggleOption(ServiceOption.OWNER_SELECTION, true);
+        toggleOption(ServiceOption.IDEMPOTENT_POST, true);
     }
 
     @Override
