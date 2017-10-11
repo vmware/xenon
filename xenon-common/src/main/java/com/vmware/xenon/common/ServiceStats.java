@@ -21,10 +21,6 @@ import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
 
-import com.esotericsoftware.kryo.serializers.VersionFieldSerializer.Since;
-
-import com.vmware.xenon.common.serialization.ReleaseConstants;
-
 /**
  * Document describing the <service>/stats REST API
  */
