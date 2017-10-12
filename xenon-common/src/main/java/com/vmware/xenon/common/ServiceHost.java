@@ -51,6 +51,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinWorkerThread;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
@@ -65,6 +66,14 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
+
+import io.opentracing.ActiveSpan;
+import io.opentracing.SpanContext;
+import io.opentracing.Tracer;
+import io.opentracing.propagation.Format;
+import io.opentracing.propagation.TextMapExtractAdapter;
+import io.opentracing.propagation.TextMapInjectAdapter;
+import io.opentracing.tag.Tags;
 
 import com.vmware.xenon.common.FileUtils.ResourceEntry;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
@@ -95,6 +104,7 @@ import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
 import com.vmware.xenon.common.jwt.JWTUtils;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.common.jwt.Verifier;
+import com.vmware.xenon.common.opentracing.TracerFactory;
 import com.vmware.xenon.services.common.AuthCredentialsService;
 import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.AuthorizationTokenCacheService;
@@ -591,6 +601,12 @@ public class ServiceHost implements ServiceRequestSender {
     private final Set<String> pendingServiceDeletions = Collections
             .synchronizedSet(new HashSet<String>());
 
+    /**
+     * OpenTracing tracer. Currently spans have recount semantics, unlike OperationContext, so rather than
+     * being more restrictive than OperationContext, we just track such spans independently.
+     */
+    private final Tracer otTracer;
+
     private OperationProcessingChain opProcessingChain;
     private AuthorizationFilter authorizationFilter;
 
@@ -641,6 +657,7 @@ public class ServiceHost implements ServiceRequestSender {
     protected ServiceHost() {
         this.state = new ServiceHostState();
         this.state.id = UUID.randomUUID().toString();
+        this.otTracer = TracerFactory.factory.create(this);
     }
 
     public ServiceHost initialize(String[] args) throws Throwable {
@@ -1403,8 +1420,11 @@ public class ServiceHost implements ServiceRequestSender {
         });
     }
 
+    @SuppressWarnings("try")
     public ServiceHost start() throws Throwable {
-        return startImpl();
+        try (ActiveSpan span = this.otTracer.buildSpan("ServiceHost.start").startActive()) {
+            return startImpl();
+        }
     }
 
     private void setSystemProperties() {
@@ -1567,145 +1587,148 @@ public class ServiceHost implements ServiceRequestSender {
      * Starts core singleton services and optionally joins the local host to peer nodes.
      * Should be called once from the service host entry point.
      */
+    @SuppressWarnings("try")
     public void startDefaultCoreServicesSynchronously(boolean joinPeerNodes) throws Throwable {
-        if (findService(ServiceHostManagementService.SELF_LINK) != null) {
-            throw new IllegalStateException("Already started");
-        }
-
-        addPrivilegedService(this.managementService.getClass());
-        addPrivilegedService(OperationIndexService.class);
-        addPrivilegedService(BasicAuthenticationService.class);
-
-        // Capture authorization context; this function executes as the system user
-        AuthorizationContext ctx = OperationContext.getAuthorizationContext();
-        OperationContext.setAuthorizationContext(getSystemAuthorizationContext());
-
-        // Start authorization service first since it sits in the dispatch path
-        if (this.authorizationService != null) {
-            addPrivilegedService(this.authorizationService.getClass());
-            addPrivilegedService(AuthorizationTokenCacheService.class);
-            startCoreServicesSynchronously(this.authorizationService, new AuthorizationTokenCacheService());
-        }
-
-        // start AuthN service before factories since its invoked in the IO path on every
-        // request
-        if (this.authenticationService != null) {
-            if (!(this.authenticationService instanceof BasicAuthenticationService)) {
-                addPrivilegedService(this.authenticationService.getClass());
-                startCoreServicesSynchronously(this.authenticationService);
-            } else {
-                // if the authenticationService is set as BasicAuthenticationService use it
-                setBasicAuthenticationService(this.authenticationService);
+        try (ActiveSpan span = this.otTracer.buildSpan("ServiceHost.startDefaultCoreServiceSynchronously").startActive()) {
+            if (findService(ServiceHostManagementService.SELF_LINK) != null) {
+                throw new IllegalStateException("Already started");
             }
-        }
 
-        // start the BasicAuthenticationService anyways
-        startCoreServicesSynchronously(this.basicAuthenticationService);
+            addPrivilegedService(this.managementService.getClass());
+            addPrivilegedService(OperationIndexService.class);
+            addPrivilegedService(BasicAuthenticationService.class);
 
-        // Normalize peer list and find our external address
-        // This must be done BEFORE node group starts.
-        List<URI> peers = getInitialPeerHosts();
+            // Capture authorization context; this function executes as the system user
+            AuthorizationContext ctx = OperationContext.getAuthorizationContext();
+            OperationContext.setAuthorizationContext(getSystemAuthorizationContext());
 
-        NodeSelectorService defaultNodeSelectorService = startDefaultReplicationAndNodeGroupServices();
-
-        // The framework supports two phase asynchronous start to avoid explicit
-        // ordering of services. However, core query services must be started before anyone else
-        // since factories with persisted services use queries to enumerate their children.
-        if (this.documentIndexService != null) {
-            addPrivilegedService(this.documentIndexService.getClass());
-            if (this.documentIndexService instanceof LuceneDocumentIndexService) {
-                LuceneDocumentIndexService luceneDocumentIndexService = (LuceneDocumentIndexService) this.documentIndexService;
-                Service[] queryServiceArray = new Service[] {
-                        luceneDocumentIndexService,
-                        new LuceneDocumentIndexBackupService(),
-                        new QueryTaskFactoryService(),
-                        new LocalQueryTaskFactoryService(),
-                        TaskFactoryService.create(GraphQueryTaskService.class),
-                        TaskFactoryService.create(SynchronizationTaskService.class),
-                        new QueryPageForwardingService(defaultNodeSelectorService) };
-                startCoreServicesSynchronously(queryServiceArray);
-
-                // register auto-backup consumer to the document index service
-                // turning on/off the feature is checked in consumer to allow toggling at runtime
-                this.registerForServiceAvailability((o, e) -> {
-                    URI subscriptionUri = UriUtils.buildSubscriptionUri(this, this.documentIndexService.getSelfLink());
-                    Operation createSubscriptionOp = Operation.createPost(subscriptionUri).setReferer(getUri());
-
-                    Consumer<Operation> autoBackupConsumer = LuceneDocumentIndexBackupService.createAutoBackupConsumer(this, this.managementService);
-                    startSubscriptionService(createSubscriptionOp, autoBackupConsumer);
-                }, this.documentIndexService.getSelfLink());
-
+            // Start authorization service first since it sits in the dispatch path
+            if (this.authorizationService != null) {
+                addPrivilegedService(this.authorizationService.getClass());
+                addPrivilegedService(AuthorizationTokenCacheService.class);
+                startCoreServicesSynchronously(this.authorizationService, new AuthorizationTokenCacheService());
             }
-        }
 
-        List<Service> coreServices = new ArrayList<>();
-        coreServices.add(this.managementService);
-        coreServices.add(new ODataQueryService());
+            // start AuthN service before factories since its invoked in the IO path on every
+            // request
+            if (this.authenticationService != null) {
+                if (!(this.authenticationService instanceof BasicAuthenticationService)) {
+                    addPrivilegedService(this.authenticationService.getClass());
+                    startCoreServicesSynchronously(this.authenticationService);
+                } else {
+                    // if the authenticationService is set as BasicAuthenticationService use it
+                    setBasicAuthenticationService(this.authenticationService);
+                }
+            }
 
-        // Start persisted factories here, after document index is added
-        coreServices.add(AuthCredentialsService.createFactory());
-        Service userGroupFactory = UserGroupService.createFactory();
-        addPrivilegedService(userGroupFactory.getClass());
-        addPrivilegedService(UserGroupService.class);
-        coreServices.add(userGroupFactory);
-        addPrivilegedService(ResourceGroupService.class);
-        coreServices.add(ResourceGroupService.createFactory());
-        Service roleFactory = RoleService.createFactory();
-        addPrivilegedService(RoleService.class);
-        addPrivilegedService(roleFactory.getClass());
-        coreServices.add(roleFactory);
-        addPrivilegedService(UserService.class);
-        coreServices.add(UserService.createFactory());
-        coreServices.add(TenantService.createFactory());
-        coreServices.add(new SystemUserService());
-        coreServices.add(new GuestUserService());
+            // start the BasicAuthenticationService anyways
+            startCoreServicesSynchronously(this.basicAuthenticationService);
 
-        Service transactionFactoryService = new TransactionFactoryService();
-        coreServices.add(transactionFactoryService);
-        addPrivilegedService(TransactionService.class);
+            // Normalize peer list and find our external address
+            // This must be done BEFORE node group starts.
+            List<URI> peers = getInitialPeerHosts();
 
-        Service synchronizationManagementService = new SynchronizationManagementService();
-        coreServices.add(synchronizationManagementService);
-        addPrivilegedService(SynchronizationManagementService.class);
+            NodeSelectorService defaultNodeSelectorService = startDefaultReplicationAndNodeGroupServices();
 
-        Service[] coreServiceArray = new Service[coreServices.size()];
-        coreServices.toArray(coreServiceArray);
-        startCoreServicesSynchronously(coreServiceArray);
-        setTransactionService(transactionFactoryService);
+            // The framework supports two phase asynchronous start to avoid explicit
+            // ordering of services. However, core query services must be started before anyone else
+            // since factories with persisted services use queries to enumerate their children.
+            if (this.documentIndexService != null) {
+                addPrivilegedService(this.documentIndexService.getClass());
+                if (this.documentIndexService instanceof LuceneDocumentIndexService) {
+                    LuceneDocumentIndexService luceneDocumentIndexService = (LuceneDocumentIndexService) this.documentIndexService;
+                    Service[] queryServiceArray = new Service[] {
+                            luceneDocumentIndexService,
+                            new LuceneDocumentIndexBackupService(),
+                            new QueryTaskFactoryService(),
+                            new LocalQueryTaskFactoryService(),
+                            TaskFactoryService.create(GraphQueryTaskService.class),
+                            TaskFactoryService.create(SynchronizationTaskService.class),
+                            new QueryPageForwardingService(defaultNodeSelectorService) };
+                    startCoreServicesSynchronously(queryServiceArray);
 
-        // start the log services in parallel and asynchronously
-        startService(
-                Operation.createPost(UriUtils.buildUri(this, ServiceUriPaths.PROCESS_LOG)),
-                new ServiceHostLogService(ServiceHostLogService.getDefaultProcessLogName()));
+                    // register auto-backup consumer to the document index service
+                    // turning on/off the feature is checked in consumer to allow toggling at runtime
+                    this.registerForServiceAvailability((o, e) -> {
+                        URI subscriptionUri = UriUtils.buildSubscriptionUri(this, this.documentIndexService.getSelfLink());
+                        Operation createSubscriptionOp = Operation.createPost(subscriptionUri).setReferer(getUri());
 
-        startService(
-                Operation.createPost(UriUtils.buildUri(this, ServiceUriPaths.GO_PROCESS_LOG)),
-                new ServiceHostLogService(ServiceHostLogService.getDefaultGoDcpProcessLogName()));
+                        Consumer<Operation> autoBackupConsumer = LuceneDocumentIndexBackupService.createAutoBackupConsumer(this, this.managementService);
+                        startSubscriptionService(createSubscriptionOp, autoBackupConsumer);
+                    }, this.documentIndexService.getSelfLink());
 
-        startService(
-                Operation.createPost(UriUtils.buildUri(this, ServiceUriPaths.SYSTEM_LOG)),
-                new ServiceHostLogService(ServiceHostLogService.DEFAULT_SYSTEM_LOG_NAME));
+                }
+            }
 
-        // Create service without starting it.
-        // Needed to start the UI resource service associated with the WebSocketService.
-        Service webSocketService = new WebSocketService(null, null);
-        webSocketService.setHost(this);
-        startUiFileContentServices(webSocketService);
+            List<Service> coreServices = new ArrayList<>();
+            coreServices.add(this.managementService);
+            coreServices.add(new ODataQueryService());
 
-        // Restore authorization context
-        OperationContext.setAuthorizationContext(ctx);
+            // Start persisted factories here, after document index is added
+            coreServices.add(AuthCredentialsService.createFactory());
+            Service userGroupFactory = UserGroupService.createFactory();
+            addPrivilegedService(userGroupFactory.getClass());
+            addPrivilegedService(UserGroupService.class);
+            coreServices.add(userGroupFactory);
+            addPrivilegedService(ResourceGroupService.class);
+            coreServices.add(ResourceGroupService.createFactory());
+            Service roleFactory = RoleService.createFactory();
+            addPrivilegedService(RoleService.class);
+            addPrivilegedService(roleFactory.getClass());
+            coreServices.add(roleFactory);
+            addPrivilegedService(UserService.class);
+            coreServices.add(UserService.createFactory());
+            coreServices.add(TenantService.createFactory());
+            coreServices.add(new SystemUserService());
+            coreServices.add(new GuestUserService());
 
-        if (joinPeerNodes) {
-            // Joining Peers is optional to allow more control on when the
-            // local node should join other peer nodes in the node-group. A node-group
-            // join triggers Xenon's state replication/ synchronization which requires
-            // all user defined factories to be started and 'Available'. If factories
-            // can take longer during host startup, it is preferable to skip joining
-            // peers during core services startup. Instead do it later after all factories
-            // on the local host have been started and Ready.
-            scheduleCore(() -> {
-                joinPeers(peers, ServiceUriPaths.DEFAULT_NODE_GROUP);
-            }, this.state.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
+            Service transactionFactoryService = new TransactionFactoryService();
+            coreServices.add(transactionFactoryService);
+            addPrivilegedService(TransactionService.class);
+
+            Service synchronizationManagementService = new SynchronizationManagementService();
+            coreServices.add(synchronizationManagementService);
+            addPrivilegedService(SynchronizationManagementService.class);
+
+            Service[] coreServiceArray = new Service[coreServices.size()];
+            coreServices.toArray(coreServiceArray);
+            startCoreServicesSynchronously(coreServiceArray);
+            setTransactionService(transactionFactoryService);
+
+            // start the log services in parallel and asynchronously
+            startService(
+                    Operation.createPost(UriUtils.buildUri(this, ServiceUriPaths.PROCESS_LOG)),
+                    new ServiceHostLogService(ServiceHostLogService.getDefaultProcessLogName()));
+
+            startService(
+                    Operation.createPost(UriUtils.buildUri(this, ServiceUriPaths.GO_PROCESS_LOG)),
+                    new ServiceHostLogService(ServiceHostLogService.getDefaultGoDcpProcessLogName()));
+
+            startService(
+                    Operation.createPost(UriUtils.buildUri(this, ServiceUriPaths.SYSTEM_LOG)),
+                    new ServiceHostLogService(ServiceHostLogService.DEFAULT_SYSTEM_LOG_NAME));
+
+            // Create service without starting it.
+            // Needed to start the UI resource service associated with the WebSocketService.
+            Service webSocketService = new WebSocketService(null, null);
+            webSocketService.setHost(this);
+            startUiFileContentServices(webSocketService);
+
+            // Restore authorization context
+            OperationContext.setAuthorizationContext(ctx);
+
+            if (joinPeerNodes) {
+                // Joining Peers is optional to allow more control on when the
+                // local node should join other peer nodes in the node-group. A node-group
+                // join triggers Xenon's state replication/ synchronization which requires
+                // all user defined factories to be started and 'Available'. If factories
+                // can take longer during host startup, it is preferable to skip joining
+                // peers during core services startup. Instead do it later after all factories
+                // on the local host have been started and Ready.
+                scheduleCore(() -> {
+                    joinPeers(peers, ServiceUriPaths.DEFAULT_NODE_GROUP);
+                }, this.state.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
+            }
         }
     }
 
@@ -3490,6 +3513,7 @@ public class ServiceHost implements ServiceRequestSender {
     /**
      * Infrastructure use only
      */
+    @SuppressWarnings("try")
     public boolean handleRequest(Service service, Operation inboundOp) {
         if (inboundOp == null && service != null) {
             inboundOp = service.dequeueRequest();
@@ -3515,12 +3539,42 @@ public class ServiceHost implements ServiceRequestSender {
             return true;
         }
 
-        OperationProcessingContext context = this.opProcessingChain.createContext(this);
-        final Operation finalInboundOp = inboundOp;
-        this.opProcessingChain.processRequest(inboundOp, context, o -> {
-            handleRequestAfterOpProcessingChain(service, finalInboundOp);
-        });
-
+        /* Create a span for this new request we're handling */
+        /* Q: Should this be a part of the opProcessingChain ? : we need to bind the continuation
+        * into the after-chain closure so at least as things are defined now, no.
+        */
+        SpanContext extractedContext = this.otTracer.extract(
+                Format.Builtin.HTTP_HEADERS, new TextMapExtractAdapter(inboundOp.getRequestHeaders()));
+        try (ActiveSpan span = this.otTracer.buildSpan(inboundOp.getUri().getPath().toString())
+                // By definition this is a new request, so we don't want to use any active span (e.g. due to
+                // fastpathing) as a parent.
+                .ignoreActiveSpan()
+                .asChildOf(extractedContext)
+                .withTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_SERVER)
+                .startActive()) {
+            inboundOp.setSpanTags(span);
+            // any operation callbacks when it completes or fail need a tracing context.
+            final ActiveSpan.Continuation completion_cont = span.capture();
+            inboundOp.nestCompletionCloneSafe((o, e) -> {
+                try (ActiveSpan after_span = completion_cont.activate()) {
+                    span.setTag(Tags.HTTP_STATUS.getKey(), Integer.toString(o.getStatusCode()));
+                    if (e == null) {
+                        o.complete();
+                    } else {
+                        o.fail(e);
+                    }
+                }
+            });
+            // Pass the operation through the processing chain.
+            OperationProcessingContext context = this.opProcessingChain.createContext(this);
+            final Operation finalInboundOp = inboundOp;
+            final ActiveSpan.Continuation cont = span.capture();
+            this.opProcessingChain.processRequest(inboundOp, context, o -> {
+                try (ActiveSpan chain_span = cont.activate()) {
+                    handleRequestAfterOpProcessingChain(service, finalInboundOp);
+                }
+            });
+        }
         return true;
     }
 
@@ -3538,6 +3592,7 @@ public class ServiceHost implements ServiceRequestSender {
         } else {
             path = service.getSelfLink();
         }
+        // TODO: update the current span's operation name to be the service now that it is unambiguously known.
 
         if (queueRequestUntilServiceAvailable(inboundOp, service, path)) {
             return;
@@ -3985,17 +4040,33 @@ public class ServiceHost implements ServiceRequestSender {
 
     private void queueOrScheduleRequestInternal(Service s, Operation op) {
         if (!s.queueRequest(op)) {
+            ActiveSpan span = this.otTracer.activeSpan();
+            ActiveSpan.Continuation cont = null != span ? span.capture() : null;
             Runnable r = () -> {
                 OperationContext opCtx = extractAndApplyContext(op);
                 try {
-                    s.handleRequest(op);
+                    ActiveSpan contspan = null != cont ? cont.activate() : null;
+                    try {
+                        s.handleRequest(op);
+                    } finally {
+                        if (contspan != null) {
+                            contspan.close();
+                        }
+                    }
                 } catch (Exception e) {
                     handleUncaughtException(s, op, e);
                 } finally {
                     OperationContext.setFrom(opCtx);
                 }
             };
-            this.executor.execute(r);
+            try {
+                this.executor.execute(r);
+            } catch (RejectedExecutionException e) {
+                if (cont != null) {
+                    cont.activate().close();
+                }
+                throw e;
+            }
         }
     }
 
@@ -4025,7 +4096,30 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
-        c.send(op);
+        // Trace the request we're about to send.
+        // Possible improvement: rather than the URL, perhaps GET/PUT/POST etc would be a more
+        // useful operation name to supply on outbound requests?
+        try (ActiveSpan span = this.otTracer.buildSpan(op.getUri().getPath().toString())
+                .withTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_CLIENT)
+                .startActive()) {
+            op.setSpanTags(span);
+            // Pass the span into the network request, propagating it across hosts.
+            this.otTracer.inject(span.context(), Format.Builtin.HTTP_HEADERS,
+                    new TextMapInjectAdapter(op.getRequestHeaders()));
+            final ActiveSpan.Continuation cont = span.capture();
+            // Capture the HTTP status code into the span.
+            op.nestCompletionCloneSafe((o, e) -> {
+                try (ActiveSpan contspan = cont.activate()) {
+                    contspan.setTag(Tags.HTTP_STATUS.getKey(), Integer.toString(o.getStatusCode()));
+                    if (e == null) {
+                        o.complete();
+                    } else {
+                        o.fail(e);
+                    }
+                }
+            });
+            c.send(op);
+        }
     }
 
     private void traceOperation(Operation op) {
@@ -4885,10 +4979,27 @@ public class ServiceHost implements ServiceRequestSender {
             throw new IllegalStateException("Stopped");
         }
         OperationContext origContext = OperationContext.getOperationContext();
-        executor.execute(() -> {
-            OperationContext.setFrom(origContext);
-            executeRunnableSafe(task);
-        });
+        /* Pass any current tracing span potentially cross-thread */
+        ActiveSpan span = this.otTracer.activeSpan();
+        final ActiveSpan.Continuation cont = null != span ? span.capture() : null;
+        try {
+            executor.execute(() -> {
+                ActiveSpan contspan = null != cont ? cont.activate() : null;
+                try {
+                    OperationContext.setFrom(origContext);
+                    executeRunnableSafe(task);
+                } finally {
+                    if (contspan != null) {
+                        contspan.close();
+                    }
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            if (cont != null) {
+                cont.activate().close();
+            }
+            throw e;
+        }
     }
 
     /**
@@ -5821,4 +5932,14 @@ public class ServiceHost implements ServiceRequestSender {
                 ServiceErrorResponse.ERROR_CODE_SERVICE_ALREADY_EXISTS,
                 e);
     }
+
+
+    /**
+     * Get the {@link io.opentracing.Tracer} tracer this host is using.
+     * @return
+     */
+    public Tracer getTracer() {
+        return otTracer;
+    }
+
 }
