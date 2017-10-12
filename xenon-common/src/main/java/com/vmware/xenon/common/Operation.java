@@ -29,6 +29,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.function.Consumer;
+import javax.annotation.processing.Completion;
 import javax.security.cert.X509Certificate;
 
 import com.vmware.xenon.common.Service.Action;
@@ -38,6 +39,8 @@ import com.vmware.xenon.common.ServiceHost.ServiceNotFoundException;
 import com.vmware.xenon.services.common.QueryFilter;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.SystemUserService;
+import io.opentracing.ActiveSpan;
+import io.opentracing.tag.Tags;
 
 /**
  * Service operation container. Encapsulates the request / response pattern of client to service and
@@ -1454,6 +1457,33 @@ public class Operation implements Cloneable {
         return this;
     }
 
+    /**
+     * Add CompletionHandler in LIFO style, with support for cloned operations.
+     *
+     * This is a workaround for https://www.pivotaltracker.com/story/show/151798288
+     * which has some complications for a root cause fix.
+     *
+     * This is symmetric to {@link #appendCompletion(CompletionHandler)}.
+     * <pre>
+     * {@code
+     *   op.setCompletion(ORG);
+     *   op.nestCompletion(A);
+     *   op.nestCompletion(B);
+     *   // complete() will trigger: B -> A -> ORG
+     * }
+     * </pre>
+     */
+    public Operation nestCompletionCloneSafe(CompletionHandler h) {
+        CompletionHandler existing = this.completion;
+        this.completion = (o, e) -> {
+            this.statusCode = o.statusCode;
+            o.completion = existing;
+            h.handle(o, e);
+        };
+        return this;
+
+    }
+
     public void nestCompletion(Consumer<Operation> successHandler) {
         CompletionHandler existing = this.completion;
         this.completion = (o, e) -> {
@@ -2045,5 +2075,13 @@ public class Operation implements Cloneable {
      */
     void linkSerializedState(byte[] data) {
         this.linkedSerializedState = data;
+    }
+
+    /**
+     * Set common tags for tracing spans.
+     */
+    public void setSpanTags(ActiveSpan span) {
+        span.setTag(Tags.HTTP_METHOD.getKey(), this.getAction().toString());
+        span.setTag(Tags.HTTP_URL.getKey(), this.getUri().toString());
     }
 }
