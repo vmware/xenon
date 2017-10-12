@@ -2,6 +2,14 @@
 
 ## 1.5.7-CR1-SNAPSHOT
 
+* Fix reuse of paginated searcher
+  This change fixes the check logic to try all cached searchers for reuse.
+  Also, moved "indexSearcherReuseByDocumentKindCount" to appropriate place.
+
+* Update content length when content is gzipped
+
+* Reduce coupling between index-service and backup-service
+
 * Set SearcherRefreshIntervalMicros to 0 by default
   The current default is set to null which means that
   any query issued with DO_NOT_REFRESH will end up
