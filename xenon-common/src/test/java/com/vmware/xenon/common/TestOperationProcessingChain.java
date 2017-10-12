@@ -17,10 +17,16 @@ import static org.junit.Assert.assertEquals;
 
 import java.net.URI;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 
+import io.opentracing.ActiveSpan;
+import io.opentracing.mock.MockTracer;
+import io.opentracing.util.ThreadLocalActiveSpanSource;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+
 
 import com.vmware.xenon.common.OperationProcessingChain.Filter;
 import com.vmware.xenon.common.OperationProcessingChain.FilterReturnCode;
@@ -29,6 +35,7 @@ import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.OperationProcessingStage;
 import com.vmware.xenon.common.TestOperationProcessingChain.CounterService.CounterServiceRequest;
 import com.vmware.xenon.common.TestOperationProcessingChain.CounterService.CounterServiceState;
+import com.vmware.xenon.common.filters.LambdaFilter;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
@@ -166,6 +173,133 @@ public class TestOperationProcessingChain extends BasicTestCase {
         }
         int counter = getCounter();
         assertEquals(COUNT, counter);
+    }
+
+    @Test
+    public void testFiltersWithTracing() throws Throwable {
+        // Model for spans and filters:
+        // filters proceed forward
+        // state is aggregated on the operation
+        // filters that spin out separate work with its own span should work
+        //   - but we don't need to have multiple filters replacing the span
+        //     for future filters
+        // To make the chain unaware of tracing, we need to have a callout around each invocation of a filter
+        // which we'd use to set/clear the tracing context; and that would need to have its own abstract state in
+        // OperationProcessingContext - at a level that is getting very awkward.
+        // So we split the difference: we teach OperationProcessingChain how to work with spans, but
+        // we don't make them itself.
+
+        //
+        // Use cases:
+        // A span creating filter needs to be able to:
+        // create a span - refcount +1
+        //   easy: has access to the operation
+        // handoff the span to the operation for gathering the http status code
+        //   easy: nestCompletion on the operation
+        //   easy: try/finally in the filter stage
+        // have that picked up (via activeSpan) by the next filter
+        //   - both after CONTINUE_PROCESSING
+        //   - and SUSPEND_PROCESSING
+        // clear the span at the end of the filter process no matter how we exit
+
+        // We'll need a tracer to provide spans and to validate against
+        MockTracer tracer = new MockTracer(new ThreadLocalActiveSpanSource(), MockTracer.Propagator.TEXT_MAP);
+
+        // Integration checks to make:
+        // A - filter that sets a span results in span being seen from next filter in sync mode.
+        // B - after suspending no active span is set - its contained.
+        // C - resumed filter can see the span.
+        // D - completion function can see the span
+        //
+        // E, F - after stop/fail the span is emitted
+        // G, H - resumedRequestFailed and resumedRequestCompleted should trigger span emission
+        Filter makeSpan = new LambdaFilter((op, context) -> {
+            Assert.assertEquals(null, tracer.activeSpan());
+            // Make span: e.g. new request received.
+            try (ActiveSpan span = tracer.buildSpan("outer").startActive()) {
+                context.setSpan(span);
+                return FilterReturnCode.CONTINUE_PROCESSING;
+            }
+        });
+        Filter checkAndSuspend = new LambdaFilter((op, context) -> {
+            // Case A
+            Assert.assertNotEquals(null, tracer.activeSpan());
+            return FilterReturnCode.SUSPEND_PROCESSING;
+        });
+        Filter checkAndContinue = new LambdaFilter((op, context) -> {
+            // Case C
+            Assert.assertNotEquals(null, tracer.activeSpan());
+            return FilterReturnCode.CONTINUE_PROCESSING;
+        });
+        Filter checkAndFail = new LambdaFilter((op, context) -> {
+            Assert.assertNotEquals(null, tracer.activeSpan());
+            return FilterReturnCode.FAILED_STOP_PROCESSING;
+        });
+        Filter checkAndStop = new LambdaFilter((op, context) -> {
+            Assert.assertNotEquals(null, tracer.activeSpan());
+            return FilterReturnCode.SUCCESS_STOP_PROCESSING;
+        });
+        // completions should always see the span we test with.
+        Consumer<Operation> completion = o -> {
+            // Case D
+            Assert.assertNotEquals(null, tracer.activeSpan());
+        };
+        Runnable assertEmitted = () -> {
+            // At this point the span must have been emitted and no span should be active.
+            Assert.assertEquals(null, tracer.activeSpan());
+            Assert.assertEquals(1, tracer.finishedSpans().size());
+        };
+        Runnable assertNotEmitted = () -> {
+            // At this point the span must have been emitted and no span should be active.
+            Assert.assertEquals(null, tracer.activeSpan());
+            Assert.assertEquals(0, tracer.finishedSpans().size());
+        };
+        // Constant to use to exercise code paths; no callbacks on this are actually fired.
+        Operation op = Operation.createPost(this.host, "/");
+        // we need a filter after that that nests a span and suspends
+        // then completes that span and resumes
+        // case A, B, C, D
+        // Verify test assumptions;
+        assertNotEmitted.run();
+        OperationProcessingChain chain = OperationProcessingChain.create(makeSpan, checkAndSuspend, checkAndContinue);
+        OperationProcessingContext context = chain.createContext(this.host);
+        chain.processRequest(op, context, completion);
+        // Case B
+        // At this point, the span must not have been emitted, and the chain is suspended so no span should be active.
+        assertNotEmitted.run();
+        chain.resumeProcessingRequest(op,context);
+        // At this point the span must have been emitted and no span should be active.
+        assertEmitted.run();
+
+        // Need a new chain for each of the other cases.
+        // Case E
+        tracer.reset();
+        chain = OperationProcessingChain.create(makeSpan, checkAndStop);
+        context = chain.createContext(this.host);
+        chain.processRequest(op, context, completion);
+        assertEmitted.run();
+        // Case F
+        tracer.reset();
+        chain = OperationProcessingChain.create(makeSpan, checkAndFail);
+        context = chain.createContext(this.host);
+        chain.processRequest(op, context, completion);
+        assertEmitted.run();
+        // Case G
+        tracer.reset();
+        chain = OperationProcessingChain.create(makeSpan, checkAndSuspend);
+        context = chain.createContext(this.host);
+        chain.processRequest(op, context, completion);
+        assertNotEmitted.run();
+        chain.resumedRequestFailed(op, context, new RuntimeException());
+        assertEmitted.run();
+        // Case H
+        tracer.reset();
+        chain = OperationProcessingChain.create(makeSpan, checkAndSuspend);
+        context = chain.createContext(this.host);
+        chain.processRequest(op, context, completion);
+        assertNotEmitted.run();
+        chain.resumedRequestCompleted(op, context);
+        assertEmitted.run();
     }
 
     private Service createCounterService() throws Throwable {
