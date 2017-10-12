@@ -4873,14 +4873,7 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     public void run(Runnable task) {
-        if (this.executor.isShutdown()) {
-            throw new IllegalStateException("Stopped");
-        }
-        OperationContext origContext = OperationContext.getOperationContext();
-        this.executor.execute(() -> {
-            OperationContext.setFrom(origContext);
-            executeRunnableSafe(task);
-        });
+        run(this.executor, task);
     }
 
     /**
