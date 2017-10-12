@@ -207,6 +207,45 @@ service or the quorum size is reduced to match the number of nodes.
 When a node returns to service, it is updated with changes that happened in its absence.
 This update process is called synchronization.
 
+# 2.5 Tracing operations
+
+Xenon ships with an inbuilt intracluster tracing mechanism as well as optional support
+for OpenTracing tracers.
+
+Configure a tracer by providing an `io.opentracing.Tracer` instance to your `ServiceHost`
+or by setting the environment variable `XENON_TRACER`, plus any additional settings needed
+by your chosen implementation.
+
+## 2.5.1 Tracing configuration variables
+
+### Core settings
+| Environment variable  | effect
+|-----------------------|-------
+| XENON_TRACER          | (Required) Set to select a tracer: `zipkin` or `jaeger`
+
+Be sure to include the appropriate implementation JAR files in your builds:
+they are marked optional by `xenon-common`.
+
+### Zipkin settings
+| Environment variable  | effect
+|-----------------------|-------
+| ZIPKIN_SERVICE_NAME   | (Required) Set to configure the opentracing service name for the process.
+| ZIPKIN_SAMPLERATE     | Set to a float to control what % of traces are sampled.
+| ZIPKIN_URL            | (Required) Set to direct the ZIPKIN reporter target URL. e.g. http://host/apis/v1/spans
+
+### Jaeger settings
+
+See https://github.com/jaegertracing/jaeger-client-java/blob/master/jaeger-core/README.md
+for the complete list of variables Jaeger's Java client supports.
+
+| Environment variable  | effect
+|-----------------------|-------
+| JAEGER_SERVICE_NAME   | (Required). Set the opentracing service name for Jaeger reporting
+| JAEGER_AGENT_HOST     | Set the host to send spans to
+| JAEGER_SAMPLER_TYPE   | What type of sampler e.g. const
+| JAEGER_SAMPLER_PARAM  | Sampler parameter    e.g. 1
+
+
 # 3.0 Getting started
 
 ## 3.1 Building the code
