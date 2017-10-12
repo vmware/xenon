@@ -196,6 +196,8 @@ public class VerificationHost extends ExampleServiceHost {
 
     public static AtomicInteger hostNumber = new AtomicInteger();
 
+    private boolean useSharedSecret;
+
     public static VerificationHost create() {
         return new VerificationHost();
     }
@@ -3192,6 +3194,20 @@ public class VerificationHost extends ExampleServiceHost {
     public void addPrivilegedService(Class<? extends Service> serviceType) {
         // Overriding just for test cases
         super.addPrivilegedService(serviceType);
+    }
+
+
+    public void setUseSharedSecret(boolean use) {
+        this.useSharedSecret = use;
+    }
+
+    @Override
+    public byte[] getJWTSecret() throws IOException {
+        if (this.useSharedSecret) {
+            return "unit-test".getBytes();
+        } else {
+            return super.getJWTSecret();
+        }
     }
 
     @Override
