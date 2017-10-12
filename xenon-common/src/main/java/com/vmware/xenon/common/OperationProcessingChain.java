@@ -19,6 +19,8 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.logging.Level;
 
+import io.opentracing.ActiveSpan;
+
 /**
  * A chain of filters, each of them is a {@link Predicate<Operation>}. When {@link #processRequest} is called
  * the filters are evaluated sequentially, where each filter's {@link Predicate<Operation>#test} can return
@@ -85,6 +87,8 @@ public class OperationProcessingChain {
          * and returned CONTINUE_PROCESSING
          */
         private Consumer<Operation> operationConsumer;
+        /** OpenTracing span to supply to each filter and to the completion at the end of the chain */
+        private ActiveSpan.Continuation tracingContinuation;
 
         /**
          * A callback to invoke when a filter suspends the operation.
@@ -96,6 +100,7 @@ public class OperationProcessingChain {
             this.host = host;
             this.opProcessingChain = opProcessingChain;
             this.currentFilterPosition = -1;
+            this.tracingContinuation = null;
         }
 
         public ServiceHost getHost() {
@@ -133,6 +138,36 @@ public class OperationProcessingChain {
         public void resumeProcessingRequest(Operation op, FilterReturnCode filterReturnCode, Throwable e) {
             this.opProcessingChain.resumeProcessingRequest(op, this, filterReturnCode, e);
         }
+
+        /**
+         * Recover a usable copy of the stored span. The result must be closed when finished with.
+         * @return
+         */
+        public ActiveSpan getSpan() {
+            if (this.tracingContinuation == null) {
+                return null;
+            }
+            ActiveSpan span = this.tracingContinuation.activate();
+            this.tracingContinuation = null;
+            setSpan(span);
+            return span;
+        }
+
+        /**
+         * Hand a span into the chain context. Once set, this span will be set as the active span around
+         * each call into a {@link Filter} as well as the call into the completion of the chain.
+         * @param span
+         */
+        public void setSpan(ActiveSpan span) {
+            if (this.tracingContinuation != null) {
+                this.tracingContinuation.activate().close();
+            }
+            if (span != null) {
+                this.tracingContinuation = span.capture();
+            } else {
+                this.tracingContinuation = null;
+            }
+        }
     }
 
     public interface Filter {
@@ -145,6 +180,18 @@ public class OperationProcessingChain {
 
     public OperationProcessingContext createContext(ServiceHost host) {
         return new OperationProcessingContext(host, this);
+    }
+
+    /**
+     * Finish working with context when exiting a chain permanently.
+     * Mainly exists to cleanup the span in the context.
+     *
+     * @param context
+     */
+    private void finishedWithContext(OperationProcessingContext context, FilterReturnCode rc) {
+        if (rc != FilterReturnCode.SUSPEND_PROCESSING) {
+            context.setSpan(null);
+        }
     }
 
     public OperationProcessingChain setLogLevel(Level logLevel) {
@@ -204,9 +251,7 @@ public class OperationProcessingChain {
         context.operationConsumer = operationConsumer;
 
         FilterReturnCode rc = processRequest(op, context, 0);
-        if (rc == FilterReturnCode.CONTINUE_PROCESSING) {
-            operationConsumer.accept(op);
-        }
+        processingComplete(op, context, rc);
     }
 
     /**
@@ -255,6 +300,7 @@ public class OperationProcessingChain {
         if (filterReturnCode != FilterReturnCode.CONTINUE_PROCESSING &&
                 filterReturnCode != FilterReturnCode.RESUME_PROCESSING) {
             // filter has instructed us not not continue processing
+            processingComplete(op, context, filterReturnCode);
             return;
         }
 
@@ -267,71 +313,101 @@ public class OperationProcessingChain {
             rc = processRequest(op, context, nextFilterStartIndex);
         }
 
-        if (rc == FilterReturnCode.CONTINUE_PROCESSING) {
-            context.operationConsumer.accept(op);
-        }
+        processingComplete(op, context, rc);
     }
+
+    @SuppressWarnings("try")
+    private void processingComplete(Operation op, OperationProcessingContext context, FilterReturnCode rc) {
+        try (ActiveSpan span = context.getSpan()) {
+            if (rc == FilterReturnCode.CONTINUE_PROCESSING) {
+                context.operationConsumer.accept(op);
+            }
+        }
+        finishedWithContext(context, rc);
+    }
+
 
     public Filter findFilter(Predicate<Filter> tester) {
         return this.filters.stream().filter(tester).findFirst().orElse(null);
     }
 
+    @SuppressWarnings("try")
     private FilterReturnCode processRequest(Operation op, OperationProcessingContext context, int startIndex) {
         boolean shouldLog = shouldLog(op);
 
         for (int i = startIndex; i < this.filters.size(); i++) {
-            Filter filter = this.filters.get(i);
-            context.currentFilterPosition = i;
-            FilterReturnCode rc = filter.processRequest(op, context);
-
-            String msg = shouldLog ? String.format("returned %s", rc) : null;
-
-            switch (rc) {
-            case CONTINUE_PROCESSING:
-                if (shouldLog) {
-                    log(op, context, msg, this.logLevel);
+            // Establish a span around the calls into filters
+            try (ActiveSpan span = context.getSpan()) {
+                context.currentFilterPosition = i;
+                FilterReturnCode rc = processRequest(op, context, shouldLog);
+                if (rc != FilterReturnCode.CONTINUE_PROCESSING) {
+                    return rc;
                 }
-                continue;
-
-            case SUCCESS_STOP_PROCESSING:
-                if (shouldLog) {
-                    msg += ". Operation completed - stopping processing";
-                    log(op, context, msg, this.logLevel);
-                }
-                return rc;
-
-            case FAILED_STOP_PROCESSING:
-                if (shouldLog) {
-                    msg += ". Operation failed - stopping processing";
-                    log(op, context, msg, this.logLevel);
-                }
-                return rc;
-
-            case SUSPEND_PROCESSING:
-                if (shouldLog) {
-                    msg += ". Operation will be resumed asynchronously - suspend processing";
-                    log(op, context, msg, this.logLevel);
-                }
-
-                if (context.suspendConsumer == null) {
-                    throw new IllegalStateException(
-                            String.format("Operation %d %s has been suspended with a null suspendConsumer",
-                            op.getId(), op.getAction()));
-                }
-
-                Consumer<Operation> suspendConsumer = context.suspendConsumer;
-                context.suspendConsumer = null;
-                suspendConsumer.accept(op);
-
-                return rc;
-
-            default:
-                msg += ". Unexpected returned code - failing operation and stopping processing";
-                log(op, context, msg, Level.SEVERE);
             }
         }
 
         return FilterReturnCode.CONTINUE_PROCESSING;
+    }
+
+    /**
+     * internal worker to call a single filter. MUST ONLY BE CALLED FROM processRequest(...startIndex), as that
+     * takes care to establish tracing context.
+     *
+     * @param op
+     * @param context
+     * @param shouldLog
+     * @return
+     */
+    private FilterReturnCode processRequest(Operation op, OperationProcessingContext context, boolean shouldLog) {
+        Filter filter = this.filters.get(context.currentFilterPosition);
+        FilterReturnCode rc = filter.processRequest(op, context);
+
+        String msg = shouldLog ? String.format("returned %s", rc) : null;
+
+        switch (rc) {
+        case CONTINUE_PROCESSING:
+            if (shouldLog) {
+                log(op, context, msg, this.logLevel);
+            }
+            return rc;
+
+        case SUSPEND_PROCESSING:
+            if (shouldLog) {
+                msg += ". Operation will be resumed asynchronously - suspend processing";
+                log(op, context, msg, this.logLevel);
+            }
+
+            if (context.suspendConsumer == null) {
+                throw new IllegalStateException(
+                        String.format("Operation %d %s has been suspended with a null suspendConsumer",
+                        op.getId(), op.getAction()));
+            }
+
+            Consumer<Operation> suspendConsumer = context.suspendConsumer;
+            context.suspendConsumer = null;
+            suspendConsumer.accept(op);
+
+            return rc;
+
+        case SUCCESS_STOP_PROCESSING:
+            if (shouldLog) {
+                msg += ". Operation completed - stopping processing";
+                log(op, context, msg, this.logLevel);
+            }
+            return rc;
+
+        case FAILED_STOP_PROCESSING:
+            if (shouldLog) {
+                msg += ". Operation failed - stopping processing";
+                log(op, context, msg, this.logLevel);
+            }
+            return rc;
+
+        default:
+            msg += ". Unexpected returned code - failing operation and stopping processing";
+            log(op, context, msg, Level.SEVERE);
+            return FilterReturnCode.FAILED_STOP_PROCESSING;
+        }
     }
 
     private boolean shouldLog(Operation op) {
