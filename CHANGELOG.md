@@ -2,6 +2,10 @@
 
 ## 1.6.0-SNAPSHOT
 
+* Non-https enabled hosts now use a random secret for JWT signing. If inter-host
+  communication with authentication but without https is desired then a shared
+  secret can be used across host by overriding ServiceHost.getJWTSecret()
+
 * Deprecated ServiceOption.ON_DEMAND_LOAD. While the option still exists
   it has no effect. Applications are discouraged from using it.
   All indexed services are now eligible for on-demand stop

@@ -18,12 +18,9 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.PrivateKey;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.vmware.xenon.common.PrivateKeyReader;
-import com.vmware.xenon.common.Utils;
-import com.vmware.xenon.services.common.authn.AuthenticationConstants;
 
 public final class JWTUtils {
 
@@ -38,8 +35,7 @@ public final class JWTUtils {
      *
      * Currently using private key if provided, otherwise use default string.
      */
-    public static byte[] getJWTSecret(URI privateKeyFileUri, String privateKeyPassphrase,
-            boolean isAuthorizationEnabled) throws IOException {
+    public static byte[] getJWTSecret(URI privateKeyFileUri, String privateKeyPassphrase) throws IOException {
         byte[] secret;
 
         if (privateKeyFileUri != null) {
@@ -48,19 +44,9 @@ public final class JWTUtils {
                     .fromPem(privateKeyFilePath, privateKeyPassphrase);
             secret = privateKey.getEncoded();
         } else {
-            if (isAuthorizationEnabled) {
-                String msg = "\n\n"
-                        + "########################################################\n"
-                        + "##  Using default secret to sign/verify JSON(JWT)     ##\n"
-                        + "##  This is NOT secure. Please consider enabling SSL. ##\n"
-                        + "########################################################\n"
-                        + "\n";
-                logger.log(Level.WARNING, msg);
-            }
-            secret = AuthenticationConstants.DEFAULT_JWT_SECRET.getBytes(Utils.CHARSET);
+            secret = null;
         }
 
         return secret;
     }
-
 }

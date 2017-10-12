@@ -69,7 +69,13 @@ public class TestAuthentication {
 
     private VerificationHost createAndStartHost(boolean enableAuth, boolean secureAuthCookie,
             Service authenticationService) throws Throwable {
+        return createAndStartHost(enableAuth, secureAuthCookie, authenticationService, false);
+    }
+
+    private VerificationHost createAndStartHost(boolean enableAuth, boolean secureAuthCookie,
+            Service authenticationService, boolean useSharedSecret) throws Throwable {
         VerificationHost host = VerificationHost.create(0);
+        host.setUseSharedSecret(useSharedSecret);
         host.setAuthorizationEnabled(enableAuth);
 
         // The NettyHttpListener for the host is not allocated until host start time, so this
@@ -412,6 +418,7 @@ public class TestAuthentication {
         host.log("Expected behavoir for external authentication request with valid token");
     }
 
+
     @Test
     public void testAuthenticationViaBasicAuth() throws Throwable {
         VerificationHost host = createAndStartHost(true, false, new TestAuthenticationService());
@@ -659,9 +666,9 @@ public class TestAuthentication {
 
     @Test
     public void testExternalAuthenticationMultinode() throws Throwable {
-        VerificationHost host1 = createAndStartHost(true, false, new TestAuthenticationService());
-        VerificationHost host2 = createAndStartHost(true, false, new TestAuthenticationService());
-        VerificationHost host3 = createAndStartHost(true, false, new TestAuthenticationService());
+        VerificationHost host1 = createAndStartHost(true, false, new TestAuthenticationService(), true);
+        VerificationHost host2 = createAndStartHost(true, false, new TestAuthenticationService(), true);
+        VerificationHost host3 = createAndStartHost(true, false, new TestAuthenticationService(), true);
 
         TestNodeGroupManager nodeGroup = new TestNodeGroupManager();
         nodeGroup.addHost(host1);

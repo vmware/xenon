@@ -54,6 +54,7 @@ import java.util.concurrent.ForkJoinWorkerThread;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
@@ -378,6 +379,7 @@ public class ServiceHost implements ServiceRequestSender {
     private static final String PROPERTY_NAME_APPEND_PORT_TO_SANDBOX = Utils.PROPERTY_NAME_PREFIX
             + "ServiceHost.APPEND_PORT_TO_SANDBOX";
 
+    private byte[] randomSecret;
     /**
      * Control creating a directory using port number under sandbox directory.
      *
@@ -793,8 +795,34 @@ public class ServiceHost implements ServiceRequestSender {
         URI privateKeyFileUri = this.state.privateKeyFileReference;
         String privateKeyPassphrase = this.state.privateKeyPassphrase;
 
-        return JWTUtils.getJWTSecret(privateKeyFileUri, privateKeyPassphrase,
-                this.isAuthorizationEnabled());
+        byte[] secret = JWTUtils.getJWTSecret(privateKeyFileUri, privateKeyPassphrase);
+
+        if (secret == null) {
+            secret = generateRandomSecret();
+        }
+
+        return secret;
+    }
+
+    private synchronized byte[] generateRandomSecret() {
+        if (this.randomSecret != null) {
+            return this.randomSecret;
+        }
+
+        if (this.isAuthorizationEnabled()) {
+            String msg = "\n\n"
+                    + "##############################################################\n"
+                    + "##  Using an auto-generated secret to sign/verify JSON(JWT) ##\n"
+                    + "##  This is NOT secure. Please consider enabling SSL.       ##\n"
+                    + "##############################################################\n"
+                    + "\n";
+            logger.log(Level.WARNING, msg);
+        }
+
+        byte[] secret = new byte[64];
+        ThreadLocalRandom.current().nextBytes(secret);
+        this.randomSecret = secret;
+        return secret;
     }
 
     private void initializeStateFromArguments(File s, Arguments args) throws URISyntaxException {
