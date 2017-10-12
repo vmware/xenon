@@ -54,6 +54,10 @@ public final class ReflectionUtils {
     }
 
     public static Object getPropertyValue(PropertyDescription pd, Object instance) {
+        if (instance == null) {
+            return null;
+        }
+
         try {
             return pd.accessor.get(instance);
         } catch (Exception e) {

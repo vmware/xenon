@@ -55,6 +55,7 @@ public class TestExternalAuth extends BasicTestCase {
         try {
             // create a xenon service host housing just the user authz rules
             this.externalAuthHost = createHost();
+            this.externalAuthHost.setUseSharedSecret(true);
             ServiceHost.Arguments args = VerificationHost.buildDefaultServiceHostArguments(0);
             VerificationHost.initialize(this.externalAuthHost, args);
             this.externalAuthHost.setAuthorizationService(new AuthorizationContextService());
@@ -74,6 +75,12 @@ public class TestExternalAuth extends BasicTestCase {
         } catch (Throwable e) {
             throw new Exception(e);
         }
+    }
+
+    @Override
+    public void beforeHostStart(VerificationHost host) throws Throwable {
+        super.beforeHostStart(host);
+        this.host.setUseSharedSecret(true);
     }
 
     @Override
