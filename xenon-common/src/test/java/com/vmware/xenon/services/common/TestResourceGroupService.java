@@ -14,9 +14,9 @@
 package com.vmware.xenon.services.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
-import java.util.UUID;
 
 import org.junit.After;
 import org.junit.Before;
@@ -108,12 +108,15 @@ public class TestResourceGroupService extends BasicReusableHostTestCase {
         Query query = new Query();
         query.setTermPropertyName("name");
         query.setTermMatchValue("value");
+
+        String servicePath = UriUtils.buildUriPath(ResourceGroupService.FACTORY_LINK, "my-resource-group");
+
         ResourceGroupState state = ResourceGroupState.Builder.create()
-                .withSelfLink(UUID.randomUUID().toString())
+                .withSelfLink(servicePath)
                 .withQuery(query)
                 .build();
 
-        ResourceGroupState responseState = (ResourceGroupState) this.host.verifyPost(ResourceGroupState.class,
+        ResourceGroupState responseState = this.host.verifyPost(ResourceGroupState.class,
                 ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS,
                 state,
                 Operation.STATUS_CODE_OK);
@@ -121,20 +124,30 @@ public class TestResourceGroupService extends BasicReusableHostTestCase {
         assertEquals(state.query.term.propertyName, responseState.query.term.propertyName);
         assertEquals(state.query.term.matchValue, responseState.query.term.matchValue);
 
-        this.host.verifyPost(ResourceGroupState.class,
+        long initialVersion = responseState.documentVersion;
+
+        responseState = this.host.verifyPost(ResourceGroupState.class,
                 ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS,
                 state,
-                Operation.STATUS_CODE_NOT_MODIFIED);
+                Operation.STATUS_CODE_OK);
 
+        assertEquals(state.query.term.propertyName, responseState.query.term.propertyName);
+        assertEquals(state.query.term.matchValue, responseState.query.term.matchValue);
+
+        ResourceGroupState getState = this.sender.sendAndWait(Operation.createGet(this.host, servicePath), ResourceGroupState.class);
+        assertEquals("version should not increase", initialVersion, getState.documentVersion);
+
+        // modify state
         state.query.setTermMatchValue("valueModified");
 
-        responseState = (ResourceGroupState) this.host.verifyPost(ResourceGroupState.class,
+        responseState = this.host.verifyPost(ResourceGroupState.class,
                 ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS,
                 state,
                 Operation.STATUS_CODE_OK);
 
         assertEquals(state.query.term.propertyName, responseState.query.term.propertyName);
         assertEquals(state.query.term.matchValue, responseState.query.term.matchValue);
+        assertTrue("version should increase", initialVersion < responseState.documentVersion);
     }
 
     @Test

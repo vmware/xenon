@@ -14,6 +14,7 @@
 package com.vmware.xenon.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -260,6 +261,35 @@ class ExampleDocumentIndexingOptionsService extends StatefulService {
         return template;
     }
 }
+
+class NoUpdateOnPutService extends StatefulService {
+    public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/tests/noupdateonput";
+
+    public static class State extends ServiceDocument {
+        public String name;
+    }
+
+    public NoUpdateOnPutService() {
+        super(State.class);
+        toggleOption(ServiceOption.PERSISTENCE, true);
+        toggleOption(ServiceOption.REPLICATION, true);
+        toggleOption(ServiceOption.OWNER_SELECTION, true);
+    }
+
+    @Override
+    public void handlePut(Operation put) {
+        State newState = getBody(put);
+
+        // update linked state with requested body, so response body is the one from request
+        setState(put, newState);
+
+        // Specify this pragma NOT to update state(not increment version in server side)
+        put.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_STATE_NOT_MODIFIED);
+
+        put.complete();
+    }
+}
+
 
 public class TestStatefulService extends BasicReusableHostTestCase {
 
@@ -814,42 +844,68 @@ public class TestStatefulService extends BasicReusableHostTestCase {
                         IdempotentPostService.State.class));
         this.host.waitForServiceAvailable(IdempotentPostService.FACTORY_LINK);
 
-        IdempotentPostService.State doc =
-                new IdempotentPostService.State();
+        IdempotentPostService.State doc = new IdempotentPostService.State();
         doc.documentSelfLink = "default";
         doc.name = "testDocument";
 
-        this.host.testStart(1);
-        this.host.send(Operation.createPost(factoryUri)
-                .setBody(doc)
-                .setCompletion(
-                        (o, e) -> {
-                            if (e != null) {
-                                this.host.failIteration(e);
-                                return;
-                            }
+        TestRequestSender sender = this.host.getTestRequestSender();
 
-                            this.host.send(Operation.createPost(factoryUri)
-                                    .setBody(doc)
-                                    .setCompletion(
-                                            (o2, e2) -> {
-                                                if (e2 != null) {
-                                                    this.host.failIteration(e2);
-                                                    return;
-                                                }
+        Operation post = Operation.createPost(factoryUri).setBody(doc);
+        IdempotentPostService.State result = sender.sendAndWait(post, IdempotentPostService.State.class);
+        assertNotNull(result);
+        assertEquals("testDocument", result.name);
+    }
 
-                                                IdempotentPostService.State doc2 = o2.getBody(
-                                                        IdempotentPostService.State.class);
-                                                try {
-                                                    assertNotNull(doc2);
-                                                    assertEquals("testDocument", doc2.name);
-                                                    this.host.completeIteration();
-                                                } catch (AssertionError e3) {
-                                                    this.host.failIteration(e3);
-                                                }
-                                            }));
-                        }));
-        this.host.testWait();
+    /**
+     * Verify when {@link Operation#PRAGMA_DIRECTIVE_NO_INDEX_UPDATE} is specified in handle method, server side
+     * skip indexing.
+     */
+    @Test
+    public void skipPersistDocument() throws Throwable {
+        this.host.startFactory(new NoUpdateOnPutService());
+        this.host.waitForServiceAvailable(NoUpdateOnPutService.FACTORY_LINK);
+
+        String servicePath = UriUtils.buildUriPath(NoUpdateOnPutService.FACTORY_LINK, "foo");
+
+        NoUpdateOnPutService.State initialBody = new NoUpdateOnPutService.State();
+        initialBody.name = "init";
+        initialBody.documentSelfLink = servicePath;
+
+        Operation initialPost = Operation.createPost(this.host, NoUpdateOnPutService.FACTORY_LINK).setBody(initialBody);
+        NoUpdateOnPutService.State postResult = this.sender.sendAndWait(initialPost, NoUpdateOnPutService.State.class);
+        long initialVersion = postResult.documentVersion;
+
+        // register subscription
+        URI subscriptionUri = UriUtils.buildSubscriptionUri(this.host, servicePath);
+        Operation createSubscriptionOp = Operation.createPost(subscriptionUri).setReferer(this.host.getPublicUri());
+        AtomicBoolean isSubscriptionCalled = new AtomicBoolean(false);
+        this.host.startSubscriptionService(createSubscriptionOp, subscriptionOp -> {
+            isSubscriptionCalled.set(true);
+            subscriptionOp.complete();
+        });
+
+        // perform PUT multiple times and verify always it keeps initial state when GET is performed
+        for (int i = 0; i < 100; i++) {
+            String newName = "modified-" + i;
+            NoUpdateOnPutService.State putBody = new NoUpdateOnPutService.State();
+            putBody.name = newName;
+
+            Operation put = Operation.createPut(this.host, servicePath).setBody(putBody);
+            Operation putResponseOp = this.sender.sendAndWait(put);
+            assertEquals(Operation.STATUS_CODE_OK, putResponseOp.getStatusCode());
+
+            assertTrue(putResponseOp.hasBody());
+            NoUpdateOnPutService.State putResponseBody = putResponseOp.getBody(NoUpdateOnPutService.State.class);
+            assertEquals("response of put should be the one specified in request", newName, putResponseBody.name);
+
+            NoUpdateOnPutService.State getBody = this.sender.sendAndWait(Operation.createGet(this.host, servicePath),
+                    NoUpdateOnPutService.State.class);
+
+            assertEquals("document should not be updated", "init", getBody.name);
+            assertEquals("document should not be updated", initialVersion, getBody.documentVersion);
+
+            assertFalse("subscription should not be called for non modification", isSubscriptionCalled.get());
+        }
     }
 
     @Test
