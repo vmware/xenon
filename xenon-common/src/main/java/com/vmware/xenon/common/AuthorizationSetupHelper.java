@@ -493,15 +493,9 @@ public class AuthorizationSetupHelper {
                         return;
                     }
 
-                    if (op.getStatusCode() == Operation.STATUS_CODE_NOT_MODIFIED) {
-                        // user group already exists
-                        this.userGroupSelfLink = normalizeLink(UserGroupService.FACTORY_LINK, this.userGroupSelfLink);
-                    } else {
-                        UserGroupState groupResponse = op.getBody(UserGroupState.class);
-                        this.userGroupSelfLink = normalizeLink(UserGroupService.FACTORY_LINK,
-                                groupResponse.documentSelfLink);
-                    }
-
+                    UserGroupState groupResponse = op.getBody(UserGroupState.class);
+                    this.userGroupSelfLink = normalizeLink(UserGroupService.FACTORY_LINK,
+                            groupResponse.documentSelfLink);
                     this.currentStep = UserCreationStep.UPDATE_USERGROUP_FOR_USER;
                     setupUser();
 
@@ -612,15 +606,9 @@ public class AuthorizationSetupHelper {
                         return;
                     }
 
-                    if (op.getStatusCode() == Operation.STATUS_CODE_NOT_MODIFIED) {
-                        // resource group already exists
-                        this.resourceGroupSelfLink = normalizeLink(ResourceGroupService.FACTORY_LINK, this.resourceGroupSelfLink);
-                    } else {
-                        ResourceGroupState groupResponse = op.getBody(ResourceGroupState.class);
-                        this.resourceGroupSelfLink = normalizeLink(ResourceGroupService.FACTORY_LINK,
-                                groupResponse.documentSelfLink);
-                    }
-
+                    ResourceGroupState groupResponse = op.getBody(ResourceGroupState.class);
+                    this.resourceGroupSelfLink = normalizeLink(ResourceGroupService.FACTORY_LINK,
+                            groupResponse.documentSelfLink);
                     this.currentStep = UserCreationStep.MAKE_ROLE;
                     setupUser();
                 });
@@ -659,14 +647,9 @@ public class AuthorizationSetupHelper {
                         return;
                     }
 
-                    if (op.getStatusCode() == Operation.STATUS_CODE_NOT_MODIFIED) {
-                        // role already exists
-                        this.roleSelfLink = normalizeLink(RoleService.FACTORY_LINK, this.roleSelfLink);
-                    } else {
-                        RoleState roleResponse = op.getBody(RoleState.class);
-                        this.roleSelfLink = normalizeLink(RoleService.FACTORY_LINK, roleResponse.documentSelfLink);
-                    }
-
+                    RoleState roleResponse = op.getBody(RoleState.class);
+                    this.roleSelfLink = normalizeLink(RoleService.FACTORY_LINK,
+                            roleResponse.documentSelfLink);
                     this.currentStep = UserCreationStep.SUCCESS;
                     setupUser();
                 });

@@ -14,6 +14,7 @@
 package com.vmware.xenon.services.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
 import java.util.HashSet;
@@ -58,30 +59,43 @@ public class TestUserService extends BasicReusableHostTestCase {
 
     @Test
     public void testFactoryIdempotentPost() throws Throwable {
-        UserState state = new UserState();
-        state.email = "jane@doe.com";
-        state.documentSelfLink = state.email;
+        String email = "jane@doe.com";
+        String servicePath = UriUtils.buildUriPath(UserService.FACTORY_LINK, email);
 
-        UserState responseState = (UserState) this.host.verifyPost(UserState.class,
+        UserState state = new UserState();
+        state.email = email;
+        state.documentSelfLink = servicePath;
+
+        UserState responseState = this.host.verifyPost(UserState.class,
                 ServiceUriPaths.CORE_AUTHZ_USERS,
                 state,
                 Operation.STATUS_CODE_OK);
 
         assertEquals(state.email,responseState.email);
 
-        this.host.verifyPost(UserState.class,
+        long initialVersion = responseState.documentVersion;
+
+        // sending same document, this post/put should not persist(increment) the document
+        responseState = this.host.verifyPost(UserState.class,
                 ServiceUriPaths.CORE_AUTHZ_USERS,
                 state,
-                Operation.STATUS_CODE_NOT_MODIFIED);
+                Operation.STATUS_CODE_OK);
+
+        assertEquals(state.email,responseState.email);
+
+        UserState getState = this.sender.sendAndWait(Operation.createGet(this.host, servicePath), UserState.class);
+        assertEquals("version should not increase", initialVersion, getState.documentVersion);
+
 
         state.email = "john@doe.com";
 
-        responseState = (UserState) this.host.verifyPost(UserState.class,
+        responseState = this.host.verifyPost(UserState.class,
                 ServiceUriPaths.CORE_AUTHZ_USERS,
                 state,
                 Operation.STATUS_CODE_OK);
 
         assertEquals(state.email, responseState.email);
+        assertTrue("version should increase", initialVersion < responseState.documentVersion);
     }
 
     @Test
@@ -106,7 +120,7 @@ public class TestUserService extends BasicReusableHostTestCase {
         state.userGroupLinks.add("link2");
 
 
-        UserState responseState = (UserState) this.host.verifyPost(UserState.class,
+        UserState responseState = this.host.verifyPost(UserState.class,
                 ServiceUriPaths.CORE_AUTHZ_USERS,
                 state,
                 Operation.STATUS_CODE_OK);
