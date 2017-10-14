@@ -19,6 +19,24 @@
   Caller cannot create a service with '/example/({id}}' as documentSelfLink. Any documentSelfLink
   supplied by the caller should be parsable by URI.create().
 
+* OData access to FactoryService now always requires expand parameter to expand documents.
+  Previously, when GET request has any odata parameter(e.g.: `$count`), response was always
+  expanded regardless of presence of expand parameter.
+  It is changed to always require `$expand` parameter in order to expand the response.
+  This only applies to GET on factory.
+
+* Breaking change: When 304 is specified as status code, response operation body becomes always null.
+  Previously, when `Operation.STATUS_CODE_NOT_MODIFIED` is set, response body behaves different with
+  remote and local op.
+  The HTTP-304 spec defines following for conditional GET request:
+    "The 304 response MUST NOT contain a message-body".
+  To comply with HTTP spec, now response operation body is always null if status code is 304 regardless
+  of remote or local op.
+  Since HTTP spec defines above behavior only for GET. It is guaranteed response body is set to null for
+  GET request. However, current behavior for other actions are xenon specific and may change in future.
+  Therefore, it is not advised to use 304 status code other than GET request. 
+
+
 ## 1.5.7
 
 * Fix auth check for non-persisted stateful service on document-index GET.

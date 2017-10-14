@@ -1214,9 +1214,9 @@ public class TestFactoryService extends BasicReusableHostTestCase {
 
     private void validateOrderBy(Supplier<Stream<ExampleServiceState>> stateSupplier,
             String fieldName, boolean asc, boolean filter) throws Throwable {
-        String queryString = String.format("$orderby=%s %s", fieldName, asc ? "asc" : "desc");
+        String queryString = String.format("$expand&$orderby=%s %s", fieldName, asc ? "asc" : "desc");
         if (filter) {
-            queryString += String.format("&$filter=%s lt %s&$expand", fieldName, stateSupplier.get().count());
+            queryString += String.format("&$filter=%s lt %s", fieldName, stateSupplier.get().count());
         }
         ServiceDocumentQueryResult result = getResult(queryString);
 
@@ -1238,7 +1238,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
 
     private void validateLimitAndOrderBy(Supplier<Stream<ExampleServiceState>> stateSupplier, long limit,
             boolean count, String fieldName, boolean asc, boolean filter) throws Throwable {
-        String queryString = String.format("$limit=%s&$count=%s&$orderby=%s %s",
+        String queryString = String.format("$expand&$limit=%s&$count=%s&$orderby=%s %s",
                 limit, count, fieldName, asc ? "asc" : "desc");
         if (filter) {
             queryString += String.format("&$filter=%s lt %s", fieldName, stateSupplier.get().count());

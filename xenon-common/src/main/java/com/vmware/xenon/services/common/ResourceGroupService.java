@@ -34,7 +34,7 @@ public class ResourceGroupService extends StatefulService {
     /**
      * The {@link ResourceGroupState} holds a query that is used to represent a group of
      * resources (services). {@link ResourceGroupState} and {@link UserGroupService.UserGroupState)
-     * are used together in a {@link AuthorizationContextService.Role} to specify what resources
+     * are used together in a {@link AuthorizationContextServiceHelper.Role} to specify what resources
      * a set of users has access to.
      */
     public static class ResourceGroupState extends ServiceDocument {
@@ -142,6 +142,11 @@ public class ResourceGroupService extends StatefulService {
         ResourceGroupState currentState = getState(op);
         ServiceDocumentDescription documentDescription = getStateDescription();
         if (ServiceDocument.equals(documentDescription, currentState, newState)) {
+            // HTTP-304 spec doesn't define behavior for PUT
+            // In current implementation, setting 304 will skip creating new version document in index.
+            // This is not appropriate behavior from http standpoint, and it may change in future.
+            // (Probably use other means such as pragma to skip creating new version)
+            // The behavior for response operation is also relies on current xenon implementation and may change in future.
             op.setStatusCode(Operation.STATUS_CODE_NOT_MODIFIED);
         } else {
             setState(op, newState);

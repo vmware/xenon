@@ -94,14 +94,10 @@ public class TestTenantService extends BasicReusableHostTestCase {
         assertEquals(state.name, responseState.name);
         assertEquals(state.parentLink, responseState.parentLink);
 
-        responseState = (TenantService.TenantState) this.host.verifyPost(TenantService.TenantState.class,
+        this.host.verifyPost(TenantService.TenantState.class,
                 TenantService.FACTORY_LINK,
                 state,
                 Operation.STATUS_CODE_NOT_MODIFIED);
-
-        assertEquals(state.id, responseState.id);
-        assertEquals(state.name, responseState.name);
-        assertEquals(state.parentLink, responseState.parentLink);
 
         state.name = UUID.randomUUID().toString();
 

@@ -872,6 +872,9 @@ public final class Utils {
         }
         if (compressed) {
             buffer = decompressGZip(buffer);
+            // Since newly created buffer is not yet read, calling "remaining()" returns the size of the buffer.
+            op.setContentLength(buffer.remaining());
+
             if (isRequest) {
                 op.getRequestHeaders().remove(Operation.CONTENT_ENCODING_HEADER);
             } else {

@@ -701,7 +701,7 @@ public class SynchronizationTaskService
                 statNameRetryCount,
                 delay);
 
-        getHost().schedule(task, delay, TimeUnit.MICROSECONDS);
+        getHost().scheduleCore(task, delay, TimeUnit.MICROSECONDS);
     }
 
     /**

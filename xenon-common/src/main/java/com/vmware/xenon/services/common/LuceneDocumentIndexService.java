@@ -34,6 +34,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeMap;
@@ -1163,29 +1164,34 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         PaginatedSearcherInfo info = null;
-        Iterator<Entry<Long, PaginatedSearcherInfo>> itr =
-                this.paginatedSearchersByCreationTime.descendingMap().entrySet().iterator();
-        while (itr.hasNext()) {
-            PaginatedSearcherInfo i = itr.next().getValue();
-            if (!i.singleUse) {
-                info = i;
-                break;
+        for (PaginatedSearcherInfo i : this.paginatedSearchersByCreationTime.descendingMap().values()) {
+
+            if (i.singleUse) {
+                continue;
             }
+
+            // check the searcher for kindScope update time
+            long searcherUpdateTime = this.searcherUpdateTimesMicros.get(i.searcher.hashCode());
+            if (documentNeedsNewSearcher(null, kindScope, -1, searcherUpdateTime, doNotRefresh)) {
+                continue;
+            }
+
+            info = i;
+            break;
         }
 
         if (info == null) {
             return null;
         }
 
-        long searcherUpdateTime = this.searcherUpdateTimesMicros.get(info.searcher.hashCode());
-        if (documentNeedsNewSearcher(null, kindScope, -1, searcherUpdateTime, doNotRefresh)) {
-            return null;
-        }
+        adjustTimeSeriesStat(STAT_NAME_SEARCHER_REUSE_BY_DOCUMENT_KIND_COUNT, AGGREGATION_TYPE_SUM, 1);
 
         long currentExpirationMicros = info.expirationTimeMicros;
         if (newExpirationMicros <= currentExpirationMicros) {
             return info.searcher;
         }
+
+        // update paginatedSearchersByExpirationTime with new expiration
 
         List<PaginatedSearcherInfo> expirationList = this.paginatedSearchersByExpirationTime.get(
                 currentExpirationMicros);
@@ -3015,6 +3021,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         if (s != null && !needNewSearcher) {
+            adjustTimeSeriesStat(STAT_NAME_SEARCHER_REUSE_BY_DOCUMENT_KIND_COUNT, AGGREGATION_TYPE_SUM, 1);
             return s;
         }
 
@@ -3063,34 +3070,30 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
         } else {
             boolean needNewSearcher = false;
-            long indexUpdateTime = this.writerUpdateTimeMicros;
-            if (kindScope != null) {
-                for (String kind : kindScope) {
-                    Long documentKindUpdateTime = this.documentKindUpdateInfo.get(kind);
-                    if (documentKindUpdateTime == null) {
-                        documentKindUpdateTime = Long.MAX_VALUE;
-                    }
-                    if (searcherUpdateTime < documentKindUpdateTime) {
-                        indexUpdateTime = documentKindUpdateTime;
-                        needNewSearcher = true;
-                        break;
-                    }
-                }
-                adjustTimeSeriesStat(STAT_NAME_SEARCHER_REUSE_BY_DOCUMENT_KIND_COUNT,
-                        AGGREGATION_TYPE_SUM, 1);
-            } else if (searcherUpdateTime < this.writerUpdateTimeMicros) {
+
+            long indexUpdateTime;
+            if (kindScope == null) {
                 indexUpdateTime = this.writerUpdateTimeMicros;
+            } else {
+                // Retrieve the most recent updatetime for given kinds.
+                // If not exists(no update happened for the kinds), return Long.MIN to reuse existing searcher
+                indexUpdateTime = kindScope.stream()
+                        .map(this.documentKindUpdateInfo::get)
+                        .filter(Objects::nonNull)
+                        .max(Long::compare)
+                        .orElse(Long.MIN_VALUE);
+            }
+
+            if (searcherUpdateTime < indexUpdateTime) {
                 needNewSearcher = true;
             }
-            if (doNotRefresh) {
-                // for a query with DO_NOT_REFRESH, if all other checks suggest
-                // we need a new searcher check to see if enough time has elapsed
-                // since the index was updated
-                if (needNewSearcher) {
-                    if ((indexUpdateTime + searcherRefreshIntervalMicros)
-                            >= Utils.getSystemNowMicrosUtc()) {
-                        return false;
-                    }
+
+            // for a query with DO_NOT_REFRESH, if all other checks suggest
+            // we need a new searcher check to see if enough time has elapsed
+            // since the index was updated
+            if (doNotRefresh && needNewSearcher) {
+                if ((indexUpdateTime + searcherRefreshIntervalMicros) >= Utils.getSystemNowMicrosUtc()) {
+                    return false;
                 }
             }
             return needNewSearcher;

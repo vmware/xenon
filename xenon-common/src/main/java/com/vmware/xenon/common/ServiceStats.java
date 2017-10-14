@@ -21,6 +21,10 @@ import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
 
+import com.esotericsoftware.kryo.serializers.VersionFieldSerializer.Since;
+
+import com.vmware.xenon.common.serialization.ReleaseConstants;
+
 /**
  * Document describing the <service>/stats REST API
  */
@@ -50,6 +54,7 @@ public class ServiceStats extends ServiceDocument {
 
         public static class TimeBin {
             public Double avg;
+            @Since(ReleaseConstants.RELEASE_VERSION_1_6_0)
             public Double var;
             public Double min;
             public Double max;

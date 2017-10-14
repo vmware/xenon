@@ -88,6 +88,11 @@ public class TenantService extends StatefulService {
         TenantState currentState = getState(op);
         ServiceDocumentDescription documentDescription = getStateDescription();
         if (ServiceDocument.equals(documentDescription, currentState, newState)) {
+            // HTTP-304 spec doesn't define behavior for PUT
+            // In current implementation, setting 304 will skip creating new version document in index.
+            // This is not appropriate behavior from http standpoint, and it may change in future.
+            // (Probably use other means such as pragma to skip creating new version)
+            // The behavior for response operation is also relies on current xenon implementation and may change in future.
             op.setStatusCode(Operation.STATUS_CODE_NOT_MODIFIED);
         } else {
             setState(op, newState);

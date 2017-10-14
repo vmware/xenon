@@ -3747,9 +3747,7 @@ public class ServiceHost implements ServiceRequestSender {
             }
 
             op.setStatusCode(fo.getStatusCode());
-            if (fo.hasBody()) {
-                op.setBodyNoCloning(fo.getBodyRaw());
-            }
+            op.setBodyNoCloning(fo.getBodyRaw());
 
             op.setContentType(fo.getContentType());
             op.setContentLength(fo.getContentLength());
@@ -4873,14 +4871,7 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     public void run(Runnable task) {
-        if (this.executor.isShutdown()) {
-            throw new IllegalStateException("Stopped");
-        }
-        OperationContext origContext = OperationContext.getOperationContext();
-        this.executor.execute(() -> {
-            OperationContext.setFrom(origContext);
-            executeRunnableSafe(task);
-        });
+        run(this.executor, task);
     }
 
     /**
@@ -4958,7 +4949,7 @@ public class ServiceHost implements ServiceRequestSender {
         };
 
         long intervalMicros = getMaintenanceCheckIntervalMicros();
-        this.maintenanceTask = schedule(r, intervalMicros, TimeUnit.MICROSECONDS);
+        this.maintenanceTask = scheduleCore(r, intervalMicros, TimeUnit.MICROSECONDS);
     }
 
     /**
