@@ -21,11 +21,17 @@ package com.vmware.xenon.common;
  * @see Service
  */
 public interface ServiceRequestSender {
+
+    /**
+     * Sends an asynchronous request.
+     *
+     * @param op The operation to dispatch. The Operation should not be mutated after submission.
+     */
     void sendRequest(Operation op);
 
     /**
      * Sends an asynchronous request and returns the eventual response body as deferred result.
-     * @param request
+     * @param op The request to send.
      * @param resultType The expected type of the response body.
      * @return
      */
@@ -36,7 +42,7 @@ public interface ServiceRequestSender {
 
     /**
      * Sends an asynchronous request and returns the eventual response as deferred result.
-     * @param response
+     * @param op The request to send.
      * @return
      */
     default DeferredResult<Operation> sendWithDeferredResult(Operation op) {

@@ -1381,14 +1381,13 @@ public class VerificationHost extends ExampleServiceHost {
                     updateOp.setContentType(Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM);
                 }
 
+                Operation putClone = updateOp.clone().setBody(b).setUri(sUri);
                 if (isConcurrentSend) {
-                    Operation putClone = updateOp.clone();
-                    putClone.setBody(b).setUri(sUri);
                     run(() -> {
                         s.sendRequest(putClone);
                     });
                 } else {
-                    s.sendRequest(updateOp.setBody(b));
+                    s.sendRequest(putClone);
                 }
                 if (s.hasOption(ServiceOption.STRICT_UPDATE_CHECKING)) {
                     // we have to serialize requests and properly set version
