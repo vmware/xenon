@@ -497,7 +497,6 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         int numBins = 4;
         long interval = 1000;
         double value = 100;
-        List<Double> values = new ArrayList<>();
         // set data to fill up the specified number of bins
         TimeSeriesStats timeSeriesStats = new TimeSeriesStats(numBins, interval,
                 EnumSet.allOf(AggregationType.class));
@@ -512,7 +511,6 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         for (int i = 0; i < numBins / 2; i++) {
             startTime += TimeUnit.MILLISECONDS.toMicros(interval);
             value += 1;
-            values.add(value);
             timeSeriesStats.add(startTime, value, 1);
         }
         assertTrue(timeSeriesStats.bins.size() == numBins);
@@ -530,7 +528,6 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         for (int i = 0; i < numBins / 2; i++) {
             newValue++;
             count++;
-            values.add(value);
             timeSeriesStats.add(startTime, newValue, 2);
             accumulatedValue += newValue;
         }

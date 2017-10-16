@@ -197,6 +197,10 @@ public class TaskFactoryService extends FactoryService {
     }
 
     private void stopInDirectTaskSubscription(Operation sub, URI notificationTarget) {
+        if (getHost().getServiceStage(notificationTarget.getPath()) != ProcessingStage.AVAILABLE) {
+            adjustStat(STAT_NAME_ACTIVE_SUBSCRIPTION_COUNT, -1);
+            return;
+        }
         getHost().stopSubscriptionService(
                 sub.clone().setAction(Action.DELETE).setCompletion((o, e) -> {
                     if (e != null) {

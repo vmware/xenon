@@ -280,8 +280,8 @@ public interface Service extends ServiceRequestSender {
         REPLICATE_STATE,
 
         /**
-         * Service is ready for operation processing. Any operations received while in the STARTED
-         * or INITIALIZED stage will be dequeued.
+         * Service is available. Any operations received before it became
+         * available will be dequeued and processed.
          */
         AVAILABLE,
 
