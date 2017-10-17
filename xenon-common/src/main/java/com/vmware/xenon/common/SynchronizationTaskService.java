@@ -454,7 +454,7 @@ public class SynchronizationTaskService
     private void handleQueryStage(State task) {
         QueryTask queryTask = buildChildQueryTask(task);
         Operation queryPost = Operation
-                .createPost(this, ServiceUriPaths.CORE_QUERY_TASKS)
+                .createPost(this, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS)
                 .setBody(queryTask)
                 .setConnectionSharing(true)
                 .setCompletion((o, e) -> {
@@ -481,7 +481,7 @@ public class SynchronizationTaskService
                         return;
                     }
 
-                    URI queryTaskUri = UriUtils.buildUri(this.getHost(), ServiceUriPaths.CORE_QUERY_TASKS);
+                    URI queryTaskUri = UriUtils.buildUri(this.getHost(), ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
                     task.queryPageReference = UriUtils.buildUri(queryTaskUri, rsp.nextPageLink);
 
                     sendSelfPatch(task, TaskState.TaskStage.STARTED,
