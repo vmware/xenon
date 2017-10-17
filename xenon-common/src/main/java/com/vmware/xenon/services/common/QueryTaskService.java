@@ -278,6 +278,8 @@ public class QueryTaskService extends StatefulService {
         URI forwardingService = UriUtils.buildBroadcastRequestUri(localQueryTaskFactoryUri,
                 queryTask.nodeSelectorLink);
 
+        queryTask.documentSelfLink = null;
+
         Operation op = Operation
                 .createPost(forwardingService)
                 .setBody(queryTask)
@@ -344,7 +346,8 @@ public class QueryTaskService extends StatefulService {
                             String.valueOf(Utils.getNowMicrosUtc())));
 
             URI forwarderUri = UriUtils.buildForwardToPeerUri(broadcastPageServiceUri, getHost().getId(),
-                    ServiceUriPaths.DEFAULT_NODE_SELECTOR, EnumSet.noneOf(ServiceOption.class));
+                    queryTask.nodeSelectorLink != null ? queryTask.nodeSelectorLink : ServiceUriPaths.DEFAULT_NODE_SELECTOR,
+                        EnumSet.noneOf(ServiceOption.class));
 
             ServiceDocument postBody = new ServiceDocument();
             postBody.documentSelfLink = broadcastPageServiceUri.getPath();
