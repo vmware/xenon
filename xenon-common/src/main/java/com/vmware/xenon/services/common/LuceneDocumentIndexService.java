@@ -91,6 +91,7 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Version;
 
 import com.vmware.xenon.common.FileUtils;
+import com.vmware.xenon.common.NamedThreadFactory;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
@@ -525,9 +526,9 @@ public class LuceneDocumentIndexService extends StatelessService {
         this.uri = super.getUri();
 
         this.privateQueryExecutor = Executors.newFixedThreadPool(QUERY_THREAD_COUNT,
-                r -> new Thread(r, getUri() + "/queries/" + Utils.getSystemNowMicrosUtc()));
+                new NamedThreadFactory(getUri() + "/queries"));
         this.privateIndexingExecutor = Executors.newFixedThreadPool(UPDATE_THREAD_COUNT,
-                r -> new Thread(r, getSelfLink() + "/updates/" + Utils.getSystemNowMicrosUtc()));
+                new NamedThreadFactory(getUri() + "/updates"));
 
         initializeInstance();
 
