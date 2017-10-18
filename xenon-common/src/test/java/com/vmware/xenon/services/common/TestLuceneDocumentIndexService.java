@@ -1949,8 +1949,19 @@ public class TestLuceneDocumentIndexService {
             this.host.sendAndWait(post);
 
             // do a DELETE again, expect success
-            delete = Operation.createDelete(serviceToDelete);
-            this.host.sendAndWaitExpectSuccess(delete);
+            this.host.log("Doing DELETE on deleted, expect success");
+            //delete = Operation.createDelete(serviceToDelete);
+            //this.host.sendAndWaitExpectSuccess(delete);
+            TestContext ctx = this.host.testCreate(1);
+            delete = Operation.createDelete(serviceToDelete).setCompletion((o, e) -> {
+                if (e != null) {
+                    ctx.failIteration(e);
+                    return;
+                }
+                ctx.completeIteration();
+            });
+            this.host.send(delete);
+            ctx.await();
         }
     }
 
