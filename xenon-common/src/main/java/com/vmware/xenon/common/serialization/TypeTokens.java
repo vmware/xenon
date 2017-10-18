@@ -30,7 +30,11 @@ public interface TypeTokens {
 
     Type LIST_OF_STRINGS = new TypeToken<List<String>>() {}.getType();
 
+    Type LIST_OF_OBJECTS = new TypeToken<List<Object>>() {}.getType();
+
     Type SET_OF_STRINGS = new TypeToken<Set<String>>() {}.getType();
+
+    Type SET_OF_OBJECTS = new TypeToken<Set<Object>>() {}.getType();
 
     Type MAP_OF_STRINGS_BY_STRING = new TypeToken<Map<String, String>>() {}.getType();
 
