@@ -46,9 +46,8 @@ public class TestQueryTaskUtils {
                 new int[] { 1, 10, 2, 3, 4, 5, 6, 7, 8, 9 });
 
         List<ServiceDocumentQueryResult> resultsToMerge = Arrays.asList(result1, result2, result3);
-
-        ServiceDocumentQueryResult mergeResult = QueryTaskUtils.mergeQueryResults(resultsToMerge,
-                true);
+        ServiceDocumentQueryResult mergeResult = new ServiceDocumentQueryResult();
+        QueryTaskUtils.mergeQueryResults(resultsToMerge, true, mergeResult);
 
         assertTrue(verifyMergeResult(mergeResult, new int[] { 1, 10, 2, 3, 4, 5, 6, 7, 8, 9 }));
     }
@@ -64,9 +63,8 @@ public class TestQueryTaskUtils {
                 new int[] { 1, 10, 2, 3, 4, 8 });
 
         List<ServiceDocumentQueryResult> resultsToMerge = Arrays.asList(result1, result2, result3);
-
-        ServiceDocumentQueryResult mergeResult = QueryTaskUtils.mergeQueryResults(resultsToMerge,
-                true);
+        ServiceDocumentQueryResult mergeResult = new ServiceDocumentQueryResult();
+        QueryTaskUtils.mergeQueryResults(resultsToMerge, true, mergeResult);
 
         assertTrue(verifyMergeResult(mergeResult, new int[] { 1, 10, 2, 3, 4, 5, 6, 7, 8, 9 }));
     }
@@ -81,9 +79,8 @@ public class TestQueryTaskUtils {
         ServiceDocumentQueryResult result3 = createServiceDocumentQueryResult(new int[] {});
 
         List<ServiceDocumentQueryResult> resultsToMerge = Arrays.asList(result1, result2, result3);
-
-        ServiceDocumentQueryResult mergeResult = QueryTaskUtils.mergeQueryResults(resultsToMerge,
-                true);
+        ServiceDocumentQueryResult mergeResult = new ServiceDocumentQueryResult();
+        QueryTaskUtils.mergeQueryResults(resultsToMerge, true, mergeResult);
 
         assertTrue(verifyMergeResult(mergeResult, new int[] { 1, 10, 2, 3, 4, 5, 6, 7, 8, 9 }));
     }
@@ -96,9 +93,8 @@ public class TestQueryTaskUtils {
         ServiceDocumentQueryResult result3 = createServiceDocumentQueryResult(new int[] {});
 
         List<ServiceDocumentQueryResult> resultsToMerge = Arrays.asList(result1, result2, result3);
-
-        ServiceDocumentQueryResult mergeResult = QueryTaskUtils.mergeQueryResults(resultsToMerge,
-                true);
+        ServiceDocumentQueryResult mergeResult = new ServiceDocumentQueryResult();
+        QueryTaskUtils.mergeQueryResults(resultsToMerge, true, mergeResult);
 
         assertTrue(verifyMergeResult(mergeResult, new int[] {}));
     }
@@ -113,9 +109,8 @@ public class TestQueryTaskUtils {
                 new int[] { 8, 4, 3, 2, 10, 1 });
 
         List<ServiceDocumentQueryResult> resultsToMerge = Arrays.asList(result1, result2, result3);
-
-        ServiceDocumentQueryResult mergeResult = QueryTaskUtils.mergeQueryResults(resultsToMerge,
-                false);
+        ServiceDocumentQueryResult mergeResult = new ServiceDocumentQueryResult();
+        QueryTaskUtils.mergeQueryResults(resultsToMerge, false, mergeResult);
 
         assertTrue(verifyMergeResult(mergeResult, new int[] { 9, 8, 7, 6, 5, 4, 3, 2, 10, 1 }));
     }
@@ -136,10 +131,10 @@ public class TestQueryTaskUtils {
         result3.documents.clear();
 
         List<ServiceDocumentQueryResult> resultsToMerge = Arrays.asList(result1, result2, result3);
-
-        ServiceDocumentQueryResult mergeResult = QueryTaskUtils.mergeQueryResults(resultsToMerge,
+        ServiceDocumentQueryResult mergeResult = new ServiceDocumentQueryResult();
+        QueryTaskUtils.mergeQueryResults(resultsToMerge,
                 false,
-                EnumSet.of(QueryOption.COUNT));
+                EnumSet.of(QueryOption.COUNT), mergeResult);
 
         assertEquals(result2.documentCount, mergeResult.documentCount);
     }

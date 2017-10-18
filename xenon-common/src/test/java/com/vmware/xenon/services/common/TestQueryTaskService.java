@@ -80,6 +80,7 @@ import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
+import com.vmware.xenon.services.common.NodeGroupService.NodeGroupConfig;
 import com.vmware.xenon.services.common.QueryTask.Builder;
 import com.vmware.xenon.services.common.QueryTask.NumericRange;
 import com.vmware.xenon.services.common.QueryTask.Query;
@@ -1671,7 +1672,7 @@ public class TestQueryTaskService {
         List<URI> exampleServices = new ArrayList<>();
         createExampleServices(exampleFactoryURI, exampleServices);
         verifyMultiNodeBroadcastQueries(targetHost);
-        verifyOnlySupportSortOnSelfLinkInBroadcast(targetHost);
+        verifyOnlySupportSortOnSelfLinkInBroadcast(targetHost, true);
         this.host.deleteAllChildServices(exampleFactoryURI);
 
         for (int i = 0; i < this.iterationCount; i++) {
@@ -1681,6 +1682,72 @@ public class TestQueryTaskService {
             this.host.deleteAllChildServices(exampleFactoryURI);
         }
 
+    }
+
+    @Test
+    public void testReadAfterWriteConsistency() throws Throwable {
+        final int nodeCount = 3;
+        final int stressTestServiceCountThreshold = 1000;
+
+        setUpHost();
+
+        this.host.setUpPeerHosts(nodeCount);
+        this.host.joinNodesAndVerifyConvergence(nodeCount);
+        this.host.setNodeGroupQuorum(nodeCount - 1);
+        this.host.waitForNodeGroupConvergence(3, 3);
+        VerificationHost targetHost = this.host.getPeerHost();
+        URI exampleFactoryURI = UriUtils.buildUri(targetHost, ExampleService.FACTORY_LINK);
+
+        CommandLineArgumentParser.parseFromProperties(this);
+        if (this.serviceCount > stressTestServiceCountThreshold) {
+            targetHost.setStressTest(true);
+        }
+
+        List<URI> exampleServices = new ArrayList<>();
+        createExampleServices(exampleFactoryURI, exampleServices);
+        assertTrue(invokeReadAfterWriteQueryExpectFailure(
+                targetHost, EnumSet.of(QueryOption.READ_AFTER_WRITE_CONSISTENCY, QueryOption.COUNT)));
+        verifyOnlySupportSortOnSelfLinkInBroadcast(targetHost, false);
+        nonpaginatedBroadcastQueryTasksOnExampleStates(targetHost,
+                EnumSet.of(QueryOption.READ_AFTER_WRITE_CONSISTENCY));
+        paginatedBroadcastQueryTasksOnExampleStates(targetHost,
+                EnumSet.of( QueryOption.READ_AFTER_WRITE_CONSISTENCY));
+        NodeGroupConfig cfg = new NodeGroupConfig();
+        cfg.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(1);
+        this.host.setNodeGroupConfig(cfg);
+        this.host.stopHostAndPreserveState(targetHost);
+
+        this.host.waitForNodeGroupConvergence(2, 2);
+        targetHost = this.host.getPeerHost();
+        nonpaginatedBroadcastQueryTasksOnExampleStates(targetHost,
+                EnumSet.of(QueryOption.READ_AFTER_WRITE_CONSISTENCY));
+        paginatedBroadcastQueryTasksOnExampleStates(targetHost,
+                EnumSet.of( QueryOption.READ_AFTER_WRITE_CONSISTENCY));
+
+        this.host.setNodeGroupQuorum(1);
+        assertTrue(invokeReadAfterWriteQueryExpectFailure(
+                targetHost, EnumSet.of(QueryOption.READ_AFTER_WRITE_CONSISTENCY)));
+    }
+
+    private boolean invokeReadAfterWriteQueryExpectFailure(VerificationHost targetHost, EnumSet<QueryOption> queryOptions) {
+        QuerySpecification q = new QuerySpecification();
+        Query kindClause = new Query();
+        kindClause.setTermPropertyName(ServiceDocument.FIELD_NAME_KIND)
+                .setTermMatchValue(Utils.buildKind(ExampleServiceState.class));
+        q.query = kindClause;
+        q.options = queryOptions;
+        URI taskUri = null;
+        QueryTask task = QueryTask.create(q);
+        try {
+            taskUri = targetHost.createQueryTaskService(task, false, task.taskInfo.isDirect, task, null);
+        } catch (Exception e) {
+            return true;
+        }
+        task = targetHost.waitForQueryTaskCompletion(task.querySpec, 0, 0, taskUri, false, false, false);
+        if (task.taskInfo.stage == TaskStage.FAILED) {
+            return true;
+        }
+        return false;
     }
 
     @Test
@@ -2170,11 +2237,11 @@ public class TestQueryTaskService {
     }
 
     private void verifyMultiNodeBroadcastQueries(VerificationHost targetHost) throws Throwable {
-        verifyOnlySupportSortOnSelfLinkInBroadcast(targetHost);
+        verifyOnlySupportSortOnSelfLinkInBroadcast(targetHost, true);
         verifyDirectQueryAllowedInBroadcast(targetHost);
         nonpaginatedBroadcastQueryTasksOnExampleStates(targetHost,
                 EnumSet.of(QueryOption.EXPAND_CONTENT, QueryOption.BROADCAST));
-        paginatedBroadcastQueryTasksOnExampleStates(targetHost);
+        paginatedBroadcastQueryTasksOnExampleStates(targetHost, EnumSet.of(QueryOption.EXPAND_CONTENT, QueryOption.BROADCAST));
         paginatedBroadcastQueryTasksWithoutMatching(targetHost);
         paginatedBroadcastQueryTasksRepeatSamePage(targetHost);
 
@@ -2191,13 +2258,14 @@ public class TestQueryTaskService {
                 EnumSet.of(QueryOption.EXPAND_CONTENT, QueryOption.OWNER_SELECTION));
     }
 
-    private void verifyOnlySupportSortOnSelfLinkInBroadcast(VerificationHost targetHost) throws Throwable {
+    private void verifyOnlySupportSortOnSelfLinkInBroadcast(VerificationHost targetHost, boolean isBroadcast) throws Throwable {
         QuerySpecification q = new QuerySpecification();
         Query kindClause = new Query();
         kindClause.setTermPropertyName(ServiceDocument.FIELD_NAME_KIND)
                 .setTermMatchValue(Utils.buildKind(ExampleServiceState.class));
         q.query = kindClause;
-        q.options = EnumSet.of(QueryOption.EXPAND_CONTENT, QueryOption.SORT, QueryOption.BROADCAST);
+        q.options = EnumSet.of(QueryOption.EXPAND_CONTENT, QueryOption.SORT);
+        q.options.add(isBroadcast ? QueryOption.BROADCAST : QueryOption.READ_AFTER_WRITE_CONSISTENCY);
         q.sortTerm = new QueryTask.QueryTerm();
         q.sortTerm.propertyType = TypeName.STRING;
         q.sortTerm.propertyName = ExampleServiceState.FIELD_NAME_NAME;
@@ -2305,14 +2373,14 @@ public class TestQueryTaskService {
         targetHost.testWait();
     }
 
-    private void paginatedBroadcastQueryTasksOnExampleStates(VerificationHost targetHost)
+    private void paginatedBroadcastQueryTasksOnExampleStates(VerificationHost targetHost, EnumSet<QueryOption> options)
             throws Throwable {
 
         // Simulate the scenario that multiple users query documents page by page
         // in broadcast way.
         targetHost.testStart(this.queryCount);
         for (int i = 0; i < this.queryCount; i++) {
-            startPagedBroadCastQuery(targetHost);
+            startPagedBroadCastQuery(targetHost, options);
         }
 
         // If the query cannot be finished in time, timeout exception would be thrown.
@@ -2514,7 +2582,7 @@ public class TestQueryTaskService {
         testContext.await();
     }
 
-    private void startPagedBroadCastQuery(VerificationHost targetHost) {
+    private void startPagedBroadCastQuery(VerificationHost targetHost, EnumSet<QueryOption> queryOptions) {
         final int documentCount = this.serviceCount;
         Set<String> documentLinks = new HashSet<>();
         try {
@@ -2527,7 +2595,7 @@ public class TestQueryTaskService {
             kindClause.setTermPropertyName(ServiceDocument.FIELD_NAME_KIND)
                     .setTermMatchValue(Utils.buildKind(ExampleServiceState.class));
             q.query = kindClause;
-            q.options = EnumSet.of(QueryOption.EXPAND_CONTENT, QueryOption.BROADCAST);
+            q.options = queryOptions;
             q.resultLimit = resultLimit;
 
             QueryTask task = QueryTask.create(q);
