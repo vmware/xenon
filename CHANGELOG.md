@@ -37,6 +37,9 @@
   Therefore, it is not advised to use 304 status code other than GET request. 
 
 
+ * Provide configurable replication quorum which decides the success and failure threshold.
+   Api: PATCH PATH/TO/NODESELECTOR/replication -d '{replicationQuorum:REPLICATIONQUORUM}'
+
 ## 1.5.7
 
 * Fix auth check for non-persisted stateful service on document-index GET.

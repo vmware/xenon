@@ -804,7 +804,13 @@ class ServiceResourceTracker {
         this.host.startService(onDemandPost, childService);
     }
 
-    void retryOnDemandLoadConflict(Operation op) {
+    void retryOnDemandLoadConflict(Operation op, Service s) {
+        if (!ServiceHost.isServiceIndexed(s)) {
+            // service is stopped but it's not persistent, so it doesn't start/stop on-demand.
+            // no point in retrying the operation.
+            op.fail(new CancellationException("Service has stopped"));
+            return;
+        }
 
         op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
 

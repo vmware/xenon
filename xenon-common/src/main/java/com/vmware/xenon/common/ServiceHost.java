@@ -3827,8 +3827,8 @@ public class ServiceHost implements ServiceRequestSender {
         registerForServiceAvailability(op, path);
     }
 
-    void retryOnDemandLoadConflict(Operation op) {
-        this.serviceResourceTracker.retryOnDemandLoadConflict(op);
+    void retryOnDemandLoadConflict(Operation op, Service s) {
+        this.serviceResourceTracker.retryOnDemandLoadConflict(op, s);
     }
 
     private void retryOrFailRequest(Operation op, Operation fo, Throwable fe) {
@@ -3976,7 +3976,7 @@ public class ServiceHost implements ServiceRequestSender {
                 return;
             }
 
-            retryOnDemandLoadConflict(op);
+            retryOnDemandLoadConflict(op, s);
             return;
         }
 

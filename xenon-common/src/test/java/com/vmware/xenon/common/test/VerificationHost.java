@@ -118,6 +118,7 @@ import com.vmware.xenon.services.common.NodeGroupService.NodeGroupConfig;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeGroupService.UpdateQuorumRequest;
 import com.vmware.xenon.services.common.NodeGroupUtils;
+import com.vmware.xenon.services.common.NodeSelectorReplicationService;
 import com.vmware.xenon.services.common.NodeState;
 import com.vmware.xenon.services.common.NodeState.NodeOption;
 import com.vmware.xenon.services.common.NodeState.NodeStatus;
@@ -1133,34 +1134,37 @@ public class VerificationHost extends ExampleServiceHost {
             Long version,
             Long latestVersion) {
 
-        URI localQueryUri = UriUtils.buildDefaultDocumentQueryUri(
-                hostUri,
-                selfLink,
-                false,
-                true,
-                ServiceOption.PERSISTENCE);
+        waitFor("wait replication propagate timeout", () -> {
+            URI localQueryUri = UriUtils.buildDefaultDocumentQueryUri(
+                    hostUri,
+                    selfLink,
+                    false,
+                    true,
+                    ServiceOption.PERSISTENCE);
 
-        if (version != null) {
-            localQueryUri = UriUtils.appendQueryParam(localQueryUri,
-                    ServiceDocument.FIELD_NAME_VERSION,
-                    Long.toString(version));
-        }
+            if (version != null) {
+                localQueryUri = UriUtils.appendQueryParam(localQueryUri,
+                        ServiceDocument.FIELD_NAME_VERSION,
+                        Long.toString(version));
+            }
+            Operation remoteGet = Operation.createGet(localQueryUri);
+            Operation result = this.sender.sendAndWait(remoteGet);
+            if (latestVersion == null) {
+                assertFalse("Document not expected", result.hasBody());
+                return true;
+            }
+            if (!result.hasBody()) {
+                return false;
+            }
+            ServiceDocument doc = result.getBody(ServiceDocument.class);
+            int expectedVersion = version == null ? latestVersion.intValue() : version.intValue();
+            assertEquals("Invalid document version returned", doc.documentVersion, expectedVersion);
 
-        Operation remoteGet = Operation.createGet(localQueryUri);
-        Operation result = this.sender.sendAndWait(remoteGet);
-        if (latestVersion == null) {
-            assertFalse("Document not expected", result.hasBody());
-            return;
-        }
-
-        ServiceDocument doc = result.getBody(ServiceDocument.class);
-        int expectedVersion = version == null ? latestVersion.intValue() : version.intValue();
-        assertEquals("Invalid document version returned", doc.documentVersion, expectedVersion);
-
-        String action = doc.documentUpdateAction;
-        assertEquals("Invalid document update action returned:" + action, expectedAction.name(),
-                action);
-
+            String action = doc.documentUpdateAction;
+            assertEquals("Invalid document update action returned:" + action, expectedAction.name(),
+                    action);
+            return true;
+        });
     }
 
     public <T> double doPutPerService(List<Service> services)
@@ -1381,14 +1385,13 @@ public class VerificationHost extends ExampleServiceHost {
                     updateOp.setContentType(Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM);
                 }
 
+                Operation putClone = updateOp.clone().setBody(b).setUri(sUri);
                 if (isConcurrentSend) {
-                    Operation putClone = updateOp.clone();
-                    putClone.setBody(b).setUri(sUri);
                     run(() -> {
                         s.sendRequest(putClone);
                     });
                 } else {
-                    s.sendRequest(updateOp.setBody(b));
+                    s.sendRequest(putClone);
                 }
                 if (s.hasOption(ServiceOption.STRICT_UPDATE_CHECKING)) {
                     // we have to serialize requests and properly set version
@@ -2267,6 +2270,20 @@ public class VerificationHost extends ExampleServiceHost {
         }
     }
 
+    public void waitForNodeUnavailable(String NodeGroupLink, Collection<? extends ServiceHost> peerHosts, ServiceHost stoppedHost) {
+        this.waitFor("wait node unavailable timeout", () -> {
+            for (ServiceHost h : peerHosts) {
+                Operation op = Operation.createGet(UriUtils.buildUri(h, NodeGroupLink));
+                NodeGroupState ngs = this.sender.sendAndWait(op, NodeGroupState.class);
+                NodeState ns = ngs.nodes.get(stoppedHost.getId());
+                if (!(ns == null || ns.status == NodeStatus.UNAVAILABLE)) {
+                    return false;
+                }
+            }
+            return true;
+        });
+    }
+
     /**
      * Check replicated factory child services for convergence.
      *
@@ -2740,6 +2757,16 @@ public class VerificationHost extends ExampleServiceHost {
             }
             return true;
         });
+    }
+
+    public void setNodeSelectorReplicationQuorum(String nodeSelectorPath, int quorum) throws Throwable {
+        List<Operation> ops = new ArrayList<>();
+        for (ServiceHost host : this.getInProcessHostMap().values()) {
+            NodeSelectorReplicationService.ReplicationQuorumUpdateRequest body = new NodeSelectorReplicationService.ReplicationQuorumUpdateRequest();
+            body.replicationQuorum = quorum;
+            ops.add(Operation.createPatch(UriUtils.buildUri(host, nodeSelectorPath + "/" + SERVICE_URI_SUFFIX_REPLICATION)).setBody(body));
+        }
+        this.sender.sendAndWait(ops);
     }
 
     public <T extends ServiceDocument> void validateDocumentPartitioning(

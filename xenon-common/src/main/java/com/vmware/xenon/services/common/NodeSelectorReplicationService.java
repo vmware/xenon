@@ -24,7 +24,6 @@ import com.vmware.xenon.common.NodeSelectorService;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation;
-import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost;
@@ -44,14 +43,14 @@ public class NodeSelectorReplicationService extends StatelessService {
                     + "NodeSelectorReplicationService.BINARY_SERIALIZATION",
             1);
 
-    private Service parent;
+    private NodeSelectorService parent;
     private Map<String, Integer> nodeCountPerLocation;
     private Map<URI, String> locationPerNodeURI;
     private long peerTimeoutMicros;
 
     private String nodeGroupLink;
 
-    public NodeSelectorReplicationService(Service parent) {
+    public NodeSelectorReplicationService(NodeSelectorService parent) {
         this.parent = parent;
         super.setHost(parent.getHost());
         super.setSelfLink(UriUtils.buildUriPath(parent.getSelfLink(),
@@ -67,10 +66,31 @@ public class NodeSelectorReplicationService extends StatelessService {
     }
 
     /**
+     * Request to update replication quorum
+     */
+    public static class ReplicationQuorumUpdateRequest {
+        public Integer replicationQuorum;
+    }
+
+    @Override
+    public void handlePatch(Operation patch) {
+        if (!patch.hasBody()) {
+            patch.fail(new IllegalArgumentException("Body is required"));
+            return;
+        }
+        ReplicationQuorumUpdateRequest body = patch.getBody(ReplicationQuorumUpdateRequest.class);
+        if (body.replicationQuorum != null ) {
+            this.parent.updateReplicationQuorum(patch, body.replicationQuorum);
+            return;
+        }
+        patch.complete();
+    }
+
+    /**
      * Issues updates to peer nodes, after a local update has been accepted
      */
     void replicateUpdate(NodeGroupState localState,
-            Operation outboundOp, SelectAndForwardRequest req, SelectOwnerResponse rsp) {
+            Operation outboundOp, SelectAndForwardRequest req, SelectOwnerResponse rsp, int replicationQuorum) {
 
         int memberCount = localState.nodes.size();
         NodeState selfNode = localState.nodes.get(getHost().getId());
@@ -101,7 +121,8 @@ public class NodeSelectorReplicationService extends StatelessService {
         // success threshold is determined based on the following precedence:
         // 1. request replication quorum header (if exists)
         // 2. group membership quorum (in case of OWNER_SELECTION)
-        // 3. at least one remote node (in case one exists)
+        // 3. node selector replication quorum (if set)
+        // 4. at least one remote node (in case one exists)
         String rplQuorumValue = outboundOp
                 .getRequestHeaderAsIs(Operation.REPLICATION_QUORUM_HEADER);
         if (rplQuorumValue != null) {
@@ -129,9 +150,13 @@ public class NodeSelectorReplicationService extends StatelessService {
         }
 
         if (req.serviceOptions.contains(ServiceOption.OWNER_SELECTION)) {
-            // replicate using group membership quorum
+            // replicate using node selector replication quorum or group membership quorum
             if (location == null) {
-                context.successThreshold = Math.min(eligibleMemberCount, selfNode.membershipQuorum);
+                // membership quorum used if
+                // 1. no valid replication quorum provided, for previous compatibility
+                // 2. it is a DELETE operation which requires propagation to peers
+                context.successThreshold = replicationQuorum > 0 && outboundOp.getAction() != Action.DELETE ?
+                        replicationQuorum : Math.min(eligibleMemberCount, selfNode.membershipQuorum);
                 context.failureThreshold = (eligibleMemberCount - context.successThreshold) + 1;
             } else {
                 int localNodeCount = getNodeCountInLocation(location, selectedNodes);

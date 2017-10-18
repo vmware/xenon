@@ -141,7 +141,7 @@ public class StatefulService implements Service {
                 && this.context.processingStage != ProcessingStage.AVAILABLE) {
 
             if (this.context.processingStage == ProcessingStage.STOPPED) {
-                getHost().retryOnDemandLoadConflict(op);
+                getHost().retryOnDemandLoadConflict(op, this);
                 return true;
             }
 
@@ -194,7 +194,7 @@ public class StatefulService implements Service {
                 op.complete();
             } else {
                 // this is an incoming request and the service has just stopped - retry
-                getHost().retryOnDemandLoadConflict(op);
+                getHost().retryOnDemandLoadConflict(op, this);
             }
             return true;
         }
@@ -235,7 +235,7 @@ public class StatefulService implements Service {
             } else {
                 if (!isDeleteAndStop) {
                     // Pending requests need to be retried on services that are being stopped.
-                    getHost().retryOnDemandLoadConflict(o);
+                    getHost().retryOnDemandLoadConflict(o, this);
                 } else {
                     o.fail(new CancellationException(getSelfLink()));
                 }
@@ -279,7 +279,7 @@ public class StatefulService implements Service {
 
         if (stopped != 0 && !getHost().isStopping()) {
             logWarning("Service in stage %s, retrying request", this.context.processingStage);
-            getHost().retryOnDemandLoadConflict(op);
+            getHost().retryOnDemandLoadConflict(op, this);
             return true;
         }
 
