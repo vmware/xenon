@@ -15,15 +15,14 @@ package com.vmware.xenon.common.serialization;
 
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Map.Entry;
+import java.util.ArrayList;
+import java.util.List;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonDeserializationContext;
 import com.google.gson.JsonDeserializer;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
-import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
@@ -31,52 +30,51 @@ import com.google.gson.JsonSerializationContext;
 import com.google.gson.JsonSerializer;
 
 /**
- * GSON {@link JsonSerializer}/{@link JsonDeserializer} for representing {@link Map}s of objects
- * keyed by strings, whereby the objects are themselves serialized as JSON objects.
+ * GSON {@link JsonSerializer}/{@link JsonDeserializer} for representing
+ * {@link List}s of objects
+ * keyed by strings, whereby the objects are themselves serialized as JSON
+ * objects.
  */
-public enum ObjectMapTypeConverter
-        implements JsonSerializer<Map<String, Object>>, JsonDeserializer<Map<String, Object>> {
+public enum ObjectListTypeConverter
+        implements JsonSerializer<List<Object>>, JsonDeserializer<List<Object>> {
     INSTANCE;
 
-    public static final Type TYPE = TypeTokens.MAP_OF_OBJECTS_BY_STRING;
+    public static final Type TYPE = TypeTokens.LIST_OF_OBJECTS;
 
     @Override
-    public JsonElement serialize(Map<String, Object> map, Type type,
+    public JsonElement serialize(List<Object> set, Type type,
             JsonSerializationContext context) {
-        JsonObject mapObject = new JsonObject();
-        for (Entry<String, Object> e : map.entrySet()) {
-            Object v = e.getValue();
-            if (v == null) {
-                mapObject.add(e.getKey(), JsonNull.INSTANCE);
-            } else if (v instanceof JsonElement) {
-                mapObject.add(e.getKey(), (JsonElement) v);
-            } else if (v instanceof String) {
-                mapObject.add(e.getKey(), new JsonParser().parse((String) v));
+        JsonArray setObject = new JsonArray();
+        for (Object e : set) {
+            if (e == null) {
+                setObject.add(JsonNull.INSTANCE);
+            } else if (e instanceof JsonElement) {
+                setObject.add((JsonElement) e);
+            } else if (e instanceof String) {
+                setObject.add(new JsonParser().parse((String) e));
             } else {
-                mapObject.add(e.getKey(), context.serialize(v));
+                setObject.add(context.serialize(e));
             }
         }
-        return mapObject;
+        return setObject;
     }
 
     @Override
-    public Map<String, Object> deserialize(JsonElement json, Type unused,
+    public List<Object> deserialize(JsonElement json, Type unused,
             JsonDeserializationContext context)
             throws JsonParseException {
 
-        if (!json.isJsonObject()) {
-            throw new JsonParseException("Expecting a json Map object but found: " + json);
+        if (!json.isJsonArray()) {
+            throw new JsonParseException("Expecting a json array object but found: " + json);
         }
 
-        Map<String, Object> result = new HashMap<>();
-        JsonObject jsonObject = json.getAsJsonObject();
-        for (Entry<String, JsonElement> entry : jsonObject.entrySet()) {
-            String key = entry.getKey();
-            JsonElement element = entry.getValue();
-            if (element.isJsonNull()) {
-                result.put(key, null);
-            } else if (element.isJsonPrimitive()) {
-                JsonPrimitive elem = element.getAsJsonPrimitive();
+        List<Object> result = new ArrayList<>();
+        JsonArray jsonArray = json.getAsJsonArray();
+        for (JsonElement entry : jsonArray) {
+            if (entry.isJsonNull()) {
+                result.add(null);
+            } else if (entry.isJsonPrimitive()) {
+                JsonPrimitive elem = entry.getAsJsonPrimitive();
                 Object value = null;
                 if (elem.isBoolean()) {
                     value = elem.getAsBoolean();
@@ -91,13 +89,12 @@ public enum ObjectMapTypeConverter
                         value = num.doubleValue();
                     }
                 } else {
-                    throw new RuntimeException("Unexpected value type for json element key:" + key
-                            + " value:" + element);
+                    throw new RuntimeException("Unexpected value type for json element:" + elem);
                 }
-                result.put(key, value);
+                result.add(value);
             } else {
                 // keep JsonElement to prevent stringified json issues
-                result.put(key, element);
+                result.add(entry);
             }
         }
         return result;
