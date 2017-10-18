@@ -14,6 +14,7 @@
 package com.vmware.xenon.services.common;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -24,11 +25,14 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.OperationJoin;
+import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
@@ -57,7 +61,7 @@ public final class QueryTaskUtils {
      */
     private static final int MAX_NEST_LEVEL_EXPAND_PROPERTY = 2;
 
-    private static ServiceDocumentQueryResult mergeCountQueries(
+    private static void mergeCountQueries(
             List<ServiceDocumentQueryResult> dataSources, ServiceDocumentQueryResult result) {
         long highestCount = 0;
         for (int i = 0; i < dataSources.size(); i++) {
@@ -73,9 +77,33 @@ public final class QueryTaskUtils {
 
         result.documentCount = highestCount;
         result.documentLinks = Collections.emptyList();
-        return result;
+        return;
     }
 
+    /**
+     * Process the query task results for a broadcast query or a query with read
+     * after write semantics (which uses a broadcast query under the covers)
+     * @param host The service host on which the query was invoked
+     * @param dataSources A list of @ServiceDocumentQueryResult <b>sorted</b> on <i>documentLink</i>.
+     * @param isAscOrder  Whether the document links are sorted in ascending order.
+     * @param queryOptions Query options on the original query
+     * @param nodeGroupResponse Node group response obtained as part of the broadcast query
+     * @param result Result object to populate
+     * @param onCompletion Consumer to invoke once processing is complete
+     */
+    public static void processQueryResults(ServiceHost host,
+            List<ServiceDocumentQueryResult> dataSources,
+            boolean isAscOrder, EnumSet<QueryOption> queryOptions,
+            NodeGroupBroadcastResponse nodeGroupResponse, ServiceDocumentQueryResult result,
+            BiConsumer<ServiceDocumentQueryResult, Throwable> onCompletion) {
+        if (queryOptions != null && queryOptions.contains(QueryOption.READ_AFTER_WRITE_CONSISTENCY)) {
+            mergeForReadAfterWriteConsistency(host, dataSources, isAscOrder, queryOptions,
+                    nodeGroupResponse, onCompletion);
+        } else {
+            mergeQueryResults(dataSources, isAscOrder, queryOptions, result);
+            onCompletion.accept(result, null);
+        }
+    }
     /**
     * Merges a list of @ServiceDocumentQueryResult that were already <b>sorted</b> on <i>documentLink</i>.
     * The merge will be done in linear time.
@@ -84,9 +112,9 @@ public final class QueryTaskUtils {
     * @param isAscOrder  Whether the document links are sorted in ascending order.
     * @return The merging result.
     */
-    public static ServiceDocumentQueryResult mergeQueryResults(
-            List<ServiceDocumentQueryResult> dataSources, boolean isAscOrder) {
-        return mergeQueryResults(dataSources, isAscOrder, EnumSet.noneOf(QueryOption.class));
+    public static void mergeQueryResults(
+            List<ServiceDocumentQueryResult> dataSources, boolean isAscOrder, ServiceDocumentQueryResult result) {
+        mergeQueryResults(dataSources, isAscOrder, EnumSet.noneOf(QueryOption.class), result);
     }
 
     /**
@@ -98,18 +126,16 @@ public final class QueryTaskUtils {
     * @param isAscOrder  Whether the document links are sorted in ascending order.
     * @return The merging result.
     */
-    public static ServiceDocumentQueryResult mergeQueryResults(
+    public static void mergeQueryResults(
             List<ServiceDocumentQueryResult> dataSources,
-            boolean isAscOrder, EnumSet<QueryOption> queryOptions) {
+            boolean isAscOrder, EnumSet<QueryOption> queryOptions, ServiceDocumentQueryResult result) {
 
-        // To hold the merge result.
-        ServiceDocumentQueryResult result = new ServiceDocumentQueryResult();
         result.documents = new HashMap<>();
         result.documentCount = 0L;
-
         // handle count queries
         if (queryOptions != null && queryOptions.contains(QueryOption.COUNT)) {
-            return mergeCountQueries(dataSources, result);
+            mergeCountQueries(dataSources, result);
+            return;
         }
 
         // For each list of documents to be merged, a pointer is maintained to indicate which element
@@ -173,7 +199,114 @@ public final class QueryTaskUtils {
                 break;
             }
         }
+    }
 
+    /**
+    * Merges a list of @ServiceDocumentQueryResult that were already <b>sorted</b> on <i>documentLink</i>.
+    * The result will be the latest version of the document across the nodegroup ensuring a read
+    * after write consistency for queries
+    *
+    * @param host The service host on which the query was invoked
+    * @param dataSources A list of @ServiceDocumentQueryResult <b>sorted</b> on <i>documentLink</i>.
+    * @param isAscOrder  Whether the document links are sorted in ascending order.
+    * @param queryOptions Query options on the original query
+    * @param nodeGroupResponse Node group response obtained as part of the broadcast query
+    * @param onCompletion Consumer to invoke once processing is complete
+    * @return Merged result.
+    */
+    private static void mergeForReadAfterWriteConsistency(
+            ServiceHost host,
+            List<ServiceDocumentQueryResult> dataSources,
+            boolean isAscOrder, EnumSet<QueryOption> queryOptions,
+            NodeGroupBroadcastResponse nodeGroupResponse,
+            BiConsumer<ServiceDocumentQueryResult, Throwable> onCompletion) {
+
+        class VersionObjectPair {
+            Long version;
+            Object object;
+
+            VersionObjectPair(Long version, Object object) {
+                this.version = version;
+                this.object = object;
+            }
+        }
+
+        // if we do not have a majority quorum setting, then it is not possible to
+        // ensure read after write consistency
+        if (nodeGroupResponse.membershipQuorum < (nodeGroupResponse.nodeCount / 2 + 1 )) {
+            onCompletion.accept(null, new IllegalStateException("Membership quorum value should be "
+                    + " a majority of the number of nodes"));
+            return;
+        }
+        // track the count of each selfLink and the latest version per selfLink
+        Map<String, Integer> linkToCountMap = new HashMap<>();
+        Map<String, VersionObjectPair> linkToVersionObjectMap = new HashMap<>();
+        for (int i = 0; i < dataSources.size(); i++) {
+            ServiceDocumentQueryResult partialResult = dataSources.get(i);
+            for ( Object entry: partialResult.documents.values()) {
+                ServiceDocument jsonObject = Utils.fromJson(entry, ServiceDocument.class);
+                linkToCountMap.compute(jsonObject.documentSelfLink,
+                        (k, v) -> (v == null) ? Integer.valueOf(1) : v.intValue() + 1);
+                linkToVersionObjectMap.compute(jsonObject.documentSelfLink,
+                        (k, v) -> {
+                            if (v == null) {
+                                return new VersionObjectPair(jsonObject.documentVersion, entry);
+                            } else {
+                                if ((v.version.intValue() < jsonObject.documentVersion)) {
+                                    return new VersionObjectPair(jsonObject.documentVersion, entry);
+                                } else {
+                                    return v;
+                                }
+                        }
+                    });
+            }
+        }
+        Set<String> getLinks = new HashSet<>();
+        Map<String, Object> documents = new HashMap<>();
+        for (Entry<String, Integer> entry : linkToCountMap.entrySet()) {
+            // if we have received response from a quorum number of nodes then we
+            // have the latest version of the doc as at least one node
+            // will have the updated doc;
+            // else, invoke a GET to fetch the latest version of the doc
+            if (entry.getValue() >= nodeGroupResponse.membershipQuorum) {
+                documents.put(entry.getKey(),
+                        linkToVersionObjectMap.get(entry.getKey()).object);
+            } else {
+                getLinks.add(entry.getKey());
+            }
+        }
+        Collection<Operation> getOps = new ArrayList<>();
+        getLinks.forEach((link) -> {
+            getOps.add(Operation
+                    .createGet(UriUtils.buildUri(host, link))
+                    .setReferer(host.getUri()));
+        });
+        if (getOps.size() == 0) {
+            onCompletion.accept(populateResultObject(documents, isAscOrder), null);
+            return;
+        }
+        OperationJoin.create(getOps)
+        .setCompletion((os, ts) -> {
+            if (ts != null && !ts.isEmpty()) {
+                onCompletion.accept(null, ts.values().iterator().next());
+                return;
+            }
+            for (Operation getOp : os.values()) {
+                Object rawObject = getOp.getBodyRaw();
+                ServiceDocument jsonObject = Utils.fromJson(rawObject, ServiceDocument.class);
+                documents.put(jsonObject.documentSelfLink, rawObject);
+            }
+            onCompletion.accept(populateResultObject(documents, isAscOrder), null);
+        }).sendWith(host);
+    }
+
+    private static ServiceDocumentQueryResult populateResultObject(Map<String, Object> documents, boolean isAscOrder) {
+        ServiceDocumentQueryResult result = new ServiceDocumentQueryResult();
+        List<String> documentLinks = new ArrayList<>(documents.keySet());
+        Collections.sort(documentLinks, isAscOrder ? null : Collections.reverseOrder());
+        result.documentLinks = documentLinks;
+        result.documentCount = Long.valueOf(documentLinks.size());
+        result.documents = documents;
         return result;
     }
 

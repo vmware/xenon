@@ -27,6 +27,7 @@ import java.util.Objects;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
 import com.vmware.xenon.common.Operation;
@@ -91,7 +92,8 @@ public class QueryTaskService extends StatefulService {
             patchBody.querySpec = initState.querySpec;
             sendRequest(Operation.createPatch(getUri()).setBody(patchBody));
         } else {
-            if (initState.querySpec.options.contains(QueryOption.BROADCAST)) {
+            if (initState.querySpec.options.contains(QueryOption.BROADCAST) ||
+                    initState.querySpec.options.contains(QueryOption.READ_AFTER_WRITE_CONSISTENCY)) {
                 createAndSendBroadcastQuery(initState, startPost);
             } else {
                 forwardQueryToDocumentIndexService(initState, startPost);
@@ -233,11 +235,13 @@ public class QueryTaskService extends StatefulService {
             return false;
         }
 
-        if (initState.querySpec.options.contains(QueryOption.BROADCAST)
+        if ((initState.querySpec.options.contains(QueryOption.BROADCAST) ||
+                initState.querySpec.options.contains(QueryOption.READ_AFTER_WRITE_CONSISTENCY))
                 && initState.querySpec.options.contains(QueryOption.SORT)
                 && initState.querySpec.sortTerm != null
                 && !Objects.equals(initState.querySpec.sortTerm.propertyName, ServiceDocument.FIELD_NAME_SELF_LINK)) {
             startPost.fail(new IllegalArgumentException(QueryOption.BROADCAST
+                    + " and " + QueryOption.READ_AFTER_WRITE_CONSISTENCY
                     + " only supports sorting on ["
                     + ServiceDocument.FIELD_NAME_SELF_LINK + "]"));
             return false;
@@ -256,6 +260,12 @@ public class QueryTaskService extends StatefulService {
                     + " for retreiving latest versions of documents, for the given querySpec.timeSnapshotBoundaryMicros or do not provide querySpec.timeSnapshotBoundaryMicros"));
             return false;
         }
+        if (initState.querySpec.options.contains(QueryOption.READ_AFTER_WRITE_CONSISTENCY)
+                && initState.querySpec.options.contains(QueryOption.COUNT)) {
+            startPost.fail(new IllegalArgumentException("Options " + QueryOption.READ_AFTER_WRITE_CONSISTENCY
+                    + " and " + QueryOption.COUNT + "are not compatible"));
+            return false;
+        }
         return true;
     }
 
@@ -263,7 +273,14 @@ public class QueryTaskService extends StatefulService {
         QueryTask queryTask = Utils.clone(origQueryTask);
         queryTask.setDirect(true);
 
-        queryTask.querySpec.options.remove(QueryOption.BROADCAST);
+        if (queryTask.querySpec.options.contains(QueryOption.BROADCAST)) {
+            queryTask.querySpec.options.remove(QueryOption.BROADCAST);
+        }
+
+        if (queryTask.querySpec.options.contains(QueryOption.READ_AFTER_WRITE_CONSISTENCY)) {
+            queryTask.querySpec.options.remove(QueryOption.READ_AFTER_WRITE_CONSISTENCY);
+            queryTask.querySpec.options.add(QueryOption.EXPAND_CONTENT);
+        }
 
         if (!queryTask.querySpec.options.contains(QueryOption.SORT)) {
             queryTask.querySpec.options.add(QueryOption.SORT);
@@ -307,27 +324,44 @@ public class QueryTaskService extends StatefulService {
                         }
                     }
 
-                    collectBroadcastQueryResults(rsp.jsonResponses, queryTask);
-
-                    queryTask.taskInfo.stage = TaskStage.FINISHED;
-                    if (startPost != null) {
-                        // direct query, complete original POST
-                        startPost.setBodyNoCloning(queryTask).complete();
-                    } else {
-                        // self patch with results
-                        sendRequest(Operation.createPatch(getUri()).setBodyNoCloning(queryTask));
-                    }
+                    collectBroadcastQueryResults(rsp.jsonResponses, origQueryTask, rsp,
+                            (response, exception) -> {
+                                if (exception != null) {
+                                    failTask(new IllegalStateException(
+                                            "Failures received: " + Utils.toJsonHtml(exception)),
+                                            startPost, null);
+                                    return;
+                                }
+                                queryTask.taskInfo.stage = TaskStage.FINISHED;
+                                queryTask.results = response;
+                                if (startPost != null) {
+                                    // direct query, complete original POST
+                                    startPost.setBodyNoCloning(queryTask).complete();
+                                } else {
+                                    // self patch with results
+                                    sendRequest(Operation.createPatch(getUri()).setBodyNoCloning(queryTask));
+                                }
+                            });
                 });
         this.getHost().sendRequest(op);
     }
 
-    private void collectBroadcastQueryResults(Map<URI, String> jsonResponses, QueryTask queryTask) {
+    private void collectBroadcastQueryResults(Map<URI, String> jsonResponses,
+            QueryTask queryTask, NodeGroupBroadcastResponse nodeGroupResponse,
+            BiConsumer<ServiceDocumentQueryResult, Throwable> onCompletion) {
         long startTimeNanos = System.nanoTime();
 
         List<ServiceDocumentQueryResult> queryResults = new ArrayList<>();
         for (Map.Entry<URI, String> entry : jsonResponses.entrySet()) {
             QueryTask rsp = Utils.fromJson(entry.getValue(), QueryTask.class);
             queryResults.add(rsp.results);
+        }
+
+        if (queryResults.size() > 0) {
+            long timeElapsed = System.nanoTime() - startTimeNanos;
+            timeElapsed /= 1000;
+            queryTask.taskInfo.durationMicros = timeElapsed + Collections.max(queryResults.stream().map(r -> r
+                    .queryTimeMicros).collect(Collectors.toList()));
         }
 
         boolean isPaginatedQuery = queryTask.querySpec.resultLimit != null
@@ -337,9 +371,9 @@ public class QueryTaskService extends StatefulService {
         if (!isPaginatedQuery) {
             boolean isAscOrder = queryTask.querySpec.sortOrder == null
                     || queryTask.querySpec.sortOrder == QuerySpecification.SortOrder.ASC;
-
-            queryTask.results = QueryTaskUtils.mergeQueryResults(queryResults, isAscOrder,
-                    queryTask.querySpec.options);
+            ServiceDocumentQueryResult result = new ServiceDocumentQueryResult();
+            QueryTaskUtils.processQueryResults(getHost(), queryResults, isAscOrder,
+                    queryTask.querySpec.options, nodeGroupResponse, result, onCompletion);
         } else {
             URI broadcastPageServiceUri = UriUtils.buildUri(this.getHost(), UriUtils.buildUriPath(ServiceUriPaths.CORE,
                             BroadcastQueryPageService.SELF_LINK_PREFIX,
@@ -375,17 +409,11 @@ public class QueryTaskService extends StatefulService {
                         forwarderUri.getQuery();
                 this.getHost().startService(startPost,
                         new BroadcastQueryPageService(queryTask.querySpec, nextPageLinks,
-                                queryTask.documentExpirationTimeMicros));
+                                queryTask.documentExpirationTimeMicros, nodeGroupResponse));
             } else {
                 queryTask.results.nextPageLink = null;
             }
-        }
-
-        if (queryResults.size() > 0) {
-            long timeElapsed = System.nanoTime() - startTimeNanos;
-            timeElapsed /= 1000;
-            queryTask.taskInfo.durationMicros = timeElapsed + Collections.max(queryResults.stream().map(r -> r
-                    .queryTimeMicros).collect(Collectors.toList()));
+            onCompletion.accept(queryTask.results, null);
         }
     }
 
@@ -501,7 +529,8 @@ public class QueryTaskService extends StatefulService {
         patch.complete();
 
         if (newTaskState.stage == TaskStage.STARTED) {
-            if (patchBody.querySpec.options.contains(QueryOption.BROADCAST)) {
+            if (patchBody.querySpec.options.contains(QueryOption.BROADCAST) ||
+                    patchBody.querySpec.options.contains(QueryOption.READ_AFTER_WRITE_CONSISTENCY)) {
                 createAndSendBroadcastQuery(patchBody, null);
             } else {
                 forwardQueryToDocumentIndexService(state, null);
