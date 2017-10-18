@@ -14,6 +14,7 @@
 package com.vmware.xenon.common.serialization;
 
 import java.lang.reflect.Type;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -27,10 +28,11 @@ public interface TypeTokens {
     /*
      * Common Collection Types
      */
+    Type COLLECTION_OF_OBJECTS = new TypeToken<Collection<Object>>() {}.getType();
 
-    Type LIST_OF_STRINGS = new TypeToken<List<String>>() {}.getType();
+    Type SET_OF_OBJECTS = new TypeToken<Set<Object>>() {}.getType();
 
-    Type SET_OF_STRINGS = new TypeToken<Set<String>>() {}.getType();
+    Type LIST_OF_OBJECTS = new TypeToken<List<Object>>() {}.getType();
 
     Type MAP_OF_STRINGS_BY_STRING = new TypeToken<Map<String, String>>() {}.getType();
 
