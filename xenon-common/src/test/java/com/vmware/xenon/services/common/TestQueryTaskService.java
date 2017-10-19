@@ -2544,13 +2544,12 @@ public class TestQueryTaskService {
             targetHost.send(post);
 
             URI taskUri = UriUtils.extendUri(factoryUri, task.documentSelfLink);
+            this.host.waitForServiceAvailable(taskUri);
             List<String> pageLinks = new ArrayList<>();
             do {
                 TestContext ctx = this.host.testCreate(1);
                 Operation get = Operation
                         .createGet(taskUri)
-                        .addPragmaDirective(
-                                Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)
                         .setCompletion((o, e) -> {
                             if (e != null) {
                                 targetHost.failIteration(e);
@@ -2605,8 +2604,6 @@ public class TestQueryTaskService {
                 TestContext ctx = this.host.testCreate(1);
                 Operation get = Operation
                         .createGet(u)
-                        .addPragmaDirective(
-                                Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)
                         .setCompletion((o, e) -> {
                             if (e != null) {
                                 targetHost.failIteration(e);

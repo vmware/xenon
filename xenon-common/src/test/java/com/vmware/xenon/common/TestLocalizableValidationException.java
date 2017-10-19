@@ -52,7 +52,6 @@ public class TestLocalizableValidationException extends BasicReusableHostTestCas
 
         Operation get = Operation
                 .createGet(uri)
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)
                 .setReferer(host.getReferer())
                 .addRequestHeader(Operation.ACCEPT_LANGUAGE_HEADER, Locale.GERMAN.getLanguage());
 
@@ -71,7 +70,6 @@ public class TestLocalizableValidationException extends BasicReusableHostTestCas
 
         Operation post = Operation
                 .createPost(uri)
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)
                 .setReferer(host.getReferer())
                 .addRequestHeader(Operation.ACCEPT_LANGUAGE_HEADER, Locale.GERMAN.getLanguage());
 
@@ -89,7 +87,6 @@ public class TestLocalizableValidationException extends BasicReusableHostTestCas
 
         Operation post = Operation
                 .createDelete(uri)
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)
                 .setReferer(host.getReferer())
                 .addRequestHeader(Operation.ACCEPT_LANGUAGE_HEADER, Locale.GERMAN.getLanguage());
 

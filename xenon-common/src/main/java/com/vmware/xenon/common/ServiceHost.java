@@ -3560,21 +3560,6 @@ public class ServiceHost implements ServiceRequestSender {
         return;
     }
 
-    void checkPragmaAndRegisterForAvailability(String path, Operation op) {
-        if (!op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)) {
-            Operation.failServiceNotFound(op);
-            return;
-        }
-
-        log(Level.INFO, "(%d) Registering for %s to become available on owner %s", op.getId(),
-                path, getId());
-        // service not available, register, then retry
-        op.nestCompletion((avop) -> {
-            handleRequest(null, op);
-        });
-        registerForServiceAvailability(op, path);
-    }
-
     void retryOnDemandLoadConflict(Operation op, Service s) {
         this.serviceResourceTracker.retryOnDemandLoadConflict(op, s);
     }

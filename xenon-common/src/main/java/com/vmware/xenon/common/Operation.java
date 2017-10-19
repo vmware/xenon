@@ -523,12 +523,6 @@ public class Operation implements Cloneable {
     public static final String PRAGMA_DIRECTIVE_SYNCH_PEER = "xn-synch-peer";
 
     /**
-     * Advanced use. Instructs the runtime to queue a request, for a service to become available
-     * independent of the service options.
-     */
-    public static final String PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY = "xn-queue";
-
-    /**
      * Infrastructure use only. Instructs the runtime that this request should be processed on the node
      * it arrived on. It should not be forwarded regardless of owner selection and load balancing decisions.
      */

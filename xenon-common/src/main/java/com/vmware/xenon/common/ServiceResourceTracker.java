@@ -629,8 +629,7 @@ public class ServiceResourceTracker {
 
         }
         String finalServicePath = servicePath;
-        boolean doProbe = inboundOp.hasPragmaDirective(
-                Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY);
+        boolean doProbe = false;
 
         if (!factoryService.hasOption(ServiceOption.REPLICATION)
                 && inboundOp.getAction() == Action.DELETE) {
@@ -666,8 +665,7 @@ public class ServiceResourceTracker {
 
                     if (!o.hasBody()) {
                         // the index will return success, but no body if service is not found
-                        this.host.checkPragmaAndRegisterForAvailability(finalServicePath,
-                                inboundOp);
+                        Operation.failServiceNotFound(inboundOp);
                         return;
                     }
 
@@ -754,8 +752,7 @@ public class ServiceResourceTracker {
                     if (response.statusCode == Operation.STATUS_CODE_NOT_FOUND) {
                         this.host.log(Level.WARNING,
                                 "Failed to start service %s with 404 status code.", finalServicePath);
-                        this.host.checkPragmaAndRegisterForAvailability(finalServicePath,
-                                inboundOp);
+                        Operation.failServiceNotFound(inboundOp);
                         return;
                     }
                 }
