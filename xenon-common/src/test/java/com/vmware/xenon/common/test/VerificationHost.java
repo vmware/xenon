@@ -2762,9 +2762,9 @@ public class VerificationHost extends ExampleServiceHost {
     public void setNodeSelectorReplicationQuorum(String nodeSelectorPath, int quorum) throws Throwable {
         List<Operation> ops = new ArrayList<>();
         for (ServiceHost host : this.getInProcessHostMap().values()) {
-            NodeSelectorReplicationService.ReplicationQuorumUpdateRequest body = new NodeSelectorReplicationService.ReplicationQuorumUpdateRequest();
+            NodeSelectorService.ReplicationQuorumUpdateRequest body = new NodeSelectorService.ReplicationQuorumUpdateRequest();
             body.replicationQuorum = quorum;
-            ops.add(Operation.createPatch(UriUtils.buildUri(host, nodeSelectorPath + "/" + SERVICE_URI_SUFFIX_REPLICATION)).setBody(body));
+            ops.add(Operation.createPatch(UriUtils.buildUri(host, nodeSelectorPath)).setBody(body));
         }
         this.sender.sendAndWait(ops);
     }

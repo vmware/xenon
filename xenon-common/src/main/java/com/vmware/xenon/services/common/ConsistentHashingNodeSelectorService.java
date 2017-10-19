@@ -233,6 +233,12 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return;
         }
 
+        // update to node selector state
+        if (op.getAction() == Action.PATCH) {
+            super.handleRequest(op);
+            return;
+        }
+
         if (op.getAction() != Action.POST) {
             Operation.failActionNotSupported(op);
             return;
@@ -250,6 +256,20 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         }
 
         selectAndForward(op, body);
+    }
+
+    @Override
+    public void handlePatch(Operation patch) {
+        if (!patch.hasBody()) {
+            patch.fail(new IllegalArgumentException("Body is required"));
+            return;
+        }
+        ReplicationQuorumUpdateRequest r = patch.getBody(ReplicationQuorumUpdateRequest.class);
+        if (r != null) {
+            updateReplicationQuorum(patch, r);
+            return;
+        }
+        patch.complete();
     }
 
     @Override
@@ -742,7 +762,12 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
     }
 
     @Override
-    public void updateReplicationQuorum(Operation op, int replicationQuorum) {
+    public void updateReplicationQuorum(Operation op, ReplicationQuorumUpdateRequest r) {
+        if (r.replicationQuorum == null) {
+            op.fail(new IllegalArgumentException("replication quorum is required"));
+            return;
+        }
+        int replicationQuorum = r.replicationQuorum;
         int replicationFactor = this.cachedState.replicationFactor != null ?
                 this.cachedState.replicationFactor.intValue() : this.cachedGroupState.nodes.size();
         if (replicationQuorum > replicationFactor) {
