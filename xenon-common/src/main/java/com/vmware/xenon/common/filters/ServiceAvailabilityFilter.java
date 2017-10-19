@@ -41,7 +41,11 @@ public class ServiceAvailabilityFilter implements Filter {
             return FilterReturnCode.FAILED_STOP_PROCESSING;
         }
 
-        Service service = context.getHost().findService(servicePath, false);
+        // re-use already looked-up service, if exists; otherwise, look it up
+        Service service = context.getService();
+        if (service == null) {
+            service = context.getHost().findService(servicePath, false);
+        }
 
         if (service != null && service.getProcessingStage() == ProcessingStage.AVAILABLE) {
             // service is already attached and available
@@ -61,8 +65,9 @@ public class ServiceAvailabilityFilter implements Filter {
                 op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)) {
             // service is in the process of starting - we will resume processing when
             // it's available
+            Service finalService = service;
             op.nestCompletion(o -> {
-                context.setService(service);
+                context.setService(finalService);
                 context.getOpProcessingChain().resumeProcessingRequest(op, context);
             });
 
