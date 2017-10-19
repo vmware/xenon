@@ -37,6 +37,9 @@ import com.vmware.xenon.common.Utils;
 
 /**
  * This filter forwards the operation to the owner host, if needed.
+ *
+ * If the service is attached, it sticks it into the provided context for
+ * subsequent filters to use.
  */
 public class ForwardRequestFilter implements Filter {
 
@@ -66,6 +69,7 @@ public class ForwardRequestFilter implements Filter {
         EnumSet<ServiceOption> options = null;
         if (service != null) {
             // Common path, service is known.
+            context.setService(service);
             options = service.getOptions();
 
             if (options != null && options.contains(ServiceOption.UTILITY)) {
