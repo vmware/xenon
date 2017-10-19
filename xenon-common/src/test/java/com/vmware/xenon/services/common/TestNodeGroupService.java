@@ -559,6 +559,16 @@ public class TestNodeGroupService {
                 .filter(h -> h.isOwner(ExampleService.FACTORY_LINK, ServiceUriPaths.DEFAULT_NODE_SELECTOR))
                 .findFirst().get();
 
+        // wait for node selector availability before manually trigger a synchronization task
+        this.host.waitFor("wait node selector available timeout", () -> {
+            Operation op = Operation.createGet(owner, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+            NodeSelectorState nss = this.host.getTestRequestSender().sendAndWait(op, NodeSelectorState.class);
+            if (nss.status == NodeSelectorState.Status.AVAILABLE) {
+                return true;
+            }
+            return false;
+        });
+
         // kick-off synchronization and wait for it to finish
         startSynchronizationTaskAndWait(owner,
                 ExampleService.FACTORY_LINK, ExampleServiceState.class, 1L);

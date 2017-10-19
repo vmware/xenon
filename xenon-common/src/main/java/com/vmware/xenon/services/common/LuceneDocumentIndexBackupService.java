@@ -142,30 +142,47 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                     .setBody(backupRequest)
                     .setReferer(host.getUri())
                     .setCompletion((op, ex) -> {
+                        autoBackupInProgress.set(false);
                         if (ex != null) {
-                            logger.severe(String.format("Auto backup failed. %s", Utils.toString(ex)));
+                            logger.severe(
+                                    String.format("Auto backup failed. %s", Utils.toString(ex)));
+                            incrementAutoBackupStat(managementService,
+                                    ServiceHostManagementService.STAT_NAME_AUTO_BACKUP_FAILED_COUNT);
+                            // Need to set autoBackupInProgress to false and resume backup process
+                            // to unblock all future backups.
+                            processQueuedBackUps(host, notifyOp, autoBackupInProgress,
+                                    receivedWhileBackupInProgress, logger);
                             return;
                         }
-
-                        incrementAutoBackupStat(managementService, ServiceHostManagementService.STAT_NAME_AUTO_BACKUP_PERFORMED_COUNT);
-                        autoBackupInProgress.set(false);
-
-                        // When it had received notification while processing auto-backup, re-trigger the
-                        // notification event in order to make sure the last commit gets backed up
-                        CommitInfo commitInfo = receivedWhileBackupInProgress.getAndSet(null);
-                        if (commitInfo != null) {
-                            logger.info(() -> String.format("Re-trigger auto backup for sequenceNumber=%s", commitInfo.sequenceNumber));
-                            Operation notification = Operation.createPatch(notifyOp.getUri())
-                                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NOTIFICATION)
-                                    .setBody(commitInfo)
-                                    .setReferer(notifyOp.getReferer());
-                            host.sendRequest(notification);
-                        }
+                        incrementAutoBackupStat(managementService,
+                                ServiceHostManagementService.STAT_NAME_AUTO_BACKUP_PERFORMED_COUNT);
+                        processQueuedBackUps(host, notifyOp, autoBackupInProgress,
+                                receivedWhileBackupInProgress, logger);
                     });
 
             autoBackupInProgress.set(true);
             host.sendRequest(backupOp);
         };
+    }
+
+    private static void processQueuedBackUps(ServiceHost host, Operation notifyOp,
+            AtomicBoolean autoBackupInProgress,
+            AtomicReference<CommitInfo> receivedWhileBackupInProgress, Logger logger) {
+        // When it had received notification while processing auto-backup, re-trigger the
+        // notification event in order to make sure the last commit gets backed up
+        CommitInfo commitInfo = receivedWhileBackupInProgress.getAndSet(null);
+        if (commitInfo != null) {
+            logger.info(() -> String.format(
+                    "Re-trigger auto backup for sequenceNumber=%s",
+                    commitInfo.sequenceNumber));
+            Operation notification = Operation
+                    .createPatch(notifyOp.getUri())
+                    .addPragmaDirective(
+                            Operation.PRAGMA_DIRECTIVE_NOTIFICATION)
+                    .setBody(commitInfo)
+                    .setReferer(notifyOp.getReferer());
+            host.sendRequest(notification);
+        }
     }
 
     private static void incrementAutoBackupStat(Service service, String statKeyPrefix) {
