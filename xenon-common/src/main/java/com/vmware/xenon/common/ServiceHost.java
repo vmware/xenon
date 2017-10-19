@@ -1265,7 +1265,7 @@ public class ServiceHost implements ServiceRequestSender {
         return this.state;
     }
 
-    Service getDocumentIndexService() {
+    public Service getDocumentIndexService() {
         return this.documentIndexService;
     }
 
@@ -5405,7 +5405,7 @@ public class ServiceHost implements ServiceRequestSender {
         return Runtime.getRuntime().removeShutdownHook(getRuntimeShutdownHook());
     }
 
-    void failRequestServiceAlreadyStarted(String path, Service s, Operation post) {
+    public void failRequestServiceAlreadyStarted(String path, Service s, Operation post) {
         ProcessingStage st = ProcessingStage.AVAILABLE;
         if (s != null) {
             st = s.getProcessingStage();

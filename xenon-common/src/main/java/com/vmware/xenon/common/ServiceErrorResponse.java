@@ -36,7 +36,6 @@ public class ServiceErrorResponse {
     public static final int ERROR_CODE_STATE_MARKED_DELETED = 0x80000002;
     public static final int ERROR_CODE_SERVICE_ALREADY_EXISTS = 0x80000003;
     public static final int ERROR_CODE_OWNER_MISMATCH = 0x80000005;
-    public static final int ERROR_CODE_SERVICE_PARENT_NOT_A_FACTORY = 0x80000006;
     public static final int ERROR_CODE_SERVICE_QUEUE_LIMIT_EXCEEDED = 0x80000007;
     public static final int ERROR_CODE_HOST_RATE_LIMIT_EXCEEDED = 0x80000008;
     public static final int ERROR_CODE_CLIENT_QUEUE_LIMIT_EXCEEDED = 0x80000009;

@@ -52,7 +52,6 @@ import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.TestRequestSender;
-import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
@@ -571,9 +570,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         get = Operation
                 .createGet(UriUtils.extendUri(f.getUri(),
                         initialState.documentSelfLink + "/sub-child"));
-        FailureResponse fRsp = sender.sendAndWaitFailure(get);
-        ServiceErrorResponse ser = fRsp.op.getBody(ServiceErrorResponse.class);
-        assertEquals(ServiceErrorResponse.ERROR_CODE_SERVICE_PARENT_NOT_A_FACTORY, ser.errorCode);
+        sender.sendAndWaitFailure(get);
     }
 
     private void doFactoryServiceChildCreation(long count, URI factoryUri)

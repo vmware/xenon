@@ -204,6 +204,16 @@ public class OperationProcessingChain {
         }
     }
 
+    /**
+     * Enables a filter that has previously suspended the operation to notify
+     * the processing chain it has resumed processing the operation.
+     */
+    public void resumedRequest(Operation op, OperationProcessingContext context) {
+        if (shouldLog(op)) {
+            log(op, context, "Operation resumed", this.logLevel);
+        }
+    }
+
     public Filter findFilter(Predicate<Filter> tester) {
         return this.filters.stream().filter(tester).findFirst().orElse(null);
     }
