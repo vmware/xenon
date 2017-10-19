@@ -18,14 +18,12 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
 import com.vmware.xenon.common.NodeSelectorService;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceClient;
-import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
@@ -35,9 +33,6 @@ import com.vmware.xenon.services.common.NodeState.NodeOption;
 
 public class NodeSelectorReplicationService extends StatelessService {
 
-    public static final String PROPERTY_NAME_REPLICA_NOT_FOUND_TIMEOUT_MICROS = Utils.PROPERTY_NAME_PREFIX
-            + "NodeSelectorReplicationService.replicaTimeoutMicros";
-
     public static final int BINARY_SERIALIZATION = Integer.getInteger(
             Utils.PROPERTY_NAME_PREFIX
                     + "NodeSelectorReplicationService.BINARY_SERIALIZATION",
@@ -46,7 +41,6 @@ public class NodeSelectorReplicationService extends StatelessService {
     private NodeSelectorService parent;
     private Map<String, Integer> nodeCountPerLocation;
     private Map<URI, String> locationPerNodeURI;
-    private long peerTimeoutMicros;
 
     private String nodeGroupLink;
 
@@ -59,9 +53,6 @@ public class NodeSelectorReplicationService extends StatelessService {
             this.nodeCountPerLocation = new ConcurrentHashMap<>();
             this.locationPerNodeURI = new ConcurrentHashMap<>();
         }
-        this.peerTimeoutMicros = Long.getLong(
-                PROPERTY_NAME_REPLICA_NOT_FOUND_TIMEOUT_MICROS,
-                NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS);
         super.setProcessingStage(ProcessingStage.AVAILABLE);
     }
 
@@ -315,57 +306,7 @@ public class NodeSelectorReplicationService extends StatelessService {
             e = new IllegalStateException("Request failed: " + o.toString());
         }
 
-        if (e != null && handleServiceNotFoundOnReplica(context, o)) {
-            return;
-        }
-
         context.checkAndCompleteOperation(getHost(), e, o, remoteLocation);
-    }
-
-    private boolean handleServiceNotFoundOnReplica(NodeSelectorReplicationContext context, Operation o) {
-        Operation op = context.parentOp;
-
-        // A replica would report a service-not-found error only for
-        // update requests.
-        if (!op.isUpdate()) {
-            return false;
-        }
-
-        // We expect a body with ServiceErrorResponse when the failure is because
-        // of service-not-found error.
-        if (o == null || !o.hasBody() || !o.getContentType().equals(Operation.MEDIA_TYPE_APPLICATION_JSON)) {
-            return false;
-        }
-
-        ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
-        if (rsp == null ||
-                rsp.getErrorCode() != ServiceErrorResponse.ERROR_CODE_SERVICE_NOT_FOUND_ON_REPLICA) {
-            return false;
-        }
-
-        // We avoid retrying if the service is not started on the replica even after
-        // retrying a few times.
-        if (Utils.beforeNow(context.startTimeMicros + this.peerTimeoutMicros)) {
-            logWarning("Service %s not found on replica. Giving up on %s replication request ...",
-                    o.getUri().getPath(), op.getAction());
-            return false;
-        }
-
-        // The remote replica does not have the service in AVAILABLE stage. This could be
-        // because of out-of-order replication requests of a POST and PUT/PATCH.
-        // We will just retry for that specific replica.
-        URI remoteUri = createReplicaUri(o.getUri(), op);
-        Operation update = createReplicationRequest(op, remoteUri);
-        update.setCompletion((innerOp, innerEx) ->
-                this.handleReplicationCompletion(context, innerOp, innerEx));
-
-        this.getHost().scheduleCore(() -> {
-            logWarning("Service %s not found on replica. Retrying %s replication request ...",
-                    o.getUri().getPath(), op.getAction());
-            this.getHost().getClient().send(update);
-        }, this.getHost().getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
-
-        return true;
     }
 
     @Override

@@ -1473,7 +1473,6 @@ public class TestServiceHost {
         for (int i = 0; i < c; i++) {
             this.host.send(Operation
                     .createGet(UriUtils.buildUri(this.host, UUID.randomUUID().toString()))
-                    .setTargetReplicated(true)
                     .setExpiration(Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(1)))
                     .setCompletion(this.host.getExpectedFailureCompletion()));
         }

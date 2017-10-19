@@ -38,7 +38,7 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
 /**
  * Monitors service resources, and takes action, during periodic maintenance
  */
-class ServiceResourceTracker {
+public class ServiceResourceTracker {
 
     /**
      * This class is used for keeping cached transactional state of services under
@@ -567,7 +567,7 @@ class ServiceResourceTracker {
         return active;
     }
 
-    boolean checkAndOnDemandStartService(Operation inboundOp) {
+    public boolean checkAndOnDemandStartService(Operation inboundOp) {
         String key = inboundOp.getUri().getPath();
         if (ServiceHost.isHelperServicePath(key)) {
             key = UriUtils.getParentPath(key);
