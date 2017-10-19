@@ -1319,12 +1319,18 @@ public class LuceneDocumentIndexService extends StatelessService {
                     }
 
                     // evaluate whether the matched document is authorized for the user
-                    ServiceDocument doc = op.getBody(ServiceDocument.class);
                     QueryFilter queryFilter = get.getAuthorizationContext().getResourceQueryFilter(Action.GET);
                     if (queryFilter == null) {
                         // do not match anything
                         queryFilter = QueryFilter.FALSE;
                     }
+                    // This completion handler is called right after it retrieved the document from lucene and
+                    // deserialized it to its state type.
+                    // Since calling "op.getBody(ServiceDocument.class)" changes(down cast) the actual document object
+                    // to an instance of ServiceDocument, it will lose the additional data which might be required in
+                    // authorization filters; Therefore, here uses "op.getBodyRaw()" and just cast to ServiceDocument
+                    // which doesn't convert the document object.
+                    ServiceDocument doc = (ServiceDocument) op.getBodyRaw();
                     if (!QueryFilterUtils.evaluate(queryFilter, doc, getHost())) {
                         get.fail(Operation.STATUS_CODE_FORBIDDEN);
                         return;
