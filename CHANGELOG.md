@@ -2,6 +2,9 @@
 
 ## 1.6.0-SNAPSHOT
 
+* Removed Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY, as its complexity
+  outweighs its value, and it seems nobody is using it.
+
 * Deprecated ServiceOption.ON_DEMAND_LOAD. While the option still exists
   it has no effect. Applications are discouraged from using it.
   All indexed services are now eligible for on-demand stop
