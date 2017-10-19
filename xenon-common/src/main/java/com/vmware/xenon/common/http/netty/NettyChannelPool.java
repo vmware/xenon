@@ -38,6 +38,7 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.ssl.SslContext;
 
+import com.vmware.xenon.common.NamedThreadFactory;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.OperationQueue;
 import com.vmware.xenon.common.ServiceClient;
@@ -216,8 +217,7 @@ public class NettyChannelPool {
 
         if (this.executor == null) {
             this.nettyExecutorService = Executors.newFixedThreadPool(this.threadCount,
-                    r -> new Thread(
-                            r, this.threadTag));
+                    new NamedThreadFactory(this.threadTag));
             this.executor = this.nettyExecutorService;
         }
         this.eventGroup = new NioEventLoopGroup(this.threadCount, this.executor);

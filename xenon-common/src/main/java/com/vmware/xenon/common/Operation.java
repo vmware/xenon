@@ -608,6 +608,13 @@ public class Operation implements Cloneable {
      */
     public static final String PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK = "xn-from-migration";
 
+    /**
+     * Infrastructure use only. Indicate document state was not modified by the update request.
+     * When this pragma is set in handler methods, rest of the pipeline will not update the
+     * indexed/cached state.
+     */
+    public static final String PRAGMA_DIRECTIVE_STATE_NOT_MODIFIED = "xn-state-not-modified";
+
     public static final String TX_ENSURE_COMMIT = "ensure-commit";
     public static final String TX_COMMIT = "commit";
     public static final String TX_ABORT = "abort";

@@ -3291,7 +3291,7 @@ public class VerificationHost extends ExampleServiceHost {
         this.sender.sendAndWait(ops);
     }
 
-    public <T extends ServiceDocument> ServiceDocument verifyPost(Class<T> documentType,
+    public <T extends ServiceDocument> T verifyPost(Class<T> documentType,
             String factoryLink,
             T state,
             int expectedStatusCode) {

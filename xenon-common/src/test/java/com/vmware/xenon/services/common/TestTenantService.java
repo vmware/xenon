@@ -78,14 +78,16 @@ public class TestTenantService extends BasicReusableHostTestCase {
 
     @Test
     public void testFactoryIdempotentPost() throws Throwable {
+
+        String servicePath = UriUtils.buildUriPath(TenantService.FACTORY_LINK, "my-tenant");
+
         TenantService.TenantState state = new TenantService.TenantState();
-        state.documentSelfLink = UUID.randomUUID().toString();
+        state.documentSelfLink = servicePath;
         state.id = UUID.randomUUID().toString();
         state.name = UUID.randomUUID().toString();
         state.parentLink = UUID.randomUUID().toString();
 
-        TenantService.TenantState responseState =
-                (TenantService.TenantState) this.host.verifyPost(TenantService.TenantState.class,
+        TenantService.TenantState responseState = this.host.verifyPost(TenantService.TenantState.class,
                 TenantService.FACTORY_LINK,
                 state,
                 Operation.STATUS_CODE_OK);
@@ -94,14 +96,24 @@ public class TestTenantService extends BasicReusableHostTestCase {
         assertEquals(state.name, responseState.name);
         assertEquals(state.parentLink, responseState.parentLink);
 
-        this.host.verifyPost(TenantService.TenantState.class,
+        long initialVersion = responseState.documentVersion;
+
+        // sending same document, this post/put should not persist(increment) the document
+        responseState = this.host.verifyPost(TenantService.TenantState.class,
                 TenantService.FACTORY_LINK,
                 state,
-                Operation.STATUS_CODE_NOT_MODIFIED);
+                Operation.STATUS_CODE_OK);
+
+        assertEquals(state.id, responseState.id);
+        assertEquals(state.name, responseState.name);
+        assertEquals(state.parentLink, responseState.parentLink);
+
+        TenantService.TenantState getState = this.sender.sendAndWait(Operation.createGet(this.host, servicePath), TenantService.TenantState.class);
+        assertEquals("version should not increase", initialVersion, getState.documentVersion);
 
         state.name = UUID.randomUUID().toString();
 
-        responseState = (TenantService.TenantState) this.host.verifyPost(TenantService.TenantState.class,
+        responseState = this.host.verifyPost(TenantService.TenantState.class,
                 TenantService.FACTORY_LINK,
                 state,
                 Operation.STATUS_CODE_OK);
@@ -109,6 +121,7 @@ public class TestTenantService extends BasicReusableHostTestCase {
         assertEquals(state.id, responseState.id);
         assertEquals(state.name, responseState.name);
         assertEquals(state.parentLink, responseState.parentLink);
+        assertTrue("version should increase", initialVersion < responseState.documentVersion);
     }
 
     @Test

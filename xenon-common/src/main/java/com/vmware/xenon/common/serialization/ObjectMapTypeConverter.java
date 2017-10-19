@@ -48,8 +48,8 @@ public enum ObjectMapTypeConverter
             Object v = e.getValue();
             if (v == null) {
                 mapObject.add(e.getKey(), JsonNull.INSTANCE);
-            } else if (v instanceof JsonObject) {
-                mapObject.add(e.getKey(), (JsonObject) v);
+            } else if (v instanceof JsonElement) {
+                mapObject.add(e.getKey(), (JsonElement) v);
             } else if (v instanceof String) {
                 mapObject.add(e.getKey(), new JsonParser().parse((String) v));
             } else {
@@ -95,14 +95,9 @@ public enum ObjectMapTypeConverter
                             + " value:" + element);
                 }
                 result.put(key, value);
-            } else if (element.isJsonArray()) {
-                result.put(key, element.getAsJsonArray().toString());
-            } else if (element.isJsonObject()) {
-                result.put(key, element.toString());
-
             } else {
-                throw new JsonParseException("The json element is not valid for key:" + key
-                        + " value:" + element);
+                // keep JsonElement to prevent stringified json issues
+                result.put(key, element);
             }
         }
         return result;

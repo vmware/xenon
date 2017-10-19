@@ -753,22 +753,24 @@ public class StatefulService implements Service {
         }
 
         ServiceDocument linkedState = op.getLinkedState();
-        boolean isUpdate = op.getAction() != Action.GET && op.getAction() != Action.OPTIONS;
-        boolean isStateUpdated = isUpdate;
+        boolean isStateUpdated = op.getAction() != Action.GET && op.getAction() != Action.OPTIONS;
 
         if (op.isFromReplication()) {
             isStateUpdated = true;
         }
 
-        if (op.getStatusCode() == Operation.STATUS_CODE_NOT_MODIFIED) {
+        if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_STATE_NOT_MODIFIED)) {
             isStateUpdated = false;
+        } else if (op.getTransactionId() != null && linkedState != null &&
+                op.getTransactionId().equals(linkedState.documentTransactionId)) {
+            isStateUpdated = true;
+        }
+
+        if (op.getStatusCode() == Operation.STATUS_CODE_NOT_MODIFIED) {
             // nullify the body since HTTP-304 cannot have body in response.
             // It is defined for GET, but not defined for other actions.
             // For now, apply the same behavior to all http actions.
             op.setBody(null);
-        } else if (op.getTransactionId() != null && linkedState != null &&
-                op.getTransactionId().equals(linkedState.documentTransactionId)) {
-            isStateUpdated = true;
         }
 
         // evolve the common properties such as version
@@ -1177,6 +1179,10 @@ public class StatefulService implements Service {
         }
 
         if (op.getStatusCode() == Operation.STATUS_CODE_NOT_MODIFIED) {
+            return;
+        }
+
+        if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_STATE_NOT_MODIFIED)) {
             return;
         }
 

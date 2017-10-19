@@ -36,6 +36,16 @@
   GET request. However, current behavior for other actions are xenon specific and may change in future.
   Therefore, it is not advised to use 304 status code other than GET request. 
 
+* Breaking change: To skip indexing document modification, changed to use new pragma directive
+  `Operation.PRAGMA_DIRECTIVE_STATE_NOT_MODIFIED` instead of `Operation.STATUS_CODE_NOT_MODIFIED`.
+  Prior to this version, when `Operation.STATUS_CODE_NOT_MODIFIED` is set to response, it has skipped
+  index/cache update for stateful service.
+  Since using 304 to imply data modification for update is not correct(described above), now it has
+  changed to use `Operation.PRAGMA_DIRECTIVE_STATE_NOT_MODIFIED`.
+  This change affected `UserService`, `UserGroupService`, `ResourceGroupService`, `RoleService`, and 
+  `TenantService`. When these service receives PUT with same body, they were returning 304 before.
+  Now, instead they return 200 with response body without updating persisted documents(no version increase).   
+
 
  * Provide configurable replication quorum which decides the success and failure threshold.
    Api: PATCH PATH/TO/NODESELECTOR/replication -d '{replicationQuorum:REPLICATIONQUORUM}'

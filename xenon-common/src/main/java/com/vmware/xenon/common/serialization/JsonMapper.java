@@ -312,6 +312,9 @@ public class JsonMapper {
     }
 
     private static void registerCommonGsonTypeAdapters(GsonBuilder bldr) {
+        bldr.registerTypeAdapter(ObjectCollectionTypeConverter.TYPE_LIST, ObjectCollectionTypeConverter.INSTANCE);
+        bldr.registerTypeAdapter(ObjectCollectionTypeConverter.TYPE_SET, ObjectCollectionTypeConverter.INSTANCE);
+        bldr.registerTypeAdapter(ObjectCollectionTypeConverter.TYPE_COLLECTION, ObjectCollectionTypeConverter.INSTANCE);
         bldr.registerTypeAdapter(ObjectMapTypeConverter.TYPE, ObjectMapTypeConverter.INSTANCE);
         bldr.registerTypeAdapter(InstantConverter.TYPE, InstantConverter.INSTANCE);
         bldr.registerTypeAdapter(ZonedDateTimeConverter.TYPE, ZonedDateTimeConverter.INSTANCE);

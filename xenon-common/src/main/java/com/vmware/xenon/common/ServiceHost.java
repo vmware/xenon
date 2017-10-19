@@ -53,7 +53,6 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinWorkerThread;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
@@ -781,11 +780,11 @@ public class ServiceHost implements ServiceRequestSender {
         }, null, false);
 
         this.scheduledExecutor = Executors.newScheduledThreadPool(Utils.DEFAULT_THREAD_COUNT,
-                r -> new Thread(r, getUri().toString() + "/scheduled/" + this.state.id));
+                new NamedThreadFactory(getUri() + "/scheduled"));
 
         this.serviceScheduledExecutor = Executors.newScheduledThreadPool(
                 Utils.DEFAULT_THREAD_COUNT / 2,
-                r -> new Thread(r, getUri().toString() + "/service-scheduled/" + this.state.id));
+                new NamedThreadFactory(getUri() + "/service-scheduled"));
     }
 
     /**
@@ -1405,12 +1404,7 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     public ExecutorService allocateExecutor(Service s, int threadCount) {
-        return Executors.newFixedThreadPool(threadCount, new ThreadFactory() {
-            @Override
-            public Thread newThread(Runnable r) {
-                return new Thread(r, s.getUri() + "/" + Utils.getSystemNowMicrosUtc());
-            }
-        });
+        return Executors.newFixedThreadPool(threadCount, new NamedThreadFactory(s.getUri().toString()));
     }
 
     public ServiceHost start() throws Throwable {

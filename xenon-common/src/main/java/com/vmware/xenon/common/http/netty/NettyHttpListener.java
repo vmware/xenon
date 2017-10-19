@@ -37,6 +37,7 @@ import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SupportedCipherSuiteFilter;
 
+import com.vmware.xenon.common.NamedThreadFactory;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.SocketContext;
 import com.vmware.xenon.common.ServiceHost;
@@ -101,8 +102,7 @@ public class NettyHttpListener implements ServiceRequestListener {
     @Override
     public void start(int port, String bindAddress) throws Exception {
         this.nettyExecutorService = Executors.newFixedThreadPool(EVENT_LOOP_THREAD_COUNT,
-                r -> new Thread(r, this.host.getUri().toString() + "/netty-listener/"
-                        + this.host.getId()));
+                new NamedThreadFactory(this.host.getUri() + "/netty-listener"));
 
         this.eventLoopGroup = new NioEventLoopGroup(EVENT_LOOP_THREAD_COUNT, this.nettyExecutorService);
         if (this.childChannelHandler == null) {

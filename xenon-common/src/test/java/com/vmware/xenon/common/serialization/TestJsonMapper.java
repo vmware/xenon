@@ -23,15 +23,21 @@ import static org.junit.Assert.assertTrue;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
+import com.google.gson.JsonElement;
 import org.junit.Assert;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -86,9 +92,9 @@ public class TestJsonMapper {
         }
     }
 
+    @SuppressWarnings("unchecked")
     @Test
-    public void testObjectValue() {
-
+    public void testObjectMapValue() {
         Map<String, Object> srcMap = new HashMap<>();
 
         srcMap.put("str", "string");
@@ -96,6 +102,7 @@ public class TestJsonMapper {
         srcMap.put("long", Long.MAX_VALUE);
         srcMap.put("double", new Double(3.14));
         srcMap.put("boolean", Boolean.TRUE);
+        srcMap.put("object", new ComplexObject("a", "b"));
 
         // fields with null values are ignored by default in Gson but this can be overridden
         // see https://sites.google.com/site/gson/gson-user-guide#TOC-Null-Object-Support
@@ -103,19 +110,160 @@ public class TestJsonMapper {
 
         String json = Utils.toJson(srcMap);
 
-        @SuppressWarnings("unchecked")
         Map<String, Object> dstMap = (Map<String, Object>) Utils.fromJson(json, ObjectMapTypeConverter.TYPE);
+        // serialize once again to make sure our function is really idempotent
+        dstMap = (Map<String, Object>) Utils.fromJson(Utils.toJson(dstMap),
+                ObjectMapTypeConverter.TYPE);
 
-        for (Map.Entry<String, Object> entry : srcMap.entrySet()) {
-            String key = entry.getKey();
-            Object srcValue = entry.getValue();
-            Assert.assertTrue("Missing key: " + key, dstMap.containsKey(key));
-            Object dstValue = dstMap.get(key);
-            if (srcValue != null) {
-                Assert.assertEquals(srcValue, dstValue);
+        Assert.assertEquals(srcMap.size(), dstMap.size());
+        for (Object entry : dstMap.values()) {
+            if (entry instanceof String) {
+                Assert.assertEquals("string", entry);
+            } else if (entry instanceof Long) {
+                Assert.assertEquals(Long.MAX_VALUE, entry);
+            } else if (entry instanceof Double) {
+                Assert.assertEquals(new Double(3.14), entry);
+            } else if (entry instanceof Boolean) {
+                Assert.assertEquals(Boolean.TRUE, entry);
+            } else if (entry instanceof JsonElement) {
+                JsonElement expected = Utils.fromJson(Utils.toJson(new ComplexObject("a", "b")),
+                        JsonElement.class);
+                Assert.assertEquals(expected, entry);
             } else {
-                Assert.assertNull(dstMap.get(key));
+                Assert.fail("unexpected entry: " + entry);
             }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    public void testObjectCollectionValue() {
+        Collection<Object> srcCol = new HashSet<>();
+
+        srcCol.add("string");
+        srcCol.add(Long.MAX_VALUE);
+        srcCol.add(new Double(3.14));
+        srcCol.add(Boolean.TRUE);
+        srcCol.add(new ComplexObject("a", "b"));
+
+        String json = Utils.toJson(srcCol);
+
+        Collection<Object> dstCol = (Collection<Object>) Utils.fromJson(json,
+                ObjectCollectionTypeConverter.TYPE_COLLECTION);
+        // serialize once again to make sure our function is really idempotent
+        dstCol = (Collection<Object>) Utils.fromJson(Utils.toJson(dstCol),
+                ObjectCollectionTypeConverter.TYPE_COLLECTION);
+
+        Assert.assertEquals(srcCol.size(), dstCol.size());
+        for (Object entry : dstCol) {
+            if (entry instanceof String) {
+                Assert.assertEquals("string", entry);
+            } else if (entry instanceof Long) {
+                Assert.assertEquals(Long.MAX_VALUE, entry);
+            } else if (entry instanceof Double) {
+                Assert.assertEquals(new Double(3.14), entry);
+            } else if (entry instanceof Boolean) {
+                Assert.assertEquals(Boolean.TRUE, entry);
+            } else if (entry instanceof JsonElement) {
+                JsonElement expected = Utils.fromJson(Utils.toJson(new ComplexObject("a", "b")),
+                        JsonElement.class);
+                Assert.assertEquals(expected, entry);
+            } else {
+                Assert.fail("unexpected entry: " + entry);
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    public void testObjectSetValue() {
+        Set<Object> srcSet = new HashSet<>();
+
+        srcSet.add("string");
+        srcSet.add(Long.MAX_VALUE);
+        srcSet.add(new Double(3.14));
+        srcSet.add(Boolean.TRUE);
+        srcSet.add(new ComplexObject("a", "b"));
+
+        String json = Utils.toJson(srcSet);
+
+        Set<Object> dstSet = (Set<Object>) Utils.fromJson(json,
+                ObjectCollectionTypeConverter.TYPE_SET);
+        // serialize once again to make sure our function is really idempotent
+        dstSet = (Set<Object>) Utils.fromJson(Utils.toJson(dstSet),
+                ObjectCollectionTypeConverter.TYPE_SET);
+
+        Assert.assertEquals(srcSet.size(), dstSet.size());
+        for (Object entry : dstSet) {
+            if (entry instanceof String) {
+                Assert.assertEquals("string", entry);
+            } else if (entry instanceof Long) {
+                Assert.assertEquals(Long.MAX_VALUE, entry);
+            } else if (entry instanceof Double) {
+                Assert.assertEquals(new Double(3.14), entry);
+            } else if (entry instanceof Boolean) {
+                Assert.assertEquals(Boolean.TRUE, entry);
+            } else if (entry instanceof JsonElement) {
+                JsonElement expected = Utils.fromJson(Utils.toJson(new ComplexObject("a", "b")),
+                        JsonElement.class);
+                Assert.assertEquals(expected, entry);
+            } else {
+                Assert.fail("unexpected entry: " + entry);
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    public void testObjectListValue() {
+        List<Object> srcList = new ArrayList<>();
+
+        srcList.add("string");
+        srcList.add(Long.MAX_VALUE);
+        srcList.add(new Double(3.14));
+        srcList.add(Boolean.TRUE);
+        srcList.add(new ComplexObject("a", "b"));
+
+        String json = Utils.toJson(srcList);
+
+        List<Object> dstList = (List<Object>) Utils.fromJson(json,
+                ObjectCollectionTypeConverter.TYPE_LIST);
+        // serialize once again to make sure our function is really idempotent
+        dstList = (List<Object>) Utils.fromJson(Utils.toJson(dstList),
+                ObjectCollectionTypeConverter.TYPE_LIST);
+
+        Assert.assertEquals(srcList.size(), dstList.size());
+        for (Object entry : dstList) {
+            if (entry instanceof String) {
+                Assert.assertEquals("string", entry);
+            } else if (entry instanceof Long) {
+                Assert.assertEquals(Long.MAX_VALUE, entry);
+            } else if (entry instanceof Double) {
+                Assert.assertEquals(new Double(3.14), entry);
+            } else if (entry instanceof Boolean) {
+                Assert.assertEquals(Boolean.TRUE, entry);
+            } else if (entry instanceof JsonElement) {
+                JsonElement expected = Utils.fromJson(Utils.toJson(new ComplexObject("a", "b")),
+                        JsonElement.class);
+                Assert.assertEquals(expected, entry);
+            } else {
+                Assert.fail("unexpected entry: " + entry);
+            }
+        }
+    }
+
+    public static class ComplexObject {
+        public String prop1;
+        public String prop2;
+
+        public ComplexObject() {
+
+        }
+
+        public ComplexObject(String prop1, String prop2) {
+            super();
+            this.prop1 = prop1;
+            this.prop2 = prop2;
         }
     }
 
