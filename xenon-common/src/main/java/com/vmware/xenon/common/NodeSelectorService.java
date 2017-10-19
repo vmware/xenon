@@ -154,6 +154,15 @@ public interface NodeSelectorService extends Service {
     }
 
     /**
+     * Request to update replication quorum
+     */
+    public static class UpdateReplicationQuorumRequest extends ServiceDocument {
+        public static final String KIND = Utils.buildKind(UpdateReplicationQuorumRequest.class);
+        public Integer replicationQuorum;
+        public boolean isGroupUpdate;
+    }
+
+    /**
      * Returns the node group path associated with this selector
      */
     String getNodeGroupPath();
@@ -168,5 +177,5 @@ public interface NodeSelectorService extends Service {
     /**
      * Set replication quorum, which decides the success and failure threshold of a service update
      */
-    void updateReplicationQuorum(Operation op, int replicationQuorum);
+    void updateReplicationQuorum(Operation op, UpdateReplicationQuorumRequest r);
 }

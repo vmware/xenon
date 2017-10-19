@@ -23,6 +23,7 @@ import com.vmware.xenon.common.NodeSelectorService;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatelessService;
@@ -38,13 +39,13 @@ public class NodeSelectorReplicationService extends StatelessService {
                     + "NodeSelectorReplicationService.BINARY_SERIALIZATION",
             1);
 
-    private NodeSelectorService parent;
+    private Service parent;
     private Map<String, Integer> nodeCountPerLocation;
     private Map<URI, String> locationPerNodeURI;
 
     private String nodeGroupLink;
 
-    public NodeSelectorReplicationService(NodeSelectorService parent) {
+    public NodeSelectorReplicationService(Service parent) {
         this.parent = parent;
         super.setHost(parent.getHost());
         super.setSelfLink(UriUtils.buildUriPath(parent.getSelfLink(),
@@ -54,27 +55,6 @@ public class NodeSelectorReplicationService extends StatelessService {
             this.locationPerNodeURI = new ConcurrentHashMap<>();
         }
         super.setProcessingStage(ProcessingStage.AVAILABLE);
-    }
-
-    /**
-     * Request to update replication quorum
-     */
-    public static class ReplicationQuorumUpdateRequest {
-        public Integer replicationQuorum;
-    }
-
-    @Override
-    public void handlePatch(Operation patch) {
-        if (!patch.hasBody()) {
-            patch.fail(new IllegalArgumentException("Body is required"));
-            return;
-        }
-        ReplicationQuorumUpdateRequest body = patch.getBody(ReplicationQuorumUpdateRequest.class);
-        if (body.replicationQuorum != null ) {
-            this.parent.updateReplicationQuorum(patch, body.replicationQuorum);
-            return;
-        }
-        patch.complete();
     }
 
     /**

@@ -32,6 +32,7 @@ import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceConfigUpdateRequest;
 import com.vmware.xenon.common.ServiceConfiguration;
+import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatelessService;
@@ -233,6 +234,12 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return;
         }
 
+        // update to node selector state
+        if (op.getAction() == Action.PATCH) {
+            super.handleRequest(op);
+            return;
+        }
+
         if (op.getAction() != Action.POST) {
             Operation.failActionNotSupported(op);
             return;
@@ -250,6 +257,24 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         }
 
         selectAndForward(op, body);
+    }
+
+    @Override
+    public void handlePatch(Operation patch) {
+        if (!patch.hasBody()) {
+            patch.fail(new IllegalArgumentException("Body is required"));
+            return;
+        }
+        ServiceDocument s = patch.getBody(ServiceDocument.class);
+        if (s.documentKind == null) {
+            patch.fail(new IllegalArgumentException("Kind is required"));
+            return;
+        }
+        if (UpdateReplicationQuorumRequest.KIND.equals(s.documentKind)) {
+            updateReplicationQuorum(patch, patch.getBody(UpdateReplicationQuorumRequest.class));
+            return;
+        }
+        patch.fail(new IllegalArgumentException("Unexpected request kind " + s.documentKind));
     }
 
     @Override
@@ -742,7 +767,12 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
     }
 
     @Override
-    public void updateReplicationQuorum(Operation op, int replicationQuorum) {
+    public void updateReplicationQuorum(Operation op, UpdateReplicationQuorumRequest r) {
+        if (r.replicationQuorum == null) {
+            op.fail(new IllegalArgumentException("replication quorum is required"));
+            return;
+        }
+        int replicationQuorum = r.replicationQuorum;
         int replicationFactor = this.cachedState.replicationFactor != null ?
                 this.cachedState.replicationFactor.intValue() : this.cachedGroupState.nodes.size();
         if (replicationQuorum > replicationFactor) {
@@ -751,9 +781,41 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             op.fail(new IllegalArgumentException(errorMsg));
             return;
         }
+        // broadcast
         logInfo("replicationQuorum update from %d to %d", this.cachedState.replicationQuorum, replicationQuorum);
         this.cachedState.replicationQuorum = replicationQuorum;
-        op.complete();
+        if (!r.isGroupUpdate) {
+            op.complete();
+            return;
+        }
+        r.isGroupUpdate = false;
+        AtomicInteger pending = new AtomicInteger(this.cachedGroupState.nodes.size());
+        CompletionHandler c = (o, e) -> {
+            if (e != null) {
+                // fail the original update request if one peer update failed
+                op.fail(e);
+            }
+            int p = pending.decrementAndGet();
+            if (p != 0) {
+                return;
+            }
+            op.complete();
+        };
+        for (NodeState node : this.cachedGroupState.nodes.values()) {
+            if (!NodeState.isAvailable(node, getHost().getId(), true)) {
+                c.handle(null, null);
+                continue;
+            }
+            URI peerNodeSelectorService = UriUtils.buildUri(node.groupReference.getScheme(),
+                    node.groupReference.getHost(),
+                    node.groupReference.getPort(),
+                    getSelfLink(), null);
+            Operation p = Operation
+                    .createPatch(peerNodeSelectorService)
+                    .setBody(r)
+                    .setCompletion(c);
+            sendRequest(p);
+        }
     }
 
     @Override
