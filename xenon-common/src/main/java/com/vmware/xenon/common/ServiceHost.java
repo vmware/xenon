@@ -1773,8 +1773,6 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         if (pathToURIPath.isEmpty()) {
-            log(Level.WARNING, "No custom UI resources found for %s", s
-                    .getClass().getName());
             return;
         }
 
