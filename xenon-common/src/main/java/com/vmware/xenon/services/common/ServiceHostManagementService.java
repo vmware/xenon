@@ -283,9 +283,6 @@ public class ServiceHostManagementService extends StatefulService {
                 throw new IllegalArgumentException("empty body");
             }
 
-            // HTTP-304 spec doesn't define behavior for PATCH
-            // setting this status code here is relying on current xenon behavior and may change in future.
-            patch.setStatusCode(Operation.STATUS_CODE_NOT_MODIFIED);
             BaseManagementServiceRequest request = patch.getBody(BaseManagementServiceRequest.class);
             if (request.kind == null || request.kind.equals("")) {
                 throw new IllegalArgumentException("kind is required");
