@@ -1368,61 +1368,6 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         this.host.waitForServiceAvailable(SomeFactoryService.SELF_LINK);
     }
 
-    @Test
-    public void postFactoryQueueing() throws Throwable {
-        SomeDocument doc = new SomeDocument();
-        doc.documentSelfLink = "/subpath-" + UUID.randomUUID().toString();
-
-        if (this.host.checkServiceAvailable(this.factoryUri.getPath())) {
-            this.host.testStart(1);
-            this.host.send(Operation.createDelete(this.factoryUri).setCompletion(
-                    this.host.getCompletion()));
-            this.host.testWait();
-        }
-
-        this.host.testStart(1);
-        Operation post = Operation
-                .createPost(UriUtils.buildUri(this.factoryUri))
-                .setBody(doc)
-                .setCompletion(
-                        (op, ex) -> {
-                            if (op.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
-                                this.host.completeIteration();
-                                return;
-                            }
-
-                            this.host.failIteration(new Throwable(
-                                    "Expected Operation.STATUS_CODE_NOT_FOUND"));
-                        });
-
-        this.host.send(post);
-        this.host.testWait();
-
-        this.host.testStart(2);
-        post = Operation
-                .createPost(this.factoryUri)
-                .setBody(doc)
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)
-                .setCompletion(
-                        (op, ex) -> {
-                            if (op.getStatusCode() == Operation.STATUS_CODE_OK) {
-                                this.host.completeIteration();
-                                return;
-                            }
-
-                            this.host.failIteration(new Throwable(
-                                    "Expected Operation.STATUS_CODE_OK"));
-                        });
-        this.host.send(post);
-        this.host.startService(
-                Operation.createPost(this.factoryUri),
-                new SomeFactoryService());
-        this.host.registerForServiceAvailability(this.host.getCompletion(),
-                SomeFactoryService.SELF_LINK);
-        this.host.testWait();
-
-    }
-
     private void idempotentPostReturnsUpdatedOpBody() throws Throwable {
         SomeDocument doc = new SomeDocument();
         doc.documentSelfLink = "/subpath/fff/apple";
