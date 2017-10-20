@@ -48,7 +48,7 @@
   This change affected `UserService`, `UserGroupService`, `ResourceGroupService`, `RoleService`, and 
   `TenantService`. When these service receives PUT with same body, they were returning 304 before.
   Now, instead they return 200 with response body without updating persisted documents(no version increase).   
-
+  Also, patch request to `ServiceHostManagementService` now returns 200 instead of 304.
 
  * Provide configurable replication quorum which decides the success and failure threshold.
    Api: PATCH PATH/TO/NODESELECTOR/replication -d '{replicationQuorum:REPLICATIONQUORUM}'
