@@ -26,6 +26,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
@@ -39,7 +40,7 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
 
 public class TestSampleContinuousQueryWatchService {
 
-    public int serviceCount = 100;
+    public int serviceCount = 10;
     private List<VerificationHost> hostsToCleanup = new ArrayList<>();
 
     private VerificationHost createAndStartHost(boolean enableAuth) throws Throwable {
@@ -117,9 +118,15 @@ public class TestSampleContinuousQueryWatchService {
         sender.sendAndWait(verifyPost, QueryTask.class);
 
         // Now create the service with CONTINUOUS option.
+        // *** DEBUG rare CI failure ***
+        host.toggleOperationProcessingLogging(true).setOperationProcessingLogFilter(o ->
+                o.getUri().getPath().contains(ServiceUriPaths.CORE_LOCAL_QUERY_TASKS) ||
+                (o.getUri().getPath().contains(SampleContinuousQueryWatchService.FACTORY_LINK) && o.getAction() == Action.GET));
         spec.options.add(QueryTask.QuerySpecification.QueryOption.CONTINUOUS);
         post = Operation.createPost(host, SampleContinuousQueryWatchService.FACTORY_LINK)
                 .setBody(sampleQueryWatchState);
+        host.log("Sending post to %s, id: %d", SampleContinuousQueryWatchService.FACTORY_LINK, post.getId());
+        // *** END DEBUG ***
         sampleQueryWatchState = sender.sendAndWait(post, SampleContinuousQueryWatchService.State.class);
 
         // remember the link to the continuous query watch service we just created

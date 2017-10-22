@@ -1454,9 +1454,11 @@ public class TestLuceneDocumentIndexService {
             String onDemandFactoryLink = OnDemandLoadFactoryService.create(h);
             createOnDemandLoadServices(h, onDemandFactoryLink);
 
+            h.log("DEBUG: step 1");
             Map<URI, ExampleServiceState> beforeState = verifyIdempotentServiceStartDeleteWithStats(h);
             List<URI> exampleURIs = new ArrayList<>(beforeState.keySet());
 
+            h.log("DEBUG: step 2");
             verifyInitialStatePost(h);
 
             ServiceHostState initialState = h.getState();
@@ -1483,8 +1485,10 @@ public class TestLuceneDocumentIndexService {
                     EnumSet.of(ServiceOption.INSTRUMENTATION),
                     null);
 
+            h.log("DEBUG: step 3");
             verifyIdempotentFactoryAfterHostRestart(h, initialState, exampleURIs, beforeState);
 
+            h.log("DEBUG: step 4");
             verifyOnDemandLoad(h);
 
         } finally {

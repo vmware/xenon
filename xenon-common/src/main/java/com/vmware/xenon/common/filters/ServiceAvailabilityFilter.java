@@ -61,7 +61,7 @@ public class ServiceAvailabilityFilter implements Filter {
             servicePath = UriUtils.getParentPath(servicePath);
         }
 
-        if (service != null && ServiceHost.isServiceStarting(service.getProcessingStage())) {
+        if (service != null && ServiceHost.isServiceStartingOrAvailable(service.getProcessingStage())) {
             // service is in the process of starting - we will resume processing when
             // it's available
             Service finalService = service;
