@@ -57,6 +57,7 @@ public class QueryTaskService extends StatefulService {
 
     @Override
     public void handleStart(Operation startPost) {
+        logInfo("entering: startPost %d", startPost.getId());
         if (!startPost.hasBody()) {
             startPost.fail(new IllegalArgumentException("Body is required"));
             return;
@@ -66,6 +67,7 @@ public class QueryTaskService extends StatefulService {
         if (initState.taskInfo == null) {
             initState.taskInfo = new TaskState();
         } else if (TaskState.isFinished(initState.taskInfo)) {
+            logInfo("startPost %d: already finished: completing", startPost.getId());
             startPost.complete();
             return;
         }
@@ -83,14 +85,21 @@ public class QueryTaskService extends StatefulService {
 
         if (!initState.taskInfo.isDirect) {
             // complete POST immediately
+            logInfo("completing startPost %d", startPost.getId());
             startPost.setStatusCode(Operation.STATUS_CODE_ACCEPTED).complete();
             // kick off query processing by patching self to STARTED
             QueryTask patchBody = new QueryTask();
             patchBody.taskInfo = new TaskState();
             patchBody.taskInfo.stage = TaskStage.STARTED;
             patchBody.querySpec = initState.querySpec;
-            sendRequest(Operation.createPatch(getUri()).setBody(patchBody));
+            Operation selfPatch = Operation.createPatch(getUri()).setBody(patchBody);
+            selfPatch.setCompletion((o, e) -> {
+                logInfo("self-patch %d completed, e=%s", selfPatch.getId(), e);
+            });
+            logInfo("Sending self-patch %d to %s", selfPatch.getId(), selfPatch.getUri());
+            sendRequest(selfPatch);
         } else {
+            logInfo("startPost %d: direct query", startPost.getId());
             if (initState.querySpec.options.contains(QueryOption.BROADCAST)) {
                 createAndSendBroadcastQuery(initState, startPost);
             } else {
