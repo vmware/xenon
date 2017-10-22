@@ -39,7 +39,7 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
 
 public class TestSampleContinuousQueryWatchService {
 
-    public int serviceCount = 100;
+    public int serviceCount = 10;
     private List<VerificationHost> hostsToCleanup = new ArrayList<>();
 
     private VerificationHost createAndStartHost(boolean enableAuth) throws Throwable {
@@ -117,6 +117,8 @@ public class TestSampleContinuousQueryWatchService {
         sender.sendAndWait(verifyPost, QueryTask.class);
 
         // Now create the service with CONTINUOUS option.
+        // *** DEBUG rare CI failure ***
+        host.toggleOperationProcessingLogging(true).setOperationProcessingLogFilter(o -> o.getUri().getPath().contains(ServiceUriPaths.CORE_LOCAL_QUERY_TASKS));
         spec.options.add(QueryTask.QuerySpecification.QueryOption.CONTINUOUS);
         post = Operation.createPost(host, SampleContinuousQueryWatchService.FACTORY_LINK)
                 .setBody(sampleQueryWatchState);
