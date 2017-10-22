@@ -134,9 +134,22 @@ public class SampleContinuousQueryWatchService extends StatefulService {
                     .setReferer(getHost().getUri());
 
             // On successful creation of continuous query task service, create subscription to that query service.
+            logInfo("creating continuous query, post id: %d", post.getId());
             getHost().sendWithDeferredResult(post)
-                    .thenAccept((state) -> subscribeToContinuousQuery())
-                    .whenCompleteNotify(op);
+                    .thenAccept(o -> {
+                        logInfo("subscribing to continuous query, post %d", post.getId());
+                        subscribeToContinuousQuery();
+                    })
+                    .whenComplete((o, e) -> {
+                        if (e != null) {
+                            logInfo("post %d completed failed: %s", post.getId(), e);
+                            op.fail(e);
+                            return;
+                        }
+
+                        logInfo("post %d completed successfully", post.getId());
+                        op.complete();
+                    });
         });
     }
 
@@ -173,7 +186,7 @@ public class SampleContinuousQueryWatchService extends StatefulService {
         Operation unsubscribeOperation = Operation.createPost(getHost(), QUERY_SELF_LINK)
                 .setReferer(getHost().getUri())
                 .setCompletion((o, e) -> deleteContinuousQuery());
-
+        logInfo("unsubscribing from continuous query, post id: %d", unsubscribeOperation.getId());
         URI notificationTarget = UriUtils.buildPublicUri(getHost(), SUBSCRIPTION_SELF_LINK);
         getHost().stopSubscriptionService(unsubscribeOperation, notificationTarget);
     }
