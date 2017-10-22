@@ -91,10 +91,10 @@ public class SampleContinuousQueryWatchService extends StatefulService {
     public void handleNodeGroupMaintenance(Operation op) {
         // Create continuous queries and subscriptions in case of change in node group topology.
         if (hasOption(ServiceOption.DOCUMENT_OWNER)) {
-            logInfo("on owner node: creating and subscribing to continuous query");
+            //logInfo("on owner node: creating and subscribing to continuous query");
             createAndSubscribeToContinuousQuery(op);
         } else {
-            logInfo("not on owner node: deleting subscription and continuous query");
+            //logInfo("not on owner node: deleting subscription and continuous query");
             deleteSubscriptionAndContinuousQuery(op);
         }
     }
@@ -161,6 +161,7 @@ public class SampleContinuousQueryWatchService extends StatefulService {
                 .setSubscriberReference(subscriptionUri);
 
         // Create subscription service with processResults as callback to process the results.
+        logInfo("Subscribing to continuous query");
         getHost().startSubscriptionService(post, this::processResults, sr);
     }
 
