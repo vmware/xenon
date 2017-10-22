@@ -45,7 +45,6 @@ import java.util.stream.Collectors;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.BasicReusableHostTestCase;
@@ -1688,8 +1687,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         host.deleteAllChildServices(UriUtils.buildUri(host, MigrationTaskService.FACTORY_LINK));
         host.deleteAllChildServices(UriUtils.buildUri(host, ExampleService.FACTORY_LINK));
     }
-
-    @Ignore("https://www.pivotaltracker.com/story/show/152134130")
+    
     @Test
     public void successMigrateDocumentsWithAllVersions() throws Throwable {
         // this test dirties destination host, requires clean up
