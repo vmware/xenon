@@ -91,10 +91,10 @@ public class SampleContinuousQueryWatchService extends StatefulService {
     public void handleNodeGroupMaintenance(Operation op) {
         // Create continuous queries and subscriptions in case of change in node group topology.
         if (hasOption(ServiceOption.DOCUMENT_OWNER)) {
-            logInfo("on owner node: creating and subscribing to continuous query");
+            //logInfo("on owner node: creating and subscribing to continuous query");
             createAndSubscribeToContinuousQuery(op);
         } else {
-            logInfo("not on owner node: deleting subscription and continuous query");
+            //logInfo("not on owner node: deleting subscription and continuous query");
             deleteSubscriptionAndContinuousQuery(op);
         }
     }
@@ -134,9 +134,22 @@ public class SampleContinuousQueryWatchService extends StatefulService {
                     .setReferer(getHost().getUri());
 
             // On successful creation of continuous query task service, create subscription to that query service.
+            logInfo("creating continuous query, post id: %d", post.getId());
             getHost().sendWithDeferredResult(post)
-                    .thenAccept((state) -> subscribeToContinuousQuery())
-                    .whenCompleteNotify(op);
+                    .thenAccept(o -> {
+                        logInfo("subscribing to continuous query, post %d", post.getId());
+                        subscribeToContinuousQuery();
+                    })
+                    .whenComplete((o, e) -> {
+                        if (e != null) {
+                            logInfo("post %d completed failed: %s", post.getId(), e);
+                            op.fail(e);
+                            return;
+                        }
+
+                        logInfo("post %d completed successfully", post.getId());
+                        op.complete();
+                    });
         });
     }
 
@@ -161,6 +174,7 @@ public class SampleContinuousQueryWatchService extends StatefulService {
                 .setSubscriberReference(subscriptionUri);
 
         // Create subscription service with processResults as callback to process the results.
+        logInfo("Subscribing to continuous query");
         getHost().startSubscriptionService(post, this::processResults, sr);
     }
 
