@@ -1225,6 +1225,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         long now = Utils.getNowMicrosUtc();
 
         IndexSearcher s = new IndexSearcher(DirectoryReader.open(w, true, true));
+        s.setSimilarity(s.getSimilarity(false));
 
         PaginatedSearcherInfo info = new PaginatedSearcherInfo();
         info.creationTimeMicros = now;
@@ -3045,6 +3046,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         } else {
             s = new IndexSearcher(DirectoryReader.open(w, true, true));
         }
+
+        s.setSimilarity(s.getSimilarity(false));
 
         adjustTimeSeriesStat(STAT_NAME_SEARCHER_UPDATE_COUNT, AGGREGATION_TYPE_SUM, 1);
         synchronized (this.searchSync) {
