@@ -96,7 +96,10 @@ final class LuceneQueryConverter {
         if (context != null && query.occurance != QueryTask.Query.Occurance.MUST_NOT_OCCUR &&
                 ServiceDocument.FIELD_NAME_KIND.equals(term.propertyName)) {
             if (context.kindScope == null) {
-                context.kindScope = new HashSet<>();
+                // assume most queries contain 1 or 2 document kinds. Initialize with size 4
+                // to prevent resizing when the second kind is added. The default size of 16
+                // has never been filled up.
+                context.kindScope = new HashSet<>(4);
             }
             context.kindScope.add(term.matchValue);
         }
