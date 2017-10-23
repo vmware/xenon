@@ -96,7 +96,7 @@ final class LuceneQueryConverter {
         if (context != null && query.occurance != QueryTask.Query.Occurance.MUST_NOT_OCCUR &&
                 ServiceDocument.FIELD_NAME_KIND.equals(term.propertyName)) {
             if (context.kindScope == null) {
-                context.kindScope = new HashSet<>();
+                context.kindScope = new HashSet<>(4);
             }
             context.kindScope.add(term.matchValue);
         }
