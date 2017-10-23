@@ -375,6 +375,7 @@ public class LuceneDocumentIndexService extends StatelessService {
      * Searchers used for paginated query tasks.
      */
     protected TreeMap<Long, PaginatedSearcherInfo> paginatedSearchersByCreationTime = new TreeMap<>();
+
     protected TreeMap<Long, List<PaginatedSearcherInfo>> paginatedSearchersByExpirationTime = new TreeMap<>();
 
     protected IndexWriter writer = null;
@@ -1208,7 +1209,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         info.expirationTimeMicros = newExpirationMicros;
 
         expirationList = this.paginatedSearchersByExpirationTime.computeIfAbsent(
-                newExpirationMicros, (k) -> new ArrayList<>());
+                newExpirationMicros, (k) -> new ArrayList<>(1));
         expirationList.add(info);
 
         return info.searcher;
