@@ -46,12 +46,17 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Level;
 import java.util.stream.Stream;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
+import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.codecs.FieldInfosFormat;
+import org.apache.lucene.codecs.FilterCodec;
+import org.apache.lucene.codecs.lucene60.Lucene60FieldInfosFormat;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.document.NumericDocValuesField;
@@ -340,12 +345,12 @@ public class LuceneDocumentIndexService extends StatelessService {
     /**
      * Synchronization object used to coordinate index searcher refresh
      */
-    protected Object searchSync;
+    protected final Object searchSync = new Object();
 
     /**
      * Synchronization object used to coordinate document metadata updates.
      */
-    private Object metadataUpdateSync;
+    private final Object metadataUpdateSync = new Object();
 
     /**
      * Synchronization object used to coordinate index writer update
@@ -559,8 +564,6 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void initializeInstance() {
-        this.searchSync = new Object();
-        this.metadataUpdateSync = new Object();
         this.liveVersionsPerLink.clear();
         this.updatesPerLink.clear();
         this.searcherUpdateTimesMicros.clear();
@@ -670,6 +673,9 @@ public class LuceneDocumentIndexService extends StatelessService {
     IndexWriter createWriterWithLuceneDirectory(Directory dir, boolean doUpgrade) throws Exception {
         Analyzer analyzer = new SimpleAnalyzer();
         IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
+
+        iwc.setCodec(createCodec());
+
         Long totalMBs = getHost().getServiceMemoryLimitMB(getSelfLink(), MemoryLimitType.EXACT);
         if (totalMBs != null) {
             long cacheSizeMB = (totalMBs * 99) / 100;
@@ -700,6 +706,28 @@ public class LuceneDocumentIndexService extends StatelessService {
             this.writerCreationTimeMicros = this.writerUpdateTimeMicros;
         }
         return this.writer;
+    }
+
+    private Lucene60FieldInfosFormatWithCache fieldInfosFormat;
+
+    private Codec createCodec() {
+        Codec codec = Codec.getDefault();
+        if (!(codec.fieldInfosFormat() instanceof Lucene60FieldInfosFormat)) {
+            // during lucene upgrade make sure to introduce a caching version of
+            // the FieldInfosFormat class, similar to Lucene60FieldInfosFormatWithCache
+            getHost().log(Level.WARNING,
+                    "Caching of FieldInfo will be disabled: unsupported Lucene version");
+            return codec;
+        }
+
+        this.fieldInfosFormat = new Lucene60FieldInfosFormatWithCache();
+
+        return new FilterCodec(codec.getName(), codec) {
+            @Override
+            public FieldInfosFormat fieldInfosFormat() {
+                return LuceneDocumentIndexService.this.fieldInfosFormat;
+            }
+        };
     }
 
     private void upgradeIndex(Directory dir) throws IOException {
@@ -2882,9 +2910,12 @@ public class LuceneDocumentIndexService extends StatelessService {
         synchronized (this.searchSync) {
             for (MetadataUpdateInfo info : entries) {
                 this.updatesPerLink.compute(info.selfLink, (k, entry) -> {
-                    entry.updateTimeMicros = Math.max(entry.updateTimeMicros, updateTimeMicros);
+                    if (entry != null) {
+                        entry.updateTimeMicros = Math.max(entry.updateTimeMicros, updateTimeMicros);
+                    }
                     return entry;
                 });
+
                 this.documentKindUpdateInfo.compute(info.kind, (k, entry) -> {
                     entry = Math.max(entry, updateTimeMicros);
                     return entry;
@@ -3023,6 +3054,9 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     @Override
     public void handleMaintenance(Operation post) {
+        if (this.fieldInfosFormat != null) {
+            this.fieldInfosFormat.handleMaintenance();
+        }
 
         Operation maintenanceOp = Operation
                 .createPost(this.getUri())
