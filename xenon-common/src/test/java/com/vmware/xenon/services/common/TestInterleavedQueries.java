@@ -15,17 +15,21 @@ package com.vmware.xenon.services.common;
 
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
+import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 
 import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Service.ServiceOption;
+import com.vmware.xenon.common.ServiceConfigUpdateRequest;
 import com.vmware.xenon.common.TestResults;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
@@ -40,6 +44,17 @@ public class TestInterleavedQueries extends BasicReusableHostTestCase {
 
     public int operationTimeoutMillis;
     public int errorThreshold;
+
+    @Before
+    public void setup() {
+        ServiceConfigUpdateRequest body = ServiceConfigUpdateRequest.create();
+        body.addOptions = EnumSet.of(ServiceOption.INSTRUMENTATION);
+
+        this.host.getTestRequestSender().sendAndWait(
+                Operation.createPatch(UriUtils.buildConfigUri(this.host, ServiceUriPaths.CORE_DOCUMENT_INDEX)).setBody(
+                        body
+                ));
+    }
 
     public TestInterleavedQueries() {
         // These values picked for IDE configuration: short test,
@@ -186,6 +201,8 @@ public class TestInterleavedQueries extends BasicReusableHostTestCase {
         this.testResults.getReport().lastValue("time", duration / 1000_000_000.0);
         this.testResults.getReport().lastValue("errors", errors);
         this.testResults.getReport().lastValue(TestResults.KEY_THROUGHPUT, tput);
+        this.host.logServiceStats(UriUtils.buildUri(
+                this.host, ServiceUriPaths.CORE_DOCUMENT_INDEX), this.testResults);
 
         this.host.log("throughput: %f ops/s, count = %d", tput, opCount);
     }
