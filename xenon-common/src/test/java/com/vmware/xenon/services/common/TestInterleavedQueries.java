@@ -88,6 +88,7 @@ public class TestInterleavedQueries extends BasicReusableHostTestCase {
                 errorThreshold--;
                 if (errorThreshold == 0) {
                     writeResults(start, i);
+                    this.host.log("Interleaving queries made system unusable after %s POSTs", i);
                     return;
                 }
             }
@@ -122,7 +123,6 @@ public class TestInterleavedQueries extends BasicReusableHostTestCase {
         this.testResults.getReport().lastValue(TestResults.KEY_THROUGHPUT, tput);
 
         this.host.log("throughput: %f ops/s, count = %d", tput, opCount);
-        this.host.log("Interleaving queries made system unusable after %s POSTs", opCount);
     }
 
     private ExampleServiceState createBigState(List<String> keys) {
