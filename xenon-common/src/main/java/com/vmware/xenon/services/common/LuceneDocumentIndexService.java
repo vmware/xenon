@@ -54,6 +54,10 @@ import com.google.gson.JsonObject;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
+import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.codecs.FieldInfosFormat;
+import org.apache.lucene.codecs.FilterCodec;
+import org.apache.lucene.codecs.lucene60.Lucene60FieldInfosFormat;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.document.NumericDocValuesField;
@@ -693,6 +697,9 @@ public class LuceneDocumentIndexService extends StatelessService {
     IndexWriter createWriterWithLuceneDirectory(Directory dir, boolean doUpgrade) throws Exception {
         Analyzer analyzer = new SimpleAnalyzer();
         IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
+
+        iwc.setCodec(createCodec());
+
         Long totalMBs = getHost().getServiceMemoryLimitMB(getSelfLink(), MemoryLimitType.EXACT);
         if (totalMBs != null) {
             long cacheSizeMB = (totalMBs * 99) / 100;
@@ -723,6 +730,24 @@ public class LuceneDocumentIndexService extends StatelessService {
             this.writerCreationTimeMicros = this.writerUpdateTimeMicros;
         }
         return this.writer;
+    }
+
+    private FilterCodec createCodec() {
+        Codec codec = Codec.getDefault();
+        if (!(codec.fieldInfosFormat() instanceof Lucene60FieldInfosFormat)) {
+            // during lucene upgrade make sure to introduce a caching version of
+            // the FieldInfosFormat class, similar to Lucene60FieldInfosFormatWithCache
+            throw new AssertionError("Incompatible Lucene config");
+        }
+
+        return new FilterCodec(codec.getName(), codec) {
+            private final FieldInfosFormat fieldInfosFormat = new Lucene60FieldInfosFormatWithCache();
+
+            @Override
+            public FieldInfosFormat fieldInfosFormat() {
+                return this.fieldInfosFormat;
+            }
+        };
     }
 
     private void upgradeIndex(Directory dir) throws IOException {
