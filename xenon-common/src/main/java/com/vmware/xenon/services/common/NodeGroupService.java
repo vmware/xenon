@@ -494,6 +494,7 @@ public class NodeGroupService extends StatefulService {
         if (remotePeerState == null) {
             // Pass 1, get existing member state
             sendRequest(Operation.createGet(joinBody.memberGroupReference)
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_GOSSIP)
                     .setCompletion(
                             (o, e) -> {
                                 if (e != null) {
@@ -510,13 +511,16 @@ public class NodeGroupService extends StatefulService {
         }
 
         // Pass 2, merge remote group state with ours, send self to peer
-        sendRequest(Operation.createPatch(getUri()).setBody(remotePeerState));
+        sendRequest(Operation.createPatch(getUri())
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_GOSSIP)
+                .setBody(remotePeerState));
 
         logInfo("Sending POST to %s to insert self: %s",
                 joinBody.memberGroupReference, Utils.toJson(self));
 
         Operation insertSelfToPeer = Operation
                 .createPost(joinBody.memberGroupReference)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_GOSSIP)
                 .setBody(self)
                 .setCompletion(
                         (o, e) -> {
@@ -578,8 +582,9 @@ public class NodeGroupService extends StatefulService {
         local.status = NodeStatus.AVAILABLE;
         body.nodes.put(local.id, local);
 
-        sendRequest(Operation.createPatch(getUri()).setBody(
-                body));
+        sendRequest(Operation.createPatch(getUri())
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_GOSSIP)
+                .setBody(body));
     }
 
     private NodeState buildLocalNodeState(NodeState body) {
@@ -631,6 +636,7 @@ public class NodeGroupService extends StatefulService {
             if (!isAvailable()) {
                 // self patch at least once, so we update availability
                 sendRequest(Operation.createPatch(getUri())
+                        .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_GOSSIP)
                         .setBodyNoCloning(localState)
                         .setCompletion((o, e) -> {
                             maint.complete();
@@ -698,6 +704,7 @@ public class NodeGroupService extends StatefulService {
                     .createPatch(peerUri)
                     .setRetryCount(0)
                     .setConnectionTag(ServiceClient.CONNECTION_TAG_GOSSIP)
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_GOSSIP)
                     .setExpiration(
                             Utils.fromNowMicrosUtc(
                                     localState.config.peerRequestTimeoutMicros))
@@ -783,6 +790,7 @@ public class NodeGroupService extends StatefulService {
                 // to merge updated state, issue a self PATCH. It contains NodeState entries for every
                 // peer node we just talked to
                 sendRequest(Operation.createPatch(getUri())
+                        .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_GOSSIP)
                         .setBodyNoCloning(patchBody));
 
                 maint.complete();

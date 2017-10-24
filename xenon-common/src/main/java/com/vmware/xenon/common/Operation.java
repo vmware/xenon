@@ -516,6 +516,12 @@ public class Operation implements Cloneable {
     public static final String PRAGMA_DIRECTIVE_SYNCH_OWNER = "xn-synch-owner";
 
     /**
+     * Infrastructure use only. Set by node-group gossip related operations.
+     */
+    public static final String PRAGMA_DIRECTIVE_GOSSIP = "xn-gossip";
+
+
+    /**
      * Infrastructure use only. Set when the owner node of a service instance
      * computes the best state as part of synchronization and broadcasts the
      * best state to all peer nodes.
@@ -2018,6 +2024,10 @@ public class Operation implements Cloneable {
 
     public boolean isSynchronizeOwner() {
         return hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER);
+    }
+
+    public boolean isNodeGroupOperation() {
+        return hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_GOSSIP);
     }
 
     public boolean isSynchronizePeer() {

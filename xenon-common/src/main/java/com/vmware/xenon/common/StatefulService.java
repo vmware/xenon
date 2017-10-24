@@ -62,6 +62,7 @@ public class StatefulService implements Service {
         public EnumSet<ServiceOption> options = EnumSet.noneOf(ServiceOption.class);
         public Class<? extends ServiceDocument> stateType;
 
+        public OperationQueue gossipQueue;
         public OperationQueue synchQueue;
         public OperationQueue operationQueue;
         public boolean isUpdateActive;
@@ -170,12 +171,15 @@ public class StatefulService implements Service {
     }
 
     private boolean checkServiceStopped(Operation op, boolean stop) {
-        boolean isAlreadyStopped = this.context.processingStage == ProcessingStage.STOPPED;
+        boolean isAlreadyStopped;
         boolean isDeleteAndStop = ServiceHost.isServiceDeleteAndStop(op);
         boolean hasActiveUpdates = false;
 
         synchronized (this.context) {
             isAlreadyStopped = this.context.processingStage == ProcessingStage.STOPPED;
+            if (this.context.gossipQueue != null) {
+                hasActiveUpdates = true;
+            }
             if (!hasActiveUpdates && this.context.synchQueue != null) {
                 hasActiveUpdates = true;
             }
@@ -226,6 +230,11 @@ public class StatefulService implements Service {
             if (this.context.synchQueue != null) {
                 opsToCancel.addAll(this.context.synchQueue.toCollection());
                 this.context.synchQueue.clear();
+            }
+
+            if (this.context.gossipQueue != null) {
+                opsToCancel.addAll(this.context.gossipQueue.toCollection());
+                this.context.gossipQueue.clear();
             }
         }
 
@@ -313,7 +322,15 @@ public class StatefulService implements Service {
             if (this.context.processingStage == ProcessingStage.STOPPED) {
                 stopped |= STOP_FLAG;
             } else if ((this.context.isUpdateActive || this.context.getActiveCount != 0)) {
-                if (op.isSynchronizeOwner()) {
+                if (op.isNodeGroupOperation()) {
+                    if (this.context.gossipQueue == null) {
+                        this.context.gossipQueue = OperationQueue
+                                .createFifo(Service.GOSSIP_QUEUE_DEFAULT_LIMIT);
+                    }
+                    if (!this.context.gossipQueue.offer(op)) {
+                        failRequestLimitExceeded(op, "gossipQueue on " + getSelfLink());
+                    }
+                } else if (op.isSynchronizeOwner()) {
                     // Synchronization requests are queued in a separate queue
                     // so that they can prioritized higher than other updates.
                     if (this.context.synchQueue == null) {
@@ -1309,6 +1326,14 @@ public class StatefulService implements Service {
     public Operation dequeueRequest() {
         Operation op = null;
         synchronized (this.context) {
+            if (this.context.gossipQueue != null) {
+                // Synch requests are prioritized higher than
+                // other update requests.
+                op = this.context.gossipQueue.poll();
+                if (this.context.gossipQueue.isEmpty()) {
+                    this.context.gossipQueue = null;
+                }
+            }
             if (this.context.synchQueue != null) {
                 // Synch requests are prioritized higher than
                 // other update requests.

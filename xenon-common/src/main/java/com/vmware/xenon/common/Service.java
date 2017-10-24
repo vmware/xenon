@@ -348,6 +348,11 @@ public interface Service extends ServiceRequestSender {
     static final int OPERATION_QUEUE_DEFAULT_LIMIT = 10000;
 
     /**
+     * Default node-group operation queue limit
+     */
+    static final int GOSSIP_QUEUE_DEFAULT_LIMIT = 100;
+
+    /**
      * Default Synchronization queue limit
      */
     static final int SYNCH_QUEUE_DEFAULT_LIMIT = 100;

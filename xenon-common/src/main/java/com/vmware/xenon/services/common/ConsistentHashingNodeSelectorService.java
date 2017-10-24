@@ -156,16 +156,18 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
         // we subscribe to avoid GETs on node group state, per operation, but we need to have the initial
         // node group state, before service is available.
-        sendRequest(Operation.createGet(this, this.cachedState.nodeGroupLink).setCompletion(
-                (o, e) -> {
-                    if (e == null) {
-                        NodeGroupState ngs = o.getBody(NodeGroupState.class);
-                        updateCachedNodeGroupState(ngs, null);
-                    } else if (!getHost().isStopping()) {
-                        logSevere(e);
-                    }
-                    h.handle(o, e);
-                }));
+        sendRequest(Operation.createGet(this, this.cachedState.nodeGroupLink)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_GOSSIP)
+                .setCompletion(
+                        (o, e) -> {
+                            if (e == null) {
+                                NodeGroupState ngs = o.getBody(NodeGroupState.class);
+                                updateCachedNodeGroupState(ngs, null);
+                            } else if (!getHost().isStopping()) {
+                                logSevere(e);
+                            }
+                            h.handle(o, e);
+                        }));
 
         Operation startSynchPost = Operation.createPost(
                 UriUtils.extendUri(getUri(), ServiceUriPaths.SERVICE_URI_SUFFIX_SYNCHRONIZATION))
@@ -681,7 +683,9 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                             }));
         };
 
-        sendRequest(Operation.createGet(this, this.cachedState.nodeGroupLink).setCompletion(c));
+        sendRequest(Operation.createGet(this, this.cachedState.nodeGroupLink)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_GOSSIP)
+                .setCompletion(c));
     }
 
     private void updateCachedNodeGroupState(NodeGroupState ngs, UpdateQuorumRequest quorumUpdate) {
