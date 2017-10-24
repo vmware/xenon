@@ -54,6 +54,9 @@ import com.google.gson.JsonObject;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
+import org.apache.lucene.codecs.FieldInfosFormat;
+import org.apache.lucene.codecs.FilterCodec;
+import org.apache.lucene.codecs.lucene62.Lucene62Codec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.document.NumericDocValuesField;
@@ -693,6 +696,17 @@ public class LuceneDocumentIndexService extends StatelessService {
     IndexWriter createWriterWithLuceneDirectory(Directory dir, boolean doUpgrade) throws Exception {
         Analyzer analyzer = new SimpleAnalyzer();
         IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
+
+        Lucene62Codec lucene62Codec = new Lucene62Codec();
+        iwc.setCodec(new FilterCodec(lucene62Codec.getName(), lucene62Codec) {
+            private final FieldInfosFormat fieldInfosFormat = new Lucene60FieldInfosFormatWithCache();
+
+            @Override
+            public FieldInfosFormat fieldInfosFormat() {
+                return this.fieldInfosFormat;
+            }
+        });
+
         Long totalMBs = getHost().getServiceMemoryLimitMB(getSelfLink(), MemoryLimitType.EXACT);
         if (totalMBs != null) {
             long cacheSizeMB = (totalMBs * 99) / 100;
