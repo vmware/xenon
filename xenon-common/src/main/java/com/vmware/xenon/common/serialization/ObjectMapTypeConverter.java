@@ -25,7 +25,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
-import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 import com.google.gson.JsonSerializationContext;
 import com.google.gson.JsonSerializer;
@@ -50,8 +49,6 @@ public enum ObjectMapTypeConverter
                 mapObject.add(e.getKey(), JsonNull.INSTANCE);
             } else if (v instanceof JsonElement) {
                 mapObject.add(e.getKey(), (JsonElement) v);
-            } else if (v instanceof String) {
-                mapObject.add(e.getKey(), new JsonParser().parse((String) v));
             } else {
                 mapObject.add(e.getKey(), context.serialize(v));
             }

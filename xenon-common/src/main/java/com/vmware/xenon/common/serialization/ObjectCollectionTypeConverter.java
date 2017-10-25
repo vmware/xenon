@@ -25,7 +25,6 @@ import com.google.gson.JsonDeserializer;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonParseException;
-import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 import com.google.gson.JsonSerializationContext;
 import com.google.gson.JsonSerializer;
@@ -38,8 +37,8 @@ public enum ObjectCollectionTypeConverter
         implements JsonSerializer<Collection<Object>>, JsonDeserializer<Collection<Object>> {
     INSTANCE;
 
-    public static final Type TYPE_LIST = TypeTokens.SET_OF_OBJECTS;
-    public static final Type TYPE_SET = TypeTokens.LIST_OF_OBJECTS;
+    public static final Type TYPE_LIST = TypeTokens.LIST_OF_OBJECTS;
+    public static final Type TYPE_SET = TypeTokens.SET_OF_OBJECTS;
     public static final Type TYPE_COLLECTION = TypeTokens.COLLECTION_OF_OBJECTS;
 
     @Override
@@ -51,8 +50,6 @@ public enum ObjectCollectionTypeConverter
                 setObject.add(JsonNull.INSTANCE);
             } else if (e instanceof JsonElement) {
                 setObject.add((JsonElement) e);
-            } else if (e instanceof String) {
-                setObject.add(new JsonParser().parse((String) e));
             } else {
                 setObject.add(context.serialize(e));
             }
