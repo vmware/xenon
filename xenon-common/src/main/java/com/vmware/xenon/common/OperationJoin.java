@@ -288,7 +288,7 @@ public class OperationJoin {
     }
 
     /**
-     * Sets (overwrites) the operation context of this operataion join instance
+     * Sets (overwrites) the operation context of this operation join instance
      *
      * The visibility of this method is intentionally package-local. It is intended to
      * only be called by functions in this package, so that we can apply whitelisting
@@ -331,6 +331,16 @@ public class OperationJoin {
     }
 
 
+    /**
+     * WARNING: This method is unsafe. If called when some operation o in this.operations has been
+     * sent but neither completed nor failed, o will be failed immediately, which may cause immediate
+     * success/fail of all operations in this.operations (if it was the last pending operation due to the latch in
+     * parentCompletion), and separately the actual outstanding async work will when it calls complete or fail, cause
+     * the original callback to be called, potentially succeeding even though this method was intended to fail
+     * everything.
+     *
+     * @param t The exception to fail operations with.
+     */
     void fail(Throwable t) {
         this.failures = new ConcurrentHashMap<>();
         this.failures.put(this.operations.keys().nextElement(), t);
