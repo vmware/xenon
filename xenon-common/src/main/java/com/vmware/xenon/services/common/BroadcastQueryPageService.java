@@ -18,7 +18,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.vmware.xenon.common.Operation;
@@ -53,7 +52,7 @@ public class BroadcastQueryPageService extends StatelessService {
         long interval = initState.documentExpirationTimeMicros - Utils.getSystemNowMicrosUtc();
         if (interval < 0) {
             logWarning("Task expiration is in the past, extending it");
-            interval = TimeUnit.SECONDS.toMicros(getHost().getMaintenanceIntervalMicros() * 2);
+            interval = getHost().getMaintenanceIntervalMicros() * 2;
         }
 
         super.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
