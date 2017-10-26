@@ -170,10 +170,6 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private static int metadataUpdateMaxQueueDepth = DEFAULT_METADATA_UPDATE_MAX_QUEUE_DEPTH;
 
-    private final Runnable queryTaskHandler = this::handleQueryRequest;
-
-    private final Runnable updateRequestHandler = this::handleUpdateRequest;
-
     public static void setImplicitQueryResultLimit(int limit) {
         queryResultLimit = limit;
     }
@@ -375,7 +371,6 @@ public class LuceneDocumentIndexService extends StatelessService {
      * Searchers used for paginated query tasks.
      */
     protected TreeMap<Long, PaginatedSearcherInfo> paginatedSearchersByCreationTime = new TreeMap<>();
-
     protected TreeMap<Long, List<PaginatedSearcherInfo>> paginatedSearchersByExpirationTime = new TreeMap<>();
 
     protected IndexWriter writer = null;
@@ -918,11 +913,11 @@ public class LuceneDocumentIndexService extends StatelessService {
         try {
             if (a == Action.GET || a == Action.PATCH) {
                 if (offerQueryOperation(op)) {
-                    this.privateQueryExecutor.execute(this.queryTaskHandler);
+                    this.privateQueryExecutor.execute(this::handleQueryRequest);
                 }
             } else {
                 if (offerUpdateOperation(op)) {
-                    this.privateIndexingExecutor.execute(this.updateRequestHandler);
+                    this.privateIndexingExecutor.execute(this::handleUpdateRequest);
                 }
             }
         } catch (RejectedExecutionException e) {
@@ -944,7 +939,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                     ServiceDocument sd = (ServiceDocument) op.getBodyRaw();
                     if (sd.documentKind != null) {
                         if (sd.documentKind.equals(QueryTask.KIND)) {
-                            QueryTask task = (QueryTask) sd;
+                            QueryTask task = (QueryTask) op.getBodyRaw();
                             handleQueryTaskPatch(op, task);
                             break;
                         }
@@ -1174,11 +1169,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         info.expirationTimeMicros = newExpirationMicros;
 
-        // initialize the array with size = 1: unlikely that two searcher will expire
-        // at the same microsecond. The default size of 10 is almost never filled up.
         expirationList = this.paginatedSearchersByExpirationTime.computeIfAbsent(
-                newExpirationMicros, _k -> new ArrayList<>(1));
-
+                newExpirationMicros, (k) -> new ArrayList<>());
         expirationList.add(info);
 
         return info.searcher;
