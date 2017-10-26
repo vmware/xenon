@@ -136,12 +136,14 @@ public class TestLocalizableValidationException extends BasicReusableHostTestCas
                     return FilterReturnCode.CONTINUE_PROCESSING;
                 }
 
-                s.sendRequest(Operation.createGet(s, TestFailingStatefulService.FACTORY_LINK)
-                        .setCompletion((o, e) -> {
-                            context.getOpProcessingChain().resumedRequestFailed(op, context, e);
-                            op.fail(ex);
-                        }));
-
+                context.setSuspendConsumer(o -> {
+                    s.sendRequest(Operation.createGet(s, TestFailingStatefulService.FACTORY_LINK)
+                            .setCompletion((oo, e) -> {
+                                context.getOpProcessingChain().resumeProcessingRequest(op, context,
+                                        FilterReturnCode.FAILED_STOP_PROCESSING, e);
+                                op.fail(ex);
+                            }));
+                });
                 return FilterReturnCode.SUSPEND_PROCESSING;
             }
         });

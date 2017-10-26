@@ -65,10 +65,12 @@ public class TestOperationProcessingChain extends BasicTestCase {
 
         @Override
         public FilterReturnCode processRequest(Operation op, OperationProcessingContext context) {
-            this.service.getHost().run(() -> {
-                this.service.handleRequest(op,
-                        OperationProcessingStage.EXECUTING_SERVICE_HANDLER);
+            context.setSuspendConsumer(o -> {
+                this.service.getHost().run(() -> {
+                    this.service.handleRequest(op,
+                            OperationProcessingStage.EXECUTING_SERVICE_HANDLER);
 
+                });
             });
             return FilterReturnCode.SUSPEND_PROCESSING;
         }
