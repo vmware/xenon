@@ -1019,7 +1019,7 @@ public abstract class FactoryService extends StatelessService {
         getHost().selectOwner(this.nodeSelectorLink, this.getSelfLink(), selectOwnerOp);
     }
 
-    private void synchronizeChildServicesAsOwner(Operation maintOp, long membershipUpdateTimeMicros) {
+    public void synchronizeChildServicesAsOwner(Operation maintOp, long membershipUpdateTimeMicros) {
         maintOp.nestCompletion((o, e) -> {
             if (e != null) {
                 logWarning("Synchronization failed: %s", e.toString());
