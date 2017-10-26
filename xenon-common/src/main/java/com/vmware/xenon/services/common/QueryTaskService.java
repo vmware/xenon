@@ -531,7 +531,7 @@ public class QueryTaskService extends StatefulService {
         if (newTaskState.stage == TaskStage.STARTED) {
             if (patchBody.querySpec.options.contains(QueryOption.BROADCAST) ||
                     patchBody.querySpec.options.contains(QueryOption.READ_AFTER_WRITE_CONSISTENCY)) {
-                createAndSendBroadcastQuery(patchBody, null);
+                createAndSendBroadcastQuery(state, null);
             } else {
                 forwardQueryToDocumentIndexService(state, null);
             }
