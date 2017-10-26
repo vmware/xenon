@@ -107,7 +107,12 @@ public class ForwardRequestFilter implements Filter {
         }
 
         // request needs to be forwarded to owner
-        selectAndForwardRequestToOwner(service, servicePath, op, parent, context);
+        final String finalServicePath = servicePath;
+        final Service finalParent = parent;
+        context.setSuspendConsumer(o -> {
+            selectAndForwardRequestToOwner(service, finalServicePath, op, finalParent, context);
+        });
+
         return FilterReturnCode.SUSPEND_PROCESSING;
     }
 
@@ -121,14 +126,16 @@ public class ForwardRequestFilter implements Filter {
             if (e != null) {
                 host.log(Level.SEVERE, "Owner selection failed for service %s, op %d. Error: %s", op
                         .getUri().getPath(), op.getId(), e.toString());
-                context.getOpProcessingChain().resumedRequestFailed(op, context, e);
+                context.getOpProcessingChain().resumeProcessingRequest(op, context,
+                        FilterReturnCode.FAILED_STOP_PROCESSING, e);
                 op.setRetryCount(0).fail(e);
                 return;
             }
 
             SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
             if (rsp.isLocalHostOwner) {
-                context.getOpProcessingChain().resumeProcessingRequest(op, context);
+                context.getOpProcessingChain().resumeProcessingRequest(op, context,
+                        FilterReturnCode.CONTINUE_PROCESSING, null);
             } else {
                 forwardRequestToOwner(op, rsp, context);
             }
@@ -158,7 +165,8 @@ public class ForwardRequestFilter implements Filter {
             op.setContentLength(fo.getContentLength());
             op.transferResponseHeadersFrom(fo);
 
-            context.getOpProcessingChain().resumedRequestCompleted(op, context);
+            context.getOpProcessingChain().resumeProcessingRequest(op, context,
+                    FilterReturnCode.SUCCESS_STOP_PROCESSING, null);
             op.complete();
         };
 
@@ -214,14 +222,16 @@ public class ForwardRequestFilter implements Filter {
         }
 
         if (!shouldRetry) {
-            context.getOpProcessingChain().resumedRequestFailed(op, context, fe);
+            context.getOpProcessingChain().resumeProcessingRequest(op, context,
+                    FilterReturnCode.FAILED_STOP_PROCESSING, fe);
             Operation.failForwardedRequest(op, fo, fe);
             return;
         }
 
         // We will report this as failure, for diagnostics purposes.
         // The retry mechanism starts a fresh processing of the operation.
-        context.getOpProcessingChain().resumedRequestFailed(op, context, fe);
+        context.getOpProcessingChain().resumeProcessingRequest(op, context,
+                FilterReturnCode.FAILED_STOP_PROCESSING, fe);
         context.getHost().getOperationTracker().trackOperationForRetry(Utils.getNowMicrosUtc(), fe, op);
     }
 }
