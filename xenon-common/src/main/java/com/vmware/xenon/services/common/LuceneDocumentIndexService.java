@@ -1177,7 +1177,11 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
 
             // check the searcher for kindScope update time
-            long searcherUpdateTime = this.searcherUpdateTimesMicros.get(i.searcher.hashCode());
+            Long searcherUpdateTime = this.searcherUpdateTimesMicros.get(i.searcher.hashCode());
+            if (searcherUpdateTime == null) {
+                // under load, very rarely searcherUpdateTime may end up null
+                continue;
+            }
             if (documentNeedsNewSearcher(null, kindScope, -1, searcherUpdateTime, doNotRefresh)) {
                 continue;
             }
@@ -1244,7 +1248,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         synchronized (this.searchSync) {
             this.paginatedSearchersByCreationTime.put(info.creationTimeMicros, info);
             List<PaginatedSearcherInfo> expirationList = this.paginatedSearchersByExpirationTime
-                    .computeIfAbsent(info.expirationTimeMicros, (k) -> new ArrayList<>());
+                    .computeIfAbsent(info.expirationTimeMicros, _k -> new ArrayList<>(1));
             expirationList.add(info);
             this.searcherUpdateTimesMicros.put(s.hashCode(), now);
         }
@@ -3468,8 +3472,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                 return;
             }
 
-            logInfo("(%s) closing all searchers, document count: %d, file count: %d",
-                    this.writerSync, w.maxDoc(), count);
+            logInfo("(%s) closing all %d searchers, document count: %d, file count: %d",
+                    this.writerSync, this.searchers.size(), w.maxDoc(), count);
 
             for (IndexSearcher s : this.searchers.values()) {
                 s.getIndexReader().close();
