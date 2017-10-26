@@ -697,6 +697,7 @@ public class NodeGroupService extends StatefulService {
             Operation patch = Operation
                     .createPatch(peerUri)
                     .setRetryCount(0)
+                    .setConnectionSharing(true)
                     .setConnectionTag(ServiceClient.CONNECTION_TAG_GOSSIP)
                     .setExpiration(
                             Utils.fromNowMicrosUtc(
