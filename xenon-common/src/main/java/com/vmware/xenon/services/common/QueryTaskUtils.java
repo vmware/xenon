@@ -98,7 +98,7 @@ public final class QueryTaskUtils {
             BiConsumer<ServiceDocumentQueryResult, Throwable> onCompletion) {
         if (queryOptions != null && queryOptions.contains(QueryOption.READ_AFTER_WRITE_CONSISTENCY)) {
             mergeForReadAfterWriteConsistency(host, dataSources, isAscOrder, queryOptions,
-                    nodeGroupResponse, onCompletion);
+                    nodeGroupResponse, result, onCompletion);
         } else {
             mergeQueryResults(dataSources, isAscOrder, queryOptions, result);
             onCompletion.accept(result, null);
@@ -137,7 +137,6 @@ public final class QueryTaskUtils {
             mergeCountQueries(dataSources, result);
             return;
         }
-
         // For each list of documents to be merged, a pointer is maintained to indicate which element
         // is to be merged. The initial values are 0s.
         int[] indices = new int[dataSources.size()];
@@ -219,6 +218,7 @@ public final class QueryTaskUtils {
             List<ServiceDocumentQueryResult> dataSources,
             boolean isAscOrder, EnumSet<QueryOption> queryOptions,
             NodeGroupBroadcastResponse nodeGroupResponse,
+            ServiceDocumentQueryResult returnResult,
             BiConsumer<ServiceDocumentQueryResult, Throwable> onCompletion) {
 
         class VersionObjectPair {
@@ -282,7 +282,7 @@ public final class QueryTaskUtils {
                     .setReferer(host.getUri()));
         });
         if (getOps.size() == 0) {
-            onCompletion.accept(populateResultObject(documents, isAscOrder), null);
+            onCompletion.accept(populateResultObject(documents, queryOptions, returnResult, isAscOrder), null);
             return;
         }
         OperationJoin.create(getOps)
@@ -296,18 +296,20 @@ public final class QueryTaskUtils {
                 ServiceDocument jsonObject = Utils.fromJson(rawObject, ServiceDocument.class);
                 documents.put(jsonObject.documentSelfLink, rawObject);
             }
-            onCompletion.accept(populateResultObject(documents, isAscOrder), null);
+            onCompletion.accept(populateResultObject(documents, queryOptions, returnResult, isAscOrder), null);
         }).sendWith(host);
     }
 
-    private static ServiceDocumentQueryResult populateResultObject(Map<String, Object> documents, boolean isAscOrder) {
-        ServiceDocumentQueryResult result = new ServiceDocumentQueryResult();
+    private static ServiceDocumentQueryResult populateResultObject(Map<String, Object> documents,
+            EnumSet<QueryOption> queryOptions, ServiceDocumentQueryResult returnResult, boolean isAscOrder) {
         List<String> documentLinks = new ArrayList<>(documents.keySet());
         Collections.sort(documentLinks, isAscOrder ? null : Collections.reverseOrder());
-        result.documentLinks = documentLinks;
-        result.documentCount = Long.valueOf(documentLinks.size());
-        result.documents = documents;
-        return result;
+        returnResult.documentLinks = documentLinks;
+        returnResult.documentCount = Long.valueOf(documentLinks.size());
+        if (queryOptions.contains(QueryOption.EXPAND_CONTENT)) {
+            returnResult.documents = documents;
+        }
+        return returnResult;
     }
 
     public static void expandLinks(ServiceHost host, QueryTask task, Operation op) {

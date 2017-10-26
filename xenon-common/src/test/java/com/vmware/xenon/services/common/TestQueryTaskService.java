@@ -2592,6 +2592,7 @@ public class TestQueryTaskService {
     private void startPagedBroadCastQuery(VerificationHost targetHost, EnumSet<QueryOption> queryOptions) {
         final int documentCount = this.serviceCount;
         Set<String> documentLinks = new HashSet<>();
+        Map<String, Object> documents = new HashMap<>();
         try {
             final int minPageCount = 3;
             final int maxPageSize = 100;
@@ -2688,6 +2689,9 @@ public class TestQueryTaskService {
                             QueryTask rsp = o.getBody(QueryTask.class);
                             pageLinks.add(rsp.results.nextPageLink);
                             documentLinks.addAll(rsp.results.documentLinks);
+                            if (rsp.results.documents != null) {
+                                documents.putAll(rsp.results.documents);
+                            }
 
                             ctx.complete();
                         });
@@ -2698,6 +2702,11 @@ public class TestQueryTaskService {
             }
 
             assertEquals(documentCount, documentLinks.size());
+            if (queryOptions.contains(QueryOption.EXPAND_CONTENT)) {
+                assertEquals(documents.size(), documentCount);
+            } else {
+                assertEquals(documents.size(), 0);
+            }
 
             for (int i = 0; i < documentCount; i++) {
                 assertTrue(documentLinks
