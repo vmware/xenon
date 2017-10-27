@@ -91,8 +91,11 @@ import org.apache.lucene.search.grouping.TopGroups;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.MMapDirectory;
+import org.apache.lucene.store.NIOFSDirectory;
+import org.apache.lucene.store.NRTCachingDirectory;
 import org.apache.lucene.store.RAMDirectory;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.Constants;
 import org.apache.lucene.util.Version;
 
 import com.vmware.xenon.common.FileUtils;
@@ -688,9 +691,20 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     public IndexWriter createWriter(File directory, boolean doUpgrade) throws Exception {
-        Directory luceneDirectory = directory != null ? MMapDirectory.open(directory.toPath())
+        Directory luceneDirectory = directory != null ? openDirectory(directory)
                 : new RAMDirectory();
         return createWriterWithLuceneDirectory(luceneDirectory, doUpgrade);
+    }
+
+    static Directory openDirectory(File directory) throws IOException {
+        Directory fs;
+        if (Constants.WINDOWS) {
+            fs = MMapDirectory.open(directory.toPath());
+        } else {
+            fs = NIOFSDirectory.open(directory.toPath());
+        }
+
+        return new NRTCachingDirectory(fs, 2, 50);
     }
 
     IndexWriter createWriterWithLuceneDirectory(Directory dir, boolean doUpgrade) throws Exception {
