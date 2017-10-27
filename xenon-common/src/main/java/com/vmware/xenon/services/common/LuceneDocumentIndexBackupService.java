@@ -57,7 +57,6 @@ import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
-import org.apache.lucene.store.MMapDirectory;
 import org.apache.lucene.store.NIOFSDirectory;
 import org.apache.lucene.store.RAMDirectory;
 
@@ -576,7 +575,7 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                     logInfo("restoring in-memory index from directory %s", restoreFrom);
 
                     // copy to lucene ram directory
-                    Directory from = MMapDirectory.open(restoreFrom);
+                    Directory from = LuceneDocumentIndexService.openDirectory(restoreFrom.toFile());
                     Directory to = new RAMDirectory();
                     for (String filename : from.listAll()) {
                         to.copyFrom(from, filename, filename, IOContext.DEFAULT);
