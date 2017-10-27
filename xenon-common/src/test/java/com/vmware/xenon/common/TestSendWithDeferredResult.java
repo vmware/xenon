@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.common;
 
+import static org.junit.Assert.assertNotNull;
+
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletionException;
@@ -164,7 +166,7 @@ public class TestSendWithDeferredResult extends BasicReusableHostTestCase {
     @Test
     public void testRecover() throws Throwable {
         AtomicInteger invocationCounter = new AtomicInteger();
-        this.host.testStart(1);
+        TestContext ctx = this.host.testCreate(1);
         Operation get = Operation
                 .createGet(host, UriUtils.buildUriPath(ExampleService.FACTORY_LINK, "unknown"));
         DeferredResult<ExampleServiceState> deferredResult =
@@ -176,10 +178,12 @@ public class TestSendWithDeferredResult extends BasicReusableHostTestCase {
                     doc.name = "?";
                     return doc;
                 })
-                .whenComplete(this.host.getCompletionDeferred());
-        this.host.testWait();
+                .whenComplete(ctx.getCompletionDeferred());
+        ctx.await();
+
         Assert.assertEquals(1, invocationCounter.get());
         ExampleServiceState doc = deferredResult.getNow(() -> null);
+        assertNotNull("based on return from exceptionally, doc should not be null", doc);
         Assert.assertEquals("?", doc.name);
     }
 
