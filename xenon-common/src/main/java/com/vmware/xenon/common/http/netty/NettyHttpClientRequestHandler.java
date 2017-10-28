@@ -180,10 +180,9 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
     }
 
     private void parseRequestUri(Operation request, FullHttpRequest nettyRequest)
-            throws URISyntaxException {
+            throws URISyntaxException, UnsupportedEncodingException {
         URI targetUri = new URI(nettyRequest.uri());
         String decodedQuery = null;
-
         if (!request.isForwarded() && !request.isFromReplication()) {
             // do conservative parsing, normalization and decoding for non peer requests
             targetUri = targetUri.normalize();

@@ -448,7 +448,8 @@ public abstract class FactoryService extends StatelessService {
         }
 
         try {
-            new URI(id);
+            // Treat Id as path in the URI constructor.
+            new URI("/" + id);
         } catch (URISyntaxException e) {
             return false;
         }
