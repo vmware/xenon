@@ -181,9 +181,16 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
     private void parseRequestUri(Operation request, FullHttpRequest nettyRequest)
             throws URISyntaxException {
-        URI targetUri = new URI(nettyRequest.uri());
-        String decodedQuery = null;
+        String path = nettyRequest.uri();
+        URI targetUri;
+        if (path.startsWith("/")) {
+            String[] parts = path.split("\\?", 2);
+            targetUri = new URI(null, null, parts[0], parts.length > 1 ? parts[1] : null, null);
+        } else {
+            targetUri = new URI(path);
+        }
 
+        String decodedQuery = null;
         if (!request.isForwarded() && !request.isFromReplication()) {
             // do conservative parsing, normalization and decoding for non peer requests
             targetUri = targetUri.normalize();
