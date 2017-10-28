@@ -142,8 +142,7 @@ public class AuthorizationFilter implements Filter {
                         TimeUnit.NANOSECONDS.toMicros(dispatchDuration));
             }
 
-            context.getOpProcessingChain().resumeProcessingRequest(op, context,
-                    FilterReturnCode.CONTINUE_PROCESSING, null);
+            context.resumeProcessingRequest(op, FilterReturnCode.CONTINUE_PROCESSING, null);
         });
 
         // TODO: fix AuthenticationContextService and just send it a POST
@@ -270,7 +269,7 @@ public class AuthorizationFilter implements Filter {
                                     if (err.getErrorCode()
                                             == ServiceErrorResponse.ERROR_CODE_EXTERNAL_AUTH_FAILED) {
                                         host.log(Level.FINE, () -> "Skipping basic auth.");
-                                        context.getOpProcessingChain().resumeProcessingRequest(parentOp, context,
+                                        context.resumeProcessingRequest(parentOp,
                                                 FilterReturnCode.FAILED_STOP_PROCESSING, ex);
                                         parentOp.transferResponseHeadersFrom(resultOp);
                                         parentOp.fail(resultOp.getStatusCode(),

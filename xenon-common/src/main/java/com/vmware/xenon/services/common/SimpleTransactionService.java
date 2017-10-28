@@ -323,8 +323,7 @@ public class SimpleTransactionService extends StatefulService {
                 Operation previousStateGet = Operation.createGet(previousStateQueryUri)
                         .setCompletion((o, e) -> {
                             if (e != null) {
-                                context.getOpProcessingChain().resumeProcessingRequest(request, context,
-                                        FilterReturnCode.FAILED_STOP_PROCESSING, e);
+                                context.resumeProcessingRequest(request, FilterReturnCode.FAILED_STOP_PROCESSING, e);
                                 request.fail(e);
                                 return;
                             }
@@ -336,8 +335,7 @@ public class SimpleTransactionService extends StatefulService {
                                     clearTransactionRequest.originalVersion);
                             previousState.documentTransactionId = null;
                             this.service.setState(request, previousState);
-                            context.getOpProcessingChain().resumeProcessingRequest(request, context,
-                                    FilterReturnCode.SUCCESS_STOP_PROCESSING, null);
+                            context.resumeProcessingRequest(request, FilterReturnCode.SUCCESS_STOP_PROCESSING, null);
                             request.complete();
                         });
                 context.setSuspendConsumer(o -> {
@@ -379,15 +377,13 @@ public class SimpleTransactionService extends StatefulService {
                     .setCompletion(
                             (o, e) -> {
                                 if (e != null) {
-                                    context.getOpProcessingChain().resumeProcessingRequest(request, context,
-                                            FilterReturnCode.FAILED_STOP_PROCESSING, e);
+                                    context.resumeProcessingRequest(request, FilterReturnCode.FAILED_STOP_PROCESSING, e);
                                     request.fail(e);
                                     return;
                                 }
                                 EnrollResponse enrollRespone = o.getBody(EnrollResponse.class);
                                 this.transactionExpirationTimeMicros = enrollRespone.transactionExpirationTimeMicros;
-                                context.getOpProcessingChain().resumeProcessingRequest(request, context,
-                                        FilterReturnCode.CONTINUE_PROCESSING, null);
+                                context.resumeProcessingRequest(request, FilterReturnCode.CONTINUE_PROCESSING, null);
                             });
             this.service.sendRequest(enrollRequest);
         }
