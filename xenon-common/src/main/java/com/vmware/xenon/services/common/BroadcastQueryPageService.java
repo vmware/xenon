@@ -18,8 +18,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
@@ -28,7 +28,6 @@ import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
-import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 
 public class BroadcastQueryPageService extends StatelessService {
     public static final String SELF_LINK_PREFIX = "broadcast-query-page";
@@ -37,13 +36,15 @@ public class BroadcastQueryPageService extends StatelessService {
     private final QueryTask.QuerySpecification spec;
     private final List<String> pageLinks;
     private final long expirationMicros;
+    private final NodeGroupBroadcastResponse nodeGroupResponse;
 
     public BroadcastQueryPageService(QueryTask.QuerySpecification spec, List<String> pageLinks,
-            long expMicros) {
+            long expMicros, NodeGroupBroadcastResponse nodeGroupResponse) {
         super(QueryTask.class);
         this.spec = spec;
         this.pageLinks = pageLinks;
         this.expirationMicros = expMicros;
+        this.nodeGroupResponse = nodeGroupResponse;
     }
 
     @Override
@@ -53,7 +54,7 @@ public class BroadcastQueryPageService extends StatelessService {
         long interval = initState.documentExpirationTimeMicros - Utils.getSystemNowMicrosUtc();
         if (interval < 0) {
             logWarning("Task expiration is in the past, extending it");
-            interval = TimeUnit.SECONDS.toMicros(getHost().getMaintenanceIntervalMicros() * 2);
+            interval = getHost().getMaintenanceIntervalMicros() * 2;
         }
 
         super.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
@@ -89,19 +90,26 @@ public class BroadcastQueryPageService extends StatelessService {
                         }
                         int r = remainingQueries.decrementAndGet();
                         if (r == 0) {
-                            rsp.results = collectPagesAndStartNewServices(responses);
-                            get.setBodyNoCloning(rsp).complete();
+                            collectPagesAndStartNewServices(responses,
+                                    (response, error) -> {
+                                        if (error != null) {
+                                            get.fail(error);
+                                            return;
+                                        }
+                                        rsp.results = response;
+                                        get.setBodyNoCloning(rsp).complete();
+                                    });
                         }
                     });
             this.getHost().sendRequest(op);
         }
     }
 
-    private ServiceDocumentQueryResult collectPagesAndStartNewServices(List<QueryTask> responses) {
+    private void collectPagesAndStartNewServices(List<QueryTask> responses,
+            BiConsumer<ServiceDocumentQueryResult, Throwable> onCompletion) {
         List<ServiceDocumentQueryResult> queryResults = new ArrayList<>();
         List<String> nextPageLinks = new ArrayList<>();
         List<String> prevPageLinks = new ArrayList<>();
-        EnumSet<QueryOption> options = EnumSet.noneOf(QueryOption.class);
         for (QueryTask rsp : responses) {
             if (rsp.results == null) {
                 continue;
@@ -116,18 +124,9 @@ public class BroadcastQueryPageService extends StatelessService {
             if (rsp.results.prevPageLink != null) {
                 prevPageLinks.add(rsp.results.prevPageLink);
             }
-
-            if (rsp.querySpec != null && rsp.querySpec.options != null) {
-                options = rsp.querySpec.options;
-            }
         }
 
-        boolean isAscOrder = this.spec.sortOrder == null
-                || this.spec.sortOrder == QueryTask.QuerySpecification.SortOrder.ASC;
-        ServiceDocumentQueryResult mergeResults = QueryTaskUtils.mergeQueryResults(queryResults,
-                isAscOrder,
-                options);
-
+        ServiceDocumentQueryResult mergeResults = new ServiceDocumentQueryResult();
         if (!nextPageLinks.isEmpty()) {
             mergeResults.nextPageLink = startNewService(nextPageLinks);
         }
@@ -136,7 +135,11 @@ public class BroadcastQueryPageService extends StatelessService {
             mergeResults.prevPageLink = startNewService(prevPageLinks);
         }
 
-        return mergeResults;
+        boolean isAscOrder = this.spec.sortOrder == null
+                || this.spec.sortOrder == QueryTask.QuerySpecification.SortOrder.ASC;
+        QueryTaskUtils.processQueryResults(getHost(), queryResults,
+                isAscOrder, this.spec.options, this.nodeGroupResponse, mergeResults, onCompletion);
+
     }
 
     @Override
@@ -170,7 +173,7 @@ public class BroadcastQueryPageService extends StatelessService {
                     }
                 });
         this.getHost().startService(startPost,
-                new BroadcastQueryPageService(this.spec, pageLinks, this.expirationMicros));
+                new BroadcastQueryPageService(this.spec, pageLinks, this.expirationMicros, this.nodeGroupResponse));
 
         return broadcastQueryPageLink;
     }

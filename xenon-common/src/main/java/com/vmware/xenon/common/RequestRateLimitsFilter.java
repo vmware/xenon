@@ -11,20 +11,16 @@
  * specific language governing permissions and limitations under the License.
  */
 
-package com.vmware.xenon.common.filters;
+package com.vmware.xenon.common;
 
-import com.vmware.xenon.common.Claims;
-import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.OperationOption;
 import com.vmware.xenon.common.OperationProcessingChain.Filter;
 import com.vmware.xenon.common.OperationProcessingChain.FilterReturnCode;
 import com.vmware.xenon.common.OperationProcessingChain.OperationProcessingContext;
-import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost.RequestRateInfo;
 import com.vmware.xenon.common.ServiceHost.RequestRateInfo.Option;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.TimeBin;
-import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 
 public class RequestRateLimitsFilter implements Filter {

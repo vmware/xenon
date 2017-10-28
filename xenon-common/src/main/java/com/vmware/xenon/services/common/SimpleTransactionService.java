@@ -184,7 +184,9 @@ public class SimpleTransactionService extends StatefulService {
             }
 
             if (request.getTransactionId() != null) {
-                handleEnrollInTransaction(request, context);
+                context.setSuspendConsumer(o -> {
+                    handleEnrollInTransaction(request, context);
+                });
                 return FilterReturnCode.SUSPEND_PROCESSING;
             }
 
@@ -321,7 +323,8 @@ public class SimpleTransactionService extends StatefulService {
                 Operation previousStateGet = Operation.createGet(previousStateQueryUri)
                         .setCompletion((o, e) -> {
                             if (e != null) {
-                                context.getOpProcessingChain().resumedRequestFailed(request, context, e);
+                                context.getOpProcessingChain().resumeProcessingRequest(request, context,
+                                        FilterReturnCode.FAILED_STOP_PROCESSING, e);
                                 request.fail(e);
                                 return;
                             }
@@ -333,10 +336,13 @@ public class SimpleTransactionService extends StatefulService {
                                     clearTransactionRequest.originalVersion);
                             previousState.documentTransactionId = null;
                             this.service.setState(request, previousState);
-                            context.getOpProcessingChain().resumedRequestCompleted(request, context);
+                            context.getOpProcessingChain().resumeProcessingRequest(request, context,
+                                    FilterReturnCode.SUCCESS_STOP_PROCESSING, null);
                             request.complete();
                         });
-                this.service.sendRequest(previousStateGet);
+                context.setSuspendConsumer(o -> {
+                    this.service.sendRequest(previousStateGet);
+                });
                 return FilterReturnCode.SUSPEND_PROCESSING;
             }
 
@@ -373,13 +379,15 @@ public class SimpleTransactionService extends StatefulService {
                     .setCompletion(
                             (o, e) -> {
                                 if (e != null) {
-                                    context.getOpProcessingChain().resumedRequestFailed(request, context, e);
+                                    context.getOpProcessingChain().resumeProcessingRequest(request, context,
+                                            FilterReturnCode.FAILED_STOP_PROCESSING, e);
                                     request.fail(e);
                                     return;
                                 }
                                 EnrollResponse enrollRespone = o.getBody(EnrollResponse.class);
                                 this.transactionExpirationTimeMicros = enrollRespone.transactionExpirationTimeMicros;
-                                context.getOpProcessingChain().resumeProcessingRequest(request, context);
+                                context.getOpProcessingChain().resumeProcessingRequest(request, context,
+                                        FilterReturnCode.CONTINUE_PROCESSING, null);
                             });
             this.service.sendRequest(enrollRequest);
         }

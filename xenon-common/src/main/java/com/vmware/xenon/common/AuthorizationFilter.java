@@ -11,7 +11,7 @@
  * specific language governing permissions and limitations under the License.
  */
 
-package com.vmware.xenon.common.filters;
+package com.vmware.xenon.common;
 
 import java.net.URI;
 import java.security.GeneralSecurityException;
@@ -24,18 +24,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 
-import com.vmware.xenon.common.AuthUtils;
-import com.vmware.xenon.common.Claims;
-import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.OperationProcessingChain.Filter;
 import com.vmware.xenon.common.OperationProcessingChain.FilterReturnCode;
 import com.vmware.xenon.common.OperationProcessingChain.OperationProcessingContext;
-import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.Service.ServiceOption;
-import com.vmware.xenon.common.ServiceErrorResponse;
-import com.vmware.xenon.common.ServiceHost;
-import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.authn.AuthenticationConstants;
@@ -124,13 +117,15 @@ public class AuthorizationFilter implements Filter {
             return FilterReturnCode.CONTINUE_PROCESSING;
         }
 
-        if (op.getAuthorizationContext() != null) {
-            checkAndPopulateAuthzContext(op, context);
-        } else {
-            populateAuthorizationContext(op, context, (authorizationContext) -> {
+        context.setSuspendConsumer(o -> {
+            if (op.getAuthorizationContext() != null) {
                 checkAndPopulateAuthzContext(op, context);
-            });
-        }
+            } else {
+                populateAuthorizationContext(op, context, (authorizationContext) -> {
+                    checkAndPopulateAuthzContext(op, context);
+                });
+            }
+        });
 
         return FilterReturnCode.SUSPEND_PROCESSING;
     }
@@ -147,7 +142,8 @@ public class AuthorizationFilter implements Filter {
                         TimeUnit.NANOSECONDS.toMicros(dispatchDuration));
             }
 
-            context.getOpProcessingChain().resumeProcessingRequest(op, context);
+            context.getOpProcessingChain().resumeProcessingRequest(op, context,
+                    FilterReturnCode.CONTINUE_PROCESSING, null);
         });
 
         // TODO: fix AuthenticationContextService and just send it a POST
@@ -274,7 +270,8 @@ public class AuthorizationFilter implements Filter {
                                     if (err.getErrorCode()
                                             == ServiceErrorResponse.ERROR_CODE_EXTERNAL_AUTH_FAILED) {
                                         host.log(Level.FINE, () -> "Skipping basic auth.");
-                                        context.getOpProcessingChain().resumedRequestFailed(parentOp, context, ex);
+                                        context.getOpProcessingChain().resumeProcessingRequest(parentOp, context,
+                                                FilterReturnCode.FAILED_STOP_PROCESSING, ex);
                                         parentOp.transferResponseHeadersFrom(resultOp);
                                         parentOp.fail(resultOp.getStatusCode(),
                                                 new RuntimeException(err.message),

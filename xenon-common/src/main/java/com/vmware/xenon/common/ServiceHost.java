@@ -84,11 +84,6 @@ import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
-import com.vmware.xenon.common.filters.AuthenticationFilter;
-import com.vmware.xenon.common.filters.AuthorizationFilter;
-import com.vmware.xenon.common.filters.ForwardRequestFilter;
-import com.vmware.xenon.common.filters.RequestRateLimitsFilter;
-import com.vmware.xenon.common.filters.ServiceAvailabilityFilter;
 import com.vmware.xenon.common.http.netty.NettyHttpListener;
 import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
 import com.vmware.xenon.common.jwt.JWTUtils;
@@ -1325,7 +1320,7 @@ public class ServiceHost implements ServiceRequestSender {
         return this;
     }
 
-    public Service getAuthorizationService() {
+    Service getAuthorizationService() {
         return this.authorizationService;
     }
 
@@ -1342,15 +1337,15 @@ public class ServiceHost implements ServiceRequestSender {
         return this;
     }
 
-    public Service getManagementService() {
+    Service getManagementService() {
         return this.managementService;
     }
 
-    public ServiceResourceTracker getServiceResourceTracker() {
+    ServiceResourceTracker getServiceResourceTracker() {
         return this.serviceResourceTracker;
     }
 
-    public OperationTracker getOperationTracker() {
+    OperationTracker getOperationTracker() {
         return this.operationTracker;
     }
 
@@ -1362,7 +1357,7 @@ public class ServiceHost implements ServiceRequestSender {
         return this;
     }
 
-    public Service getAuthenticationService() {
+    Service getAuthenticationService() {
         return this.authenticationService;
     }
 
@@ -1381,7 +1376,7 @@ public class ServiceHost implements ServiceRequestSender {
         return this;
     }
 
-    public URI getBasicAuthenticationServiceUri() {
+    URI getBasicAuthenticationServiceUri() {
         if (this.basicAuthenticationService == null) {
             return null;
         }
@@ -3412,7 +3407,7 @@ public class ServiceHost implements ServiceRequestSender {
         return findService(uriPath, true);
     }
 
-    public Service findService(String uriPath, boolean doExactMatch) {
+    protected Service findService(String uriPath, boolean doExactMatch) {
         Service s = this.attachedServices.get(uriPath);
         if (s != null) {
             return s;
@@ -3562,7 +3557,7 @@ public class ServiceHost implements ServiceRequestSender {
         this.serviceResourceTracker.retryOnDemandLoadConflict(op, s);
     }
 
-    public void queueOrScheduleRequest(Service s, Operation op) {
+    void queueOrScheduleRequest(Service s, Operation op) {
         ProcessingStage stage = s.getProcessingStage();
         if (stage == ProcessingStage.AVAILABLE) {
             queueOrScheduleRequestInternal(s, op);
@@ -4698,7 +4693,7 @@ public class ServiceHost implements ServiceRequestSender {
         this.client = client;
     }
 
-    public void saveServiceState(Service s, Operation op, ServiceDocument state) {
+    void saveServiceState(Service s, Operation op, ServiceDocument state) {
         // If this request doesn't originate from replication (which might happen asynchronously, i.e. through
         // (re-)synchronization after a node group change), don't update the documentAuthPrincipalLink because
         // it will be set to the system user. The specified state is expected to have the documentAuthPrincipalLink
@@ -5229,7 +5224,7 @@ public class ServiceHost implements ServiceRequestSender {
      *
      * @return authorization context.
      */
-    public AuthorizationContext getSystemAuthorizationContext() {
+    protected AuthorizationContext getSystemAuthorizationContext() {
         AuthorizationContext ctx = this.systemAuthorizationContext;
         if (ctx == null) {
             // No locking needed; duplicate work is benign
@@ -5260,7 +5255,7 @@ public class ServiceHost implements ServiceRequestSender {
      *
      * @return authorization context.
      */
-    public AuthorizationContext getGuestAuthorizationContext() {
+    protected AuthorizationContext getGuestAuthorizationContext() {
         AuthorizationContext ctx = this.guestAuthorizationContext;
         if (ctx == null) {
             // No locking needed; duplicate work is benign
@@ -5405,7 +5400,7 @@ public class ServiceHost implements ServiceRequestSender {
         return Runtime.getRuntime().removeShutdownHook(getRuntimeShutdownHook());
     }
 
-    void failRequestServiceAlreadyStarted(String path, Service s, Operation post) {
+    public void failRequestServiceAlreadyStarted(String path, Service s, Operation post) {
         ProcessingStage st = ProcessingStage.AVAILABLE;
         if (s != null) {
             st = s.getProcessingStage();

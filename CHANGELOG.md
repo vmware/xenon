@@ -51,7 +51,7 @@
   Also, patch request to `ServiceHostManagementService` now returns 200 instead of 304.
 
  * Provide configurable replication quorum which decides the success and failure threshold.
-   Api: PATCH PATH/TO/NODESELECTOR/replication -d '{replicationQuorum:REPLICATIONQUORUM}'
+   Api: PATCH PATH/TO/NODESELECTOR -d '{replicationQuorum:REPLICATIONQUORUM}'
 
 ## 1.5.7
 

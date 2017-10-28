@@ -11,17 +11,14 @@
  * specific language governing permissions and limitations under the License.
  */
 
-package com.vmware.xenon.common.filters;
+package com.vmware.xenon.common;
 
 import java.net.URI;
 import java.util.concurrent.TimeUnit;
 
-import com.vmware.xenon.common.AuthUtils;
-import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.OperationProcessingChain.Filter;
 import com.vmware.xenon.common.OperationProcessingChain.FilterReturnCode;
 import com.vmware.xenon.common.OperationProcessingChain.OperationProcessingContext;
-import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.services.common.authn.AuthenticationConstants;
 import com.vmware.xenon.services.common.authn.BasicAuthenticationUtils;
@@ -70,7 +67,8 @@ public class AuthenticationFilter implements Filter {
             }
 
             if (e != null) {
-                context.getOpProcessingChain().resumedRequestFailed(op, context, e);
+                context.getOpProcessingChain().resumeProcessingRequest(op, context,
+                        FilterReturnCode.FAILED_STOP_PROCESSING, e);
                 op.setBodyNoCloning(o.getBodyRaw())
                         .setStatusCode(o.getStatusCode()).fail(e);
                 return;
@@ -79,19 +77,22 @@ public class AuthenticationFilter implements Filter {
             // If the status code was anything but 200, and the operation
             // was marked as failed, terminate the processing chain
             if (o.getStatusCode() != Operation.STATUS_CODE_OK) {
-                context.getOpProcessingChain().resumedRequestFailed(op, context,
-                        new SecurityException());
+                context.getOpProcessingChain().resumeProcessingRequest(op, context,
+                        FilterReturnCode.FAILED_STOP_PROCESSING, new SecurityException());
                 op.setBodyNoCloning(o.getBodyRaw())
                         .setStatusCode(o.getStatusCode()).complete();
                 return;
             }
 
             // authentication success - proceed to the next filter
-            context.getOpProcessingChain().resumeProcessingRequest(op, context);
+            context.getOpProcessingChain().resumeProcessingRequest(op, context,
+                    FilterReturnCode.CONTINUE_PROCESSING, null);
         });
 
         // TODO: fix BasicAuthenticationService and just send it a POST
-        context.getHost().queueOrScheduleRequest(authnService, op);
+        context.setSuspendConsumer(o -> {
+            context.getHost().queueOrScheduleRequest(authnService, op);
+        });
         return FilterReturnCode.SUSPEND_PROCESSING;
     }
 

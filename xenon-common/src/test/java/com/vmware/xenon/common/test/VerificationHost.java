@@ -118,7 +118,6 @@ import com.vmware.xenon.services.common.NodeGroupService.NodeGroupConfig;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeGroupService.UpdateQuorumRequest;
 import com.vmware.xenon.services.common.NodeGroupUtils;
-import com.vmware.xenon.services.common.NodeSelectorReplicationService;
 import com.vmware.xenon.services.common.NodeState;
 import com.vmware.xenon.services.common.NodeState.NodeOption;
 import com.vmware.xenon.services.common.NodeState.NodeStatus;
@@ -2760,13 +2759,24 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public void setNodeSelectorReplicationQuorum(String nodeSelectorPath, int quorum) throws Throwable {
-        List<Operation> ops = new ArrayList<>();
-        for (ServiceHost host : this.getInProcessHostMap().values()) {
-            NodeSelectorReplicationService.ReplicationQuorumUpdateRequest body = new NodeSelectorReplicationService.ReplicationQuorumUpdateRequest();
-            body.replicationQuorum = quorum;
-            ops.add(Operation.createPatch(UriUtils.buildUri(host, nodeSelectorPath + "/" + SERVICE_URI_SUFFIX_REPLICATION)).setBody(body));
-        }
-        this.sender.sendAndWait(ops);
+        NodeSelectorService.UpdateReplicationQuorumRequest body = new NodeSelectorService.UpdateReplicationQuorumRequest();
+        body.replicationQuorum = quorum;
+        body.isGroupUpdate = true;
+        body.documentKind = NodeSelectorService.UpdateReplicationQuorumRequest.KIND;
+        Operation patch = Operation
+                .createPatch(UriUtils.buildUri(getPeerHost(), nodeSelectorPath))
+                .setBody(body);
+        this.sender.sendAndWait(patch);
+        waitFor("replication quorum not converged", () -> {
+            for (ServiceHost host : this.getInProcessHostMap().values()) {
+                Operation get = Operation.createGet(UriUtils.buildUri(host, nodeSelectorPath));
+                NodeSelectorState nss = this.sender.sendAndWait(get, NodeSelectorState.class);
+                if (nss.replicationQuorum != quorum) {
+                    return false;
+                }
+            }
+            return true;
+        });
     }
 
     public <T extends ServiceDocument> void validateDocumentPartitioning(

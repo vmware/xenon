@@ -11,29 +11,21 @@
  * specific language governing permissions and limitations under the License.
  */
 
-package com.vmware.xenon.common.filters;
+package com.vmware.xenon.common;
 
 import java.util.EnumSet;
 import java.util.concurrent.CancellationException;
 import java.util.logging.Level;
 
-import com.vmware.xenon.common.NodeSelectorService;
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
-import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Operation.OperationOption;
 import com.vmware.xenon.common.OperationProcessingChain.Filter;
 import com.vmware.xenon.common.OperationProcessingChain.FilterReturnCode;
 import com.vmware.xenon.common.OperationProcessingChain.OperationProcessingContext;
-import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ServiceOption;
-import com.vmware.xenon.common.ServiceClient;
-import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
-import com.vmware.xenon.common.ServiceHost;
-import com.vmware.xenon.common.UriUtils;
-import com.vmware.xenon.common.Utils;
 
 /**
  * This filter forwards the operation to the owner host, if needed.
@@ -115,7 +107,12 @@ public class ForwardRequestFilter implements Filter {
         }
 
         // request needs to be forwarded to owner
-        selectAndForwardRequestToOwner(service, servicePath, op, parent, context);
+        final String finalServicePath = servicePath;
+        final Service finalParent = parent;
+        context.setSuspendConsumer(o -> {
+            selectAndForwardRequestToOwner(service, finalServicePath, op, finalParent, context);
+        });
+
         return FilterReturnCode.SUSPEND_PROCESSING;
     }
 
@@ -129,14 +126,16 @@ public class ForwardRequestFilter implements Filter {
             if (e != null) {
                 host.log(Level.SEVERE, "Owner selection failed for service %s, op %d. Error: %s", op
                         .getUri().getPath(), op.getId(), e.toString());
-                context.getOpProcessingChain().resumedRequestFailed(op, context, e);
+                context.getOpProcessingChain().resumeProcessingRequest(op, context,
+                        FilterReturnCode.FAILED_STOP_PROCESSING, e);
                 op.setRetryCount(0).fail(e);
                 return;
             }
 
             SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
             if (rsp.isLocalHostOwner) {
-                context.getOpProcessingChain().resumeProcessingRequest(op, context);
+                context.getOpProcessingChain().resumeProcessingRequest(op, context,
+                        FilterReturnCode.CONTINUE_PROCESSING, null);
             } else {
                 forwardRequestToOwner(op, rsp, context);
             }
@@ -166,7 +165,8 @@ public class ForwardRequestFilter implements Filter {
             op.setContentLength(fo.getContentLength());
             op.transferResponseHeadersFrom(fo);
 
-            context.getOpProcessingChain().resumedRequestCompleted(op, context);
+            context.getOpProcessingChain().resumeProcessingRequest(op, context,
+                    FilterReturnCode.SUCCESS_STOP_PROCESSING, null);
             op.complete();
         };
 
@@ -222,14 +222,16 @@ public class ForwardRequestFilter implements Filter {
         }
 
         if (!shouldRetry) {
-            context.getOpProcessingChain().resumedRequestFailed(op, context, fe);
+            context.getOpProcessingChain().resumeProcessingRequest(op, context,
+                    FilterReturnCode.FAILED_STOP_PROCESSING, fe);
             Operation.failForwardedRequest(op, fo, fe);
             return;
         }
 
         // We will report this as failure, for diagnostics purposes.
         // The retry mechanism starts a fresh processing of the operation.
-        context.getOpProcessingChain().resumedRequestFailed(op, context, fe);
+        context.getOpProcessingChain().resumeProcessingRequest(op, context,
+                FilterReturnCode.FAILED_STOP_PROCESSING, fe);
         context.getHost().getOperationTracker().trackOperationForRetry(Utils.getNowMicrosUtc(), fe, op);
     }
 }

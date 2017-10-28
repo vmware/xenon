@@ -13,7 +13,9 @@
 
 package com.vmware.xenon.services.common;
 
+import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.toMap;
 import static javax.xml.bind.DatatypeConverter.printBase64Binary;
 
 import static org.junit.Assert.assertEquals;
@@ -4514,6 +4516,72 @@ public class TestLuceneDocumentIndexService {
         assertEquals(Long.valueOf(2), factoryResult.documentCount);
         assertTrue(pathToDocFoo + " should be visible", factoryResult.documentLinks.contains(pathToDocFoo));
         assertTrue(pathToDocBar + " should be visible", factoryResult.documentLinks.contains(pathToDocBar));
+    }
+
+    @Test
+    public void authCheckWithFieldOnChildDocument() throws Throwable {
+        setUpHost(true);
+
+        int nodeCount = 2;
+
+        if (this.host.getInProcessHostMap().isEmpty()) {
+            this.host.setPeerSynchronizationEnabled(true);
+            this.host.setUpPeerHosts(nodeCount);
+            this.host.joinNodesAndVerifyConvergence(nodeCount, true);
+            this.host.setNodeGroupQuorum(nodeCount);
+        }
+
+        List<VerificationHost> hosts = new ArrayList<>(this.host.getInProcessHostMap().values());
+        Map<String, VerificationHost> hostById = hosts.stream().collect(toMap(ServiceHost::getId, identity()));
+        VerificationHost host = this.host.getPeerHost();
+
+        TestContext waitContext = new TestContext(1, Duration.ofSeconds(30));
+        String usernameFoo = "foo@vmware.com";
+
+        // create a user that uses document field that is NOT a part of ServiceDocument itself for auth
+        AuthorizationSetupHelper fooBuilder = AuthorizationSetupHelper.create()
+                .setHost(host)
+                .setUserSelfLink(usernameFoo)
+                .setUserEmail(usernameFoo)
+                .setUserPassword("password")
+                .setResourceQuery(
+                        // check document field in ExampleServiceState
+                        Query.Builder.create()
+                                .addFieldClause(ExampleServiceState.FIELD_NAME_NAME, "foo")
+                                .build()
+                )
+                .setCompletion(waitContext.getCompletion());
+
+        AuthTestUtils.setSystemAuthorizationContext(host);
+        fooBuilder.start();
+        AuthTestUtils.resetAuthorizationContext(host);
+
+        waitContext.await();
+
+        TestRequestSender sender = new TestRequestSender(host);
+
+        // login as foo@vmware.com
+        AuthTestUtils.loginAndSetToken(host, usernameFoo, "password");
+
+        String fooPath = UriUtils.buildUriPath(ExampleService.FACTORY_LINK, "foo");
+        ExampleServiceState docFoo = new ExampleServiceState();
+        docFoo.name = "foo";
+        docFoo.documentSelfLink = fooPath;
+
+        Operation post = Operation.createPost(host, ExampleService.FACTORY_LINK).setBody(docFoo);
+        sender.sendAndWait(post);
+
+
+        // verify direct document get
+        ExampleServiceState getResult = sender.sendAndWait(Operation.createGet(host, fooPath), ExampleServiceState.class);
+        hostById.remove(getResult.documentOwner);
+        VerificationHost nonOwnerHost = hostById.values().stream().findFirst().get();
+
+        Operation result = sender.sendAndWait(Operation.createDelete(nonOwnerHost, fooPath).forceRemote());
+        assertEquals(Operation.STATUS_CODE_OK, result.getStatusCode());
+
+        FailureResponse failure = sender.sendAndWaitFailure(Operation.createGet(nonOwnerHost, fooPath).forceRemote());
+        assertEquals(Operation.STATUS_CODE_NOT_FOUND, failure.op.getStatusCode());
     }
 
 }

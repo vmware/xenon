@@ -170,6 +170,44 @@ public class TestNodeGroupService {
 
     }
 
+    public static class ExampleSelfPatchService extends ExampleService {
+        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/self-patch-examples";
+
+        public static FactoryService createFactory() {
+            return FactoryService.create(ExampleSelfPatchService.class);
+        }
+
+        public ExampleSelfPatchService() {
+            super();
+            toggleOption(ServiceOption.PERSISTENCE, false);
+        }
+
+        @Override
+        public void handleStart(Operation startPost) {
+            if (!startPost.hasBody()) {
+                startPost.fail(new IllegalArgumentException("initial state is required"));
+                return;
+            }
+
+            ExampleServiceState s = startPost.getBody(ExampleServiceState.class);
+            if (s.name == null) {
+                startPost.fail(new IllegalArgumentException("name is required"));
+                return;
+            }
+            ++s.counter;
+            startPost.complete();
+            // self patch
+            Operation.createPatch(getUri())
+                    .setBody(s)
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            logInfo(e.getMessage());
+                        }
+                    })
+                    .sendWith(this);
+        }
+    }
+
     @Rule
     public TestResults testResults = new TestResults();
 
@@ -2465,6 +2503,7 @@ public class TestNodeGroupService {
         state.counter = 1L;
 
         VerificationHost peer = this.host.getPeerHost();
+        Map<String, ExampleServiceState> exampleStatesPerSelfLink = new HashMap<>();
 
         TestContext ctx = this.host.testCreate(this.serviceCount * this.updateCount);
         for (int i = 0; i < this.serviceCount; i++) {
@@ -2486,14 +2525,56 @@ public class TestNodeGroupService {
                                     .createPatch(peer, rsp.documentSelfLink)
                                     .setBody(update)
                                     .setReferer(this.host.getUri())
-                                    .setCompletion(ctx.getCompletion());
+                                    .setCompletion((op, ex) -> {
+                                        if (ex != null) {
+                                            ctx.failIteration(ex);
+                                            return;
+                                        }
+
+                                        ExampleServiceState updatedState = op.getBody(ExampleServiceState.class);
+                                        exampleStatesPerSelfLink.put(rsp.documentSelfLink, updatedState);
+                                        ctx.completeIteration();
+                                    });
                             this.host.sendRequest(patch);
                         }
-
                     });
             this.host.sendRequest(post);
         }
         ctx.await();
+
+        this.host.waitForReplicatedFactoryChildServiceConvergence(
+                getFactoriesPerNodeGroup(ExampleService.FACTORY_LINK),
+                exampleStatesPerSelfLink,
+                this.exampleStateConvergenceChecker,
+                exampleStatesPerSelfLink.size(),
+                this.updateCount,
+                this.replicationFactor);
+    }
+
+    @Test
+    public void testStartServiceOutOfOrder() throws Throwable {
+        setUp(this.nodeCount);
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            h.startFactory(new ExampleSelfPatchService());
+            h.waitForServiceAvailable(UriUtils.buildUri(h, ExampleSelfPatchService.FACTORY_LINK));
+        }
+        this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+        this.host.setNodeGroupQuorum(this.nodeCount);
+        URI ExampleSelfPatchFactoryUri = UriUtils.buildUri(
+                this.host.getPeerServiceUri(ExampleSelfPatchService.FACTORY_LINK));
+        this.host.waitForReplicatedFactoryServiceAvailable(ExampleSelfPatchFactoryUri);
+
+        List<ExampleServiceState> exampleStates = this.host.createExampleServices(
+                this.host.getPeerHost(), this.serviceCount, null, ExampleSelfPatchService.FACTORY_LINK);
+        Map<String, ExampleServiceState> exampleStatesMap =
+                exampleStates.stream().collect(Collectors.toMap(s -> s.documentSelfLink, s -> s));
+
+        this.host.waitForReplicatedFactoryChildServiceConvergence(
+                this.host.getNodeGroupToFactoryMap(ExampleSelfPatchService.FACTORY_LINK),
+                exampleStatesMap,
+                this.exampleStateConvergenceChecker,
+                this.serviceCount,
+                0, this.nodeCount);
     }
 
     @Test

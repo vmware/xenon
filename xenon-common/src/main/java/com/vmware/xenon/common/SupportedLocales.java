@@ -15,8 +15,14 @@ package com.vmware.xenon.common;
 
 import java.io.File;
 import java.io.FilenameFilter;
+import java.io.IOException;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -55,6 +61,7 @@ public class SupportedLocales {
     private static String[] getMessageFiles() {
         URL url = LocalizationUtil.class.getClassLoader().getResource(MESSAGES_FOLDER);
         String[] messageFiles = null;
+
         if ("file".equals(url.getProtocol())) {
             try {
                 messageFiles = new File(url.toURI()).list(new FilenameFilter() {
@@ -64,6 +71,18 @@ public class SupportedLocales {
                     }
                 });
             } catch (URISyntaxException e) {
+                Logger.getAnonymousLogger().warning(
+                        String.format("Unable to load message files from %s: %s ", url, e));
+            }
+        } else if ("jar".equals(url.getProtocol())) {
+            try (FileSystem fileSystem = FileSystems.newFileSystem(url.toURI(),
+                    Collections.emptyMap())) {
+                Path myPath = fileSystem.getPath(MESSAGES_FOLDER);
+                messageFiles = Files.walk(myPath, 1)
+                        .filter(path -> path.toString().contains(MESSAGES_BASE_FILENAME))
+                        .map(path -> path.getFileName().toString())
+                        .toArray(String[]::new);
+            } catch (IOException | URISyntaxException e) {
                 Logger.getAnonymousLogger().warning(
                         String.format("Unable to load message files from %s: %s ", url, e));
             }

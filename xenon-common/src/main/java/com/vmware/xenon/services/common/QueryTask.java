@@ -168,6 +168,14 @@ public class QueryTask extends ServiceDocument {
             BROADCAST,
 
             /**
+             * Ensures read after write consistency for query results.
+             * This option requires that the membership quorum be set to a majority of the nodes in the
+             * node group and all services involved in the query needs to have ServiceOption.OWNER_SELECTION
+             * enabled
+             */
+            READ_AFTER_WRITE_CONSISTENCY,
+
+            /**
              * Filters query results based on the document owner ID.
              * If the owner ID of the document does not match the ID of the host executing the query,
              * the document is removed from the result
