@@ -17,6 +17,7 @@ import java.io.UnsupportedEncodingException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLDecoder;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -180,10 +181,19 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
     }
 
     private void parseRequestUri(Operation request, FullHttpRequest nettyRequest)
-            throws URISyntaxException {
-        URI targetUri = new URI(nettyRequest.uri());
-        String decodedQuery = null;
+            throws URISyntaxException, UnsupportedEncodingException {
+        String path = nettyRequest.uri();
+        URI targetUri;
+        if (path.startsWith("/")) {
+            String[] parts = path.split("\\?", 2);
+            targetUri = new URI(null, null, parts[0],
+                    parts.length > 1 ? URLDecoder.decode(parts[1], Utils.CHARSET) : null,
+                    null);
+        } else {
+            targetUri = new URI(path);
+        }
 
+        String decodedQuery = null;
         if (!request.isForwarded() && !request.isFromReplication()) {
             // do conservative parsing, normalization and decoding for non peer requests
             targetUri = targetUri.normalize();
