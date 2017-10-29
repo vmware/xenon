@@ -44,6 +44,8 @@ public class ServiceAvailabilityFilter implements Filter {
             return FilterReturnCode.FAILED_STOP_PROCESSING;
         }
 
+        boolean debug = servicePath.contains("/service/foo") || servicePath.contains(
+                "/test/on-demand-load-services");
         // re-use already looked-up service, if exists; otherwise, look it up
         Service service = context.getService();
         if (service == null) {
@@ -70,6 +72,10 @@ public class ServiceAvailabilityFilter implements Filter {
             Service finalService = service;
             op.nestCompletion(o -> {
                 context.setService(finalService);
+                if (debug) {
+                    context.getHost().log(Level.INFO, "DEBUG: resuming op %d %s",
+                            op.getId(), op.getAction());
+                }
                 context.getOpProcessingChain().resumeProcessingRequest(op, context,
                         FilterReturnCode.CONTINUE_PROCESSING, null);
             });
@@ -78,6 +84,10 @@ public class ServiceAvailabilityFilter implements Filter {
             context.setSuspendConsumer(o -> {
                 context.getHost().registerForServiceAvailability(op, finalServicePath);
             });
+            if (debug) {
+                context.getHost().log(Level.INFO, "DEBUG: suspending op %d %s: regsiteringForServiceAvailability",
+                        op.getId(), op.getAction());
+            }
             return FilterReturnCode.SUSPEND_PROCESSING;
         }
 
@@ -86,6 +96,10 @@ public class ServiceAvailabilityFilter implements Filter {
         if (op.getAction() == Action.DELETE &&
                 op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)) {
             // local stop - do not start on demand - complete and return
+            if (debug) {
+                context.getHost().log(Level.INFO, "DEBUG: %d %s is a local stop and service is already stopped - completing",
+                        op.getId(), op.getAction());
+            }
             op.complete();
             return FilterReturnCode.SUCCESS_STOP_PROCESSING;
         }
@@ -105,6 +119,10 @@ public class ServiceAvailabilityFilter implements Filter {
                         checkAndOnDemandStartService(op, finalServicePath, (FactoryService) parentService, context);
                     });
                 });
+                if (debug) {
+                    context.getHost().log(Level.INFO, "DEBUG: %d %s: on-demand start",
+                            op.getId(), op.getAction());
+                }
                 return FilterReturnCode.SUSPEND_PROCESSING;
             }
         }
