@@ -2484,9 +2484,8 @@ public class ServiceHost implements ServiceRequestSender {
             return this;
         }
 
-        ProcessingStage stage = service.getProcessingStage();
-        if (isServiceStartingOrAvailable(stage)) {
-            post.complete();
+        if (post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_ALL_VERSIONS)) {
+            synchAllVersions(post, service, onDemandTriggeringOp);
             return this;
         }
 
@@ -2524,10 +2523,11 @@ public class ServiceHost implements ServiceRequestSender {
             post.setExpiration(Utils.fromNowMicrosUtc(this.state.operationTimeoutMicros));
         }
 
+        boolean attachService = !post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_VERSION);
+
         // if the service is a helper for one of the known URI suffixes, do not
         // add it to the map. We will special case dispatching to it
         if (isHelperServicePath(servicePath)) {
-            // do not directly attach utility services
             if (!service.hasOption(Service.ServiceOption.UTILITY)) {
                 String errorMsg = "Service is using an utility URI path but has not enabled "
                         + ServiceOption.UTILITY;
@@ -2535,7 +2535,12 @@ public class ServiceHost implements ServiceRequestSender {
                 post.fail(new IllegalStateException(errorMsg));
                 return this;
             }
-        } else if (checkIfServiceExistsAndAttach(service, servicePath, post, onDemandTriggeringOp)) {
+
+            // do not directly attach utility services
+            attachService = false;
+        }
+
+        if (attachService && checkIfServiceExistsAndAttach(service, servicePath, post, onDemandTriggeringOp)) {
             // service exists, do not proceed with start
             return this;
         }
@@ -2549,12 +2554,19 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         // make sure we detach the service on start failure
+        final boolean finalAttachService = attachService;
         post.nestCompletion((o, e) -> {
             this.operationTracker.removeStartOperation(post);
             if (e == null) {
                 post.complete();
                 return;
             }
+
+            if (!finalAttachService) {
+                post.fail(o.getStatusCode(), e, o.getBodyRaw());
+                return;
+            }
+
             stopService(service);
             this.serviceSynchTracker.failStartServiceOrSynchronize(service, post, o, e);
         });
@@ -2681,6 +2693,50 @@ public class ServiceHost implements ServiceRequestSender {
             doc.documentSelfLink = link;
             op.setBody(doc);
         }
+    }
+
+    private void synchAllVersions(Operation post, Service service, Operation onDemandTriggeringOp) {
+        // synch all versions operates in two stages:
+        // (1) regular syncOwner, at the end of it the last version is retrieved
+        // (2) synch historical versions, up to the last version excluding
+        post.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_ALL_VERSIONS);
+        post.nestCompletion((o, e) -> {
+            if (e != null) {
+                post.fail(e);
+                return;
+            }
+
+            if (!o.hasBody()) {
+                this.log(Level.WARNING,
+                        "POST %d: Synch all versions: first stage response has no body - skipping second stage",
+                        post.getId());
+                post.complete();
+                return;
+            }
+
+            ServiceDocument sd = o.getBody(service.getStateType());
+            long lastVersion = sd.documentVersion;
+
+            if (lastVersion == 0) {
+                post.complete();
+                return;
+            }
+
+            // stage (2): synch historical versions, up to the last version excluding
+            this.log(Level.FINE, "POST %d synch all versions: starting second stage for %s",
+                    post.getId(), post.getUri().getPath());
+
+            // restore to syncOwner post and set SYNCH_HISTORICAL_VERSIONS
+            post.setAction(Action.POST);
+            post.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER);
+            post.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_HISTORICAL_VERSIONS);
+            post.setFromReplication(false);
+
+            startService(post, service, onDemandTriggeringOp);
+        });
+
+        // Stage (1): regular syncOwner flow - synch latest version
+        startService(post, service, onDemandTriggeringOp);
     }
 
     private boolean checkIfServiceExistsAndAttach(Service service, String servicePath,
@@ -2978,6 +3034,13 @@ public class ServiceHost implements ServiceRequestSender {
                     return;
                 }
 
+                if (post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_VERSION)) {
+                    // skip handleStart for synch-version requests - this is a sync
+                    // of a historical version
+                    post.complete();
+                    return;
+                }
+
                 opCtx = extractAndApplyContext(post);
                 try {
                     s.handleStart(post);
@@ -3006,7 +3069,9 @@ public class ServiceHost implements ServiceRequestSender {
                             hasClientSuppliedInitialState);
                 });
 
-                if (post.hasBody()) {
+                if (post.hasBody() && !needsIndexing) {
+                    // cache state now, as we're not going to save service state
+                    // (which involves also caching)
                     ServiceDocument state = (ServiceDocument) post.getBodyRaw();
                     if (state != null && state.documentKind == null) {
                         log(Level.WARNING, "documentKind is null for %s", s.getSelfLink());
@@ -3014,7 +3079,7 @@ public class ServiceHost implements ServiceRequestSender {
                     }
 
                     this.serviceResourceTracker.updateCachedServiceState(s,
-                                state, post);
+                            state, post);
                 }
 
                 if (!post.hasBody() || !needsIndexing) {
@@ -3082,7 +3147,7 @@ public class ServiceHost implements ServiceRequestSender {
                 }
 
                 s.setProcessingStage(Service.ProcessingStage.AVAILABLE);
-                if (!isServiceImmutable(s)) {
+                if (!isServiceImmutable(s) && !post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_VERSION)) {
                     startUiFileContentServices(s);
                     scheduleServiceMaintenance(s);
                 }
@@ -3284,16 +3349,33 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
-        Operation getLatestState = Operation.createGet(serviceStartPost.getUri())
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)
-                .transferRefererFrom(serviceStartPost);
+        URI getStateUri;
+        boolean synchVersion = serviceStartPost.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_VERSION);
+        if (synchVersion) {
+            // construct a URI for the specific version
+            ServiceDocument body = serviceStartPost.getBody(s.getStateType());
+            getStateUri = UriUtils.buildIndexQueryUri(
+                    indexService.getUri(),
+                    serviceStartPost.getUri().getPath(),
+                    body.documentVersion,
+                    false,
+                    true,
+                    ServiceOption.PERSISTENCE);
+        } else {
+            getStateUri = serviceStartPost.getUri();
+        }
 
-        getLatestState.setCompletion((indexQueryOperation, e) -> {
+        Operation getState = Operation.createGet(getStateUri).transferRefererFrom(serviceStartPost);
+        if (!synchVersion) {
+            getState.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
+        }
+
+        getState.setCompletion((indexQueryOperation, e) -> {
             handleLoadInitialStateCompletion(s, serviceStartPost, next,
                     hasClientSuppliedState,
                     indexQueryOperation, e);
         });
-        indexService.handleRequest(getLatestState);
+        indexService.handleRequest(getState);
     }
 
     ServiceDocument getCachedServiceState(Service s, Operation op) {
@@ -3344,7 +3426,7 @@ public class ServiceHost implements ServiceRequestSender {
         boolean isSynchronizePeer = serviceStartPost.isSynchronizePeer();
 
         ServiceDocument stateToLink = isSynchronizePeer ?
-                (ServiceDocument) serviceStartPost.getBodyRaw() : stateFromStore;
+                serviceStartPost.getBody(s.getStateType()) : stateFromStore;
         serviceStartPost.linkState(stateToLink);
 
         if (!checkServiceExistsOrDeleted(s, stateFromStore, serviceStartPost)) {
@@ -3386,6 +3468,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         boolean isDeleted = ServiceDocument.isDeleted(stateFromStore)
                 || this.pendingServiceDeletions.contains(s.getSelfLink());
+        boolean synchVersion = serviceStartPost.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_VERSION);
 
         if (!serviceStartPost.hasBody()) {
             if (isDeleted) {
@@ -3399,8 +3482,8 @@ public class ServiceHost implements ServiceRequestSender {
                 return true;
             }
         }
-        ServiceDocument initState = (ServiceDocument) serviceStartPost.getBodyRaw();
-        if (isDeleted) {
+        ServiceDocument initState = serviceStartPost.getBody(s.getStateType());
+        if (isDeleted && !synchVersion) {
             if (stateFromStore.documentVersion < initState.documentVersion) {
                 // new state is higher than previously indexed state, allow restart
                 return true;
@@ -3423,7 +3506,13 @@ public class ServiceHost implements ServiceRequestSender {
             if (stateFromStore.documentVersion == initState.documentVersion) {
                 // avoid creating a duplicate document version
                 serviceStartPost.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE);
+            } else if (synchVersion) {
+                serviceStartPost.fail(new IllegalStateException(String.format(
+                        "Service %s: synchronize version mismatch: expected version %d, index returned %d",
+                        initState.documentSelfLink, initState.documentVersion, stateFromStore.documentVersion)));
+                return false;
             }
+
             return true;
         }
 
@@ -4849,14 +4938,19 @@ public class ServiceHost implements ServiceRequestSender {
         // it will be set to the system user. The specified state is expected to have the documentAuthPrincipalLink
         // set from when it was first saved.
         if (!op.isFromReplication()) {
-            state.documentAuthPrincipalLink = (op.getAuthorizationContext() != null)
+            state.documentAuthPrincipalLink = op.getAuthorizationContext() != null
                     ? op.getAuthorizationContext().getClaims().getSubject() : null;
         }
 
         if (this.transactionService != null) {
             state.documentTransactionId = op.getTransactionId();
         }
-        state.documentUpdateAction = op.getAction().name();
+
+        if (!op.isSynchronizePeer()) {
+            // a synch-peer request already has the correct documentUpdateAction
+            // in its body
+            state.documentUpdateAction = op.getAction().name();
+        }
 
         if (!isServiceIndexed(s)) {
             cacheServiceState(s, state, op);

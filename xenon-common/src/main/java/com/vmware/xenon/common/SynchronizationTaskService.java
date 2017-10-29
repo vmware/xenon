@@ -103,6 +103,12 @@ public class SynchronizationTaskService
         public int queryResultLimit;
 
         /**
+         * Controls whether to synchronize all versions or only the latest version.
+         * False by default.
+         */
+        public boolean synchAllVersions;
+
+        /**
          * The last known membershipUpdateTimeMicros that kicked-off this
          * synchronization task.
          */
@@ -799,6 +805,10 @@ public class SynchronizationTaskService
                 .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
                 .setRetryCount(0);
+        if (task.synchAllVersions) {
+            synchRequest.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_ALL_VERSIONS);
+        }
+
         try {
             sendRequest(synchRequest);
         } catch (Exception e) {
