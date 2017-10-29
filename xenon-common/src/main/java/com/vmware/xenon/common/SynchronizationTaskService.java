@@ -42,6 +42,8 @@ public class SynchronizationTaskService
 
     public static final String PROPERTY_NAME_MAX_CHILD_SYNCH_RETRY_COUNT =
             Utils.PROPERTY_NAME_PREFIX + "SynchronizationTaskService.MAX_CHILD_SYNCH_RETRY_COUNT";
+    public static final String PROPERTY_NAME_SYNCH_ALL_VERSIONS =
+            Utils.PROPERTY_NAME_PREFIX + "SynchronizationTaskService.synchAllVersions";
 
     /**
      * Maximum synch-task retry limit.
@@ -100,6 +102,12 @@ public class SynchronizationTaskService
          * Upper limit to the number of results per page of the broadcast query task.
          */
         public int queryResultLimit;
+
+        /**
+         * Controls whether to synchronize all versions or only the latest version.
+         * False by default.
+         */
+        public boolean synchAllVersions;
 
         /**
          * The last known membershipUpdateTimeMicros that kicked-off this
@@ -781,6 +789,10 @@ public class SynchronizationTaskService
                 .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
                 .setRetryCount(0);
+        if (task.synchAllVersions) {
+            synchRequest.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_ALL_VERSIONS);
+        }
+
         try {
             sendRequest(synchRequest);
         } catch (Exception e) {

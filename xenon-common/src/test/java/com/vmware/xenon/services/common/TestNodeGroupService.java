@@ -457,6 +457,7 @@ public class TestNodeGroupService {
         this.host.toggleNegativeTestMode(false);
         this.host.tearDown();
         this.host = null;
+        System.clearProperty(SynchronizationTaskService.PROPERTY_NAME_SYNCH_ALL_VERSIONS);
     }
 
     @Test
@@ -1396,6 +1397,61 @@ public class TestNodeGroupService {
         }
 
         doNodeStopWithUpdates(exampleStatesPerSelfLink);
+    }
+
+    @Test
+    public void synchronizationAllVersions() throws Throwable {
+        // toggle on all-versions synchronization
+        System.setProperty(SynchronizationTaskService.PROPERTY_NAME_SYNCH_ALL_VERSIONS, Boolean.TRUE.toString());
+
+        setUp(this.nodeCount);
+
+        // On one host, create some services. They exist only on this host and we expect them to synchronize
+        // across all hosts once this one joins with the group
+        VerificationHost initialHost = this.host.getPeerHost();
+        URI initialHostUri = initialHost.getUri();
+        Map<String, ExampleServiceState> exampleStatesPerSelfLink = createExampleServices(
+                initialHostUri);
+
+        // update services to create some version history
+        doExampleServicePatch(exampleStatesPerSelfLink, initialHostUri);
+
+        // before start joins, verify isolated factory synchronization is done
+        for (URI hostUri : this.host.getNodeGroupMap().keySet()) {
+            waitForReplicatedFactoryServiceAvailable(
+                    UriUtils.buildUri(hostUri, this.replicationTargetFactoryLink),
+                    ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+        }
+
+        // now join other nodes to initial node and verify versions have been synchronized
+        URI initialHostNodeGroupUri = UriUtils.buildUri(initialHostUri,
+                ServiceUriPaths.DEFAULT_NODE_GROUP);
+        Map<URI, URI> nodeGroupUriToFactoryUri = new HashMap<>();
+        nodeGroupUriToFactoryUri.put(initialHostNodeGroupUri, UriUtils.buildUri(initialHostUri,
+                this.replicationTargetFactoryLink));
+        this.host.setNodeGroupQuorum(this.nodeCount);
+        this.host.testStart(this.nodeCount - 1);
+        for (URI nodeGroupUri : this.host.getNodeGroupMap().values()) {
+            // skip initial host
+            if (nodeGroupUri.equals(initialHostUri)) {
+                continue;
+            }
+
+            this.host.joinNodeGroup(nodeGroupUri, initialHostNodeGroupUri, this.nodeCount);
+            nodeGroupUriToFactoryUri.put(nodeGroupUri, UriUtils.buildUri(nodeGroupUri,
+                    this.replicationTargetFactoryLink));
+        }
+        this.host.testWait();
+
+        this.host.waitForNodeGroupConvergence(nodeGroupUriToFactoryUri.keySet(), this.nodeCount,
+                this.nodeCount, true);
+        this.host.waitForNodeGroupIsAvailableConvergence(ServiceUriPaths.DEFAULT_NODE_GROUP, nodeGroupUriToFactoryUri.keySet());
+
+        this.host.waitForReplicatedFactoryChildServiceConvergence(
+                nodeGroupUriToFactoryUri,
+                exampleStatesPerSelfLink,
+                this.exampleStateConvergenceChecker, exampleStatesPerSelfLink.size(),
+                this.updateCount, this.replicationFactor);
     }
 
     private void doExampleServicePatch(Map<String, ExampleServiceState> states,
