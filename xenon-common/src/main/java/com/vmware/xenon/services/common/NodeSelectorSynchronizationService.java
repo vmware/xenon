@@ -33,14 +33,17 @@ import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocument.DocumentRelationship;
 import com.vmware.xenon.common.ServiceDocumentDescription;
+import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 
 public class NodeSelectorSynchronizationService extends StatelessService {
 
     public static final String PROPERTY_NAME_SYNCHRONIZATION_LOGGING = Utils.PROPERTY_NAME_PREFIX
             + "NodeSelectorSynchronizationService.isDetailedLoggingEnabled";
+    public static final int SYNCH_ALL_VERSIONS_QUERY_RESULT_LIMIT = 100;
 
     public static class NodeGroupSynchronizationState extends ServiceDocument {
         public Set<String> inConflictLinks = new HashSet<>();
@@ -130,6 +133,36 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             return;
         }
 
+        boolean synchAllVersions = post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_ALL_VERSIONS);
+        if (synchAllVersions) {
+            QueryTask.Query query = QueryTask.Query.Builder.create()
+                    .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, body.state.documentSelfLink)
+                    .build();
+            QueryTask task = QueryTask.Builder.createDirectTask()
+                    .setQuery(query)
+                    .setResultLimit(SYNCH_ALL_VERSIONS_QUERY_RESULT_LIMIT)
+                    .addOption(QueryOption.INCLUDE_ALL_VERSIONS)
+                    .addOption(QueryOption.BROADCAST)
+                    .build();
+            task.documentExpirationTimeMicros = post.getExpirationMicrosUtc();
+
+            URI localQueryTasksUri = UriUtils.buildUri(getHost(),ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
+            Operation taskPost = Operation.createPost(localQueryTasksUri)
+                    .setBody(task)
+                    .setReferer(getUri())
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            post.fail(e);
+                            return;
+                        }
+
+                        ServiceDocumentQueryResult queryResult = o.getBody(QueryTask.class).results;
+                        handleBroadcastQueryCompletion(queryResult, post, body);
+                    });
+            getHost().sendRequest(taskPost);
+            return;
+        }
+
         // we are going to broadcast a query (GET) to all peers, that should return
         // a document with the specified self link
         URI localQueryUri = UriUtils.buildDocumentQueryUri(
@@ -157,6 +190,71 @@ public class NodeSelectorSynchronizationService extends StatelessService {
 
         getHost().broadcastRequest(this.parent.getSelfLink(), body.state.documentSelfLink, true,
                 remoteGet);
+    }
+
+    private void handleBroadcastQueryCompletion(ServiceDocumentQueryResult queryResult, Operation post,
+            SynchronizePeersRequest request) {
+        Set<String> synchronizedVersionedLinks = new HashSet<>(queryResult.documentCount.intValue());
+
+        String pageLink = queryResult.nextPageLink;
+        synchronizePage(pageLink, post, request, synchronizedVersionedLinks);
+    }
+
+    private void synchronizePage(String pageLink, Operation post, SynchronizePeersRequest request,
+            Set<String> synchronizedVersionedLinks) {
+        if (pageLink == null || pageLink.isEmpty()) {
+            post.complete();
+            return;
+        }
+
+        logInfo("DEBUG: synchronizing page, link: %s", pageLink);
+        Operation getPage = Operation.createGet(UriUtils.buildUri(getHost(), pageLink))
+                .setReferer(getUri()).setCompletion((o, e) -> {
+                    if (e != null) {
+                        post.fail(e);
+                        return;
+                    }
+
+                    ServiceDocumentQueryResult page = o.getBody(QueryTask.class).results;
+                    post.nestCompletion((oo, ee) -> {
+                        if (ee != null) {
+                            post.fail(e);
+                            return;
+                        }
+
+                        synchronizePage(page.nextPageLink, post, request, synchronizedVersionedLinks);
+                    });
+
+                    synchronizeSingleVersion(page.documentLinks, 0, request, post, synchronizedVersionedLinks);
+                });
+        getHost().sendRequest(getPage);
+    }
+
+    private void synchronizeSingleVersion(List<String> documentLinks, int documentLinkIndex,
+            SynchronizePeersRequest request, Operation post,
+            Set<String> synchronizedVersionedLinks) {
+        if (documentLinkIndex >= documentLinks.size()) {
+            post.complete();
+            return;
+        }
+
+        String documentLink = documentLinks.get(documentLinkIndex);
+        if (synchronizedVersionedLinks.contains(documentLink)) {
+            post.complete();
+            return;
+        }
+
+        post.nestCompletion((o, e) -> {
+            if (e != null) {
+                post.fail(e);
+                return;
+            }
+
+            synchronizeSingleVersion(documentLinks, documentLinkIndex + 1, request, post, synchronizedVersionedLinks);
+        });
+
+        synchronizedVersionedLinks.add(documentLink);
+        post.complete();
     }
 
     private void handleBroadcastGetCompletion(NodeGroupBroadcastResponse rsp, Operation post,
