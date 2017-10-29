@@ -1136,6 +1136,7 @@ public abstract class FactoryService extends StatelessService {
         task.queryResultLimit = SELF_QUERY_RESULT_LIMIT;
         task.taskInfo = TaskState.create();
         task.taskInfo.isDirect = true;
+        task.synchAllVersions = Boolean.getBoolean(SynchronizationTaskService.PROPERTY_NAME_SYNCH_ALL_VERSIONS);
         return task;
     }
 
