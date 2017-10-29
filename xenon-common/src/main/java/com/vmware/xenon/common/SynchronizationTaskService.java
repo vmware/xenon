@@ -51,6 +51,16 @@ public class SynchronizationTaskService
             8
     );
 
+    /**
+     * Synchronize all versions.
+     * Set to true when synchronization of all versions, not just the latest, is desired.
+     */
+    public static final boolean SYNCH_ALL_VERSIONS = XenonConfiguration.bool(
+            SynchronizationTaskService.class,
+            "SYNCH_ALL_VERSIONS",
+            false
+    );
+
 
     public static SynchronizationTaskService create(Supplier<Service> childServiceInstantiator) {
         if (childServiceInstantiator.get() == null) {
@@ -100,6 +110,12 @@ public class SynchronizationTaskService
          * Upper limit to the number of results per page of the broadcast query task.
          */
         public int queryResultLimit;
+
+        /**
+         * Controls whether to synchronize all versions or only the latest version.
+         * False by default.
+         */
+        public boolean synchAllVersions;
 
         /**
          * The last known membershipUpdateTimeMicros that kicked-off this
@@ -786,6 +802,10 @@ public class SynchronizationTaskService
                 .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
                 .setRetryCount(0);
+        if (task.synchAllVersions) {
+            synchRequest.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_ALL_VERSIONS);
+        }
+
         try {
             sendRequest(synchRequest);
         } catch (Exception e) {
