@@ -83,6 +83,7 @@ import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TestResults;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.config.TestXenonConfiguration;
 import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
@@ -457,6 +458,10 @@ public class TestNodeGroupService {
         this.host.toggleNegativeTestMode(false);
         this.host.tearDown();
         this.host = null;
+        TestXenonConfiguration.restore(SynchronizationTaskService.class,
+                "SYNCH_ALL_VERSIONS",
+                "false"
+        );
     }
 
     @Test
@@ -552,7 +557,7 @@ public class TestNodeGroupService {
         // relax quorum, so we can perform updates after a host is stopped
         this.host.setNodeGroupQuorum(this.nodeCount - 1);
 
-        // expire node that went away quickly to avoid alot of log spam from gossip failures
+        // expire node that went away quickly to avoid a lot of log spam from gossip failures
         NodeGroupConfig cfg = new NodeGroupConfig();
         cfg.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(1);
         this.host.setNodeGroupConfig(cfg);
@@ -1388,6 +1393,168 @@ public class TestNodeGroupService {
         }
 
         doNodeStopWithUpdates(exampleStatesPerSelfLink);
+    }
+
+    @Test
+    public void synchronizationAllVersions() throws Throwable {
+        // toggle on all-versions synchronization
+        TestXenonConfiguration.override(
+                SynchronizationTaskService.class,
+                "SYNCH_ALL_VERSIONS",
+                "true"
+        );
+
+        this.isPeerSynchronizationEnabled = false;
+        setUp(this.nodeCount);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+
+        // relax quorum, so we can perform updates after a host is stopped
+        this.host.setNodeGroupQuorum(this.nodeCount - 1);
+
+        // expire node that went away quickly to avoid a lot of log spam from gossip failures
+        NodeGroupConfig cfg = new NodeGroupConfig();
+        cfg.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(1);
+        this.host.setNodeGroupConfig(cfg);
+
+        // stop one of the hosts, preserve its index
+        VerificationHost stoppedHost = this.host.getPeerHost();
+        this.host.stopHostAndPreserveState(stoppedHost);
+
+        // wait for stopped host to be removed from node group
+        this.host.waitForNodeGroupConvergence(this.nodeCount - 1, this.nodeCount - 1);
+
+        // Create some services
+        VerificationHost peerHost = this.host.getPeerHost();
+        URI peerHostUri = peerHost.getUri();
+        Map<String, ExampleServiceState> exampleStatesPerSelfLink = createExampleServices(
+                peerHostUri);
+
+        // update services to create some version history
+        doExampleServicePatch(exampleStatesPerSelfLink, peerHostUri);
+
+        // increase quorum on existing nodes, so they wait for restarted host to join
+        this.host.setNodeGroupQuorum(this.nodeCount);
+
+        // restart stopped host
+        stoppedHost.setPort(0);
+        stoppedHost.setSecurePort(0);
+        stoppedHost.setPeerSynchronizationEnabled(false);
+        assertTrue(VerificationHost.restartStatefulHost(stoppedHost, false));
+
+        // join restarted host and wait for node group convergence
+        this.host.addPeerNode(stoppedHost);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+
+        // set quorum on new node as well
+        this.host.setNodeGroupQuorum(this.nodeCount);
+        this.host.waitForNodeGroupConvergence();
+
+        // find example factory owner
+        VerificationHost owner = this.host.getInProcessHostMap().values().stream()
+                .filter(h -> h.isOwner(ExampleService.FACTORY_LINK, ServiceUriPaths.DEFAULT_NODE_SELECTOR))
+                .findFirst().get();
+
+        // wait for node selector availability before manually trigger a synchronization task
+        this.host.waitFor("wait node selector available timeout", () -> {
+            Operation op = Operation.createGet(owner, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+            NodeSelectorState nss = this.host.getTestRequestSender().sendAndWait(op, NodeSelectorState.class);
+            if (nss.status == NodeSelectorState.Status.AVAILABLE) {
+                return true;
+            }
+            return false;
+        });
+
+        // kick-off factory synchronization and wait for it to finish
+        startSynchronizationTaskAndWait(owner,
+                ExampleService.FACTORY_LINK, ExampleServiceState.class, 1L);
+        this.host.waitForReplicatedFactoryChildServiceConvergence(
+                getFactoriesPerNodeGroup(ExampleService.FACTORY_LINK),
+                exampleStatesPerSelfLink,
+                this.exampleStateConvergenceChecker, exampleStatesPerSelfLink.size(),
+                this.updateCount, this.replicationFactor);
+
+        verifySameVersionsAcrossHosts(true);
+    }
+
+    private void verifySameVersionsAcrossHosts(boolean checkAllVersions) {
+        // Verify all factories return exactly the same documentVersion and
+        // documentEpoch for each service' latest version
+        Collection<VerificationHost> hosts = new ArrayList<>(this.host.getInProcessHostMap().values());
+        HashMap<String, ServiceDocument> services = new HashMap<>(this.serviceCount);
+        List<String> nonComparedLinks = new ArrayList<>(this.serviceCount);
+
+        for (VerificationHost h : hosts) {
+            ServiceDocumentQueryResult r = this.host.getFactoryState(
+                    UriUtils.buildExpandLinksQueryUri(UriUtils.buildUri(h, ExampleService.FACTORY_LINK)));
+            for (Entry<String, Object> e : r.documents.entrySet()) {
+                ServiceDocument newDoc = Utils.fromJson(e.getValue(), ServiceDocument.class);
+                ServiceDocument prevDoc = services.get(e.getKey());
+                if (prevDoc == null) {
+                    services.put(e.getKey(), newDoc);
+                    nonComparedLinks.add(e.getKey());
+                    continue;
+                }
+                assertTrue(newDoc.documentVersion == prevDoc.documentVersion &&
+                        newDoc.documentEpoch == prevDoc.documentEpoch);
+                nonComparedLinks.remove(e.getKey());
+            }
+        }
+
+        // This is to make sure that the deleted services reflect on all the hosts, including
+        // the restarted host.
+        assertTrue(nonComparedLinks.isEmpty());
+
+        if (!checkAllVersions) {
+            return;
+        }
+
+        // verify each service version exists once per host
+        Map<String, Set<VerificationHost>> hostsPerServiceVersion = new HashMap<>();
+        for (VerificationHost h : hosts) {
+            URI queryTaskUri = UriUtils.buildUri(h, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
+
+            for (String selfLink : services.keySet()) {
+                Query query = Query.Builder.create()
+                        .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, selfLink)
+                        .build();
+                QueryTask queryTask = QueryTask.Builder.createDirectTask()
+                        .setQuery(query)
+                        .addOption(QueryOption.INCLUDE_ALL_VERSIONS)
+                        .build();
+                Operation postQuery = Operation.createPost(queryTaskUri)
+                        .setBody(queryTask);
+                QueryTask queryResponse = h.getTestRequestSender().sendAndWait(postQuery, QueryTask.class);
+
+                Set<String> versionedLinks = new HashSet<>();
+                for (String link : queryResponse.results.documentLinks) {
+                    // verify there are no duplicate versions
+                    // (see https://www.pivotaltracker.com/n/projects/1471320/stories/149126897)
+                    assertTrue(String.format("duplicate versioned link found: %s", link),
+                            !versionedLinks.contains(link));
+                    versionedLinks.add(link);
+
+                    Set<VerificationHost> hostsContainingVersionedLink = hostsPerServiceVersion.get(link);
+                    if (hostsContainingVersionedLink == null) {
+                        hostsContainingVersionedLink = new HashSet<>();
+                    }
+                    hostsContainingVersionedLink.add(h);
+                    hostsPerServiceVersion.put(link, hostsContainingVersionedLink);
+                }
+            }
+        }
+
+        int expectedCountPerServiceVersion = hosts.size();
+        for (Entry<String, Set<VerificationHost>> e : hostsPerServiceVersion.entrySet()) {
+            String versionedLink = e.getKey();
+            Set<VerificationHost> hostsContainingVersionedLink = e.getValue();
+            if (hostsContainingVersionedLink.size() != expectedCountPerServiceVersion) {
+                for (VerificationHost h : hosts) {
+                    assertTrue(String.format("Host %s %s is missing versioned service %s:",
+                            h.getId(), h.getUri(), versionedLink),
+                            hostsContainingVersionedLink.contains(h));
+                }
+            }
+        }
     }
 
     private void doExampleServicePatch(Map<String, ExampleServiceState> states,
