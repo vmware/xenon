@@ -331,7 +331,13 @@ class ServiceSynchronizationTracker {
         // NodeSelectorSynchronizationService get persisted locally.
         op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER);
 
+        boolean synchAllVersions = op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_ALL_VERSIONS);
+
         CompletionHandler c = (o, e) -> {
+            if (synchAllVersions) {
+                op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_ALL_VERSIONS);
+            }
+
             if (this.host.isStopping()) {
                 op.fail(new CancellationException("Host is stopping"));
                 return;
@@ -401,6 +407,9 @@ class ServiceSynchronizationTracker {
                 .setRetryCount(0)
                 .setReferer(s.getUri())
                 .setCompletion(c);
+        if (synchAllVersions) {
+            synchPost.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_ALL_VERSIONS);
+        }
         this.host.sendRequest(synchPost);
     }
 

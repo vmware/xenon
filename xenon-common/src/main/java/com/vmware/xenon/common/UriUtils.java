@@ -535,6 +535,10 @@ public final class UriUtils {
 
     public static Map<String, String> parseUriQueryParams(URI uri) {
         String query = uri.getQuery();
+        return parseUriQueryParams(query);
+    }
+
+    public static Map<String, String> parseUriQueryParams(String query) {
         if (query == null || query.isEmpty()) {
             return new HashMap<>();
         }

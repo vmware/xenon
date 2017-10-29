@@ -523,6 +523,11 @@ public class Operation implements Cloneable {
     public static final String PRAGMA_DIRECTIVE_SYNCH_PEER = "xn-synch-peer";
 
     /**
+     * Infrastructure use only. Set when all versions, not just the latest, need
+     * to be synchronized.
+     */
+    public static final String PRAGMA_DIRECTIVE_SYNCH_ALL_VERSIONS = "xn-synch-versions";
+    /**
      * Infrastructure use only. Instructs the runtime that this request should be processed on the node
      * it arrived on. It should not be forwarded regardless of owner selection and load balancing decisions.
      */
