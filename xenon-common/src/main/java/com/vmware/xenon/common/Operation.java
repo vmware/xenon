@@ -528,6 +528,24 @@ public class Operation implements Cloneable {
     public static final String PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY = "xn-queue";
 
     /**
+     * Infrastructure use only. Set when all versions, not just the latest, need
+     * to be synchronized.
+     */
+    public static final String PRAGMA_DIRECTIVE_SYNCH_ALL_VERSIONS = "xn-synch-all-ver";
+
+    /**
+     * Infrastructure use only. Set when all versions, not just the latest, need
+     * to be synchronized.
+     */
+    public static final String PRAGMA_DIRECTIVE_SYNCH_HISTORICAL_VERSIONS = "xn-synch-hist-ver";
+
+    /**
+     * Infrastructure use only. Set on a synchPeer request when a specific historical
+     * version needs to be synchronized.
+     */
+    public static final String PRAGMA_DIRECTIVE_SYNCH_VERSION = "xn-synch-ver";
+
+    /**
      * Infrastructure use only. Instructs the runtime that this request should be processed on the node
      * it arrived on. It should not be forwarded regardless of owner selection and load balancing decisions.
      */
