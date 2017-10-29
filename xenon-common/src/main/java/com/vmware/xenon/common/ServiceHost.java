@@ -2672,6 +2672,9 @@ public class ServiceHost implements ServiceRequestSender {
             }
             // service already attached, not idempotent, and this is not a synchronization attempt.
             // We fail request with conflict
+            log(Level.WARNING, "Attempt to start service %s but it's already attached (stage=%s)",
+                    servicePath,
+                    existing.getProcessingStage());
             failRequestServiceAlreadyStarted(servicePath, service, post);
             return true;
         }

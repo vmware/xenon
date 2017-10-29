@@ -44,6 +44,8 @@ public class ServiceAvailabilityFilter implements Filter {
             return FilterReturnCode.FAILED_STOP_PROCESSING;
         }
 
+        boolean debug = servicePath.contains("/service/foo") || servicePath.contains(
+                "/test/on-demand-load-services");
         // re-use already looked-up service, if exists; otherwise, look it up
         Service service = context.getService();
         if (service == null) {
@@ -69,7 +71,22 @@ public class ServiceAvailabilityFilter implements Filter {
             // it's available
             Service finalService = service;
             op.nestCompletion(o -> {
+                if (!ServiceHost.isServiceAvailable(finalService)) {
+                    // service might have failed to start and might even be detached - retrying
+                    if (debug) {
+                        context.getHost().log(Level.INFO, "DEBUG: resuming op %d %s: service %s is not available (stage: %s)",
+                                op.getId(), op.getAction(), finalService.getSelfLink(), finalService.getProcessingStage());
+                    }
+                    context.getOpProcessingChain().resumeProcessingRequest(op, context,
+                            FilterReturnCode.RESUME_PROCESSING, null);
+                    return;
+                }
+
                 context.setService(finalService);
+                if (debug) {
+                    context.getHost().log(Level.INFO, "DEBUG: resuming op %d %s",
+                            op.getId(), op.getAction());
+                }
                 context.getOpProcessingChain().resumeProcessingRequest(op, context,
                         FilterReturnCode.CONTINUE_PROCESSING, null);
             });
@@ -78,6 +95,10 @@ public class ServiceAvailabilityFilter implements Filter {
             context.setSuspendConsumer(o -> {
                 context.getHost().registerForServiceAvailability(op, finalServicePath);
             });
+            if (debug) {
+                context.getHost().log(Level.INFO, "DEBUG: suspending op %d %s: regsiteringForServiceAvailability",
+                        op.getId(), op.getAction());
+            }
             return FilterReturnCode.SUSPEND_PROCESSING;
         }
 
@@ -86,6 +107,10 @@ public class ServiceAvailabilityFilter implements Filter {
         if (op.getAction() == Action.DELETE &&
                 op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)) {
             // local stop - do not start on demand - complete and return
+            if (debug) {
+                context.getHost().log(Level.INFO, "DEBUG: %d %s is a local stop and service is already stopped - completing",
+                        op.getId(), op.getAction());
+            }
             op.complete();
             return FilterReturnCode.SUCCESS_STOP_PROCESSING;
         }
@@ -105,6 +130,10 @@ public class ServiceAvailabilityFilter implements Filter {
                         checkAndOnDemandStartService(op, finalServicePath, (FactoryService) parentService, context);
                     });
                 });
+                if (debug) {
+                    context.getHost().log(Level.INFO, "DEBUG: %d %s: on-demand start",
+                            op.getId(), op.getAction());
+                }
                 return FilterReturnCode.SUSPEND_PROCESSING;
             }
         }
@@ -209,9 +238,12 @@ public class ServiceAvailabilityFilter implements Filter {
                         if (!ServiceHost.isServiceCreate(op)
                                 && response.getErrorCode() == ServiceErrorResponse.ERROR_CODE_SERVICE_ALREADY_EXISTS) {
                             // service exists, action is not attempt to recreate, so complete as success
+                            Service s = host.findService(servicePath, true);
+                            ProcessingStage ps = s != null ? s.getProcessingStage() : null;
+                            String psStr = ps == null ? "" : ps.toString();
                             host.log(Level.WARNING,
-                                    "Failed to start service %s because it already exists. Resubmitting request %s %d",
-                                    servicePath, a, op.getId());
+                                    "Failed to start service %s because it already exists (in stage: %s). Resubmitting request %s %d",
+                                    servicePath, psStr, a, op.getId());
                             context.getOpProcessingChain().resumeProcessingRequest(op, context,
                                     FilterReturnCode.RESUME_PROCESSING, null);
                             return;
