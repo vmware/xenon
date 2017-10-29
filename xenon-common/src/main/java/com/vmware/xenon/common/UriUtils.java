@@ -510,15 +510,32 @@ public final class UriUtils {
             boolean doExpand,
             boolean includeDeleted,
             ServiceOption cap) {
+        return buildIndexQueryUri(indexURI, selfLink, null, doExpand, includeDeleted, cap);
+    }
 
+    public static URI buildIndexQueryUri(URI indexURI,
+            String selfLink,
+            Long version,
+            boolean doExpand,
+            boolean includeDeleted,
+            ServiceOption cap) {
         if (cap == null) {
             cap = ServiceOption.NONE;
         }
+
         List<String> queryArgs = new ArrayList<>();
+
         queryArgs.add(ServiceDocument.FIELD_NAME_SELF_LINK);
         queryArgs.add(selfLink);
+
+        if (version != null) {
+            queryArgs.add(ServiceDocument.FIELD_NAME_VERSION);
+            queryArgs.add(version.toString());
+        }
+
         queryArgs.add(URI_PARAM_CAPABILITY);
         queryArgs.add(cap.toString());
+
         if (includeDeleted) {
             queryArgs.add(URI_PARAM_INCLUDE_DELETED);
             queryArgs.add(Boolean.TRUE.toString());
@@ -538,6 +555,10 @@ public final class UriUtils {
 
     public static Map<String, String> parseUriQueryParams(URI uri) {
         String query = uri.getQuery();
+        return parseUriQueryParams(query);
+    }
+
+    public static Map<String, String> parseUriQueryParams(String query) {
         if (query == null || query.isEmpty()) {
             return new HashMap<>();
         }

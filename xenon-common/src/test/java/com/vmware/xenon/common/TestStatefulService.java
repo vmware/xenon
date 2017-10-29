@@ -697,7 +697,9 @@ public class TestStatefulService extends BasicReusableHostTestCase {
                 null);
 
         Service fifoService = new MinimalTestService();
-        fifoService = this.host.startServiceAndWait(lifoService, UUID.randomUUID().toString(),
+        fifoService.toggleOption(ServiceOption.LIFO_QUEUE, false);
+        fifoService.toggleOption(ServiceOption.INSTRUMENTATION, true);
+        fifoService = this.host.startServiceAndWait(fifoService, UUID.randomUUID().toString(),
                 null);
 
         int limit = 2;
