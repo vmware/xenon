@@ -132,12 +132,14 @@ public class NodeSelectorSynchronizationService extends StatelessService {
 
         // we are going to broadcast a query (GET) to all peers, that should return
         // a document with the specified self link
+        boolean includeAllVersions = post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_ALL_VERSIONS);
         URI localQueryUri = UriUtils.buildDocumentQueryUri(
                 getHost(),
                 body.indexLink,
                 body.state.documentSelfLink,
                 false,
                 true,
+                includeAllVersions,
                 body.options);
 
         Operation remoteGet = Operation.createGet(localQueryUri)

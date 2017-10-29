@@ -81,6 +81,7 @@ public final class UriUtils {
     public static final String URI_PATH_PARAM_REGEX = "\\{.*\\}";
     public static final String URI_PARAM_CAPABILITY = "capability";
     public static final String URI_PARAM_INCLUDE_DELETED = "includeDeleted";
+    public static final String URI_PARAM_INCLUDE_ALL_VERSIONS = "includeAllVersions";
     public static final String FIELD_NAME_SELF_LINK = "SELF_LINK";
     public static final String FIELD_NAME_FACTORY_LINK = "FACTORY_LINK";
 
@@ -440,8 +441,18 @@ public final class UriUtils {
             boolean doExpand,
             boolean includeDeleted,
             EnumSet<ServiceOption> serviceCaps) {
+        return buildDocumentQueryUri(host, selfLink, doExpand, includeDeleted, false, serviceCaps);
+    }
+
+    public static URI buildDocumentQueryUri(ServiceHost host,
+            String selfLink,
+            boolean doExpand,
+            boolean includeDeleted,
+            boolean includeAllVersions,
+            EnumSet<ServiceOption> serviceCaps) {
         String indexServicePath = host.getDocumentIndexServiceUri().getPath();
-        return buildDocumentQueryUri(host, indexServicePath, selfLink, doExpand, includeDeleted, serviceCaps);
+        return buildDocumentQueryUri(host, indexServicePath, selfLink, doExpand, includeDeleted,
+                includeAllVersions, serviceCaps);
     }
 
     public static URI buildDocumentQueryUri(ServiceHost host,
@@ -450,13 +461,25 @@ public final class UriUtils {
             boolean doExpand,
             boolean includeDeleted,
             EnumSet<ServiceOption> serviceCaps) {
+        return buildDocumentQueryUri(host, indexServicePath, selfLink, doExpand, includeDeleted,
+                false, serviceCaps);
+    }
+
+    public static URI buildDocumentQueryUri(ServiceHost host,
+            String indexServicePath,
+            String selfLink,
+            boolean doExpand,
+            boolean includeDeleted,
+            boolean includeAllVersions,
+            EnumSet<ServiceOption> serviceCaps) {
         ServiceOption queryCap = ServiceOption.NONE;
         if (serviceCaps.contains(ServiceOption.IMMUTABLE)) {
             queryCap = ServiceOption.IMMUTABLE;
         } else if (serviceCaps.contains(ServiceOption.PERSISTENCE)) {
             queryCap = ServiceOption.PERSISTENCE;
         }
-        return buildDocumentQueryUri(host, indexServicePath, selfLink, doExpand, includeDeleted, queryCap);
+        return buildDocumentQueryUri(host, indexServicePath, selfLink, doExpand, includeDeleted,
+                includeAllVersions, queryCap);
     }
 
     public static URI buildDocumentQueryUri(ServiceHost host,
@@ -464,9 +487,19 @@ public final class UriUtils {
             boolean doExpand,
             boolean includeDeleted,
             ServiceOption cap) {
+        return buildDocumentQueryUri(host, selfLink, doExpand, includeDeleted, false, cap);
+    }
+
+    public static URI buildDocumentQueryUri(ServiceHost host,
+            String selfLink,
+            boolean doExpand,
+            boolean includeDeleted,
+            boolean includeAllVersions,
+            ServiceOption cap) {
 
         String indexServicePath = host.getDocumentIndexServiceUri().getPath();
-        return buildDocumentQueryUri(host, indexServicePath, selfLink, doExpand, includeDeleted, cap);
+        return buildDocumentQueryUri(host, indexServicePath, selfLink, doExpand, includeDeleted,
+                includeAllVersions, cap);
     }
 
     public static URI buildDocumentQueryUri(ServiceHost host,
@@ -475,9 +508,20 @@ public final class UriUtils {
             boolean doExpand,
             boolean includeDeleted,
             ServiceOption cap) {
+        return buildDocumentQueryUri(host, indexServicePath, selfLink, doExpand, includeDeleted, false, cap);
+    }
+
+    public static URI buildDocumentQueryUri(ServiceHost host,
+            String indexServicePath,
+            String selfLink,
+            boolean doExpand,
+            boolean includeDeleted,
+            boolean includeAllVersions,
+            ServiceOption cap) {
 
         URI indexServiceUri = buildUri(host, indexServicePath);
-        return buildIndexQueryUri(indexServiceUri, selfLink, doExpand, includeDeleted, cap);
+        return buildIndexQueryUri(indexServiceUri, selfLink, doExpand, includeDeleted,
+                includeAllVersions, cap);
     }
 
     public static URI buildDefaultDocumentQueryUri(URI hostUri,
@@ -485,10 +529,19 @@ public final class UriUtils {
             boolean doExpand,
             boolean includeDeleted,
             ServiceOption cap) {
+        return buildDefaultDocumentQueryUri(hostUri, selfLink, doExpand, includeDeleted, false, cap);
+    }
+
+    public static URI buildDefaultDocumentQueryUri(URI hostUri,
+            String selfLink,
+            boolean doExpand,
+            boolean includeDeleted,
+            boolean includeAllVersions,
+            ServiceOption cap) {
 
         URI indexUri = UriUtils.buildUri(hostUri, ServiceUriPaths.CORE_DOCUMENT_INDEX);
         return buildIndexQueryUri(indexUri,
-                selfLink, doExpand, includeDeleted, cap);
+                selfLink, doExpand, includeDeleted, includeAllVersions, cap);
     }
 
     public static URI buildOperationTracingQueryUri(ServiceHost host,
@@ -507,6 +560,15 @@ public final class UriUtils {
             boolean doExpand,
             boolean includeDeleted,
             ServiceOption cap) {
+        return buildIndexQueryUri(indexURI, selfLink, doExpand, includeDeleted, false, cap);
+    }
+
+    public static URI buildIndexQueryUri(URI indexURI,
+            String selfLink,
+            boolean doExpand,
+            boolean includeDeleted,
+            boolean includeAllVersions,
+            ServiceOption cap) {
 
         if (cap == null) {
             cap = ServiceOption.NONE;
@@ -518,6 +580,11 @@ public final class UriUtils {
         queryArgs.add(cap.toString());
         if (includeDeleted) {
             queryArgs.add(URI_PARAM_INCLUDE_DELETED);
+            queryArgs.add(Boolean.TRUE.toString());
+        }
+
+        if (includeAllVersions) {
+            queryArgs.add(URI_PARAM_INCLUDE_ALL_VERSIONS);
             queryArgs.add(Boolean.TRUE.toString());
         }
 

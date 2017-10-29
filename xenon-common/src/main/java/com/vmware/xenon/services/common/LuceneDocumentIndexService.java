@@ -1288,6 +1288,10 @@ public class LuceneDocumentIndexService extends StatelessService {
                 options.add(QueryOption.INCLUDE_DELETED);
             }
 
+            if (params.containsKey(UriUtils.URI_PARAM_INCLUDE_ALL_VERSIONS)) {
+                options.add(QueryOption.INCLUDE_ALL_VERSIONS);
+            }
+
             if (params.containsKey(ServiceDocument.FIELD_NAME_VERSION)) {
                 version = Long.parseLong(params.get(ServiceDocument.FIELD_NAME_VERSION));
             }
@@ -1311,6 +1315,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         if (!selfLink.endsWith(UriUtils.URI_WILDCARD_CHAR)) {
+            if (options.contains(QueryOption.INCLUDE_ALL_VERSIONS)) {
+                queryIndexSingleAllVersions(selfLink, get);
+                return;
+            }
 
             // Enforce auth check for the returning document for remote GET requests.
             // This is mainly for the direct client requests to the index-service such as
@@ -1535,6 +1543,24 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         ServiceDocument sd = getStateFromLuceneDocument(visitor, selfLink);
         op.setBodyNoCloning(sd).complete();
+    }
+
+    private void queryIndexSingleAllVersions(String selfLink, Operation op)
+            throws Exception {
+        QueryTask.Query query = QueryTask.Query.Builder.create()
+                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, selfLink)
+                .build();
+        // TODO: use static finals for constants
+        QueryTask task = QueryTask.Builder.create()
+                .setQuery(query)
+                .setResultLimit(100)
+                .addOption(QueryOption.INCLUDE_ALL_VERSIONS)
+                .build();
+        long timeoutMicros = TimeUnit.SECONDS.toMicros(60);
+        timeoutMicros = Math.max(timeoutMicros, getHost().getOperationTimeoutMicros());
+        task.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(timeoutMicros);
+
+        handleQueryTaskPatch(op, task);
     }
 
     /**
