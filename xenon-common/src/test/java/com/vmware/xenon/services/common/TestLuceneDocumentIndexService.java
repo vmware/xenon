@@ -1454,17 +1454,21 @@ public class TestLuceneDocumentIndexService {
             convertExampleFactoryToIdempotent(h);
 
             String onDemandFactoryLink = OnDemandLoadFactoryService.create(h);
+            h.log("DEBUG: step 1: createOnDemandLoadServices");
             createOnDemandLoadServices(h, onDemandFactoryLink);
 
+            h.log("DEBUG: step 2: verifyIdempotentServiceStartDeleteWithStats");
             Map<URI, ExampleServiceState> beforeState = verifyIdempotentServiceStartDeleteWithStats(h);
             List<URI> exampleURIs = new ArrayList<>(beforeState.keySet());
 
+            h.log("DEBUG: step 3: verifyInitialStatePost");
             verifyInitialStatePost(h);
 
             ServiceHostState initialState = h.getState();
 
             // stop the host, create new one
             logServiceStats(h);
+            h.log("DEBUG: step 4: stopping host");
             h.stop();
 
             h = VerificationHost.create();
@@ -1476,6 +1480,7 @@ public class TestLuceneDocumentIndexService {
                 h.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(250));
             }
 
+            h.log("DEBUG: step 5: restarting stopped host");
             if (!VerificationHost.restartStatefulHost(h, true)) {
                 this.host.log("Failed restart of host, aborting");
                 return;
@@ -1485,8 +1490,10 @@ public class TestLuceneDocumentIndexService {
                     EnumSet.of(ServiceOption.INSTRUMENTATION),
                     null);
 
+            h.log("DEBUG: step 6: verifyIdempotentFactoryAfterHostRestart");
             verifyIdempotentFactoryAfterHostRestart(h, initialState, exampleURIs, beforeState);
 
+            h.log("DEBUG: step 7: verifyOnDemandLoad");
             verifyOnDemandLoad(h);
 
         } finally {
@@ -1950,6 +1957,7 @@ public class TestLuceneDocumentIndexService {
             this.host.sendAndWait(post);
 
             // do a DELETE again, expect success
+            this.host.log("Doing DELETE on deleted, expect success");
             delete = Operation.createDelete(serviceToDelete);
             this.host.sendAndWaitExpectSuccess(delete);
         }
