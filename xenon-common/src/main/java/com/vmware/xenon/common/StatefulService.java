@@ -1429,6 +1429,9 @@ public class StatefulService implements Service {
 
             // update synchronized linked state with the update operation, so it gets indexed
             request.linkState(state);
+
+            // update synch request body, so that caller can use the latest state if he's interested
+            request.setBodyNoCloning(state);
         }
 
         if (!wasOwner && isOwner) {
