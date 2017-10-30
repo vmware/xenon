@@ -126,8 +126,9 @@ public class MigrationTaskService extends StatefulService {
     public static final String FACTORY_LINK = ServiceUriPaths.MIGRATION_TASKS;
 
     private static final Integer DEFAULT_PAGE_SIZE = 10_000;
-    private static final Long DEFAULT_MAINTENANCE_INTERVAL_MILLIS = TimeUnit.MINUTES.toMicros(1);
+    private static final Long DEFAULT_MAINTENANCE_INTERVAL_MICROS = TimeUnit.MINUTES.toMicros(1);
     private static final Integer DEFAULT_MAXIMUM_CONVERGENCE_CHECKS = 10;
+    private static final Long DEFAULT_TASK_EXPIRATION_MICROS = TimeUnit.MINUTES.toMicros(30);
 
     // used for the result value of DeferredResult in order to workaround findbug warning for passing null by "defered.complete(null)".
     private static final Object DUMMY_OBJECT = new Object();
@@ -420,7 +421,7 @@ public class MigrationTaskService extends StatefulService {
             initState.taskInfo.stage = TaskStage.CREATED;
         }
         if (initState.maintenanceIntervalMicros == null) {
-            initState.maintenanceIntervalMicros = DEFAULT_MAINTENANCE_INTERVAL_MILLIS;
+            initState.maintenanceIntervalMicros = DEFAULT_MAINTENANCE_INTERVAL_MICROS;
         }
         if (initState.maximumConvergenceChecks == null) {
             initState.maximumConvergenceChecks = DEFAULT_MAXIMUM_CONVERGENCE_CHECKS;
@@ -481,6 +482,14 @@ public class MigrationTaskService extends StatefulService {
                 && !verifyPatchedState(currentState, patchOperation)) {
             return;
         }
+
+        // when no expiration is specified, set default expiration which will be propagated to query task
+        if (currentState.documentExpirationTimeMicros == 0) {
+            long expirationMicros = Utils.fromNowMicrosUtc(DEFAULT_TASK_EXPIRATION_MICROS);
+            logInfo("Expiration was not specified. Setting default expiration = %d", expirationMicros);
+            currentState.documentExpirationTimeMicros = expirationMicros;
+        }
+
         patchOperation.complete();
         logInfo("After PATCH, the latest state is: %s", currentState);
         if (TaskState.isFinished(currentState.taskInfo) ||

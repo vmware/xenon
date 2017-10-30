@@ -493,6 +493,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
         State finalServiceState = waitForServiceCompletion(state.documentSelfLink, getDestinationHost());
         assertEquals(TaskStage.FINISHED, finalServiceState.taskInfo.stage);
+        assertTrue("default expiration should be set", finalServiceState.documentExpirationTimeMicros > 0);
 
         // check stats
         ServiceStats stats = getStats(state.documentSelfLink, getDestinationHost());
