@@ -15,14 +15,12 @@ package com.vmware.xenon.services.common;
 
 import java.net.URI;
 import java.util.Collection;
-import java.util.TreeMap;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
-import com.vmware.xenon.common.FNVHash;
 import com.vmware.xenon.common.NodeSelectorService;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest.ForwardingOption;
 import com.vmware.xenon.common.NodeSelectorState;
@@ -38,6 +36,7 @@ import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.services.common.ConsistentHashingUtils.ClosestNNeighbours;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeGroupService.UpdateQuorumRequest;
 
@@ -65,37 +64,6 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
     private volatile boolean isSynchronizationRequired;
     private boolean isNodeGroupConverged;
     private int synchQuorumWarningCount;
-
-    private static final class ClosestNNeighbours extends TreeMap<Long, NodeState> {
-        private static final long serialVersionUID = 0L;
-
-        private final int maxN;
-
-        public ClosestNNeighbours(int maxN) {
-            super(Long::compare);
-            this.maxN = maxN;
-        }
-
-        @Override
-        public NodeState put(Long key, NodeState value) {
-            if (size() < this.maxN) {
-                return super.put(key, value);
-            } else {
-                // only attempt to write if new key can displace one of the top N entries
-                if (comparator().compare(key, this.lastKey()) <= 0) {
-                    NodeState old = super.put(key, value);
-                    if (old == null) {
-                        // sth. was added, remove last
-                        this.remove(this.lastKey());
-                    }
-
-                    return old;
-                }
-
-                return null;
-            }
-        }
-    }
 
     public ConsistentHashingNodeSelectorService() {
         super(NodeSelectorState.class);
@@ -389,9 +357,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             NodeGroupState localState) {
         NodeState self = localState.nodes.get(getHost().getId());
         int quorum = this.cachedState.membershipQuorum;
-        int availableNodes = localState.nodes.size();
 
-        if (availableNodes == 1) {
+        if (localState.nodes.size() == 1) {
             response.ownerNodeId = self.id;
             response.isLocalHostOwner = true;
             response.ownerNodeGroupReference = self.groupReference;
@@ -401,38 +368,15 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return;
         }
 
-        int neighbourCount = 1;
-        if (this.cachedState.replicationFactor != null) {
-            neighbourCount = this.cachedState.replicationFactor.intValue();
-        }
+        ClosestNNeighbours closestNodes = ConsistentHashingUtils.getClosestNNeighbours(response.key, localState.nodes.values());
 
-        ClosestNNeighbours closestNodes = new ClosestNNeighbours(neighbourCount);
-
-        long keyHash = FNVHash.compute(response.key);
-        for (NodeState m : localState.nodes.values()) {
-            if (NodeState.isUnAvailable(m)) {
-                availableNodes--;
-                continue;
-            }
-
-            response.availableNodeCount++;
-
-            long distance = m.getNodeIdHash() - keyHash;
-            distance *= distance;
-            // We assume first key (smallest) will be one with closest distance. The hashing
-            // function can return negative numbers however, so a distance of zero (closest) will
-            // not be the first key. Take the absolute value to cover that case and create a logical
-            // ring
-            distance = Math.abs(distance);
-            closestNodes.put(distance, m);
-        }
-
-        if (availableNodes < quorum) {
-            op.fail(new IllegalStateException("Available nodes: " + availableNodes + ", quorum:" + quorum));
+        if (closestNodes.size() < quorum) {
+            op.fail(new IllegalStateException("Available nodes: " + closestNodes.size() + ", quorum:" + quorum));
             return;
         }
 
         NodeState closest = closestNodes.firstEntry().getValue();
+        response.availableNodeCount = closestNodes.size();
         response.ownerNodeId = closest.id;
         response.isLocalHostOwner = response.ownerNodeId.equals(getHost().getId());
         response.ownerNodeGroupReference = closest.groupReference;

@@ -33,7 +33,6 @@ import javax.security.cert.X509Certificate;
 
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceDocumentDescription.Builder;
-import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
 import com.vmware.xenon.common.ServiceHost.ServiceNotFoundException;
 import com.vmware.xenon.services.common.QueryFilter;
 import com.vmware.xenon.services.common.QueryTask.Query;
@@ -386,18 +385,6 @@ public class Operation implements Cloneable {
             r.stackTrace = null;
         }
         request.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON).fail(e, r);
-    }
-
-    static void failOwnerMismatch(Operation op, String id, ServiceDocument body) {
-        String owner = body != null ? body.documentOwner : "";
-        op.setStatusCode(Operation.STATUS_CODE_CONFLICT);
-        Throwable e = new IllegalStateException(format(
-                "Owner in body: %s, computed locally: %s",
-                owner, id));
-        ServiceErrorResponse rsp = ServiceErrorResponse.create(e, op.getStatusCode(),
-                EnumSet.of(ErrorDetail.SHOULD_RETRY));
-        rsp.setInternalErrorCode(ServiceErrorResponse.ERROR_CODE_OWNER_MISMATCH);
-        op.fail(e, rsp);
     }
 
     public static void failActionNotSupported(Operation request) {

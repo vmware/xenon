@@ -547,11 +547,6 @@ public class StatefulService implements Service {
             return true;
         }
 
-        if (stateFromOwner.documentOwner == null) {
-            failRequest(request, new IllegalArgumentException("documentOwner is required"), false);
-            return true;
-        }
-
         // the following validation checks assume the remote sender is acting as the document
         // owner since the request is marked "replicated". The local service must agree on the
         // following:
@@ -577,7 +572,10 @@ public class StatefulService implements Service {
             return true;
         }
 
-        if (stateFromOwner.documentOwner.equals(getHost().getId())) {
+        if (request.getUri().getAuthority().equals(getHost().getUri().getAuthority())) {
+            if (!stateFromOwner.documentOwner.equals(getHost().getId())) {
+                this.log(Level.INFO, "Trouble validateOwnerSelectedUpdate");
+            }
             if (request.isSynchronizePeer()) {
                 // a request can be marked replicated AND synchronize, if its a synchronization attempt
                 // from a remote node, that was not owner for the service. Enable the DOCUMENT_OWNER
@@ -585,6 +583,9 @@ public class StatefulService implements Service {
                 toggleOption(ServiceOption.DOCUMENT_OWNER, true);
             }
         } else {
+            if (stateFromOwner.documentOwner.equals(getHost().getId())) {
+                this.log(Level.INFO, "Trouble validateOwnerSelectedUpdate");
+            }
             // The local host is no longer the owner. The service host would have failed the
             // request if we disagreed with the sender, on who the owner is. Here we simply
             // toggle the owner option off

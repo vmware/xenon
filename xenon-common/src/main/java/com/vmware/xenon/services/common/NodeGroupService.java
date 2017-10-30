@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
@@ -270,7 +271,8 @@ public class NodeGroupService extends StatefulService {
         mergeRemoteAndLocalMembership(
                 localState,
                 body,
-                changes);
+                changes,
+                patch);
 
         patch.setNotificationDisabled(changes.isEmpty());
 
@@ -574,7 +576,7 @@ public class NodeGroupService extends StatefulService {
         NodeGroupState body = new NodeGroupState();
         body.config = null;
         body.documentOwner = getHost().getId();
-        body.documentSelfLink = UriUtils.buildUriPath(getSelfLink(), body.documentOwner);
+        body.documentSelfLink = UriUtils.buildUriPath(getSelfLink(), getHost().getId());
         local.status = NodeStatus.AVAILABLE;
         body.nodes.put(local.id, local);
 
@@ -756,19 +758,34 @@ public class NodeGroupService extends StatefulService {
                 remotePeer.status = NodeStatus.UNAVAILABLE;
             } else {
                 NodeGroupState peerState = getStateFromBody(patch);
-                if (peerState.documentOwner.equals(remotePeer.id)) {
+
+                if (patch.getUri().getAuthority().equals(remotePeer.groupReference.getAuthority()) &&
+                        peerState.nodes.containsKey(remotePeer.id)) {
+                    if (!peerState.documentOwner.equals(remotePeer.id)) {
+                        logSevere("Trouble");
+                    }
+
                     NodeState remotePeerStateFromRsp = peerState.nodes.get(remotePeer.id);
                     if (remotePeerStateFromRsp.documentVersion > remotePeer.documentVersion) {
                         remotePeer = remotePeerStateFromRsp;
                     }
                 } else if (remotePeer.status != NodeStatus.REPLACED) {
+                    if (peerState.documentOwner.equals(remotePeer.id)) {
+                        logSevere("Trouble");
+                    }
+
                     logWarning("Peer address %s has changed to id %s from %s",
                             patch.getUri(),
                             peerState.documentOwner,
                             remotePeer.id);
                     remotePeer.status = NodeStatus.REPLACED;
                     remotePeer.documentVersion++;
+                } else {
+                    if (peerState.documentOwner.equals(remotePeer.id)) {
+                        logSevere("Trouble");
+                    }
                 }
+
                 updateTime = Math.max(updateTime, peerState.membershipUpdateTimeMicros);
             }
 
@@ -825,12 +842,18 @@ public class NodeGroupService extends StatefulService {
     private void mergeRemoteAndLocalMembership(
             NodeGroupState localState,
             NodeGroupState remotePeerState,
-            EnumSet<NodeGroupChange> changes) {
+            EnumSet<NodeGroupChange> changes,
+            Operation patch) {
         if (localState == null) {
             return;
         }
 
-        boolean isSelfPatch = remotePeerState.documentOwner.equals(getHost().getId());
+        boolean isSelfPatch = (patch.getUri().getAuthority().equals(getHost().getUri().getAuthority()));
+
+        if (isSelfPatch != remotePeerState.documentOwner.equals(getHost().getId())) {
+            this.getHost().log(Level.INFO, "Trouble selfpatch");
+        }
+
         long now = Utils.getNowMicrosUtc();
 
         NodeState selfEntry = localState.nodes.get(getHost().getId());
@@ -843,7 +866,7 @@ public class NodeGroupService extends StatefulService {
             if (!isSelfPatch && isLocalNode) {
                 if (remoteEntry.status != currentEntry.status) {
                     logWarning("Peer %s is reporting us as %s, current status: %s",
-                            remotePeerState.documentOwner, remoteEntry.status, currentEntry.status);
+                            patch.getReferer().getAuthority(), remoteEntry.status, currentEntry.status);
                     if (remoteEntry.documentVersion > currentEntry.documentVersion) {
                         // increment local version to re-enforce we are alive and well
                         currentEntry.documentVersion = remoteEntry.documentVersion;
@@ -902,7 +925,7 @@ public class NodeGroupService extends StatefulService {
                         currentEntry.membershipQuorum,
                         remoteEntry.documentVersion, remoteEntry.membershipQuorum,
                         currentEntry.id,
-                        remotePeerState.documentOwner,
+                        patch.getReferer().getAuthority(),
                         getHost().getId(),
                         selfEntry.documentVersion);
                 continue;
