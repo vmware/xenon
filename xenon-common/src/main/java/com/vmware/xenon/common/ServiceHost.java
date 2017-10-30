@@ -75,6 +75,12 @@ import io.opentracing.propagation.Format;
 import io.opentracing.propagation.TextMapExtractAdapter;
 import io.opentracing.propagation.TextMapInjectAdapter;
 import io.opentracing.tag.Tags;
+import io.prometheus.client.CollectorRegistry;
+import io.prometheus.client.hotspot.GarbageCollectorExports;
+import io.prometheus.client.hotspot.MemoryPoolsExports;
+import io.prometheus.client.hotspot.StandardExports;
+import io.prometheus.client.hotspot.ThreadExports;
+import io.prometheus.client.hotspot.VersionInfoExports;
 
 import com.vmware.xenon.common.FileUtils.ResourceEntry;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
@@ -101,6 +107,9 @@ import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
 import com.vmware.xenon.common.jwt.JWTUtils;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.common.jwt.Verifier;
+import com.vmware.xenon.common.metrics.ForkJoinPoolCollector;
+import com.vmware.xenon.common.metrics.HostHttpCollector;
+import com.vmware.xenon.common.metrics.ThreadPoolExecutorCollector;
 import com.vmware.xenon.common.opentracing.TracerFactory;
 import com.vmware.xenon.common.opentracing.TracingExecutor;
 import com.vmware.xenon.common.opentracing.TracingScheduledExecutor;
@@ -120,6 +129,7 @@ import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
 import com.vmware.xenon.services.common.NodeGroupUtils;
 import com.vmware.xenon.services.common.ODataQueryService;
 import com.vmware.xenon.services.common.OperationIndexService;
+import com.vmware.xenon.services.common.PrometheusExporterService;
 import com.vmware.xenon.services.common.QueryFilter;
 import com.vmware.xenon.services.common.QueryPageForwardingService;
 import com.vmware.xenon.services.common.QueryTaskFactoryService;
@@ -307,6 +317,8 @@ public class ServiceHost implements ServiceRequestSender {
 
     }
 
+    private CollectorRegistry collectorRegistry;
+    private HostHttpCollector httpCollector;
     protected static final LogFormatter LOG_FORMATTER = new LogFormatter();
     protected static final LogFormatter COLOR_LOG_FORMATTER = new ColorLogFormatter();
 
@@ -579,7 +591,6 @@ public class ServiceHost implements ServiceRequestSender {
         this.log(Level.WARNING, "Host is stopped");
     });
 
-
     private Logger logger = Logger.getLogger(getClass().getName());
     private FileHandler handler;
 
@@ -661,6 +672,27 @@ public class ServiceHost implements ServiceRequestSender {
         this.state.id = UUID.randomUUID().toString();
         this.otTracer = TracerFactory.factory.create(this);
         this.tracingEnabled = TracerFactory.factory.enabled();
+    }
+
+    public CollectorRegistry getCollectorRegistry() {
+        if (this.collectorRegistry == null) {
+            this.collectorRegistry = new CollectorRegistry();
+        }
+
+        return this.collectorRegistry;
+    }
+
+    /**
+     * Can only be set once per host, before the host is started.
+     *
+     * @param registry
+     */
+    public void setCollectorRegistry(CollectorRegistry registry) {
+        if (this.collectorRegistry != null) {
+            throw new IllegalStateException("collectorRegistry already set");
+        }
+
+        this.collectorRegistry = registry;
     }
 
     public ServiceHost initialize(String[] args) throws Throwable {
@@ -784,6 +816,7 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private void allocateExecutors() {
+        registerDefaultMetrics();
         if (this.executor != null) {
             this.executor.shutdownNow();
         }
@@ -800,15 +833,15 @@ public class ServiceHost implements ServiceRequestSender {
             return res;
         }, null, false);
         this.executor = this.tracingEnabled ? TracingExecutor.create(this.executorPool, this.otTracer) : this.executorPool;
+        this.collectorRegistry.register(
+                new ForkJoinPoolCollector(this.executorPool, "handler"));
 
         this.scheduledExecutorPool = (ScheduledThreadPoolExecutor) Executors.newScheduledThreadPool(
                 Utils.DEFAULT_THREAD_COUNT,
                 new NamedThreadFactory(getUri() + "/scheduled"));
         this.scheduledExecutor = this.tracingEnabled ? TracingScheduledExecutor.create(this.scheduledExecutorPool, this.otTracer) : this.scheduledExecutorPool;
-
-        this.serviceScheduledExecutor = Executors.newScheduledThreadPool(
-                Utils.DEFAULT_THREAD_COUNT / 2,
-                new NamedThreadFactory(getUri() + "/service-scheduled"));
+        this.collectorRegistry.register(
+                new ThreadPoolExecutorCollector(this.scheduledExecutorPool, "service-scheduled"));
     }
 
     /**
@@ -1476,7 +1509,6 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private ServiceHost startImpl() throws Throwable {
-
         // replace attached management service if it is in invalid state.
         // this may happen when host was restarted (calling host.stop(), then host.start())
         if (this.managementService == null
@@ -1612,6 +1644,21 @@ public class ServiceHost implements ServiceRequestSender {
         return this;
     }
 
+    private void registerDefaultMetrics() {
+        this.httpCollector = new HostHttpCollector();
+        this.httpCollector.register(getCollectorRegistry());
+
+        new StandardExports().register(this.collectorRegistry);
+        new MemoryPoolsExports().register(this.collectorRegistry);
+        new GarbageCollectorExports().register(this.collectorRegistry);
+        new ThreadExports().register(this.collectorRegistry);
+        new VersionInfoExports().register(this.collectorRegistry);
+    }
+
+    public HostHttpCollector getHttpCollector() {
+        return this.httpCollector;
+    }
+
     /**
      * Starts core singleton services. Should be called once from the service host entry point.
      */
@@ -1715,6 +1762,7 @@ public class ServiceHost implements ServiceRequestSender {
         coreServices.add(TenantService.createFactory());
         coreServices.add(new SystemUserService());
         coreServices.add(new GuestUserService());
+        coreServices.add(new PrometheusExporterService());
 
         Service transactionFactoryService = new TransactionFactoryService();
         coreServices.add(transactionFactoryService);

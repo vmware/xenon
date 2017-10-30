@@ -36,6 +36,7 @@ import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.jwt.Signer;
+import com.vmware.xenon.common.metrics.ServiceHttpCollector;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
@@ -1237,6 +1238,10 @@ public class StatefulService implements Service {
         String durationStatName = ServiceStatUtils.getPerActionDurationName(op.getAction());
         s = getHistogramStat(durationStatName);
         setStat(durationStatName, endToEndDuration);
+    }
+
+    private ServiceHttpCollector getCollector() {
+        return ((UtilityService)getUtilityService(null)).getCollector();
     }
 
     private void loadAndLinkState(Operation op) {

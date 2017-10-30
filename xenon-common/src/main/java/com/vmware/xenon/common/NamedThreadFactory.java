@@ -24,12 +24,25 @@ public final class NamedThreadFactory implements ThreadFactory {
 
     private final String name;
 
+    private boolean isDaemon;
+
     public NamedThreadFactory(String name) {
+        this(name, false);
+    }
+
+    public NamedThreadFactory(String name, boolean isDaemon) {
         this.name = name;
+        this.isDaemon = isDaemon;
+    }
+
+    public String getName() {
+        return this.name;
     }
 
     @Override
     public Thread newThread(Runnable r) {
-        return new Thread(r, this.name + "-" + threadCount.incrementAndGet());
+        Thread res = new Thread(r, this.name + "-" + threadCount.incrementAndGet());
+        res.setDaemon(this.isDaemon);
+        return res;
     }
 }

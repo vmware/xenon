@@ -23,6 +23,7 @@
     <jaeger.version>0.21.0</jaeger.version>
     <findbugs.version>3.0.1</findbugs.version>
     <jmh.version>1.19</jmh.version>
+    <prometheus.version>0.1.0</prometheus.version>
   </properties>
 
   <profiles>
@@ -214,6 +215,21 @@
       <artifactId>jsr305</artifactId>
       <version>${findbugs.version}</version>
       <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.prometheus</groupId>
+      <artifactId>simpleclient</artifactId>
+      <version>${prometheus.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.prometheus</groupId>
+      <artifactId>simpleclient_common</artifactId>
+      <version>${prometheus.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.prometheus</groupId>
+      <artifactId>simpleclient_hotspot</artifactId>
+      <version>${prometheus.version}</version>
     </dependency>
   </dependencies>
   <build>

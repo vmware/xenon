@@ -39,6 +39,7 @@ import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
 import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
+import com.vmware.xenon.common.metrics.ServiceHttpCollector;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.NumericRange;
 import com.vmware.xenon.services.common.QueryTask.Query;
@@ -59,6 +60,7 @@ public class UtilityService implements Service {
     private ServiceStats stats;
     private ServiceSubscriptionState subscriptions;
     private UiContentService uiService;
+    private ServiceHttpCollector collector;
 
     /**
      * Dedupes most well-known strings used as stat names.
@@ -132,6 +134,20 @@ public class UtilityService implements Service {
     private static final StatsKeyDeduper STATS_KEY_DICT = new StatsKeyDeduper();
 
     public UtilityService() {
+    }
+
+    public ServiceHttpCollector getCollector() {
+        if (this.collector == null) {
+            String parentLink = this.parent.getSelfLink();
+            if (this.parent instanceof StatefulService) {
+                parentLink = UriUtils.getParentPath(parentLink);
+            } else if (parentLink.startsWith(ServiceUriPaths.UI_RESOURCES)) {
+                parentLink = ServiceUriPaths.UI_RESOURCES;
+            }
+            this.collector = this.parent.getHost().getHttpCollector().createCollectorForService(parentLink);
+        }
+
+        return this.collector;
     }
 
     public UtilityService setParent(Service parent) {

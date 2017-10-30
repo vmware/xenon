@@ -118,6 +118,8 @@ import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.config.XenonConfiguration;
+import com.vmware.xenon.common.metrics.RoundRobinQueueCollector;
+import com.vmware.xenon.common.metrics.ThreadPoolExecutorCollector;
 import com.vmware.xenon.common.opentracing.TracingExecutor;
 import com.vmware.xenon.common.serialization.GsonSerializers;
 import com.vmware.xenon.common.serialization.KryoSerializers;
@@ -128,6 +130,7 @@ import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryRuntimeContext;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.ServiceHostManagementService.BackupType;
+import com.vmware.xenon.services.common.metrics.LuceneCollector;
 
 public class LuceneDocumentIndexService extends StatelessService {
 
@@ -199,6 +202,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     private final Runnable queryTaskHandler = this::handleQueryRequest;
 
     private final Runnable updateRequestHandler = this::handleUpdateRequest;
+    private LuceneCollector collector;
 
     public static void setImplicitQueryResultLimit(int limit) {
         queryResultLimit = limit;
@@ -561,11 +565,16 @@ public class LuceneDocumentIndexService extends StatelessService {
                 1, TimeUnit.MINUTES,
                 new ArrayBlockingQueue<>(Service.OPERATION_QUEUE_DEFAULT_LIMIT),
                 new NamedThreadFactory(getUri() + "/queries")), this.getHost().getTracer());
+        getHost().getCollectorRegistry().register(
+                    new ThreadPoolExecutorCollector(this.privateQueryExecutor, "lucene_queries"));
 
         this.privateIndexingExecutor = TracingExecutor.create(new ThreadPoolExecutor(QUERY_THREAD_COUNT, QUERY_THREAD_COUNT,
-                1, TimeUnit.MINUTES,
-                new ArrayBlockingQueue<>(10 * Service.OPERATION_QUEUE_DEFAULT_LIMIT),
-                new NamedThreadFactory(getUri() + "/updates")), this.getHost().getTracer());
+            1, TimeUnit.MINUTES,
+            new ArrayBlockingQueue<>(10 * Service.OPERATION_QUEUE_DEFAULT_LIMIT),
+            new NamedThreadFactory(getUri() + "/updates")), this.getHost().getTracer());
+
+        getHost().getCollectorRegistry().register(
+                new ThreadPoolExecutorCollector(this.privateIndexingExecutor, "lucene_updates"));
 
         initializeInstance();
 
@@ -612,6 +621,12 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void initializeInstance() {
+        getHost().getCollectorRegistry().register(new RoundRobinQueueCollector(this.queryQueue, "queries"));
+        getHost().getCollectorRegistry().register(new RoundRobinQueueCollector(this.updateQueue, "updates"));
+
+        this.collector = new LuceneCollector();
+        getHost().getCollectorRegistry().register(this.collector);
+
         this.liveVersionsPerLink.clear();
         this.updatesPerLink.clear();
         this.searcherUpdateTimesMicros.clear();
@@ -3516,11 +3531,18 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         File directory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory);
         Stream<Path> stream = null;
-        long count;
+        final long[] count = { 0 };
+        final long[] size = { 0 };
         try {
             stream = Files.list(directory.toPath());
-            count = stream.count();
-            if (!force && count < indexFileCountThresholdForWriterRefresh) {
+            stream.forEach( p -> {
+                count[0]++;
+                size[0] += p.toFile().length();
+            });
+
+            this.collector.fileCount.set(count[0]);
+            this.collector.indexSize.set(size[0]);
+            if (!force && count[0] < indexFileCountThresholdForWriterRefresh) {
                 return;
             }
         } catch (IOException e1) {
@@ -3579,9 +3601,9 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             w = createWriter(directory, false);
             stream = Files.list(directory.toPath());
-            count = stream.count();
+            long count2 = stream.count();
             logInfo("(%s) reopened writer, document count: %d, file count: %d",
-                    this.writerSync, w.maxDoc(), count);
+                    this.writerSync, w.maxDoc(), count2);
         } catch (Exception e) {
             // If we fail to re-open we should stop the host, since we can not recover.
             logSevere(e);

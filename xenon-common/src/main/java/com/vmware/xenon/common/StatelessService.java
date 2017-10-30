@@ -27,6 +27,7 @@ import com.vmware.xenon.common.ServiceHost.ServiceNotFoundException;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.common.jwt.Verifier;
+import com.vmware.xenon.common.metrics.ServiceHttpCollector;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
@@ -182,6 +183,10 @@ public class StatelessService implements Service {
         } catch (Exception e) {
             op.fail(e);
         }
+    }
+
+    private ServiceHttpCollector getCollector() {
+        return ((UtilityService)getUtilityService(null)).getCollector();
     }
 
     @RouteDocumentation(supportLevel = SupportLevel.NOT_SUPPORTED)

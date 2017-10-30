@@ -43,6 +43,10 @@ public final class RoundRobinOperationQueue {
         this.limit = limit;
     }
 
+    public String getDescription() {
+        return this.description;
+    }
+
     /**
      * Queue the operation on the queue associated with the key
      */

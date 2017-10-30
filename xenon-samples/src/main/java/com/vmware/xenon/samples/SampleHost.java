@@ -15,6 +15,8 @@ package com.vmware.xenon.samples;
 
 import java.util.logging.Level;
 
+import io.prometheus.client.CollectorRegistry;
+
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleTaskService;
@@ -32,6 +34,7 @@ public class SampleHost extends ServiceHost {
 
     public static void main(String[] args) throws Throwable {
         SampleHost h = new SampleHost();
+        h.setCollectorRegistry(CollectorRegistry.defaultRegistry);
         h.initialize(args);
         h.start();
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
