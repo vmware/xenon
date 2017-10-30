@@ -23,6 +23,7 @@ import static org.junit.Assert.fail;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.net.URI;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -39,6 +40,7 @@ import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -134,6 +136,27 @@ public class TestServiceHost {
         } catch (Throwable e) {
             throw new Exception(e);
         }
+    }
+
+    @Test(expected = TimeoutException.class)
+    public void startCoreServicesSynchronouslyWithTimeout() throws Throwable {
+        setUp(false);
+
+        // use reflection to shorten operation timeout value
+        Field field = ServiceHost.class.getDeclaredField("state");
+        field.setAccessible(true);
+        ServiceHost.ServiceHostState state = (ServiceHostState) field.get(this.host);
+        state.operationTimeoutMicros = TimeUnit.MILLISECONDS.toMicros(100);
+
+        this.host.startCoreServicesSynchronously(new StatelessService() {
+            @SuppressWarnings("unused")
+            public static final String SELF_LINK = "/foo";
+
+            @Override
+            public void handleStart(Operation startPost) {
+                // do not complete
+            }
+        });
     }
 
     @Test

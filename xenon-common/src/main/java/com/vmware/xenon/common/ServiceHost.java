@@ -62,6 +62,7 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
@@ -2080,9 +2081,11 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         if (!l.await(this.state.operationTimeoutMicros, TimeUnit.MICROSECONDS)) {
-            log(Level.SEVERE, "One of the core services failed start: %s",
-                    sb.toString(),
-                    new TimeoutException());
+            String errorMsg = String.format("One of the core services failed start: %s",
+                    sb.toString());
+            TimeoutException e = new TimeoutException(errorMsg);
+            log(Level.SEVERE, errorMsg, e);
+            failure[0] = e;
         }
 
         OperationContext.setAuthorizationContext(originalContext);
