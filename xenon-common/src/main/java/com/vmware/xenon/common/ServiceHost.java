@@ -94,7 +94,7 @@ import com.vmware.xenon.services.common.AuthCredentialsService;
 import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.AuthorizationTokenCacheService;
 import com.vmware.xenon.services.common.ConsistentHashingNodeSelectorService;
-import com.vmware.xenon.services.common.FileContentService;
+import com.vmware.xenon.services.common.DirectoryContentService;
 import com.vmware.xenon.services.common.GraphQueryTaskService;
 import com.vmware.xenon.services.common.GuestUserService;
 import com.vmware.xenon.services.common.LocalQueryTaskFactoryService;
@@ -1754,67 +1754,83 @@ public class ServiceHost implements ServiceRequestSender {
         Map<Path, String> pathToURIPath = new HashMap<>();
         ServiceDocumentDescription sdd = s.getDocumentTemplate().documentDescription;
 
+        Path rootDir = null;
+        Path baseUriPath = null;
         try {
             if (sdd != null && sdd.userInterfaceResourcePath != null) {
-                String customPathResources = s
-                        .getDocumentTemplate().documentDescription.userInterfaceResourcePath;
-                pathToURIPath = discoverUiResources(Paths.get(customPathResources), s, true);
+                String customPathResources = s.getDocumentTemplate()
+                        .documentDescription.userInterfaceResourcePath;
+                Path cpr = Paths.get(customPathResources);
+                rootDir = discoverUiResources(cpr, s, true, pathToURIPath);
+                baseUriPath = getBaseUriPath(cpr, s, true);
             } else {
                 Path baseResourcePath = Utils.getServiceUiResourcePath(s);
-                pathToURIPath = discoverUiResources(baseResourcePath, s, false);
+                rootDir = discoverUiResources(baseResourcePath, s, false, pathToURIPath);
+                baseUriPath = getBaseUriPath(baseResourcePath, s, false);
             }
         } catch (Exception e) {
             log(Level.WARNING, "Error enumerating UI resources for %s: %s", s.getSelfLink(),
                     Utils.toString(e));
         }
 
-        if (pathToURIPath.isEmpty()) {
+        if (pathToURIPath.isEmpty() || rootDir == null || baseUriPath == null) {
             return;
         }
 
-        for (Entry<Path, String> e : pathToURIPath.entrySet()) {
-            Operation post = Operation
-                    .createPost(UriUtils.buildUri(this, e.getValue()))
-                    .setAuthorizationContext(this.getSystemAuthorizationContext());
-            FileContentService fcs = new FileContentService(e.getKey().toFile());
-            startService(post, fcs);
-        }
+        String selfLink = baseUriPath.toString().replace('\\', '/');
+        Operation post = Operation
+                .createPost(UriUtils.buildUri(this, selfLink))
+                .setAuthorizationContext(this.getSystemAuthorizationContext());
+        this.startService(post, new DirectoryContentService(rootDir));
     }
 
     // Find UI resources for this service (e.g. html, css, js)
-    private Map<Path, String> discoverUiResources(Path path, Service s, boolean hasCustomResources)
+    private Path discoverUiResources(Path path, Service s, boolean hasCustomResources,
+            Map<Path, String> pathToURIPath)
             throws Exception {
-        Map<Path, String> pathToURIPath = new HashMap<>();
         Path baseUriPath;
 
+        Path res = null;
+        baseUriPath = getBaseUriPath(path, s, hasCustomResources);
+
+        String prefix = path.toString().replace('\\', '/');
+
+        if (this.state.resourceSandboxFileReference != null) {
+            res = discoverFileResources(s, pathToURIPath, baseUriPath, prefix);
+        }
+
+        if (pathToURIPath.isEmpty()) {
+            res = discoverJarResources(path, s, pathToURIPath, baseUriPath, prefix);
+        }
+
+        return res;
+    }
+
+    private Path getBaseUriPath(Path path, Service s, boolean hasCustomResources) {
+        Path baseUriPath;
         if (!hasCustomResources) {
             baseUriPath = Paths.get(ServiceUriPaths.UI_RESOURCES,
                     Utils.buildServicePath(s.getClass()));
         } else {
             baseUriPath = Paths.get(ServiceUriPaths.UI_RESOURCES, path.toString());
         }
-
-        String prefix = path.toString().replace('\\', '/');
-
-        if (this.state.resourceSandboxFileReference != null) {
-            discoverFileResources(s, pathToURIPath, baseUriPath, prefix);
-        }
-
-        if (pathToURIPath.isEmpty()) {
-            discoverJarResources(path, s, pathToURIPath, baseUriPath, prefix);
-        }
-        return pathToURIPath;
+        return baseUriPath;
     }
 
     /**
      * Infrastructure use. Discover all jar resources for the specified service.
      */
-    public void discoverJarResources(Path path, Service s, Map<Path, String> pathToURIPath,
+    public Path discoverJarResources(Path path, Service s, Map<Path, String> pathToURIPath,
             Path baseUriPath, String prefix) throws URISyntaxException, IOException {
+        Path res = null;
         for (ResourceEntry entry : FileUtils.findResources(s.getClass(), prefix)) {
             Path resourcePath = path.resolve(entry.suffix);
             Path uriPath = baseUriPath.resolve(entry.suffix);
             Path outputPath = this.copyResourceToSandbox(entry.url, resourcePath);
+            if (res == null) {
+                String os = outputPath.toString();
+                res = Paths.get(os.substring(0, os.length() - entry.suffix.toString().length()));
+            }
             if (outputPath == null) {
                 // Failed to copy one resource, disable user interface for this service.
                 s.toggleOption(ServiceOption.HTML_USER_INTERFACE, false);
@@ -1822,18 +1838,19 @@ public class ServiceHost implements ServiceRequestSender {
                 pathToURIPath.put(outputPath, uriPath.toString().replace('\\', '/'));
             }
         }
+        return res;
     }
 
     /**
      * Infrastructure use. Discover all file system resources for the specified service.
      */
-    public void discoverFileResources(Service s, Map<Path, String> pathToURIPath,
+    public Path discoverFileResources(Service s, Map<Path, String> pathToURIPath,
             Path baseUriPath,
             String prefix) {
         File rootDir = new File(new File(this.state.resourceSandboxFileReference), prefix);
         if (!rootDir.exists()) {
             log(Level.INFO, "Resource directory not found: %s", rootDir.toString());
-            return;
+            return baseUriPath;
         }
 
         String basePath = baseUriPath.toString();
@@ -1851,6 +1868,7 @@ public class ServiceHost implements ServiceRequestSender {
         if (pathToURIPath.isEmpty()) {
             log(Level.INFO, "No resources found in directory: %s", rootDir.toString());
         }
+        return rootDir.toPath();
     }
 
     private NodeSelectorService startDefaultReplicationAndNodeGroupServices() throws Throwable {

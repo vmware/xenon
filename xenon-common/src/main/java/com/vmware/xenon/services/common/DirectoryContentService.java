@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2015 VMware, Inc. All Rights Reserved.
+ * Copyright (c) 2017 VMware, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy of
@@ -14,21 +14,22 @@
 package com.vmware.xenon.services.common;
 
 import java.io.File;
+import java.nio.file.Path;
 
 import com.vmware.xenon.common.FileUtils;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.StatelessService;
 
 /**
- * Serves the contents of a file, on GET
+ * Serves the contents of a directory, on GET
  */
-public class FileContentService extends StatelessService {
+public class DirectoryContentService extends StatelessService {
 
-    private File file;
+    private final Path root;
 
-    public FileContentService(File file) {
-        super();
-        this.file = file;
+    public DirectoryContentService(Path root) {
+        this.root = root;
+        toggleOption(ServiceOption.URI_NAMESPACE_OWNER, true);
     }
 
     @Override
@@ -38,6 +39,20 @@ public class FileContentService extends StatelessService {
 
     @Override
     public void handleGet(Operation get) {
-        FileUtils.readFileAndComplete(get, this.file);
+        String path = get.getUri().getPath();
+        if (path.contains("..")) {
+            // prevent serving any file by means of path manipulation
+            get.fail(Operation.STATUS_CODE_NOT_FOUND);
+            return;
+        }
+
+        path = path.substring(getSelfLink().length() + 1);
+        File file = this.root.resolve(path).toFile();
+        if (file.isDirectory() || !file.canRead()) {
+            get.fail(Operation.STATUS_CODE_NOT_FOUND);
+            return;
+        }
+
+        FileUtils.readFileAndComplete(get, file);
     }
 }
