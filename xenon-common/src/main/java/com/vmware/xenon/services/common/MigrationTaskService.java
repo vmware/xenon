@@ -27,6 +27,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedSet;
@@ -1049,34 +1050,60 @@ public class MigrationTaskService extends StatefulService {
     }
 
     private void migrateMismatchedOwnerDocuments(State currentState, List<URI> destinationURIs) {
-        List<Operation> posts = new ArrayList<>();
+        List<DeferredResult<Operation>> deferredResults = new ArrayList<>();
+
         List<URI> sourceURIs = currentState.sourceReferences;
         for (String link : currentState.nonMigratedSelfLinks) {
-            Query countQuery = Builder.create()
-                    .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, link)
-                    .build();
-            QueryTask queryTask = QueryTask.Builder.createDirectTask()
-                    .setQuery(countQuery)
-                    .setResultLimit(DEFAULT_PAGE_SIZE)
-                    .addOptions(EnumSet.of(QueryOption.EXPAND_CONTENT))
-                    .build();
 
-            posts.add(Operation.createPost(UriUtils.buildUri(selectRandomUri(sourceURIs), ServiceUriPaths.CORE_LOCAL_QUERY_TASKS))
-                    .setBody(queryTask));
+            // attempt to synch
+            SynchronizationRequest synchRequestBody = SynchronizationRequest.create();
+            synchRequestBody.documentSelfLink = link;
+
+            Operation synchRequest = Operation.createPatch(UriUtils.buildUri(selectRandomUri(sourceURIs), SynchronizationManagementService.SELF_LINK))
+                    .setBody(synchRequestBody)
+                    .setReferer(getUri())
+                    .setExpiration(currentState.documentExpirationTimeMicros);
+
+            DeferredResult<Operation> deferredResult = this.sendWithDeferredResult(synchRequest)
+                    .exceptionally(throwable -> {
+                        logSevere("Failed to force synch link=%s : %s", link, throwable);
+                        // to proceed to next stage, return null if synch failed
+                        return null;
+                    })
+                    .thenCompose(op -> {
+                        if (op == null) {
+                            // previous synch stage has failed
+                            return null;
+                        }
+
+                        QueryTask queryTask = QueryTask.Builder.createDirectTask()
+                                .setQuery(Builder.create()
+                                        .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, link)
+                                        .build())
+                                .setResultLimit(currentState.querySpec.resultLimit)
+                                .addOptions(EnumSet.of(QueryOption.EXPAND_CONTENT))
+                                .build();
+
+                        Operation post = Operation.createPost(UriUtils.buildUri(selectRandomUri(sourceURIs), ServiceUriPaths.CORE_LOCAL_QUERY_TASKS))
+                                .setBody(queryTask);
+
+                        return this.sendWithDeferredResult(post);
+                    })
+                    .exceptionally(throwable -> {
+                        logSevere("Document was not migrated due to query failure. link=%s : %s", link, throwable);
+                        return null;
+                    });
+
+            deferredResults.add(deferredResult);
         }
 
         currentState.nonMigratedSelfLinks.clear();
-        OperationJoin.create(posts)
-                .setCompletion((os, ts) -> {
-                    if (ts != null && ts.size() > 0) {
-                        logSevere("Document was not migrated due to query failure. SelfLink: %s", ts.values().iterator().next());
-                        return;
-                    }
 
-                    Set<URI> uris = os.values().stream().map(this::getNextPageLinkUri).collect(toSet());
+        DeferredResult.allOf(deferredResults)
+                .thenAccept(ops -> {
+                    Set<URI> uris = ops.stream().filter(Objects::nonNull).map(this::getNextPageLinkUri).collect(toSet());
                     migrate(currentState, uris, destinationURIs, new HashMap<>(), true);
-                })
-                .sendWith(this);
+                });
     }
 
     /**
