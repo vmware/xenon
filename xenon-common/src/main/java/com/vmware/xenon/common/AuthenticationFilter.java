@@ -67,8 +67,7 @@ public class AuthenticationFilter implements Filter {
             }
 
             if (e != null) {
-                context.getOpProcessingChain().resumeProcessingRequest(op, context,
-                        FilterReturnCode.FAILED_STOP_PROCESSING, e);
+                context.resumeProcessingRequest(op, FilterReturnCode.FAILED_STOP_PROCESSING, e);
                 op.setBodyNoCloning(o.getBodyRaw())
                         .setStatusCode(o.getStatusCode()).fail(e);
                 return;
@@ -77,16 +76,14 @@ public class AuthenticationFilter implements Filter {
             // If the status code was anything but 200, and the operation
             // was marked as failed, terminate the processing chain
             if (o.getStatusCode() != Operation.STATUS_CODE_OK) {
-                context.getOpProcessingChain().resumeProcessingRequest(op, context,
-                        FilterReturnCode.FAILED_STOP_PROCESSING, new SecurityException());
+                context.resumeProcessingRequest(op, FilterReturnCode.FAILED_STOP_PROCESSING, new SecurityException());
                 op.setBodyNoCloning(o.getBodyRaw())
                         .setStatusCode(o.getStatusCode()).complete();
                 return;
             }
 
             // authentication success - proceed to the next filter
-            context.getOpProcessingChain().resumeProcessingRequest(op, context,
-                    FilterReturnCode.CONTINUE_PROCESSING, null);
+            context.resumeProcessingRequest(op, FilterReturnCode.CONTINUE_PROCESSING, null);
         });
 
         // TODO: fix BasicAuthenticationService and just send it a POST

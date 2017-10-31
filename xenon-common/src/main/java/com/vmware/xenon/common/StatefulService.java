@@ -1705,6 +1705,13 @@ public class StatefulService implements Service {
 
         if (stage == ProcessingStage.AVAILABLE) {
             getHost().processPendingServiceAvailableOperations(this, null, false);
+            getHost().getOperationTracker().processPendingServiceStartOperations(
+                    getSelfLink(), ProcessingStage.AVAILABLE, this);
+        }
+
+        if (stage == ProcessingStage.STOPPED) {
+            getHost().getOperationTracker().processPendingServiceStartOperations(
+                    getSelfLink(), ProcessingStage.STOPPED, this);
         }
     }
 

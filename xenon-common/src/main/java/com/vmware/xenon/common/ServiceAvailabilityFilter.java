@@ -68,15 +68,21 @@ public class ServiceAvailabilityFilter implements Filter {
             // service is in the process of starting - we will resume processing when
             // it's available
             Service finalService = service;
-            op.nestCompletion(o -> {
+            op.nestCompletion((o, e) -> {
+                if (e != null || !ServiceHost.isServiceAvailable(finalService)) {
+                    // service might have failed to start and might even be detached -
+                    // we will retry, which will most likely trigger an on-demand start
+                    context.resumeProcessingRequest(op, FilterReturnCode.RESUME_PROCESSING, null);
+                    return;
+                }
+
                 context.setService(finalService);
-                context.getOpProcessingChain().resumeProcessingRequest(op, context,
-                        FilterReturnCode.CONTINUE_PROCESSING, null);
+                context.resumeProcessingRequest(op, FilterReturnCode.CONTINUE_PROCESSING, null);
             });
 
             final String finalServicePath = servicePath;
             context.setSuspendConsumer(o -> {
-                context.getHost().registerForServiceAvailability(op, finalServicePath);
+                context.getHost().getOperationTracker().trackServiceStartCompletion(finalServicePath, op);
             });
             return FilterReturnCode.SUSPEND_PROCESSING;
         }
@@ -148,16 +154,14 @@ public class ServiceAvailabilityFilter implements Filter {
                 .transferRefererFrom(op)
                 .setCompletion((o, e) -> {
                     if (e != null) {
-                        context.getOpProcessingChain().resumeProcessingRequest(op, context,
-                                FilterReturnCode.FAILED_STOP_PROCESSING, e);
+                        context.resumeProcessingRequest(op, FilterReturnCode.FAILED_STOP_PROCESSING, e);
                         op.fail(e);
                         return;
                     }
 
                     if (!o.hasBody()) {
                         // the index will return success, but no body if service is not found
-                        context.getOpProcessingChain().resumeProcessingRequest(op, context,
-                                FilterReturnCode.FAILED_STOP_PROCESSING,
+                        context.resumeProcessingRequest(op, FilterReturnCode.FAILED_STOP_PROCESSING,
                                 new ServiceNotFoundException(op.getUri().getPath()));
                         Operation.failServiceNotFound(op);
                         return;
@@ -173,8 +177,7 @@ public class ServiceAvailabilityFilter implements Filter {
         Service indexService = host.getDocumentIndexService();
         if (indexService == null) {
             CancellationException e = new CancellationException("Index service is null");
-            context.getOpProcessingChain().resumeProcessingRequest(op, context,
-                    FilterReturnCode.FAILED_STOP_PROCESSING, e);
+            context.resumeProcessingRequest(op, FilterReturnCode.FAILED_STOP_PROCESSING, e);
             op.fail(e);
             return;
         }
@@ -212,30 +215,26 @@ public class ServiceAvailabilityFilter implements Filter {
                             host.log(Level.WARNING,
                                     "Failed to start service %s because it already exists. Resubmitting request %s %d",
                                     servicePath, a, op.getId());
-                            context.getOpProcessingChain().resumeProcessingRequest(op, context,
-                                    FilterReturnCode.RESUME_PROCESSING, null);
+                            context.resumeProcessingRequest(op, FilterReturnCode.RESUME_PROCESSING, null);
                             return;
                         }
 
                         if (response.getErrorCode() == ServiceErrorResponse.ERROR_CODE_STATE_MARKED_DELETED) {
                             if (a == Action.DELETE) {
                                 // state marked deleted, and action is to delete again, return success
-                                context.getOpProcessingChain().resumeProcessingRequest(op, context,
-                                        FilterReturnCode.SUCCESS_STOP_PROCESSING, null);
+                                context.resumeProcessingRequest(op, FilterReturnCode.SUCCESS_STOP_PROCESSING, null);
                                 op.complete();
                             } else if (a == Action.POST) {
                                 // POSTs will fail with conflict since we must indicate the client is attempting a restart of a
                                 // existing service.
-                                context.getOpProcessingChain().resumeProcessingRequest(op, context,
-                                        FilterReturnCode.FAILED_STOP_PROCESSING,
+                                context.resumeProcessingRequest(op, FilterReturnCode.FAILED_STOP_PROCESSING,
                                         new ServiceAlreadyStartedException(servicePath));
                                 host.failRequestServiceAlreadyStarted(servicePath, null,
                                         op);
                             } else {
                                 // All other actions fail with NOT_FOUND making it look like the service
                                 // does not exist (or ever existed)
-                                context.getOpProcessingChain().resumeProcessingRequest(op, context,
-                                        FilterReturnCode.FAILED_STOP_PROCESSING,
+                                context.resumeProcessingRequest(op, FilterReturnCode.FAILED_STOP_PROCESSING,
                                         new ServiceNotFoundException(servicePath));
                                 Operation.failServiceNotFound(op,
                                         ServiceErrorResponse.ERROR_CODE_STATE_MARKED_DELETED);
@@ -248,8 +247,7 @@ public class ServiceAvailabilityFilter implements Filter {
                     // This is for consistency in behavior with services already resident in memory.
                     if (op.getAction() == Action.DELETE &&
                             response.statusCode == Operation.STATUS_CODE_NOT_FOUND) {
-                        context.getOpProcessingChain().resumeProcessingRequest(op, context,
-                                FilterReturnCode.SUCCESS_STOP_PROCESSING, null);
+                        context.resumeProcessingRequest(op, FilterReturnCode.SUCCESS_STOP_PROCESSING, null);
                         op.complete();
                         return;
                     }
@@ -257,8 +255,7 @@ public class ServiceAvailabilityFilter implements Filter {
                     if (response.statusCode == Operation.STATUS_CODE_NOT_FOUND) {
                         host.log(Level.WARNING,
                                 "Failed to start service %s with 404 status code.", servicePath);
-                        context.getOpProcessingChain().resumeProcessingRequest(op, context,
-                                FilterReturnCode.FAILED_STOP_PROCESSING,
+                        context.resumeProcessingRequest(op, FilterReturnCode.FAILED_STOP_PROCESSING,
                                 new ServiceNotFoundException(servicePath));
                         Operation.failServiceNotFound(op);
                         return;
@@ -268,8 +265,7 @@ public class ServiceAvailabilityFilter implements Filter {
                 host.log(Level.SEVERE,
                         "Failed to start service %s with statusCode %d",
                         servicePath, o.getStatusCode());
-                context.getOpProcessingChain().resumeProcessingRequest(op, context,
-                        FilterReturnCode.FAILED_STOP_PROCESSING,
+                context.resumeProcessingRequest(op, FilterReturnCode.FAILED_STOP_PROCESSING,
                         new Exception("Failed with status code: " + o.getStatusCode()));
                 op.setBodyNoCloning(o.getBodyRaw()).setStatusCode(o.getStatusCode());
                 op.fail(e);
@@ -279,8 +275,7 @@ public class ServiceAvailabilityFilter implements Filter {
             host.log(Level.FINE,
                     "Successfully started service %s. Resubmitting request %s %d",
                     servicePath, op.getAction(), op.getId());
-            context.getOpProcessingChain().resumeProcessingRequest(op, context,
-                    FilterReturnCode.RESUME_PROCESSING, null);
+            context.resumeProcessingRequest(op, FilterReturnCode.RESUME_PROCESSING, null);
         };
 
         onDemandPost.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)
@@ -298,8 +293,7 @@ public class ServiceAvailabilityFilter implements Filter {
             childService = factoryService.createServiceInstance();
             childService.toggleOption(ServiceOption.FACTORY_ITEM, true);
         } catch (Throwable e1) {
-            context.getOpProcessingChain().resumeProcessingRequest(op, context,
-                    FilterReturnCode.FAILED_STOP_PROCESSING, e1);
+            context.resumeProcessingRequest(op, FilterReturnCode.FAILED_STOP_PROCESSING, e1);
             op.fail(e1);
             return;
         }
@@ -309,6 +303,8 @@ public class ServiceAvailabilityFilter implements Filter {
             op.disableFailureLogging(true);
         }
 
+        // start service as system user, authz checks will kick in later during processing
+        onDemandPost.setAuthorizationContext(host.getSystemAuthorizationContext());
         // bypass the factory, directly start service on host. This avoids adding a new
         // version to the index and various factory processes that are invoked on new
         // service creation

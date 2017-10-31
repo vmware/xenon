@@ -484,11 +484,17 @@ public class StatelessService implements Service {
         }
 
         this.stage = stage;
-        if (stage != ProcessingStage.AVAILABLE) {
-            return;
+
+        if (stage == ProcessingStage.AVAILABLE) {
+            getHost().processPendingServiceAvailableOperations(this, null, false);
+            getHost().getOperationTracker().processPendingServiceStartOperations(
+                    getSelfLink(), ProcessingStage.AVAILABLE, this);
         }
 
-        getHost().processPendingServiceAvailableOperations(this, null, false);
+        if (stage == ProcessingStage.STOPPED) {
+            getHost().getOperationTracker().processPendingServiceStartOperations(
+                    getSelfLink(), ProcessingStage.STOPPED, this);
+        }
     }
 
     @Override

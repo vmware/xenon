@@ -30,6 +30,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -46,6 +47,7 @@ import org.junit.Test;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service.Action;
+import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.TestAuthorization.AuthzStatefulService.AuthzState;
 import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.QueryTestUtils;
@@ -58,6 +60,7 @@ import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.GuestUserService;
+import com.vmware.xenon.services.common.MinimalFactoryTestService;
 import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
@@ -417,6 +420,50 @@ public class TestAuthorization extends BasicTestCase {
         double currentCacheSize = stat.get(
                 ServiceHostManagementService.STAT_NAME_AUTHORIZATION_CACHE_SIZE).latestValue;
         assertTrue(currentCacheSize == newInsertCount);
+    }
+
+    @Test
+    public void testODLGetWithAuthorization() throws Throwable {
+        long cacheDelayInterval = TimeUnit.MILLISECONDS.toMicros(100);
+        this.host.setMaintenanceIntervalMicros(cacheDelayInterval);
+        this.host.setServiceCacheClearDelayMicros(cacheDelayInterval);
+
+        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
+        AuthorizationHelper authsetupHelper = new AuthorizationHelper(this.host);
+        String email = "foo@foo.com";
+        String userLink = authsetupHelper.createUserService(this.host, email);
+        Query userGroupQuery = Query.Builder.create().addFieldClause(UserState.FIELD_NAME_EMAIL, email).build();
+        String userGroupLink = authsetupHelper.createUserGroup(this.host, email, userGroupQuery);
+        Query resourceGroupQuery = Query.Builder.create().addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, "*", MatchType.WILDCARD).build();
+        String resourceGroupLink = authsetupHelper.createResourceGroup(this.host, email, resourceGroupQuery);
+
+        EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE, ServiceOption.FACTORY_ITEM);
+        // Start the factory service. it will be needed to start services on-demand
+        MinimalFactoryTestService factoryService = new MinimalFactoryTestService();
+        factoryService.setChildServiceCaps(caps);
+        this.host.startServiceAndWait(factoryService, "service", null);
+        // Start some test services
+        List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
+                MinimalTestService.class, this.host.buildMinimalTestState(), caps, null);
+        // verify services have stopped
+        this.host.waitFor("wait for services to stop.", () -> {
+            for (Service service : services) {
+                if (this.host.getServiceStage(service.getSelfLink()) != null) {
+                    return false;
+                }
+            }
+            return true;
+        });
+
+        this.host.assumeIdentity(userLink);
+        this.host.sendAndWaitExpectFailure(
+                Operation.createGet(UriUtils.buildUri(this.host, services.get(0).getSelfLink())));
+        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
+        authsetupHelper.createRole(this.host, userGroupLink, resourceGroupLink, EnumSet.of(Action.GET));
+        // Assume identity, GET should now succeed
+        this.host.assumeIdentity(userLink);
+        this.host.sendAndWaitExpectSuccess(
+                Operation.createGet(UriUtils.buildUri(this.host, services.get(0).getSelfLink())));
     }
 
     @Test

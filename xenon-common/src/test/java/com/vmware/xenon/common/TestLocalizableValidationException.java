@@ -139,8 +139,7 @@ public class TestLocalizableValidationException extends BasicReusableHostTestCas
                 context.setSuspendConsumer(o -> {
                     s.sendRequest(Operation.createGet(s, TestFailingStatefulService.FACTORY_LINK)
                             .setCompletion((oo, e) -> {
-                                context.getOpProcessingChain().resumeProcessingRequest(op, context,
-                                        FilterReturnCode.FAILED_STOP_PROCESSING, e);
+                                context.resumeProcessingRequest(op, FilterReturnCode.FAILED_STOP_PROCESSING, e);
                                 op.fail(ex);
                             }));
                 });

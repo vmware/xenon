@@ -43,6 +43,7 @@ public class OperationTracker {
 
     private ServiceHost host;
     private final SortedSet<Operation> pendingStartOperations = createOperationSet();
+    private final ConcurrentHashMap<String, SortedSet<Operation>> pendingServiceStartCompletions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, SortedSet<Operation>> pendingServiceAvailableCompletions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Operation> pendingOperationsForRetry = new ConcurrentHashMap<>();
 
@@ -70,14 +71,25 @@ public class OperationTracker {
         this.pendingStartOperations.remove(post);
     }
 
-    public SortedSet<Operation> trackServiceAvailableCompletion(String link,
+    public void trackServiceStartCompletion(String link, Operation op) {
+        SortedSet<Operation> pendingOps = this.pendingServiceStartCompletions
+                .computeIfAbsent(link, (k) -> {
+                    return createOperationSet();
+                });
+        pendingOps.add(op);
+    }
+
+    public SortedSet<Operation>  removeServiceStartCompletions(String link) {
+        return this.pendingServiceStartCompletions.remove(link);
+    }
+
+    public void trackServiceAvailableCompletion(String link,
             Operation opTemplate, boolean doOpClone) {
         SortedSet<Operation> pendingOps = this.pendingServiceAvailableCompletions
                 .computeIfAbsent(link, (k) -> {
                     return createOperationSet();
                 });
         pendingOps.add(doOpClone ? opTemplate.clone() : opTemplate);
-        return pendingOps;
     }
 
     public boolean hasPendingServiceAvailableCompletions(String link) {
@@ -89,9 +101,35 @@ public class OperationTracker {
     }
 
     public void performMaintenance(long nowMicros) {
+        // check pendingStartOperations
         Iterator<Operation> startOpsIt = this.pendingStartOperations.iterator();
         checkOperationExpiration(nowMicros, startOpsIt);
 
+        // check pendingServiceStartCompletions
+        for (Entry<String, SortedSet<Operation>> entry : this.pendingServiceStartCompletions
+                .entrySet()) {
+            String link = entry.getKey();
+            SortedSet<Operation> pendingOps = entry.getValue();
+            Service s = this.host.findService(link, true);
+            if (s != null && s.getProcessingStage() == ProcessingStage.AVAILABLE) {
+                this.host.log(Level.WARNING,
+                        "Service %s available, but has pending start operations", link);
+                processPendingServiceStartOperations(link, ProcessingStage.AVAILABLE, s);
+                break;
+            }
+
+            if (s == null || s.getProcessingStage() == ProcessingStage.STOPPED) {
+                this.host.log(Level.WARNING,
+                        "Service %s has stopped, but has pending start operations", link);
+                processPendingServiceStartOperations(link, ProcessingStage.STOPPED, null);
+                break;
+            }
+
+            Iterator<Operation> it = pendingOps.iterator();
+            checkOperationExpiration(nowMicros, it);
+        }
+
+        // check pendingServiceAvailableCompletions
         for (Entry<String, SortedSet<Operation>> entry : this.pendingServiceAvailableCompletions
                 .entrySet()) {
             String link = entry.getKey();
@@ -103,10 +141,12 @@ public class OperationTracker {
                 this.host.processPendingServiceAvailableOperations(s, null, false);
                 break;
             }
+
             Iterator<Operation> it = pendingOps.iterator();
             checkOperationExpiration(nowMicros, it);
         }
 
+        // check pendingOperationsForRetry
         final long intervalMicros = TimeUnit.SECONDS.toMicros(1);
         Iterator<Entry<Long, Operation>> it = this.pendingOperationsForRetry.entrySet().iterator();
         while (it.hasNext()) {
@@ -143,6 +183,29 @@ public class OperationTracker {
         }
     }
 
+    void processPendingServiceStartOperations(String link, ProcessingStage processingStage, Service s) {
+        SortedSet<Operation> ops = removeServiceStartCompletions(link);
+        if (ops == null || ops.isEmpty()) {
+            return;
+        }
+
+        for (Operation op : ops) {
+            if (processingStage == ProcessingStage.AVAILABLE) {
+                this.host.run(() -> {
+                    if (op.getUri() == null) {
+                        op.setUri(s.getUri());
+                    }
+                    if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_POST_TO_PUT)) {
+                        this.host.restoreActionOnChildServiceToPostOnFactory(link, op);
+                    }
+                    op.complete();
+                });
+            } else {
+                this.host.run(() -> op.fail(new IllegalStateException(op.toString())));
+            }
+        }
+    }
+
     public void close() {
         for (Operation op : this.pendingOperationsForRetry.values()) {
             op.fail(new CancellationException("Operation tracker is closing"));
@@ -153,6 +216,13 @@ public class OperationTracker {
             op.fail(new CancellationException("Operation tracker is closing"));
         }
         this.pendingStartOperations.clear();
+
+        for (SortedSet<Operation> opSet : this.pendingServiceStartCompletions.values()) {
+            for (Operation op : opSet) {
+                op.fail(new CancellationException("Operation tracker is closing"));
+            }
+        }
+        this.pendingServiceStartCompletions.clear();
 
         for (SortedSet<Operation> opSet : this.pendingServiceAvailableCompletions.values()) {
             for (Operation op : opSet) {

@@ -121,6 +121,18 @@ public class OperationProcessingChain {
         public void setSuspendConsumer(Consumer<Operation> suspendConsumer) {
             this.suspendConsumer = suspendConsumer;
         }
+
+        /**
+         * Delegate to {@link OperationProcessingChain} with current context.
+         *
+         * @param op               the operation that has been suspended and is now being resumed
+         * @param filterReturnCode the filter's indication of whether to continue processing
+         *                         the request or to stop it (with success or with failure)
+         * @param e                a Throwable in case the filter return code is FAILED_STOP_PROCESSING
+         */
+        public void resumeProcessingRequest(Operation op, FilterReturnCode filterReturnCode, Throwable e) {
+            this.opProcessingChain.resumeProcessingRequest(op, this, filterReturnCode, e);
+        }
     }
 
     public interface Filter {
