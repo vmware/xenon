@@ -296,6 +296,8 @@ public class ServiceAvailabilityFilter implements Filter {
             op.disableFailureLogging(true);
         }
 
+        // start service as system user, authz checks will kick in later during processing
+        onDemandPost.setAuthorizationContext(host.getSystemAuthorizationContext());
         // bypass the factory, directly start service on host. This avoids adding a new
         // version to the index and various factory processes that are invoked on new
         // service creation
