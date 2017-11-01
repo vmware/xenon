@@ -2386,11 +2386,18 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     /**
-     * A service becomes available for operation processing after its attached to a running host.
-     * Service initialization is asynchronous and two phase, allowing for multiple services to start
-     * concurrently but still take dependencies on each other
+     * Start a service using the specified operation and service
      */
     public ServiceHost startService(Operation post, Service service) {
+        return startService(post, service, null);
+    }
+
+    /**
+     * Start a service using the specified operation and service.
+     * If this start is an on-demand start due to an incoming request, the incoming
+     * request that triggered this start is provided.
+     */
+    public ServiceHost startService(Operation post, Service service, Operation onDemandTriggeringOp) {
         if (service == null) {
             throw new IllegalArgumentException("service is required");
         }
@@ -2451,7 +2458,7 @@ public class ServiceHost implements ServiceRequestSender {
                 post.fail(new IllegalStateException(errorMsg));
                 return this;
             }
-        } else if (checkIfServiceExistsAndAttach(service, servicePath, post)) {
+        } else if (checkIfServiceExistsAndAttach(service, servicePath, post, onDemandTriggeringOp)) {
             // service exists, do not proceed with start
             return this;
         }
@@ -2600,7 +2607,7 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private boolean checkIfServiceExistsAndAttach(Service service, String servicePath,
-            Operation post) {
+            Operation post, Operation onDemandTriggeringOp) {
         boolean isCreateOrSynchRequest = post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED)
                 || post.isSynchronize();
         Service existing = null;
@@ -2669,10 +2676,18 @@ public class ServiceHost implements ServiceRequestSender {
                         post.getId(),
                         servicePath, existing.getProcessingStage());
                 scheduleCore(() -> {
-                    startService(post, service);
+                    startService(post, service, onDemandTriggeringOp);
                 }, this.getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
                 return true;
             }
+
+            if (onDemandTriggeringOp != null) {
+                // this is an on-demand start and the service is already available -
+                // no need to continue with start
+                post.complete();
+                return true;
+            }
+
             // service already attached, not idempotent, and this is not a synchronization attempt.
             // We fail request with conflict
             failRequestServiceAlreadyStarted(servicePath, service, post);
