@@ -897,7 +897,7 @@ public class MigrationTaskService extends StatefulService {
                                 if (currentPageLinks.isEmpty()) {
                                     patchToFinished(null);
                                 } else {
-                                    migrate(currentState, currentPageLinks, destinationURIs, new HashMap<>(), false);
+                                    migrate(currentState, currentPageLinks, destinationURIs, new HashMap<>());
                                 }
                             })
                             .sendWith(this);
@@ -909,16 +909,19 @@ public class MigrationTaskService extends StatefulService {
     }
 
     private void migrate(State currentState, Set<URI> currentPageLinks, List<URI> destinationURIs,
-                         Map<String, Long> lastUpdateTimesPerOwner, boolean migrateMismatched) {
+            Map<String, Long> lastUpdateTimesPerOwner) {
 
         // This method is recursively called. When a page doesn't have nextPageLink, the recursion
         // will call here with empty currentPageLinks.
         // In that case, this has processed all entries, thus self patch to mark finish, then exit.
 
         if (currentPageLinks.isEmpty()) {
+
+            // this section is called at the very end.
+
             if (!currentState.nonMigratedSelfLinks.isEmpty()) {
                 if (currentState.migrateMismatchedOwnerDocuments) {
-                    migrateMismatchedOwnerDocuments(currentState, destinationURIs);
+                    migrateMismatchedOwnerDocuments(currentState, destinationURIs, lastUpdateTimesPerOwner);
                     return;
                 } else {
                     logSevere("%s documents were not migrated due to ownership mismatches. Example non-migrated SelfLink: %s",
@@ -992,7 +995,7 @@ public class MigrationTaskService extends StatefulService {
                             documentOwner = queryTask.results.documentOwner;
                         }
 
-                        if (documentOwner.equals(queryTask.results.documentOwner) || migrateMismatched) {
+                        if (documentOwner.equals(queryTask.results.documentOwner)) {
                             results.add(doc);
 
                             // keep last processed document update time(max) in each host
@@ -1030,7 +1033,7 @@ public class MigrationTaskService extends StatefulService {
                 if (results.isEmpty()) {
                     // The results might be empty if all the local queries returned documents the respective hosts don't own.
                     // In this case we can just move on to the next set of pages.
-                    migrate(currentState, nextPages, destinationURIs, lastUpdateTimesPerOwner, false);
+                    migrate(currentState, nextPages, destinationURIs, lastUpdateTimesPerOwner);
                     return;
                 }
 
@@ -1048,33 +1051,46 @@ public class MigrationTaskService extends StatefulService {
             .sendWith(this);
     }
 
-    private void migrateMismatchedOwnerDocuments(State currentState, List<URI> destinationURIs) {
-        List<Operation> posts = new ArrayList<>();
-        List<URI> sourceURIs = currentState.sourceReferences;
-        for (String link : currentState.nonMigratedSelfLinks) {
-            Query countQuery = Builder.create()
-                    .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, link)
-                    .build();
-            QueryTask queryTask = QueryTask.Builder.createDirectTask()
-                    .setQuery(countQuery)
-                    .setResultLimit(DEFAULT_PAGE_SIZE)
-                    .addOptions(EnumSet.of(QueryOption.EXPAND_CONTENT))
-                    .build();
+    private void migrateMismatchedOwnerDocuments(State currentState, List<URI> destinationURIs,
+            Map<String, Long> lastUpdateTimesPerOwner) {
 
-            posts.add(Operation.createPost(UriUtils.buildUri(selectRandomUri(sourceURIs), ServiceUriPaths.CORE_LOCAL_QUERY_TASKS))
-                    .setBody(queryTask));
-        }
+        List<URI> sourceURIs = currentState.sourceReferences;
+
+        List<Operation> gets = currentState.nonMigratedSelfLinks.stream()
+                .map(selfLink -> Operation.createGet(UriUtils.buildUri(selectRandomUri(sourceURIs), selfLink)))
+                .collect(toList());
 
         currentState.nonMigratedSelfLinks.clear();
-        OperationJoin.create(posts)
-                .setCompletion((os, ts) -> {
-                    if (ts != null && ts.size() > 0) {
-                        logSevere("Document was not migrated due to query failure. SelfLink: %s", ts.values().iterator().next());
+
+        OperationJoin.create(gets)
+                .setCompletion((ops, exs) -> {
+                    if (exs != null && exs.size() > 0) {
+                        for (Entry<Long, Throwable> entry : exs.entrySet()) {
+                            Operation op = ops.get(entry.getKey());
+                            logSevere("Failed to retrieve best state document via GET. link=%s, error=%s",
+                                    op.getUri(), Utils.toString(entry.getValue()));
+                        }
+                        // do not fail the task.
                         return;
                     }
 
-                    Set<URI> uris = os.values().stream().map(this::getNextPageLinkUri).collect(toSet());
-                    migrate(currentState, uris, destinationURIs, new HashMap<>(), true);
+                    Map<Object, URI> hostUriByResult = new HashMap<>();
+                    List<Object> results = new ArrayList<>();
+
+                    for (Operation op : ops.values()) {
+                        Object doc = op.getBodyRaw();
+                        results.add(doc);
+                        URI hostUri = getHostUri(op);
+                        hostUriByResult.put(doc, hostUri);
+                    }
+
+                    // move on to next stage
+                    if (currentState.migrationOptions.contains(MigrationOption.ALL_VERSIONS)) {
+                        retrieveAllVersions(results, hostUriByResult, Collections.emptySet(), currentState, destinationURIs,
+                                lastUpdateTimesPerOwner);
+                    } else {
+                        transformResults(currentState, results, Collections.emptySet(), destinationURIs, lastUpdateTimesPerOwner);
+                    }
                 })
                 .sendWith(this);
     }
@@ -1247,7 +1263,7 @@ public class MigrationTaskService extends StatefulService {
 
         if (json.isEmpty()) {
             // no doc to create in destination, move on to the next page
-            migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner, false);
+            migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
             return;
         }
         if (state.migrationOptions.contains(MigrationOption.ALL_VERSIONS)) {
@@ -1344,7 +1360,7 @@ public class MigrationTaskService extends StatefulService {
                 .whenComplete((operations, ignore) -> {
                     if (failureBySelfLink.isEmpty()) {
                         adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, numOfProcessedDoc);
-                        migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner, false);
+                        migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
                     } else {
                         if (performRetry) {
                             logInfo("Migration retry start. links=%s", failureBySelfLink.size());
@@ -1391,7 +1407,7 @@ public class MigrationTaskService extends StatefulService {
                         return;
                     }
                     adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, numOfProcessedDoc);
-                    migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner, false);
+                    migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
                 });
     }
 
@@ -1441,7 +1457,7 @@ public class MigrationTaskService extends StatefulService {
                         adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
 
                         if (opIdsToDelete.isEmpty()) {
-                            migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner, false);
+                            migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
                         } else {
                             // Migrate deleted documents by performing DELETEs.
                             Set<Operation> deletes = opIdsToDelete.stream()
@@ -1477,14 +1493,14 @@ public class MigrationTaskService extends StatefulService {
                                                                     return;
                                                                 }
                                                                 adjustStat(STAT_NAME_DELETED_DOCUMENT_COUNT, retryOps.size());
-                                                                migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner, false);
+                                                                migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
                                                             })
                                                             .sendWith(this);
                                                     return;
                                                 }
 
                                                 adjustStat(STAT_NAME_DELETED_DOCUMENT_COUNT, deleteOps.size());
-                                                migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner, false);
+                                                migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
                                             }
                                     ).sendWith(this);
                         }
@@ -1600,7 +1616,7 @@ public class MigrationTaskService extends StatefulService {
                             return;
                         }
                         adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
-                        migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner, false);
+                        migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
                     })
                     .sendWith(this);
             })
