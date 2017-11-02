@@ -1166,4 +1166,9 @@ public class UtilityService implements Service {
     public final AuthorizationContext getSystemAuthorizationContext() {
         throw new RuntimeException("Service not allowed to get system authorization context");
     }
+
+    @Override
+    public String getGroupLink() {
+        return getSelfLink();
+    }
 }

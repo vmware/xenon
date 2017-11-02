@@ -26,7 +26,7 @@ import com.vmware.xenon.common.UriUtils;
  */
 public class ODataQueryService extends StatelessService {
 
-    public static String SELF_LINK = ServiceUriPaths.ODATA_QUERIES;
+    public static final String SELF_LINK = ServiceUriPaths.ODATA_QUERIES;
 
     @Override
     public void handleGet(Operation op) {

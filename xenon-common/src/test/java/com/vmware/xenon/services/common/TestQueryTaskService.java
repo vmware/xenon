@@ -2719,6 +2719,12 @@ public class TestQueryTaskService {
         }
     }
 
+    @Test
+    public void broadCastPageHasGroupLink() {
+        BroadcastQueryPageService s = new BroadcastQueryPageService(null, null, 10, null);
+        assertEquals(BroadcastQueryPageService.GROUP_LINK, s.getGroupLink());
+    }
+
     private boolean validateNativeContextIsNull(VerificationHost targetHost, QueryTask rsp) {
         if (rsp.querySpec.context.nativePage != null
                 || rsp.querySpec.context.nativeQuery != null

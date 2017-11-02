@@ -542,4 +542,11 @@ public interface Service extends ServiceRequestSender {
     AuthorizationContext getSystemAuthorizationContext();
 
     void setAuthorizationContext(Operation op, AuthorizationContext ctx);
+
+    /**
+     * A group link groups related services. For stateful service this defaults to the factory URI,
+     * Stateless service can provide their own group link.
+     * @return
+     */
+    String getGroupLink();
 }

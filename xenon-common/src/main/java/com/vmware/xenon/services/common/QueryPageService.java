@@ -44,6 +44,7 @@ public class QueryPageService extends StatelessService {
         super(QueryTask.class);
         this.spec = spec;
         this.indexLink = indexLink;
+        setGroupLink(ServiceUriPaths.CORE_QUERY_PAGE);
     }
 
     public static class LuceneQueryPage {
