@@ -320,6 +320,7 @@ public class TestStatefulService extends BasicReusableHostTestCase {
         ServiceConfiguration cfg = this.host.getServiceState(null, ServiceConfiguration.class,
                 configUri);
         assertTrue(cfg.options.contains(ServiceOption.CONCURRENT_GET_HANDLING));
+        assertEquals(ExampleService.FACTORY_LINK, cfg.groupLink);
 
         // now verify a stateful but not persisted service
         childServiceUri = UriUtils.buildUri(this.host, UUID.randomUUID().toString());

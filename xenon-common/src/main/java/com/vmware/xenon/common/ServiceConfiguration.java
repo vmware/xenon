@@ -28,6 +28,7 @@ public class ServiceConfiguration extends ServiceDocument {
     public String peerNodeSelectorPath;
     public String documentIndexPath;
     public EnumSet<ServiceOption> options;
+    public String groupLink;
 
     public ServiceConfiguration() {
         this.documentKind = KIND;

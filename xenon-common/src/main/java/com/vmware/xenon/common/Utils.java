@@ -1466,6 +1466,7 @@ public final class Utils {
         config.versionRetentionFloor = desc.versionRetentionFloor;
         config.peerNodeSelectorPath = service.getPeerNodeSelectorPath();
         config.documentIndexPath = service.getDocumentIndexPath();
+        config.groupLink = service.getGroupLink();
 
         return config;
     }

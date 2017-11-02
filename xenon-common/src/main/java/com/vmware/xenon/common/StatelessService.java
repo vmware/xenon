@@ -44,6 +44,7 @@ public class StatelessService implements Service {
     protected final EnumSet<ServiceOption> options = EnumSet.noneOf(ServiceOption.class);
     private UtilityService utilityService;
     protected Class<? extends ServiceDocument> stateType;
+    private String groupLink;
 
     public StatelessService(Class<? extends ServiceDocument> stateType) {
         if (stateType == null) {
@@ -58,6 +59,14 @@ public class StatelessService implements Service {
     public StatelessService() {
         this.stateType = ServiceDocument.class;
         this.options.add(ServiceOption.STATELESS);
+    }
+
+    /**
+     * Set the groupLink explicitly. If unset the selfLink is assumed.
+     * @param groupLink
+     */
+    public void setGroupLink(String groupLink) {
+        this.groupLink = groupLink;
     }
 
     @Override
@@ -859,5 +868,13 @@ public class StatelessService implements Service {
                 (System.nanoTime() / 1000)
                         - request.getInstrumentationContext().handleInvokeTimeMicros);
 
+    }
+
+    @Override
+    public String getGroupLink() {
+        if (this.groupLink == null) {
+            return getSelfLink();
+        }
+        return this.groupLink;
     }
 }

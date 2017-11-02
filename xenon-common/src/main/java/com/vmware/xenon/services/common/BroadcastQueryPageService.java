@@ -32,6 +32,7 @@ import com.vmware.xenon.common.Utils;
 public class BroadcastQueryPageService extends StatelessService {
     public static final String SELF_LINK_PREFIX = "broadcast-query-page";
     public static final String KIND = Utils.buildKind(QueryTask.class);
+    private static final String GROUP_LINK = ServiceUriPaths.CORE + '/' + BroadcastQueryPageService.SELF_LINK_PREFIX;
 
     private final QueryTask.QuerySpecification spec;
     private final List<String> pageLinks;
@@ -45,6 +46,7 @@ public class BroadcastQueryPageService extends StatelessService {
         this.pageLinks = pageLinks;
         this.expirationMicros = expMicros;
         this.nodeGroupResponse = nodeGroupResponse;
+        setGroupLink(GROUP_LINK);
     }
 
     @Override
