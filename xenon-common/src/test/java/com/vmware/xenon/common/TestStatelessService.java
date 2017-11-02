@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.common;
 
+import static org.junit.Assert.assertEquals;
+
 import java.net.URI;
 import java.time.Duration;
 
@@ -76,6 +78,31 @@ public class TestStatelessService extends BasicReusableHostTestCase {
             doThroughputPost(s);
             System.gc();
         }
+    }
+
+    @Test
+    public void getGroupLink() throws Throwable {
+        this.host.startServiceAndWait(new StatelessTestService(), "/stateless/service2",
+                null);
+
+        Operation cfg = this.host.waitForResponse(Operation.createGet(
+                UriUtils.buildConfigUri(this.host, "/stateless/service2")));
+
+        assertEquals("/stateless/service2", cfg.getBody(ServiceConfiguration.class).groupLink);
+    }
+
+    @Test
+    public void getGroupLinkExplicitSet() throws Throwable {
+        StatelessTestService s = new StatelessTestService();
+        s.setGroupLink("/my-group");
+
+        this.host.startServiceAndWait(s, "/stateless/service3",
+                null);
+
+        Operation cfg = this.host.waitForResponse(Operation.createGet(
+                UriUtils.buildConfigUri(this.host, "/stateless/service3")));
+
+        assertEquals("/my-group", cfg.getBody(ServiceConfiguration.class).groupLink);
     }
 
     private void doThroughputPost(Service s) throws Throwable {
