@@ -1032,6 +1032,8 @@ public abstract class FactoryService extends StatelessService {
     private void startFactorySynchronizationTask(Operation parentOp, Long membershipUpdateTimeMicros) {
         SynchronizationTaskService.State task = createSynchronizationTaskState(
                 membershipUpdateTimeMicros);
+        // Always start the synch-task from Query substage, specially when retrying.
+        task.subStage = SynchronizationTaskService.SubStage.QUERY;
         Operation post = Operation
                 .createPost(this, ServiceUriPaths.SYNCHRONIZATION_TASKS)
                 .setBody(task)

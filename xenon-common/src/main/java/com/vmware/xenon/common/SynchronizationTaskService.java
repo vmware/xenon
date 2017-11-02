@@ -841,6 +841,12 @@ public class SynchronizationTaskService
         sendRequest(put);
     }
 
+    @Override
+    protected void sendSelfPatch(State taskState, TaskState.TaskStage stage, Consumer<State> updateTaskState) {
+        taskState.failureMessage = "";
+        super.sendSelfPatch(taskState, stage, updateTaskState);
+    }
+
     private Consumer<State> subStageSetter(SubStage subStage) {
         return taskState -> taskState.subStage = subStage;
     }
