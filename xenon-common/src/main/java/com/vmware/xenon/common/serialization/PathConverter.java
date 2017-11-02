@@ -36,6 +36,6 @@ enum PathConverter implements JsonSerializer<Path>, JsonDeserializer<Path> {
     @Override
     public Path deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context)
             throws JsonParseException {
-        return Paths.get(json.getAsString());
+        return Paths.get(json.getAsString()).toAbsolutePath();
     }
 }

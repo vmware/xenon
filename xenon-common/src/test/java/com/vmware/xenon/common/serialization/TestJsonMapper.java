@@ -39,7 +39,6 @@ import java.util.regex.Pattern;
 
 import com.google.gson.JsonElement;
 import org.junit.Assert;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.ServiceDocument;
@@ -271,13 +270,12 @@ public class TestJsonMapper {
         }
     }
 
-    @Ignore("https://www.pivotaltracker.com/story/show/151532080 Fail on windows")
     @Test
     public void testPathJsonSerialization() {
         Path p = Paths.get("test");
 
         String jsonRepr = Utils.toJson(p);
-        assertEquals("\"" + p.toAbsolutePath().toAbsolutePath() + "\"", jsonRepr);
+        assertEquals("\"" + p.toAbsolutePath() + "\"", Utils.fromJson(jsonRepr, String.class));
 
         Arguments arguments = new Arguments();
         Logger.getAnonymousLogger().info(Utils.toJsonHtml(arguments));
