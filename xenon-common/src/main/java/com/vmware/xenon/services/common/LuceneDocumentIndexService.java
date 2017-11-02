@@ -39,12 +39,13 @@ import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
@@ -52,7 +53,6 @@ import java.util.stream.Stream;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.codecs.Codec;
@@ -104,6 +104,7 @@ import com.vmware.xenon.common.OperationContext;
 import com.vmware.xenon.common.QueryFilterUtils;
 import com.vmware.xenon.common.ReflectionUtils;
 import com.vmware.xenon.common.RoundRobinOperationQueue;
+import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.ServiceDocumentDescription.DocumentIndexingOption;
@@ -540,9 +541,14 @@ public class LuceneDocumentIndexService extends StatelessService {
         // so its worth caching (plus we only have a very small number of index services
         this.uri = super.getUri();
 
-        this.privateQueryExecutor = Executors.newFixedThreadPool(QUERY_THREAD_COUNT,
+        this.privateQueryExecutor = new ThreadPoolExecutor(QUERY_THREAD_COUNT, QUERY_THREAD_COUNT,
+                1, TimeUnit.MINUTES,
+                new ArrayBlockingQueue<>(Service.OPERATION_QUEUE_DEFAULT_LIMIT),
                 new NamedThreadFactory(getUri() + "/queries"));
-        this.privateIndexingExecutor = Executors.newFixedThreadPool(UPDATE_THREAD_COUNT,
+
+        this.privateIndexingExecutor = new ThreadPoolExecutor(QUERY_THREAD_COUNT, QUERY_THREAD_COUNT,
+                1, TimeUnit.MINUTES,
+                new ArrayBlockingQueue<>(10 * Service.OPERATION_QUEUE_DEFAULT_LIMIT),
                 new NamedThreadFactory(getUri() + "/updates"));
 
         initializeInstance();
@@ -987,6 +993,11 @@ public class LuceneDocumentIndexService extends StatelessService {
         try {
             this.writerSync.acquire();
             while (op != null) {
+                if (op.getExpirationMicrosUtc() > 0 && op.getExpirationMicrosUtc() < Utils.getSystemNowMicrosUtc()) {
+                    op.fail(new RejectedExecutionException("Operation has expired"));
+                    return;
+                }
+
                 OperationContext.setFrom(op);
                 switch (op.getAction()) {
                 case GET:
