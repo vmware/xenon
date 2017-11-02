@@ -74,7 +74,8 @@ public class NettyHttpEventStreamHandler extends DelimiterBasedFrameDecoder {
         return false;
     }
 
-    @Override public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         if (!acceptInboundMessage(msg)) {
             this.resetState();
             // Send to the next handler without changing
@@ -109,7 +110,8 @@ public class NettyHttpEventStreamHandler extends DelimiterBasedFrameDecoder {
         }
     }
 
-    @Override protected Object decode(ChannelHandlerContext ctx, ByteBuf buffer) throws Exception {
+    @Override
+    protected Object decode(ChannelHandlerContext ctx, ByteBuf buffer) throws Exception {
         ByteBuf rawEvent = (ByteBuf) super.decode(ctx, buffer);
         if (rawEvent == null) {
             return null;
@@ -129,18 +131,20 @@ public class NettyHttpEventStreamHandler extends DelimiterBasedFrameDecoder {
     /**
      * Wraps a HTTPObject
      */
-    public static class EventStreamMessage extends DefaultHttpObject {
-        public ServerSentEvent event;
+    static final class EventStreamMessage extends DefaultHttpObject {
+        ServerSentEvent event;
 
-        @Override public boolean equals(Object o) {
+        @Override
+        public boolean equals(Object o) {
             return this == o;
         }
     }
 
-    public static class EventStreamHeadersMessage extends DefaultHttpObject {
-        public HttpResponse originalResponse;
+    static final class EventStreamHeadersMessage extends DefaultHttpObject {
+        HttpResponse originalResponse;
 
-        @Override public boolean equals(Object o) {
+        @Override
+        public boolean equals(Object o) {
             return this == o;
         }
     }

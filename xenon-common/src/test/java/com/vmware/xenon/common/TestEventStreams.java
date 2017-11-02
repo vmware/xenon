@@ -19,6 +19,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
 import io.netty.util.ResourceLeakDetector;
@@ -26,6 +27,7 @@ import io.netty.util.ResourceLeakDetector.Level;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 
 import com.vmware.xenon.common.test.TestContext;
@@ -48,16 +50,31 @@ public class TestEventStreams extends BasicReusableHostTestCase {
 
     private EventStreamService service;
 
+    public int connectionCount = 2;
+
+    public int eventsPerConnection = 100;
+
+    @Rule
+    public TestResults testResults = new TestResults();
+    private EventStreamService torrent;
+
     @Before
     public void setup() throws Throwable {
-        this.service = new EventStreamService(EVENTS, INITIAL_DELAY_MS, EVENT_EMIT_PERIOD_MS, TimeUnit.MILLISECONDS, PARALLELISM);
+        this.service = new EventStreamService(EVENTS, INITIAL_DELAY_MS, EVENT_EMIT_PERIOD_MS, TimeUnit.MILLISECONDS,
+                PARALLELISM, 1);
         this.host.startService(this.service);
-        this.host.waitForServiceAvailable(EventStreamService.SELF_LINK);
+
+        this.torrent = new EventStreamService(EVENTS, 0, 0, TimeUnit.MILLISECONDS, PARALLELISM,
+                (this.eventsPerConnection / EVENTS.size()) + 1);
+        this.host.startService(Operation.createPost(UriUtils.buildUri(this.host, "/torrent")), this.torrent);
+
+        this.host.waitForServiceAvailable("/torrent", EventStreamService.SELF_LINK);
     }
 
     @After
     public void tearDown() throws Throwable {
         this.host.stopService(this.service);
+        this.host.stopService(this.torrent);
     }
 
     @Test
@@ -68,6 +85,46 @@ public class TestEventStreams extends BasicReusableHostTestCase {
     @Test
     public void testSimpleRemote() throws Throwable {
         doSimpleTest(true);
+    }
+
+    @Test
+    public void testThroughput() throws Throwable {
+        TestContext ctx = TestContext.create(this.connectionCount, TimeUnit.MINUTES.toMicros(1));
+
+        AtomicInteger receivedCount = new AtomicInteger();
+        long start = System.nanoTime();
+        for (int i = 0; i < this.connectionCount; ++i) {
+            Operation get = Operation.createGet(this.host, "/torrent")
+                    .setServerSentEventHandler(event -> {
+                        int n = receivedCount.incrementAndGet();
+                        if (n % 500 == 0) {
+                            this.host.log("Received event %d", n);
+                        }
+                    })
+                    .setCompletion(ctx.getCompletion());
+            get.forceRemote();
+            this.host.send(get);
+        }
+        ctx.await();
+
+        long end = System.nanoTime();
+
+        int n = receivedCount.get();
+        double durationSeconds = (end - start) / 1_000_000_000.0;
+        double thput = n / durationSeconds;
+
+        this.testResults.getReport().lastValue(TestResults.KEY_THROUGHPUT, thput);
+
+        this.testResults.getReport().lastValue("events", n);
+        this.testResults.getReport().lastValue("connections", this.connectionCount);
+        this.testResults.getReport().lastValue("events/conn", this.eventsPerConnection);
+        this.testResults.getReport().lastValue("parallelism", PARALLELISM);
+
+        this.host.log("throughput (events/s): %f", thput);
+        this.host.log("events: %s", n);
+        this.host.log("connections: %s", this.connectionCount);
+        this.host.log("events/conn: %s", this.eventsPerConnection);
+        this.host.log("parallelism: %s", PARALLELISM);
     }
 
     private void doSimpleTest(boolean isRemote) {

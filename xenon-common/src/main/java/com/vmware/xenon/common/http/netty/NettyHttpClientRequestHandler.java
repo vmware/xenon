@@ -20,6 +20,7 @@ import java.net.URISyntaxException;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import javax.net.ssl.SSLSession;
 
@@ -51,6 +52,7 @@ import io.netty.util.AsciiString;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
+import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Operation.OperationOption;
 import com.vmware.xenon.common.ServerSentEvent;
 import com.vmware.xenon.common.Service.Action;
@@ -314,38 +316,53 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         return headerValue;
     }
 
+    @SuppressWarnings("unchecked")
     private void submitRequest(ChannelHandlerContext ctx, Operation request,
             Integer streamId, String originalPath, double startTime) {
-        AtomicBoolean isStreamingEnabled = new AtomicBoolean();
-        request.nestCompletion((o, e) -> {
-            if (!isStreamingEnabled.get()) {
-                request.setBodyNoCloning(o.getBodyRaw());
-                sendResponse(ctx, request, streamId, originalPath, startTime);
-            } else {
-                if (e != null) {
-                    ServerSentEvent errorEvent = new ServerSentEvent().setEvent(ServerSentEvent.EVENT_TYPE_ERROR)
-                            .setData(Utils.toJson(o.getBody(ServiceErrorResponse.class)));
-                    request.sendServerSentEvent(errorEvent);
+
+        final class CombinedHandler implements CompletionHandler, Consumer<Object> {
+            final AtomicBoolean isStreamingEnabled = new AtomicBoolean();
+
+            @Override
+            public void handle(Operation o, Throwable e) {
+                if (!this.isStreamingEnabled.get()) {
+                    request.setBodyNoCloning(o.getBodyRaw());
+                    sendResponse(ctx, request, streamId, originalPath, startTime);
+                } else {
+                    if (e != null) {
+                        ServerSentEvent errorEvent = new ServerSentEvent().setEvent(ServerSentEvent.EVENT_TYPE_ERROR)
+                                .setData(Utils.toJson(o.getBody(ServiceErrorResponse.class)));
+                        request.sendServerSentEvent(errorEvent);
+                    }
+                    concludeRequest(ctx, request, true);
                 }
-                concludeRequest(ctx, request, true);
             }
-        });
-        request.nestHeadersReceivedHandler(ignore -> {
-            if (!isStreamingEnabled.getAndSet(true)) {
-                HttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(request.getStatusCode()));
-                this.addCommonHeaders(response, request, streamId);
-                ctx.writeAndFlush(response);
+
+            @Override
+            public void accept(Object obj) {
+                if (obj instanceof ServerSentEvent) {
+                    ServerSentEvent event = (ServerSentEvent) obj;
+                    if (this.isStreamingEnabled.get()) {
+                        byte[] data = ServerSentEventConverter.INSTANCE.serialize(event).getBytes(ServerSentEventConverter.ENCODING_CHARSET);
+                        ByteBuf byteBuf = Unpooled.wrappedBuffer(data);
+                        ctx.writeAndFlush(byteBuf);
+                    } else {
+                        throw new RuntimeException("Call to startEventStream() or sendHeaders() is necessary to enable streaming!");
+                    }
+                } else {
+                    if (!this.isStreamingEnabled.getAndSet(true)) {
+                        HttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(request.getStatusCode()));
+                        NettyHttpClientRequestHandler.this.addCommonHeaders(response, request, streamId);
+                        ctx.writeAndFlush(response);
+                    }
+                }
             }
-        });
-        request.nestServerSentEventHandler(event -> {
-            if (isStreamingEnabled.get()) {
-                byte[] data = ServerSentEventConverter.INSTANCE.serialize(event).getBytes(ServerSentEventConverter.ENCODING_CHARSET);
-                ByteBuf byteBuf = Unpooled.wrappedBuffer(data);
-                ctx.writeAndFlush(byteBuf);
-            } else {
-                throw new RuntimeException("Call to startEventStream() or sendHeaders() is necessary to enable streaming!");
-            }
-        });
+        }
+
+        CompletionHandler ch = new CombinedHandler();
+        request.nestCompletion(ch);
+        request.nestHeadersReceivedHandler((Consumer<Operation>) ch);
+        request.nestServerSentEventHandler((Consumer<ServerSentEvent>) ch);
 
         request.toggleOption(OperationOption.CLONING_DISABLED, true);
 

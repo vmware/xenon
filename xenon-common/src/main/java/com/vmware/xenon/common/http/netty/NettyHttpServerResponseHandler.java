@@ -68,12 +68,6 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
             request.setStatusCode(response.status().code());
             parseResponseHeaders(request, response);
             completeRequest(ctx, request, response.content());
-        } else if (msg instanceof EventStreamHeadersMessage) {
-            EventStreamHeadersMessage sseHeaders = (EventStreamHeadersMessage) msg;
-            Operation request = findOperation(ctx, msg, false);
-            request.setStatusCode(sseHeaders.originalResponse.status().code());
-            parseResponseHeaders(request, sseHeaders.originalResponse);
-            request.sendHeaders();
         } else if (msg instanceof EventStreamMessage) {
             EventStreamMessage sseMessage = (EventStreamMessage) msg;
             ServerSentEvent event = sseMessage.event;
@@ -84,6 +78,12 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
                 Operation request = findOperation(ctx, msg, false);
                 request.sendServerSentEvent(event);
             }
+        } else if (msg instanceof EventStreamHeadersMessage) {
+            EventStreamHeadersMessage sseHeaders = (EventStreamHeadersMessage) msg;
+            Operation request = findOperation(ctx, msg, false);
+            request.setStatusCode(sseHeaders.originalResponse.status().code());
+            parseResponseHeaders(request, sseHeaders.originalResponse);
+            request.sendHeaders();
         }
     }
 
@@ -99,7 +99,7 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
     private Operation findOperation(ChannelHandlerContext ctx, HttpObject msg, boolean remove) {
         Operation request;
 
-        if (ctx.channel().hasAttr(NettyChannelContext.HTTP2_KEY) && msg instanceof HttpResponse) {
+        if (msg instanceof HttpResponse && ctx.channel().hasAttr(NettyChannelContext.HTTP2_KEY)) {
             Integer streamId = ((HttpResponse) msg).headers()
                     .getInt(HttpConversionUtil.ExtensionHeaderNames.STREAM_ID.text());
             if (streamId == null) {
