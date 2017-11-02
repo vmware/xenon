@@ -2612,6 +2612,7 @@ public class ServiceHost implements ServiceRequestSender {
                 || post.isSynchronize();
         Service existing = null;
         boolean synchPendingDelete = false;
+        boolean isOnDemandStart = onDemandTriggeringOp != null;
 
         synchronized (this.state) {
             existing = this.attachedServices.get(servicePath);
@@ -2623,7 +2624,7 @@ public class ServiceHost implements ServiceRequestSender {
                 synchPendingDelete = true;
             } else {
                 if (existing != null) {
-                    if (isCreateOrSynchRequest
+                    if ((isCreateOrSynchRequest || isOnDemandStart)
                             && existing.getProcessingStage() == ProcessingStage.STOPPED) {
                         // service was just stopped and about to be removed. We are creating a new instance, so
                         // its fine to re-attach. We will do a state version check if this is a persisted service
@@ -2664,15 +2665,14 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         if (!isIdempotent && !post.isSynchronize()) {
-            ProcessingStage ps = existing.getProcessingStage();
-
-            if (onDemandTriggeringOp != null && ServiceHost.isServiceStartingOrAvailable(ps)) {
+            if (isOnDemandStart) {
                 // this is an on-demand start and the service is already attached -
                 // no need to continue with start
                 post.complete();
                 return true;
             }
 
+            ProcessingStage ps = existing.getProcessingStage();
             if (ps == ProcessingStage.STOPPED || ServiceHost.isServiceStarting(ps)) {
                 // there is a possibility of collision with a synchronization attempt: The sync task
                 // attaches a child it enumerated from a peer, starts in stage CREATED while loading
