@@ -2000,6 +2000,14 @@ public class StatefulService implements Service {
         return Service.getId(getSelfLink());
     }
 
+    public final String getGroupLink() {
+        if (getSelfLink() == null) {
+            return null;
+        }
+
+        return getSelfLink().substring(0, getSelfLink().length() - getSelfId().length() - 1) + "/*";
+    }
+
     /**
      * Value indicating whether GET on /available returns 200 or 503
      * The method is a convenience method since it relies on STAT_NAME_AVAILABLE to report

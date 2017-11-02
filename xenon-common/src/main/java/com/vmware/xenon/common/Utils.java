@@ -1507,6 +1507,11 @@ public final class Utils {
         config.versionRetentionFloor = desc.versionRetentionFloor;
         config.peerNodeSelectorPath = service.getPeerNodeSelectorPath();
         config.documentIndexPath = service.getDocumentIndexPath();
+        if (service instanceof StatefulService) {
+            config.groupLink = ((StatefulService) service).getGroupLink();
+        } else if (service instanceof StatelessService) {
+            config.groupLink = ((StatelessService) service).getGroupLink();
+        }
 
         return config;
     }

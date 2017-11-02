@@ -44,6 +44,7 @@ public class StatelessService implements Service {
     protected final EnumSet<ServiceOption> options = EnumSet.noneOf(ServiceOption.class);
     private UtilityService utilityService;
     protected Class<? extends ServiceDocument> stateType;
+    private String groupLink;
 
     public StatelessService(Class<? extends ServiceDocument> stateType) {
         if (stateType == null) {
@@ -58,6 +59,14 @@ public class StatelessService implements Service {
     public StatelessService() {
         this.stateType = ServiceDocument.class;
         this.options.add(ServiceOption.STATELESS);
+    }
+
+    /**
+     * Set the groupLink explicitly. If unset the selfLink is assumed.
+     * @param groupLink
+     */
+    public void setGroupLink(String groupLink) {
+        this.groupLink = groupLink;
     }
 
     @Override
@@ -153,14 +162,10 @@ public class StatelessService implements Service {
                         return;
                     }
                     if (ServiceHost.isServiceStop(op)) {
-                        op.nestCompletion(o -> {
-                            handleStopCompletion(op);
-                        });
+                        op.nestCompletion(this::handleStopCompletion);
                         handleStop(op);
                     } else {
-                        op.nestCompletion(o -> {
-                            handleDeleteCompletion(op);
-                        });
+                        op.nestCompletion(this::handleDeleteCompletion);
                         handleDelete(op);
                     }
                 } else if (op.getAction() == Action.OPTIONS) {
@@ -168,9 +173,7 @@ public class StatelessService implements Service {
                         handleOptions(op);
                         return;
                     }
-                    op.nestCompletion(o -> {
-                        handleOptionsCompletion(op);
-                    });
+                    op.nestCompletion(this::handleOptionsCompletion);
 
                     handleOptions(op);
                 } else if (op.getAction() == Action.PATCH) {
@@ -204,9 +207,7 @@ public class StatelessService implements Service {
      * completion that stops the service will run after the stop operation is completed
      */
     protected void handleDeleteCompletion(Operation op) {
-        op.nestCompletion((o) -> {
-            handleStopCompletion(op);
-        });
+        op.nestCompletion(this::handleStopCompletion);
         handleStop(op);
     }
 
@@ -860,5 +861,12 @@ public class StatelessService implements Service {
                 (System.nanoTime() / 1000)
                         - request.getInstrumentationContext().handleInvokeTimeMicros);
 
+    }
+
+    public String getGroupLink() {
+        if (this.groupLink == null) {
+            return getSelfLink();
+        }
+        return this.groupLink;
     }
 }
