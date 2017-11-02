@@ -364,7 +364,8 @@ public class AuthorizationSetupHelper {
                 .setResultLimit(1)
                 .build();
 
-        URI queryTaskUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_QUERY_TASKS);
+        URI queryTaskUri = AuthUtils
+                .buildAuthProviderHostUri(this.host, ServiceUriPaths.CORE_QUERY_TASKS);
         Operation postQuery = Operation.createPost(queryTaskUri)
                 .setBody(queryTask)
                 .setReferer(this.referer)
@@ -404,7 +405,8 @@ public class AuthorizationSetupHelper {
             user.documentSelfLink = this.userSelfLink;
         }
 
-        URI userFactoryUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_USERS);
+        URI userFactoryUri = AuthUtils
+                .buildAuthProviderHostUri(this.host, ServiceUriPaths.CORE_AUTHZ_USERS);
         Operation postUser = Operation.createPost(userFactoryUri)
                 .setBody(user)
                 .setReferer(this.referer)
@@ -437,7 +439,8 @@ public class AuthorizationSetupHelper {
             auth.documentSelfLink = this.credentialsSelfLink;
         }
 
-        URI credentialFactoryUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_CREDENTIALS);
+        URI credentialFactoryUri = AuthUtils
+                .buildAuthProviderHostUri(this.host, ServiceUriPaths.CORE_CREDENTIALS);
         Operation postCreds = Operation.createPost(credentialFactoryUri)
                 .setBody(auth)
                 .setReferer(this.referer)
@@ -477,8 +480,8 @@ public class AuthorizationSetupHelper {
                 .withSelfLink(this.userGroupSelfLink)
                 .build();
 
-        URI userGroupFactoryUri = UriUtils.buildUri(this.host,
-                ServiceUriPaths.CORE_AUTHZ_USER_GROUPS);
+        URI userGroupFactoryUri = AuthUtils
+                .buildAuthProviderHostUri(this.host, ServiceUriPaths.CORE_AUTHZ_USER_GROUPS);
         Operation postGroup = Operation.createPost(userGroupFactoryUri)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
                 .setBody(group)
@@ -515,7 +518,8 @@ public class AuthorizationSetupHelper {
         }
         UserState userState = new UserState();
         userState.userGroupLinks = Collections.singleton(this.userGroupSelfLink);
-        Operation patchUser = Operation.createPatch(UriUtils.buildUri(this.host, this.userSelfLink))
+        Operation patchUser = Operation.createPatch(AuthUtils
+                .buildAuthProviderHostUri(this.host, this.userSelfLink))
                 .setBody(userState)
                 .setReferer(this.referer)
                 .setCompletion((op, ex) -> {
@@ -590,8 +594,8 @@ public class AuthorizationSetupHelper {
                 .withSelfLink(this.resourceGroupSelfLink)
                 .build();
 
-        URI resourceGroupFactoryUri = UriUtils.buildUri(this.host,
-                ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS);
+        URI resourceGroupFactoryUri = AuthUtils
+                .buildAuthProviderHostUri(this.host, ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS);
         Operation postGroup = Operation.createPost(resourceGroupFactoryUri)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
                 .setBody(group)
@@ -633,7 +637,8 @@ public class AuthorizationSetupHelper {
                 .withVerbs(this.verbs)
                 .build();
 
-        URI roleFactoryUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_ROLES);
+        URI roleFactoryUri = AuthUtils
+                .buildAuthProviderHostUri(this.host, ServiceUriPaths.CORE_AUTHZ_ROLES);
         Operation postRole = Operation.createPost(roleFactoryUri)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
                 .setBody(role)

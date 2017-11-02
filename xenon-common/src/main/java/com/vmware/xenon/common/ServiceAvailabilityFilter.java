@@ -209,16 +209,6 @@ public class ServiceAvailabilityFilter implements Filter {
                     // we can get back a 409 status code i.e. the service has already been started or was
                     // deleted previously. Differentiate based on action, if we need to fail or succeed
                     if (response.statusCode == Operation.STATUS_CODE_CONFLICT) {
-                        if (!ServiceHost.isServiceCreate(op)
-                                && response.getErrorCode() == ServiceErrorResponse.ERROR_CODE_SERVICE_ALREADY_EXISTS) {
-                            // service exists, action is not attempt to recreate, so complete as success
-                            host.log(Level.WARNING,
-                                    "Failed to start service %s because it already exists. Resubmitting request %s %d",
-                                    servicePath, a, op.getId());
-                            context.resumeProcessingRequest(op, FilterReturnCode.RESUME_PROCESSING, null);
-                            return;
-                        }
-
                         if (response.getErrorCode() == ServiceErrorResponse.ERROR_CODE_STATE_MARKED_DELETED) {
                             if (a == Action.DELETE) {
                                 // state marked deleted, and action is to delete again, return success
@@ -308,7 +298,7 @@ public class ServiceAvailabilityFilter implements Filter {
         // bypass the factory, directly start service on host. This avoids adding a new
         // version to the index and various factory processes that are invoked on new
         // service creation
-        host.startService(onDemandPost, childService);
+        host.startService(onDemandPost, childService, op);
     }
 
 }

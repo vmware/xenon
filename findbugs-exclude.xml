@@ -12,11 +12,11 @@
 
      <!-- Findbugs reports that we use a hardcoded filename, but it's hardcoded resource -->
      <!-- name, which is reasonable and safe -->
-     <Match>
-       <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
-       <Class name="com.vmware.xenon.common.ServiceHost"/>
-       <Method name="discoverUiResources"/>
-     </Match>
+    <Match>
+      <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+      <Class name="com.vmware.xenon.common.ServiceHost"/>
+      <Method name="getBaseUriPath"/>
+    </Match>
 
      <!-- Findbugs reports that we call System.exit, and that's a bad practice -->
      <!-- We do it intentionally in /core/management, so we disable the warning -->

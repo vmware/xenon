@@ -194,11 +194,12 @@ public class TestInterleavedQueries extends BasicReusableHostTestCase {
     }
 
     private void writeResults(long start, int opCount, int errors) {
-        long duration = System.nanoTime() - start;
-        double tput = opCount / TimeUnit.NANOSECONDS.toSeconds(duration);
+        double durationSeconds = (System.nanoTime() - start) / 1_000_000_000.0;
+        double tput = opCount / durationSeconds;
+
 
         this.testResults.getReport().lastValue("ops", opCount);
-        this.testResults.getReport().lastValue("time", duration / 1000_000_000.0);
+        this.testResults.getReport().lastValue("time", durationSeconds);
         this.testResults.getReport().lastValue("errors", errors);
         this.testResults.getReport().lastValue(TestResults.KEY_THROUGHPUT, tput);
         this.host.logServiceStats(UriUtils.buildUri(
