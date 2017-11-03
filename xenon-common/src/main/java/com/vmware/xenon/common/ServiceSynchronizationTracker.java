@@ -553,7 +553,7 @@ class ServiceSynchronizationTracker {
 
             if (this.synchronizationActiveServices.get(link) != null) {
                 // service actively synchronizing, do not re-schedule
-                this.host.log(Level.WARNING, "Skipping synch for service %s, already in progress",
+                this.host.log(Level.FINE, "Skipping synch for service %s, already in progress",
                         link);
                 // service can cancel a pending synchronization if it detects node group has
                 // changed since it started synchronization for the current epoch
