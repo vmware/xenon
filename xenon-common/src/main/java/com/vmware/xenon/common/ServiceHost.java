@@ -248,13 +248,12 @@ public class ServiceHost implements ServiceRequestSender {
          * complete synchronization in time. The availability indicator on /available is a hint, it does
          * not prevent the factory from functioning.
          *
-         * The default value of 10 minutes allows for 1.8M services to synchronize, given an estimate of
-         * 3,000 service synchronizations per second, on a three node cluster, on a local network.
+         * The default value of 1 hour would roughly allows for 1.8M services to synchronize.
          *
          * Synchronization starts automatically if {@link Arguments#isPeerSynchronizationEnabled} is true,
          * and the node group has observed a node joining or leaving (becoming unavailable)
          */
-        public int perFactoryPeerSynchronizationLimitSeconds = (int) TimeUnit.MINUTES.toSeconds(10);
+        public int perFactoryPeerSynchronizationLimitSeconds = (int) TimeUnit.HOURS.toSeconds(1);
 
         /**
          * Value indicating whether node group changes will automatically

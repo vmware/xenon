@@ -23,7 +23,6 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
-import com.vmware.xenon.services.common.NodeGroupService;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.TaskService;
@@ -46,10 +45,13 @@ public class SynchronizationTaskService
     public static final String PROPERTY_NAME_MAX_CHILD_SYNCH_RETRY_COUNT =
             Utils.PROPERTY_NAME_PREFIX + "SynchronizationTaskService.MAX_CHILD_SYNCH_RETRY_COUNT";
 
-    // Maximum synch-task retry limit.
-    // We are using exponential backoff for synchronization retry.
+    /**
+     * Maximum synch-task retry limit.
+     * We are using exponential backoff for synchronization retry, that means last synch retry will
+     * be tried after 2 ^ 8 * getMaintenanceIntervalMicros(), which is ~4 minutes if maintenance interval is 1 second.
+     */
     public static final int MAX_CHILD_SYNCH_RETRY_COUNT = Integer.getInteger(
-            PROPERTY_NAME_MAX_CHILD_SYNCH_RETRY_COUNT, 3);
+            PROPERTY_NAME_MAX_CHILD_SYNCH_RETRY_COUNT, 8);
 
 
     public static SynchronizationTaskService create(Supplier<Service> childServiceInstantiator) {
@@ -407,14 +409,15 @@ public class SynchronizationTaskService
             // back to QUERY stage.
             task.taskInfo.stage = TaskState.TaskStage.STARTED;
             task.subStage = SubStage.QUERY;
+            task.synchCompletionCount = 0;
+            setStat(STAT_NAME_CHILD_SYNCH_RETRY_COUNT, 0);
+            setStat(STAT_NAME_CHILD_SYNCH_FAILURE_COUNT, 0);
         } else {
             updateState(task, body);
         }
 
-        if (this.isDetailedLoggingEnabled) {
-            logInfo("Transitioning task from %s-%s to %s-%s, Synch completed services: %d",
-                    currentStage, currentSubStage, task.taskInfo.stage, task.subStage, task.synchCompletionCount);
-        }
+        logInfo("Transitioning task from %s-%s to %s-%s, Services synchronized: %d",
+                currentStage, currentSubStage, task.taskInfo.stage, task.subStage, task.synchCompletionCount);
 
         boolean isTaskFinished = TaskState.isFinished(task.taskInfo);
         if (isTaskFinished) {
@@ -468,8 +471,6 @@ public class SynchronizationTaskService
                 .createPost(this, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS)
                 .setBody(queryTask)
                 .setConnectionSharing(true)
-                .setExpiration(
-                        Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
                 .setCompletion((o, e) -> {
                     if (getHost().isStopping()) {
                         sendSelfCancellationPatch(task, "host is stopping");
@@ -586,8 +587,8 @@ public class SynchronizationTaskService
         sendRequest(Operation.createGet(task.queryPageReference)
                 .setConnectionSharing(true)
                 .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION)
-                .setExpiration(
-                        Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)
+                .setRetryCount(3)
                 .setCompletion(c));
     }
 
@@ -792,8 +793,6 @@ public class SynchronizationTaskService
                 .setConnectionSharing(true)
                 .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
-                .setExpiration(
-                        Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
                 .setRetryCount(0);
         try {
             sendRequest(synchRequest);
@@ -853,6 +852,12 @@ public class SynchronizationTaskService
                     }
                 });
         sendRequest(put);
+    }
+
+    @Override
+    protected void sendSelfPatch(State taskState, TaskState.TaskStage stage, Consumer<State> updateTaskState) {
+        taskState.failureMessage = "";
+        super.sendSelfPatch(taskState, stage, updateTaskState);
     }
 
     private Consumer<State> subStageSetter(SubStage subStage) {
