@@ -290,6 +290,11 @@ public class ServiceHost implements ServiceRequestSender {
          */
         public boolean isAutoBackupEnabled = false;
 
+        /**
+         * Value to enables Logging for inbound requests.
+         */
+        public boolean isRequestLoggingEnabled = false;
+
     }
 
     protected static final LogFormatter LOG_FORMATTER = new LogFormatter();
@@ -825,6 +830,11 @@ public class ServiceHost implements ServiceRequestSender {
         this.state.peerSynchronizationTimeLimitSeconds = args.perFactoryPeerSynchronizationLimitSeconds;
         this.state.isPeerSynchronizationEnabled = args.isPeerSynchronizationEnabled;
         this.state.isAuthorizationEnabled = args.isAuthorizationEnabled;
+
+        RequestLoggingInfo requestLoggingInfo = new RequestLoggingInfo();
+        requestLoggingInfo.enabled = args.isRequestLoggingEnabled;
+        setRequestLoggingInfo(requestLoggingInfo);
+
         if (args.authProviderHostUri != null) {
             this.state.authProviderHostURI = new URI(args.authProviderHostUri);
         }
