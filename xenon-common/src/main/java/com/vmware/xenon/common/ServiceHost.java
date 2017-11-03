@@ -306,7 +306,6 @@ public class ServiceHost implements ServiceRequestSender {
          * When enabled, perform incremental backup whenever document-index service performed commits.
          */
         public boolean isAutoBackupEnabled = false;
-
     }
 
     protected static final LogFormatter LOG_FORMATTER = new LogFormatter();
@@ -397,6 +396,15 @@ public class ServiceHost implements ServiceRequestSender {
             ServiceHost.class,
             "APPEND_PORT_TO_SANDBOX",
             true
+    );
+
+    /**
+     * Configuration to enable Logging for inbound requests at startup.
+     */
+    private static final boolean  ENABLE_REQUEST_LOGGING = XenonConfiguration.bool(
+            ServiceHost.class,
+            "ENABLE_REQUEST_LOGGING",
+            false
     );
 
     /**
@@ -871,6 +879,11 @@ public class ServiceHost implements ServiceRequestSender {
         this.state.peerSynchronizationTimeLimitSeconds = args.perFactoryPeerSynchronizationLimitSeconds;
         this.state.isPeerSynchronizationEnabled = args.isPeerSynchronizationEnabled;
         this.state.isAuthorizationEnabled = args.isAuthorizationEnabled;
+
+        RequestLoggingInfo requestLoggingInfo = new RequestLoggingInfo();
+        requestLoggingInfo.enabled = ENABLE_REQUEST_LOGGING;
+        setRequestLoggingInfo(requestLoggingInfo);
+
         if (args.authProviderHostUri != null) {
             this.state.authProviderHostURI = new URI(args.authProviderHostUri);
         }
