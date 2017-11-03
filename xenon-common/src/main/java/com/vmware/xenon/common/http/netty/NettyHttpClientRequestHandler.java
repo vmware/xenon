@@ -181,23 +181,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
     private void parseRequestUri(Operation request, FullHttpRequest nettyRequest)
             throws URISyntaxException {
-        URI targetUri = new URI(nettyRequest.uri());
-        String decodedQuery = null;
-
-        if (!request.isForwarded() && !request.isFromReplication()) {
-            // do conservative parsing, normalization and decoding for non peer requests
-            targetUri = targetUri.normalize();
-            decodedQuery = targetUri.getQuery();
-            if (decodedQuery != null && !decodedQuery.isEmpty()) {
-                decodedQuery = QueryStringDecoder.decodeComponent(targetUri.getQuery());
-            }
-        }
-
-        String query = decodedQuery == null ? targetUri.getRawQuery() : decodedQuery;
-        URI hostUri = this.host.getUri();
-        URI uri = new URI(hostUri.getScheme(), targetUri.getUserInfo(),
-                ServiceHost.LOCAL_HOST,
-                hostUri.getPort(), targetUri.getPath(), query, targetUri.getFragment());
+        URI uri = buildFullUri(request, nettyRequest.uri());
         request.setUri(uri);
 
         if (!request.hasReferer() && request.isFromReplication()) {
@@ -205,6 +189,49 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             // bother with rewriting the URI with the remote host, at avoid allocations
             request.setReferer(request.getUri());
         }
+    }
+
+    private URI buildFullUri(Operation request, String uriPath) throws URISyntaxException {
+        URI hostUri = this.host.getUri();
+        URI res;
+
+        // doesn't matter if the @ denotes userInfo or a query param or whatever:
+        // won't affect correctness and will only cause 1 more URI allocation
+        if (uriPath.contains("@")) {
+            URI t = new URI(uriPath);
+            res = new URI(
+                    hostUri.getScheme(),
+                    t.getUserInfo(),
+                    hostUri.getHost(),
+                    hostUri.getPort(),
+                    t.getPath(),
+                    t.getQuery(),
+                    t.getFragment());
+        } else {
+            res = new URI(hostUri.toString() + uriPath);
+        }
+
+        if (!request.isForwarded() && !request.isFromReplication()) {
+            // do conservative parsing, normalization and decoding for non peer requests
+            res = res.normalize();
+            String orig = res.getQuery();
+            if (orig != null && !orig.isEmpty()) {
+                String decodedQuery = QueryStringDecoder.decodeComponent(orig);
+                if (decodedQuery != orig) {
+                    // something was really decoded, rebuild with the decoded query
+                    res = new URI(
+                            res.getScheme(),
+                            res.getUserInfo(),
+                            res.getHost(),
+                            res.getPort(),
+                            res.getPath(),
+                            decodedQuery,
+                            res.getFragment());
+                }
+            }
+        }
+
+        return res;
     }
 
     private void decodeRequestBody(ChannelHandlerContext ctx, Operation request,
