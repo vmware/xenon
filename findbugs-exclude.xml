@@ -18,6 +18,12 @@
       <Method name="getBaseUriPath"/>
     </Match>
 
+    <Match>
+      <Bug pattern="ES_COMPARING_STRINGS_WITH_EQ"/>
+      <Class name="com.vmware.xenon.common.http.netty.NettyHttpClientRequestHandler"/>
+      <Method name="buildFullUri"/>
+    </Match>
+
      <!-- Findbugs reports that we call System.exit, and that's a bad practice -->
      <!-- We do it intentionally in /core/management, so we disable the warning -->
      <Match>
