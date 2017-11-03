@@ -289,11 +289,9 @@ public class SynchronizationTaskService
             task.subStage = SubStage.QUERY;
         }
 
-        if (this.isDetailedLoggingEnabled) {
-            logInfo("Transitioning task from %s-%s to %s-%s. Time %d",
-                    currentStage, currentSubStage, task.taskInfo.stage,
-                    task.subStage, task.membershipUpdateTimeMicros);
-        }
+        logInfo("Transitioning task from %s-%s to %s-%s. Time %d",
+                currentStage, currentSubStage, task.taskInfo.stage,
+                task.subStage, task.membershipUpdateTimeMicros);
 
         if (startStateMachine) {
             // The synch-task makes sure that at any given time, there
@@ -403,10 +401,8 @@ public class SynchronizationTaskService
             updateState(task, body);
         }
 
-        if (this.isDetailedLoggingEnabled) {
-            logInfo("Transitioning task from %s-%s to %s-%s, Synch completed services: %d",
-                    currentStage, currentSubStage, task.taskInfo.stage, task.subStage, task.synchCompletionCount);
-        }
+        logInfo("Transitioning task from %s-%s to %s-%s, Synch completed services: %d",
+                currentStage, currentSubStage, task.taskInfo.stage, task.subStage, task.synchCompletionCount);
 
         boolean isTaskFinished = TaskState.isFinished(task.taskInfo);
         if (isTaskFinished) {
@@ -839,6 +835,12 @@ public class SynchronizationTaskService
                     }
                 });
         sendRequest(put);
+    }
+
+    @Override
+    protected void sendSelfPatch(State taskState, TaskState.TaskStage stage, Consumer<State> updateTaskState) {
+        taskState.failureMessage = "";
+        super.sendSelfPatch(taskState, stage, updateTaskState);
     }
 
     private Consumer<State> subStageSetter(SubStage subStage) {

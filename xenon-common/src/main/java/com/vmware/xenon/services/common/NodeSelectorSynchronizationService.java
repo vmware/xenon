@@ -400,7 +400,6 @@ public class NodeSelectorSynchronizationService extends StatelessService {
         peerOp.setExpiration(
                 Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS));
 
-        peerOp.toggleOption(OperationOption.CONNECTION_SHARING, true);
         peerOp.setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION);
 
         // Mark it as replicated so the remote factories do not try to replicate it again
