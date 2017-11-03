@@ -403,6 +403,11 @@ public class QueryTaskService extends StatefulService {
 
             queryTask.results = new ServiceDocumentQueryResult();
             queryTask.results.documentCount = 0L;
+            if (queryTask.querySpec.options.contains(QueryOption.EXPAND_CONTENT) ||
+                    queryTask.querySpec.options.contains(QueryOption.EXPAND_SELECTED_FIELDS)) {
+                queryTask.results.documents = new HashMap<>();
+                queryTask.results.documentLinks = new ArrayList<>();
+            }
 
             if (!nextPageLinks.isEmpty()) {
                 queryTask.results.nextPageLink = forwarderUri.getPath() + UriUtils.URI_QUERY_CHAR +

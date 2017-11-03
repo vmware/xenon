@@ -2466,6 +2466,9 @@ public class TestQueryTaskService {
         URI taskUri = this.host.createQueryTaskService(task, false, task.taskInfo.isDirect, task, null);
         task = this.host.waitForQueryTaskCompletion(task.querySpec, 0, 0, taskUri, false, false);
 
+        assertTrue(task.results.documents != null);
+        assertTrue(task.results.documentLinks != null);
+
         targetHost.testStart(1);
         Operation startGet = Operation
                 .createGet(taskUri)
