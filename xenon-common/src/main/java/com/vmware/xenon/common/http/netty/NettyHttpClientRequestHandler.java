@@ -80,6 +80,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
     private static final String ERROR_MSG_DECODING_FAILURE = "Failure decoding HTTP request";
 
     private final ServiceHost host;
+    private final URI hostLocalUri;
 
     private final SslHandler sslHandler;
 
@@ -92,6 +93,14 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
     public NettyHttpClientRequestHandler(ServiceHost host, NettyHttpListener listener,
             SslHandler sslHandler, int responsePayloadSizeLimit, boolean secureAuthCookie) {
         this.host = host;
+        try {
+            URI uri = host.getUri();
+            this.hostLocalUri = new URI(uri.getScheme(), null,
+                    ServiceHost.LOCAL_HOST, uri.getPort(), "", null, null);
+        } catch (URISyntaxException e) {
+            throw new IllegalStateException(e);
+        }
+
         this.listener = listener;
         this.sslHandler = sslHandler;
         this.responsePayloadSizeLimit = responsePayloadSizeLimit;
@@ -181,23 +190,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
     private void parseRequestUri(Operation request, FullHttpRequest nettyRequest)
             throws URISyntaxException {
-        URI targetUri = new URI(nettyRequest.uri());
-        String decodedQuery = null;
-
-        if (!request.isForwarded() && !request.isFromReplication()) {
-            // do conservative parsing, normalization and decoding for non peer requests
-            targetUri = targetUri.normalize();
-            decodedQuery = targetUri.getQuery();
-            if (decodedQuery != null && !decodedQuery.isEmpty()) {
-                decodedQuery = QueryStringDecoder.decodeComponent(targetUri.getQuery());
-            }
-        }
-
-        String query = decodedQuery == null ? targetUri.getRawQuery() : decodedQuery;
-        URI hostUri = this.host.getUri();
-        URI uri = new URI(hostUri.getScheme(), targetUri.getUserInfo(),
-                ServiceHost.LOCAL_HOST,
-                hostUri.getPort(), targetUri.getPath(), query, targetUri.getFragment());
+        URI uri = buildFullUri(request, nettyRequest.uri());
         request.setUri(uri);
 
         if (!request.hasReferer() && request.isFromReplication()) {
@@ -205,6 +198,48 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             // bother with rewriting the URI with the remote host, at avoid allocations
             request.setReferer(request.getUri());
         }
+    }
+
+    private URI buildFullUri(Operation request, String uriStr) throws URISyntaxException {
+        URI hostUri = this.hostLocalUri;
+        URI res;
+
+        // probably uri contains a userInfo
+        if (uriStr.charAt(0) != '/') {
+            URI t = new URI(uriStr);
+            res = new URI(
+                    hostUri.getScheme(),
+                    t.getUserInfo(),
+                    ServiceHost.LOCAL_HOST,
+                    hostUri.getPort(),
+                    t.getPath(),
+                    t.getQuery(),
+                    t.getFragment());
+        } else {
+            res = new URI(hostUri.toString() + uriStr);
+        }
+
+        if (!request.isForwarded() && !request.isFromReplication()) {
+            // do conservative parsing, normalization and decoding for non peer requests
+            res = res.normalize();
+            String orig = res.getQuery();
+            if (orig != null && !orig.isEmpty()) {
+                String decodedQuery = QueryStringDecoder.decodeComponent(orig);
+                if (decodedQuery != orig) {
+                    // something was really decoded, rebuild with the decoded query
+                    res = new URI(
+                            res.getScheme(),
+                            res.getUserInfo(),
+                            res.getHost(),
+                            res.getPort(),
+                            res.getPath(),
+                            decodedQuery,
+                            res.getFragment());
+                }
+            }
+        }
+
+        return res;
     }
 
     private void decodeRequestBody(ChannelHandlerContext ctx, Operation request,
