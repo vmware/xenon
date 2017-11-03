@@ -1364,6 +1364,31 @@ public class TestServiceHost {
                 return false;
             }
 
+            ServiceStat http1AvailableConnectionCountDaily = hostMgmtStats
+                    .get(ServiceHostManagementService.STAT_NAME_HTTP11_AVAILABLE_CONNECTION_COUNT_PER_DAY);
+            if (!isTimeSeriesStatReady(http1AvailableConnectionCountDaily)) {
+                this.host.log("not ready: %s", Utils.toJson(http1AvailableConnectionCountDaily));
+                return false;
+            }
+            ServiceStat http1AvailableConnectionCountHourly = hostMgmtStats
+                    .get(ServiceHostManagementService.STAT_NAME_HTTP11_AVAILABLE_CONNECTION_COUNT_PER_HOUR);
+            if (!isTimeSeriesStatReady(http1AvailableConnectionCountHourly)) {
+                this.host.log("not ready: %s", Utils.toJson(http1AvailableConnectionCountHourly));
+                return false;
+            }
+            ServiceStat http2AvailableConnectionCountDaily = hostMgmtStats
+                    .get(ServiceHostManagementService.STAT_NAME_HTTP2_AVAILABLE_CONNECTION_COUNT_PER_DAY);
+            if (!isTimeSeriesStatReady(http2AvailableConnectionCountDaily)) {
+                this.host.log("not ready: %s", Utils.toJson(http2AvailableConnectionCountDaily));
+                return false;
+            }
+            ServiceStat http2AvailableConnectionCountHourly = hostMgmtStats
+                    .get(ServiceHostManagementService.STAT_NAME_HTTP2_AVAILABLE_CONNECTION_COUNT_PER_HOUR);
+            if (!isTimeSeriesStatReady(http2AvailableConnectionCountHourly)) {
+                this.host.log("not ready: %s", Utils.toJson(http2AvailableConnectionCountHourly));
+                return false;
+            }
+
             TestUtilityService.validateTimeSeriesStat(freeMemDaily, TimeUnit.HOURS.toMillis(1));
             TestUtilityService.validateTimeSeriesStat(freeMemHourly, TimeUnit.MINUTES.toMillis(1));
             TestUtilityService.validateTimeSeriesStat(freeDiskDaily, TimeUnit.HOURS.toMillis(1));

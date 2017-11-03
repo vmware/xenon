@@ -253,6 +253,9 @@ public class ServiceResourceTracker {
             createTimeSeriesStat(
                     ServiceHostManagementService.STAT_NAME_HTTP11_CONNECTION_COUNT_PREFIX,
                     http11TagInfo.inUseConnectionCount);
+            createTimeSeriesStat(
+                    ServiceHostManagementService.STAT_NAME_HTTP11_AVAILABLE_CONNECTION_COUNT_PREFIX,
+                    http11TagInfo.availableConnectionCount);
         }
 
         ConnectionPoolMetrics http2TagInfo = this.host.getClient()
@@ -264,6 +267,9 @@ public class ServiceResourceTracker {
             createTimeSeriesStat(
                     ServiceHostManagementService.STAT_NAME_HTTP2_CONNECTION_COUNT_PREFIX,
                     http2TagInfo.inUseConnectionCount);
+            createTimeSeriesStat(
+                    ServiceHostManagementService.STAT_NAME_HTTP2_AVAILABLE_CONNECTION_COUNT_PREFIX,
+                    http2TagInfo.availableConnectionCount);
         }
 
         ForkJoinPool executor = (ForkJoinPool) this.host.getExecutor();
