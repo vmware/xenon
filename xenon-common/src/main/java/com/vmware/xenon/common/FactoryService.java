@@ -48,11 +48,20 @@ public abstract class FactoryService extends StatelessService {
     public static final String PROPERTY_NAME_MAX_SYNCH_RETRY_COUNT =
             Utils.PROPERTY_NAME_PREFIX + "FactoryService.MAX_SYNCH_RETRY_COUNT";
 
-    // Maximum synch-task retry limit.
-    // We are using exponential backoff for synchronization retry, that means last synch retry will
-    // be tried after 2 ^ 8 * getMaintenanceIntervalMicros(), which is ~4 minutes if maintenance interval is 1 second.
+    /**
+     * Maximum synch-task retry limit.
+     * We are using exponential backoff for synchronization retry, that means last synch retry will
+     * be tried after 2 ^ 10 * getMaintenanceIntervalMicros(), which is ~17 minutes if maintenance interval is 1 second.
+     */
     public static final int MAX_SYNCH_RETRY_COUNT = Integer.getInteger(
-            PROPERTY_NAME_MAX_SYNCH_RETRY_COUNT, 8);
+            PROPERTY_NAME_MAX_SYNCH_RETRY_COUNT, 10);
+
+    /**
+     * Lower limit on query result limit. This is used when retrying failed synch task and backing off the query
+     * result limit gradually. After result limit has reached to this value, it will not be reduced any further.
+     */
+    private static final int MIN_SYNCH_QUERY_RESULT_LIMIT = 200;
+
     /**
      * Creates a factory service instance that starts the specified child service
      * on POST
@@ -985,6 +994,8 @@ public abstract class FactoryService extends StatelessService {
                 return;
             }
         }
+        // Reset query result limit for new synchronization cycle.
+        this.selfQueryResultLimit = SELF_QUERY_RESULT_LIMIT;
         synchronizeChildServicesIfOwner(maintOp);
     }
 
@@ -1107,6 +1118,8 @@ public abstract class FactoryService extends StatelessService {
             }
         }
 
+        this.selfQueryResultLimit = Math.max(this.selfQueryResultLimit / 2, MIN_SYNCH_QUERY_RESULT_LIMIT);
+
         // Clone the parent operation for reuse outside the schedule call for
         // the original operation to be freed in current thread.
         Operation op = parentOp.clone();
@@ -1147,7 +1160,7 @@ public abstract class FactoryService extends StatelessService {
         task.factoryStateKind = Utils.buildKind(this.getStateType());
         task.membershipUpdateTimeMicros = membershipUpdateTimeMicros;
         task.nodeSelectorLink = this.nodeSelectorLink;
-        task.queryResultLimit = SELF_QUERY_RESULT_LIMIT;
+        task.queryResultLimit = this.selfQueryResultLimit;
         task.taskInfo = TaskState.create();
         task.taskInfo.isDirect = true;
         return task;
