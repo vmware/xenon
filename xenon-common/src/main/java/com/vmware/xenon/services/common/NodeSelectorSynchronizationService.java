@@ -388,6 +388,45 @@ public class NodeSelectorSynchronizationService extends StatelessService {
         }
     }
 
+    /**
+     * The service state on the peer node is identical to best state. We should
+     * skip sending a synchronization POST, if the service is already started
+     */
+    private void skipSynchOrStartServiceOnPeer(Operation peerOp, String link, SynchronizePeersRequest request) {
+        // If the service is an ON_DEMAND_LOAD service, we don't bother trying to
+        // start it on the peer host. It will get started on-demand when a request comes in.
+        if (request.options.contains(ServiceOption.ON_DEMAND_LOAD)) {
+            peerOp.complete();
+            return;
+        }
+
+        URI uri = UriUtils.buildUri(peerOp.getUri(), ServiceUriPaths.CORE_MANAGEMENT);
+        ServiceHostManagementService.ServiceStatusRequest req = new ServiceHostManagementService.ServiceStatusRequest();
+        req.documentSelfLink = link;
+        req.kind = ServiceHostManagementService.ServiceStatusRequest.KIND;
+
+        Operation checkGet = Operation.createPatch(uri)
+                .setBody(req)
+                .setCompletion((o, e) -> {
+                    if (e == null) {
+                        ServiceHostManagementService.ServiceStatusResponse body = o.getBody(ServiceHostManagementService.ServiceStatusResponse.class);
+
+                        if (body == null || body.stage == null || !body.stage.equals(ProcessingStage.AVAILABLE)) {
+                            // service does not seem to exist, issue POST to start it
+                            sendRequest(peerOp);
+                        }
+
+                        //logFine("Skipping %s , state identical with best state", o.getUri());
+                        peerOp.complete();
+                        return;
+                    }
+
+                    // service does not seem to exist, issue POST to start it
+                    sendRequest(peerOp);
+                });
+        sendRequest(checkGet);
+    }
+
     private Operation prepareSynchPostRequest(Operation post, SynchronizePeersRequest request,
             final ServiceDocument bestState, boolean isServiceDeleted, CompletionHandler c,
             ServiceDocument clonedState, URI peer) {

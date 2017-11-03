@@ -17,18 +17,12 @@ import java.net.URI;
 import java.util.EnumSet;
 import java.util.logging.Level;
 
-import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.*;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.RequestRouter.Route.RouteDocumentation;
 import com.vmware.xenon.common.RequestRouter.Route.RouteDocumentation.ApiResponse;
-import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
-import com.vmware.xenon.common.ServiceStatUtils;
-import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
-import com.vmware.xenon.common.StatefulService;
-import com.vmware.xenon.common.UriUtils;
-import com.vmware.xenon.common.Utils;
 
 /**
  * Provides host information and allows for host configuration. It can also be used to determine
@@ -147,6 +141,19 @@ public class ServiceHostManagementService extends StatefulService {
         public OperationTracingEnable enable = OperationTracingEnable.START;
         public String level;
     }
+
+    public static class ServiceStatusRequest extends BaseManagementServiceRequest {
+        public static final String KIND = Utils.buildKind(ServiceStatusRequest.class);
+        public String documentSelfLink;
+
+        public ProcessingStage stage;
+    }
+
+    public static class ServiceStatusResponse extends ServiceDocument {
+
+        public ProcessingStage stage;
+    }
+
 
     public static class ConfigureInboundRequestLogging extends BaseManagementServiceRequest {
         public static final String KIND = Utils.buildKind(ConfigureInboundRequestLogging.class);
@@ -300,6 +307,19 @@ public class ServiceHostManagementService extends StatefulService {
                 throw new IllegalArgumentException("kind is required");
             }
 
+            if (request.kind.equals(ServiceStatusRequest.KIND)) {
+                // Actuating the operation tracing service doesn't modify the index.
+                ServiceStatusRequest tr = patch.getBody(ServiceStatusRequest.class);
+                handleServiceStatusRequest(tr, patch);
+                return;
+            }
+
+            if (request.kind.equals(ConfigureOperationTracingRequest.KIND)) {
+                // Actuating the operation tracing service doesn't modify the index.
+                ConfigureOperationTracingRequest tr = patch.getBody(ConfigureOperationTracingRequest.class);
+                handleOperationTracingRequest(tr, patch);
+                return;
+            }
 
             if (request.kind.equals(ConfigureOperationTracingRequest.KIND)) {
                 // Actuating the operation tracing service doesn't modify the index.
@@ -386,6 +406,14 @@ public class ServiceHostManagementService extends StatefulService {
 
         getHost().scheduleNodeGroupChangeMaintenance(rr.nodeSelectorPath);
         patch.complete();
+    }
+
+    private void handleServiceStatusRequest(ServiceStatusRequest req, Operation op) {
+        ServiceStatusResponse result = new ServiceStatusResponse();
+        result.stage = getHost().getServiceStage(req.documentSelfLink);
+        op.setStatusCode(Operation.STATUS_CODE_OK);
+        op.setBody(result);
+        op.complete();
     }
 
     private void handleOperationTracingRequest(ConfigureOperationTracingRequest req, Operation op)
