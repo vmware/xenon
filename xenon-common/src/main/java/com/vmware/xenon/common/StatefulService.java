@@ -1490,14 +1490,13 @@ public class StatefulService implements Service {
         }
 
         // avoid replicating this synchronization request, on completion
-        request.setFromReplication(true);
+        request.setReplicationDisabled(true);
 
         if (!isStateUpdated) {
             processPending(request);
             request.complete();
             return;
         }
-
         // proceed with normal completion pipeline, including indexing
         request.nestCompletion(this::handleRequestCompletion);
         request.complete();
