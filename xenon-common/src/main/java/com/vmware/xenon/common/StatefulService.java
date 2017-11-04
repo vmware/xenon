@@ -1497,7 +1497,6 @@ public class StatefulService implements Service {
             request.complete();
             return;
         }
-
         // proceed with normal completion pipeline, including indexing
         request.nestCompletion(this::handleRequestCompletion);
         request.complete();
