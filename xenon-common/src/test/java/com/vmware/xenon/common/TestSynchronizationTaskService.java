@@ -16,6 +16,7 @@ package com.vmware.xenon.common;
 import static java.util.stream.Collectors.toList;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -48,6 +49,7 @@ import com.vmware.xenon.services.common.ExampleService.ExampleODLService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.InMemoryLuceneDocumentIndexService;
 import com.vmware.xenon.services.common.NodeGroupService;
+import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.TestLuceneDocumentIndexService.InMemoryExampleService;
 
@@ -714,6 +716,74 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         // test methods are doing the right thing.
         validateInvalidStartState(taskFactoryUri, false, null);
         validateInvalidPutRequest(taskFactoryUri, false, null);
+    }
+
+    @Test
+    public void cacheUpdateAfterSynchronization() throws Throwable {
+        setUpMultiNode();
+        for (VerificationHost host : this.host.getInProcessHostMap().values()) {
+            // avoid cache clear
+            host.setServiceCacheClearDelayMicros(TimeUnit.MINUTES.toMicros(3));
+        }
+        this.host.setNodeGroupQuorum(this.nodeCount - 1);
+        this.host.waitForNodeGroupConvergence();
+
+        List<ExampleServiceState> exampleStates = this.host.createExampleServices(
+                this.host.getPeerHost(), this.serviceCount, null, ExampleService.FACTORY_LINK);
+        Map<String, ExampleServiceState> exampleStatesMap =
+                exampleStates.stream().collect(Collectors.toMap(s -> s.documentSelfLink, s -> s));
+
+        VerificationHost hostToStop = this.host.getPeerHost();
+        this.host.stopHost(hostToStop);
+        this.host.waitForNodeUnavailable(ServiceUriPaths.DEFAULT_NODE_GROUP, this.host.getInProcessHostMap().values(), hostToStop);
+        this.host.waitForNodeGroupConvergence(this.host.getPeerCount());
+
+        VerificationHost peer = this.host.getPeerHost();
+        this.host.waitForReplicatedFactoryChildServiceConvergence(
+                this.host.getNodeGroupToFactoryMap(ExampleService.FACTORY_LINK),
+                exampleStatesMap,
+                this.exampleStateConvergenceChecker,
+                exampleStatesMap.size(),
+                0, this.nodeCount - 1);
+        // get cached state
+        List<Operation> ops = new ArrayList<>();
+        for (ExampleServiceState s : exampleStates) {
+            Operation op = Operation.createGet(peer, s.documentSelfLink);
+            ops.add(op);
+        }
+
+        List<ExampleServiceState> newExampleStates = this.host.getTestRequestSender().sendAndWait(ops, ExampleServiceState.class);
+        Map<String, ExampleServiceState> newExampleStatesMap =
+                newExampleStates.stream().collect(Collectors.toMap(s -> s.documentSelfLink, s -> s));
+        for (ExampleServiceState s : exampleStates) {
+            ExampleServiceState ns = newExampleStatesMap.get(s.documentSelfLink);
+            if (ns.documentEpoch > s.documentEpoch) {
+                // owner change
+                ServiceHost newOwner =
+                        this.host.getInProcessHostMap().values().stream().filter(h -> h.getId().equals(ns.documentOwner)).iterator().next();
+
+                QueryTask.Query query = QueryTask.Query.Builder.create()
+                        .addKindFieldClause(ExampleServiceState.class)
+                        .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, s.documentSelfLink)
+                        .build();
+                QueryTask task = QueryTask.Builder.createDirectTask()
+                        .setQuery(query)
+                        .addOption(QueryTask.QuerySpecification.QueryOption.EXPAND_CONTENT)
+                        .build();
+                // query latest version in index after synchronization
+                Operation op = Operation.createPost(newOwner, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS)
+                        .setBody(task);
+                // check cache has latest state
+                task = this.host.getTestRequestSender().sendAndWait(op, QueryTask.class);
+                ServiceDocumentQueryResult result = task.results;
+                assertEquals(1, result.documentCount.longValue());
+                ExampleServiceState nsFromIndex
+                        = Utils.fromJson(result.documents.values().iterator().next(), ExampleServiceState.class);
+                // service owner should cache latest version
+                // version in cache should be no less than index at owner node
+                assertFalse(ns.documentVersion < nsFromIndex.documentVersion);
+            }
+        }
     }
 
     private long getLatestMembershipUpdateTime(URI nodeUri) throws Throwable {
