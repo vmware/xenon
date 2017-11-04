@@ -253,6 +253,12 @@ public class LuceneDocumentIndexService extends StatelessService {
         return metadataUpdateMaxQueueDepth;
     }
 
+    public static final String PROPERTY_NAME_QUERY_QUEUE_DEPTH = Utils.PROPERTY_NAME_PREFIX
+            + "LuceneDocumentIndexService.queryQueueDepth";
+
+    public static final String PROPERTY_NAME_UPDATE_QUEUE_DEPTH = Utils.PROPERTY_NAME_PREFIX
+            + "LuceneDocumentIndexService.updateQueueDepth";
+
     static final String LUCENE_FIELD_NAME_BINARY_SERIALIZED_STATE = "binarySerializedState";
 
     static final String LUCENE_FIELD_NAME_JSON_SERIALIZED_STATE = "jsonSerializedState";
@@ -429,8 +435,13 @@ public class LuceneDocumentIndexService extends StatelessService {
     private Set<String> fieldsToLoadNoExpand;
     private Set<String> fieldsToLoadWithExpand;
 
-    private RoundRobinOperationQueue queryQueue = RoundRobinOperationQueue.create("index-service query queue");
-    private RoundRobinOperationQueue updateQueue = RoundRobinOperationQueue.create("index-service update queue");
+    private final RoundRobinOperationQueue queryQueue = new RoundRobinOperationQueue(
+            "index-service-query",
+            Integer.getInteger(PROPERTY_NAME_QUERY_QUEUE_DEPTH, Service.OPERATION_QUEUE_DEFAULT_LIMIT));
+
+    private final RoundRobinOperationQueue updateQueue = new RoundRobinOperationQueue(
+            "index-service-update",
+            Integer.getInteger(PROPERTY_NAME_UPDATE_QUEUE_DEPTH, 10 * Service.OPERATION_QUEUE_DEFAULT_LIMIT));
 
     private URI uri;
 
@@ -975,11 +986,11 @@ public class LuceneDocumentIndexService extends StatelessService {
         try {
             if (a == Action.GET || a == Action.PATCH) {
                 if (offerQueryOperation(op)) {
-                    this.privateQueryExecutor.execute(this.queryTaskHandler);
+                    this.privateQueryExecutor.submit(this.queryTaskHandler);
                 }
             } else {
                 if (offerUpdateOperation(op)) {
-                    this.privateIndexingExecutor.execute(this.updateRequestHandler);
+                    this.privateIndexingExecutor.submit(this.updateRequestHandler);
                 }
             }
         } catch (RejectedExecutionException e) {
