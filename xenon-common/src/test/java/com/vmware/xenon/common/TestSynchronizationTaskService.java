@@ -16,6 +16,7 @@ package com.vmware.xenon.common;
 import static java.util.stream.Collectors.toList;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -36,6 +37,7 @@ import java.util.stream.Collectors;
 
 import org.junit.After;
 import org.junit.AfterClass;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -714,6 +716,60 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         // test methods are doing the right thing.
         validateInvalidStartState(taskFactoryUri, false, null);
         validateInvalidPutRequest(taskFactoryUri, false, null);
+    }
+
+    @Test
+    public void cacheUpdateAfterSynchronization() throws Throwable {
+        setUpMultiNode();
+        for (VerificationHost host : this.host.getInProcessHostMap().values()) {
+            host.setServiceCacheClearDelayMicros(TimeUnit.SECONDS.toMicros(60));
+        }
+        this.host.setNodeGroupQuorum(this.nodeCount - 1);
+        this.host.waitForNodeGroupConvergence();
+
+        List<ExampleServiceState> exampleStates = this.host.createExampleServices(
+                this.host.getPeerHost(), this.serviceCount, null, ExampleService.FACTORY_LINK);
+
+        List<Operation> ops = new ArrayList<>();
+        for (ExampleServiceState s : exampleStates) {
+            s.counter += 1;
+            Operation op = Operation.createPatch(this.host.getPeerHost(), s.documentSelfLink)
+                    .setBody(s);
+            ops.add(op);
+        }
+
+        exampleStates = this.host.getTestRequestSender().sendAndWait(ops, ExampleServiceState.class);
+        Map<String, ExampleServiceState> exampleStatesMap =
+                exampleStates.stream().collect(Collectors.toMap(s -> s.documentSelfLink, s -> s));
+        ops.clear();
+
+        VerificationHost hostToStop = this.host.getPeerHost();
+        this.host.stopHost(hostToStop);
+        this.host.waitForNodeUnavailable(ServiceUriPaths.DEFAULT_NODE_GROUP, this.host.getInProcessHostMap().values(), hostToStop);
+        this.host.waitForNodeGroupConvergence(this.host.getPeerCount());
+
+        VerificationHost peer = this.host.getPeerHost();
+        this.host.waitForReplicatedFactoryChildServiceConvergence(
+                this.host.getNodeGroupToFactoryMap(ExampleService.FACTORY_LINK),
+                exampleStatesMap,
+                this.exampleStateConvergenceChecker,
+                exampleStatesMap.size(),
+                0, this.nodeCount - 1);
+
+        for (ExampleServiceState s : exampleStates) {
+            Operation op = Operation.createGet(peer, s.documentSelfLink);
+            ops.add(op);
+        }
+
+        List<ExampleServiceState> newExampleStates = this.host.getTestRequestSender().sendAndWait(ops, ExampleServiceState.class);
+        Map<String, ExampleServiceState> newExampleStatesMap =
+                newExampleStates.stream().collect(Collectors.toMap(s -> s.documentSelfLink, s -> s));
+        for (ExampleServiceState s : exampleStates) {
+            ExampleServiceState ns = newExampleStatesMap.get(s.documentSelfLink);
+            if (ns.documentEpoch > s.documentEpoch) {
+                assertTrue(ns.documentVersion > s.documentVersion);
+            }
+        }
     }
 
     private long getLatestMembershipUpdateTime(URI nodeUri) throws Throwable {

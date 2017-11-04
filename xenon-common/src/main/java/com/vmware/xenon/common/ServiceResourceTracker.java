@@ -308,9 +308,10 @@ public class ServiceResourceTracker {
         // we cache the state only if:
         // (1) the service is non-persistent, or:
         // (2) the service is persistent, the operation is not replicated and state caching is enabled
+        // (3) the service has better state from peer after synchronization
         boolean cacheState = !ServiceHost.isServiceIndexed(s);
         cacheState |= !op.isFromReplication() && this.isServiceStateCaching;
-
+        cacheState |= op.isSynchronizePeer();
         if (!cacheState) {
             return;
         }

@@ -1497,7 +1497,8 @@ public class StatefulService implements Service {
             request.complete();
             return;
         }
-
+        // update cache with best state from peer
+        request.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_PEER);
         // proceed with normal completion pipeline, including indexing
         request.nestCompletion(this::handleRequestCompletion);
         request.complete();
