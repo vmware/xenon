@@ -13,9 +13,13 @@
 
 package com.vmware.xenon.common;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -41,7 +45,7 @@ public class TestRoundRobinOperationQueue {
 
     @Test
     public void offerAndPollSameKey() {
-        RoundRobinOperationQueue q = RoundRobinOperationQueue.create();
+        RoundRobinOperationQueue q = new RoundRobinOperationQueue("test", this.count);
 
         try {
             q.offer(null, Operation.createGet(null));
@@ -81,7 +85,9 @@ public class TestRoundRobinOperationQueue {
 
     @Test
     public void offerAndPollMultipleKeys() {
-        RoundRobinOperationQueue q = RoundRobinOperationQueue.create();
+        int limit = this.iterationCount * this.keyCount * this.count;
+        RoundRobinOperationQueue q = new RoundRobinOperationQueue("test",
+                limit);
         Map<String, List<Operation>> ops = new HashMap<>();
         Map<Long, String> opToKey = new HashMap<>();
 
@@ -130,4 +136,42 @@ public class TestRoundRobinOperationQueue {
                 .info(String.format("%s throughput: %f, count: %d", msg, thpt, this.count));
     }
 
+    @Test
+    public void testLimitDifferentKeys() {
+        RoundRobinOperationQueue q = new RoundRobinOperationQueue("sayonara", 2);
+        assertTrue(q.offer("k1", Operation.createGet(URI.create("/test"))));
+        assertTrue(q.offer("k2", Operation.createGet(URI.create("/test"))));
+        Operation excess = Operation.createGet(URI.create("/test"));
+        assertFalse(q.offer("k3", excess));
+        assertEquals(503, excess.getStatusCode());
+        assertTrue(excess.getErrorResponseBody().message.contains("sayonara"));
+    }
+
+    @Test
+    public void testLimitSameKey() {
+        RoundRobinOperationQueue q = new RoundRobinOperationQueue("sayonara", 2);
+        assertTrue(q.offer("k1", Operation.createGet(URI.create("/test"))));
+        assertTrue(q.offer("k1", Operation.createGet(URI.create("/test"))));
+
+        Operation excess = Operation.createGet(URI.create("/test"));
+        assertFalse(q.offer("k1", excess));
+        assertEquals(503, excess.getStatusCode());
+        assertTrue(excess.getErrorResponseBody().message.contains("sayonara"));
+    }
+
+    @Test
+    public void testTotalRestoredAfterRemove() {
+        RoundRobinOperationQueue q = new RoundRobinOperationQueue("q", 2);
+
+        for (int i = 0; i < 20; i++) {
+            assertTrue(q.offer("k1", Operation.createGet(URI.create("/test"))));
+            assertTrue(q.offer("k1", Operation.createGet(URI.create("/test"))));
+
+            assertNotNull(q.poll());
+            assertNotNull(q.poll());
+        }
+
+        assertTrue(q.offer("k1", Operation.createGet(URI.create("/test"))));
+        assertTrue(q.offer("k1", Operation.createGet(URI.create("/test"))));
+    }
 }
