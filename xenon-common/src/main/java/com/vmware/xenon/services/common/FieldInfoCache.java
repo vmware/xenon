@@ -35,6 +35,7 @@ final class FieldInfoCache {
     private static final Field fiValues;
 
     private static final Field fiByNumberMap;
+    private static final Field fiByNumberTable;
 
     static {
         // remove this when upgraded to lucene 7.5/8.0
@@ -44,6 +45,9 @@ final class FieldInfoCache {
 
             fiByNumberMap = FieldInfos.class.getDeclaredField("byNumberMap");
             fiByNumberMap.setAccessible(true);
+
+            fiByNumberTable = FieldInfos.class.getDeclaredField("byNumberTable");
+            fiByNumberTable.setAccessible(true);
         } catch (NoSuchFieldException e) {
             throw new ExceptionInInitializerError(e);
         }
@@ -183,13 +187,18 @@ final class FieldInfoCache {
     @SuppressWarnings("unchecked")
     private void trimFieldInfos(FieldInfos fieldInfos) {
         try {
-            Object obj = fiByNumberMap.get(fieldInfos);
-            if (obj != null) {
+            Object obj = fiByNumberTable.get(fieldInfos);
+            if (obj == null) {
+                // it is sparse, nothing to clean-up
                 return;
             }
 
+            // value is a TreeMap view
             Collection<FieldInfo> values = (Collection<FieldInfo>) fiValues.get(fieldInfos);
-            fiValues.set(fieldInfos, Collections.unmodifiableList(new ArrayList<>(values)));
+
+            // make a copy of the view and reset the field.
+            values = Collections.unmodifiableList(new ArrayList<>(values));
+            fiValues.set(fieldInfos, values);
         } catch (ReflectiveOperationException ignore) {
 
         }
