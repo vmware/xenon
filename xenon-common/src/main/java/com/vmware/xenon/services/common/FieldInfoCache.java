@@ -14,9 +14,8 @@
 package com.vmware.xenon.services.common;
 
 import java.lang.reflect.Field;
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -34,7 +33,7 @@ final class FieldInfoCache {
 
     private static final Field fiValues;
 
-    private static final Field fiByNumberMap;
+    private static final Field fiByNumberTable;
 
     static {
         // remove this when upgraded to lucene 7.5/8.0
@@ -42,8 +41,8 @@ final class FieldInfoCache {
             fiValues = FieldInfos.class.getDeclaredField("values");
             fiValues.setAccessible(true);
 
-            fiByNumberMap = FieldInfos.class.getDeclaredField("byNumberMap");
-            fiByNumberMap.setAccessible(true);
+            fiByNumberTable = FieldInfos.class.getDeclaredField("byNumberTable");
+            fiByNumberTable.setAccessible(true);
         } catch (NoSuchFieldException e) {
             throw new ExceptionInInitializerError(e);
         }
@@ -183,13 +182,18 @@ final class FieldInfoCache {
     @SuppressWarnings("unchecked")
     private void trimFieldInfos(FieldInfos fieldInfos) {
         try {
-            Object obj = fiByNumberMap.get(fieldInfos);
-            if (obj != null) {
+            Object obj = fiByNumberTable.get(fieldInfos);
+            if (obj == null) {
+                // it is sparse, nothing to clean-up
                 return;
             }
 
+            // value is a TreeMap view
             Collection<FieldInfo> values = (Collection<FieldInfo>) fiValues.get(fieldInfos);
-            fiValues.set(fieldInfos, Collections.unmodifiableList(new ArrayList<>(values)));
+
+            // instead, make a view of the array.
+            values = Arrays.asList((FieldInfo[])obj);
+            fiValues.set(fieldInfos, values);
         } catch (ReflectiveOperationException ignore) {
 
         }
