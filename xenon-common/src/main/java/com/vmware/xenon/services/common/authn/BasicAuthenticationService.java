@@ -18,6 +18,7 @@ import java.util.concurrent.TimeUnit;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.services.common.AuthCredentialsService.AuthCredentialsServiceState;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -29,17 +30,17 @@ public class BasicAuthenticationService extends StatelessService {
 
     public static final String SELF_LINK = ServiceUriPaths.CORE_AUTHN_BASIC;
 
-    public static final String AUTH_TOKEN_EXPIRATION_MICROS_PROPERTY = Utils.PROPERTY_NAME_PREFIX +
-            "BasicAuthenticationService.AUTH_TOKEN_EXPIRATION_SECONDS";
+    static final long AUTH_TOKEN_EXPIRATION_SECONDS = XenonConfiguration.number(
+            BasicAuthenticationService.class,
+            "AUTH_TOKEN_EXPIRATION_SECONDS",
+            TimeUnit.HOURS.toSeconds(1)
+    );
 
-    public static final String UPPER_SESSION_LIMIT_SECONDS_PROPERTY = Utils.PROPERTY_NAME_PREFIX +
-            "BasicAuthenticationService.UPPER_SESSION_LIMIT_SECONDS";
-
-    static final long AUTH_TOKEN_EXPIRATION_SECONDS = Long.getLong(
-            AUTH_TOKEN_EXPIRATION_MICROS_PROPERTY, TimeUnit.HOURS.toSeconds(1));
-
-    private final Long UPPER_SESSION_LIMIT_SECONDS =
-            Long.getLong(UPPER_SESSION_LIMIT_SECONDS_PROPERTY);
+    private final long UPPER_SESSION_LIMIT_SECONDS = XenonConfiguration.number(
+            BasicAuthenticationService.class,
+            "UPPER_SESSION_LIMIT_SECONDS",
+            0
+    );
 
     public BasicAuthenticationService() {
         toggleOption(ServiceOption.CORE, true);
@@ -119,7 +120,7 @@ public class BasicAuthenticationService extends StatelessService {
 
         // Set a hard limit on the duration of a session if the expirationTimeMicros
         // exceeds the upper session expiration limit.
-        if (this.UPPER_SESSION_LIMIT_SECONDS != null &&
+        if (this.UPPER_SESSION_LIMIT_SECONDS > 0 &&
                 expirationTimeSeconds > this.UPPER_SESSION_LIMIT_SECONDS) {
             expirationTimeSeconds = this.UPPER_SESSION_LIMIT_SECONDS;
         }

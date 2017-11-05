@@ -35,11 +35,9 @@ import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.config.XenonConfiguration;
 
 public class NodeSelectorSynchronizationService extends StatelessService {
-
-    public static final String PROPERTY_NAME_SYNCHRONIZATION_LOGGING = Utils.PROPERTY_NAME_PREFIX
-            + "NodeSelectorSynchronizationService.isDetailedLoggingEnabled";
 
     public static class NodeGroupSynchronizationState extends ServiceDocument {
         public Set<String> inConflictLinks = new HashSet<>();
@@ -64,8 +62,11 @@ public class NodeSelectorSynchronizationService extends StatelessService {
 
     private Service parent;
 
-    private boolean isDetailedLoggingEnabled = Boolean
-            .getBoolean(PROPERTY_NAME_SYNCHRONIZATION_LOGGING);
+    private boolean isDetailedLoggingEnabled = XenonConfiguration.bool(
+            NodeSelectorSynchronizationService.class,
+            "isDetailedLoggingEnabled",
+            false
+    );
 
     public NodeSelectorSynchronizationService(Service parent) {
         super(NodeGroupSynchronizationState.class);

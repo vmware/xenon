@@ -13,8 +13,6 @@
 
 package com.vmware.xenon.common.opentracing;
 
-import java.lang.reflect.InvocationTargetException;
-import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -22,8 +20,12 @@ import io.opentracing.NoopTracerFactory;
 import io.opentracing.Tracer;
 
 import com.vmware.xenon.common.ServiceHost;
+import com.vmware.xenon.common.config.XenonConfiguration;
 
 public class TracerFactory {
+    public static final String IMPL_JAEGER = "jaeger";
+    public static final String IMPL_ZIPKIN = "zipkin";
+    public static final String IMPL_NONE = "none";
     /**
      * Singleton: may be replaced to customise implicit tracer creation - e.g. to add support for
      * a different OpenTracing implementation.
@@ -42,42 +44,38 @@ public class TracerFactory {
     @SuppressWarnings("unchecked")
     public synchronized Tracer create(ServiceHost host) {
         Logger logger = Logger.getLogger(getClass().getName());
-        Map<String, String> env = System.getenv();
-        String implementation = env.get("XENON_TRACER");
-        if (implementation == null) {
-            implementation = "";
-        }
+        String implementation = XenonConfiguration.string(TracerFactory.class, "provider", IMPL_NONE);
+
         implementation = implementation.toLowerCase();
-        if (implementation.isEmpty()) {
-            logger.info(String.format("Opentracing not enabled."));
+        if (IMPL_NONE.equals(implementation)) {
+            logger.info("Opentracing not enabled.");
             return NoopTracerFactory.create();
         }
-        Class<TracerFactoryInterface> factoryClass = null;
+
+        Class<TracerFactoryInterface> factoryClass;
         try {
-            if (implementation.equals("jaeger")) {
-                factoryClass = (Class<TracerFactoryInterface>) Class.forName("com.vmware.xenon.common.opentracing.Jaeger");
-            } else if (implementation.equals("zipkin")) {
-                factoryClass = (Class<TracerFactoryInterface>) Class.forName("com.vmware.xenon.common.opentracing.Zipkin");
+            if (implementation.equals(IMPL_JAEGER)) {
+                factoryClass = (Class<TracerFactoryInterface>) Class
+                        .forName("com.vmware.xenon.common.opentracing.Jaeger");
+            } else if (implementation.equals(IMPL_ZIPKIN)) {
+                factoryClass = (Class<TracerFactoryInterface>) Class
+                        .forName("com.vmware.xenon.common.opentracing.Zipkin");
             } else {
                 throw new RuntimeException(String.format("Bad tracer type %s", implementation));
-            }
-            if (factoryClass == null) {
-                throw new RuntimeException(String.format(
-                        "Failed to cast implementation '%s' to Class<TracerFactoryInterface>", implementation));
             }
         } catch (ClassNotFoundException e) {
             logger.log(Level.SEVERE, "Failed to load implementation class", e);
             throw new RuntimeException(String.format("Could not load implementation for %s", implementation), e);
         }
-        assert factoryClass != null;
+
         TracerFactoryInterface factory;
         try {
             factory = factoryClass.getConstructor().newInstance();
-        } catch (NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException e) {
+        } catch (ReflectiveOperationException e) {
             logger.log(Level.SEVERE, "Failed to instantiate tracer factory", e);
             throw new RuntimeException(String.format("Could not instantiate factory for %s", implementation), e);
         }
+
         return factory.create(host);
     }
-
 }
