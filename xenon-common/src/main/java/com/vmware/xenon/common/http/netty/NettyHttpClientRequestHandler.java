@@ -60,6 +60,7 @@ import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.common.serialization.ServerSentEventConverter;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.authn.AuthenticationConstants;
@@ -70,14 +71,11 @@ import com.vmware.xenon.services.common.authn.AuthenticationConstants;
  */
 public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<Object> {
 
-    private static final String PROPERTY_NAME_PREFIX = Utils.PROPERTY_NAME_PREFIX +
-            NettyHttpClientRequestHandler.class.getSimpleName();
-
-    public static final String PROPERTY_NAME_DISABLE_HTTP_ONLY_AUTH_COOKIE = PROPERTY_NAME_PREFIX +
-            "DISABLE_HTTP_ONLY_AUTH_COOKIE";
-
-    public static final boolean DISABLE_HTTP_ONLY_AUTH_COOKIE = Boolean.getBoolean(
-            PROPERTY_NAME_DISABLE_HTTP_ONLY_AUTH_COOKIE);
+    public static final boolean DISABLE_HTTP_ONLY_AUTH_COOKIE = XenonConfiguration.bool(
+            NettyHttpClientRequestHandler.class,
+            "DISABLE_HTTP_ONLY_AUTH_COOKIE",
+            false
+    );
 
     private static final String ERROR_MSG_DECODING_FAILURE = "Failure decoding HTTP request";
 
