@@ -29,7 +29,7 @@ import io.netty.util.AttributeKey;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.SocketContext;
 import com.vmware.xenon.common.ServiceErrorResponse;
-import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.common.http.netty.NettyChannelPool.NettyChannelGroupKey;
 
 public class NettyChannelContext extends SocketContext {
@@ -70,9 +70,9 @@ public class NettyChannelContext extends SocketContext {
         HTTP11, HTTP2
     }
 
-    public static final PooledByteBufAllocator ALLOCATOR = NettyChannelContext.createAllocator();
+    public static final PooledByteBufAllocator ALLOCATOR = createAllocator();
 
-    static PooledByteBufAllocator createAllocator() {
+    private static PooledByteBufAllocator createAllocator() {
         // We are using defaults from the code internals since the pooled allocator does not
         // expose the values it calculates. The available constructor methods that take cache
         // sizes require us to pass things like max order and page size.
@@ -81,11 +81,11 @@ public class NettyChannelContext extends SocketContext {
         return new PooledByteBufAllocator(true, 2, 2, 8192, maxOrder, 64, 32, 16, true);
     }
 
-    public static final String ENABLE_ALPN_PROPERTY_NAME =
-            Utils.PROPERTY_NAME_PREFIX + "NettyChannelContext.isALPNEnabled";
-
     private static boolean initializeALPNEnabled() {
-        String property = System.getProperty(ENABLE_ALPN_PROPERTY_NAME);
+        String property = XenonConfiguration.string(
+                NettyChannelContext.class,
+                "isALPNEnabled",
+                null);
         return (property != null) ? Boolean.parseBoolean(property) : OpenSsl.isAlpnSupported();
     }
 

@@ -17,7 +17,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 
-import static com.vmware.xenon.services.common.authn.BasicAuthenticationService.UPPER_SESSION_LIMIT_SECONDS_PROPERTY;
 import static com.vmware.xenon.services.common.authn.BasicAuthenticationUtils.constructBasicAuth;
 
 import java.net.URI;
@@ -47,6 +46,7 @@ import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceStateCollectionUpdateRequest;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.config.TestXenonConfiguration;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthCredentialsService;
@@ -68,9 +68,9 @@ public class TestBasicAuthenticationService extends BasicTestCase {
     private static final String ROLE = "guest-role";
     private static final String USER_GROUP = "guest-user-group";
     private static final String RESOURCE_GROUP = "guest-resource-group";
-    private static final Long UPPER_SESSION_LIMIT = (long) 28800;
+    private static final Long UPPER_SESSION_LIMIT = 28800L;
 
-    private static Long ORIGINAL_UPPER_SESSION_LIMIT;
+    private static String ORIGINAL_UPPER_SESSION_LIMIT;
 
     @Override
     public void beforeHostStart(VerificationHost h) {
@@ -79,18 +79,20 @@ public class TestBasicAuthenticationService extends BasicTestCase {
 
     @BeforeClass
     public static void setUpSystemProperties() throws Exception {
-        ORIGINAL_UPPER_SESSION_LIMIT = Long.getLong(UPPER_SESSION_LIMIT_SECONDS_PROPERTY);
-        System.setProperty(UPPER_SESSION_LIMIT_SECONDS_PROPERTY, UPPER_SESSION_LIMIT.toString());
+        ORIGINAL_UPPER_SESSION_LIMIT = TestXenonConfiguration.override(
+                BasicAuthenticationService.class,
+                "UPPER_SESSION_LIMIT_SECONDS",
+                UPPER_SESSION_LIMIT.toString()
+        );
     }
 
     @AfterClass
     public static void clearSystemProperties() throws Exception {
-        if (ORIGINAL_UPPER_SESSION_LIMIT != null) {
-            System.setProperty(UPPER_SESSION_LIMIT_SECONDS_PROPERTY,
-                    ORIGINAL_UPPER_SESSION_LIMIT.toString());
-        } else {
-            System.clearProperty(UPPER_SESSION_LIMIT_SECONDS_PROPERTY);
-        }
+        TestXenonConfiguration.restore(
+                BasicAuthenticationService.class,
+                "UPPER_SESSION_LIMIT_SECONDS",
+                ORIGINAL_UPPER_SESSION_LIMIT
+        );
     }
 
     @Before

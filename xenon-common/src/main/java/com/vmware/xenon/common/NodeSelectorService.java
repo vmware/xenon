@@ -18,6 +18,7 @@ import java.util.Collection;
 import java.util.EnumSet;
 
 import com.vmware.xenon.common.Operation.OperationOption;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.services.common.NodeState;
 
 /**
@@ -39,17 +40,23 @@ public interface NodeSelectorService extends Service {
     public static final OperationOption REPLICATION_OPERATION_OPTION = getOperationOption(
             "NodeSelectorService.REPLICATION_OPERATION_OPTION", null);
 
-    public static final int REPLICATION_TAG_CONNECTION_LIMIT = Integer.getInteger(
-            Utils.PROPERTY_NAME_PREFIX
-                    + "NodeSelectorService.REPLICATION_TAG_CONNECTION_LIMIT", 32);
+    int REPLICATION_TAG_CONNECTION_LIMIT = XenonConfiguration.integer(
+            NodeSelectorService.class,
+            "REPLICATION_TAG_CONNECTION_LIMIT",
+            32
+    );
 
-    public static final int SYNCHRONIZATION_TAG_CONNECTION_LIMIT = Integer.getInteger(
-            Utils.PROPERTY_NAME_PREFIX
-                    + "NodeSelectorService.SYNCHRONIZATION_TAG_CONNECTION_LIMIT", 32);
+    int SYNCHRONIZATION_TAG_CONNECTION_LIMIT = XenonConfiguration.integer(
+            NodeSelectorService.class,
+            "SYNCHRONIZATION_TAG_CONNECTION_LIMIT",
+            32
+    );
 
-    public static final int FORWARDING_TAG_CONNECTION_LIMIT = Integer.getInteger(
-            Utils.PROPERTY_NAME_PREFIX
-                    + "NodeSelectorService.FORWARDING_TAG_CONNECTION_LIMIT", 32);
+    int FORWARDING_TAG_CONNECTION_LIMIT = XenonConfiguration.integer(
+            NodeSelectorService.class,
+            "FORWARDING_TAG_CONNECTION_LIMIT",
+            32
+    );
 
     static OperationOption getOperationOption(String name, OperationOption defaultOpt) {
         String paramName = Utils.PROPERTY_NAME_PREFIX + name;

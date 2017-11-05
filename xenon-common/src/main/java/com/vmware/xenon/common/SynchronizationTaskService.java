@@ -23,6 +23,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.TaskService;
@@ -34,22 +35,21 @@ public class SynchronizationTaskService
         extends TaskService<SynchronizationTaskService.State> {
 
     public static final String FACTORY_LINK = ServiceUriPaths.SYNCHRONIZATION_TASKS;
-    public static final String PROPERTY_NAME_SYNCHRONIZATION_LOGGING = Utils.PROPERTY_NAME_PREFIX
-            + "SynchronizationTaskService.isDetailedLoggingEnabled";
+
 
     public static final String STAT_NAME_CHILD_SYNCH_RETRY_COUNT = "childSynchRetryCount";
     public static final String STAT_NAME_SYNCH_RETRY_COUNT = "synchRetryCount";
-
-    public static final String PROPERTY_NAME_MAX_CHILD_SYNCH_RETRY_COUNT =
-            Utils.PROPERTY_NAME_PREFIX + "SynchronizationTaskService.MAX_CHILD_SYNCH_RETRY_COUNT";
 
     /**
      * Maximum synch-task retry limit.
      * We are using exponential backoff for synchronization retry, that means last synch retry will
      * be tried after 2 ^ 8 * getMaintenanceIntervalMicros(), which is ~4 minutes if maintenance interval is 1 second.
      */
-    public static final int MAX_CHILD_SYNCH_RETRY_COUNT = Integer.getInteger(
-            PROPERTY_NAME_MAX_CHILD_SYNCH_RETRY_COUNT, 8);
+    public static final int MAX_CHILD_SYNCH_RETRY_COUNT = XenonConfiguration.integer(
+            SynchronizationTaskService.class,
+            "MAX_CHILD_SYNCH_RETRY_COUNT",
+            8
+    );
 
 
     public static SynchronizationTaskService create(Supplier<Service> childServiceInstantiator) {
@@ -128,8 +128,11 @@ public class SynchronizationTaskService
 
     private Supplier<Service> childServiceInstantiator;
 
-    private final boolean isDetailedLoggingEnabled = Boolean
-            .getBoolean(PROPERTY_NAME_SYNCHRONIZATION_LOGGING);
+    private final boolean isDetailedLoggingEnabled = XenonConfiguration.bool(
+            SynchronizationTaskService.class,
+            "isDetailedLoggingEnabled",
+            false
+    );
 
     public SynchronizationTaskService() {
         super(State.class);
