@@ -158,7 +158,7 @@ Just about anything you want. Think about it this way: Xenon encourages you to
 build a system as a set of small services that have REST-based APIs and can
 communicate with each other. People have built a wide variety of systems on top
 of Xenon including an IaaS system,
-[Photon Contorller](https://github.com/vmware/photon-controller).
+[Photon Controller](https://github.com/vmware/photon-controller).
 
 ## 2.5 Authentication & Authorization
 Xenon provides both authentication and authorization. Today it has a
