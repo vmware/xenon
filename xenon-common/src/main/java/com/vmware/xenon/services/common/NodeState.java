@@ -22,11 +22,6 @@ import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.Utils;
 
 public class NodeState extends ServiceDocument {
-    public static final String PROPERTY_NAME_MEMBERSHIP_QUORUM = Utils.PROPERTY_NAME_PREFIX
-            + "NodeState.membershipQuorum";
-
-    public static final String PROPERTY_NAME_LOCATION_QUORUM = Utils.PROPERTY_NAME_PREFIX
-            + "NodeState.locationQuorum";
 
     /**
      * Key of a custom property associated with a node, set in {@link #customProperties}.

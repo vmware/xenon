@@ -17,6 +17,8 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 
+import com.vmware.xenon.common.config.XenonConfiguration;
+
 /**
  * Common service error response body set by the framework when an operation fails.
  * If the service author call {@code Operation.fail} and specifies a error response body,
@@ -25,11 +27,12 @@ import java.util.List;
  */
 public class ServiceErrorResponse {
 
-    public static final String PROPERTY_NAME_DISABLE_STACK_TRACE_COLLECTION =
-            Utils.PROPERTY_NAME_PREFIX + "ServiceErrorResponse.disableStackTraceCollection";
 
-    public static final boolean DISABLE_STACK_TRACE_COLLECTION = Boolean.getBoolean(
-            PROPERTY_NAME_DISABLE_STACK_TRACE_COLLECTION);
+    public static final boolean DISABLE_STACK_TRACE_COLLECTION = XenonConfiguration.bool(
+            ServiceErrorResponse.class,
+            "disableStackTraceCollection",
+            false
+    );
 
     public static final int ERROR_CODE_INTERNAL_MASK = 0x80000000;
     public static final int ERROR_CODE_OUTDATED_SYNCH_REQUEST = 0x80000001;
