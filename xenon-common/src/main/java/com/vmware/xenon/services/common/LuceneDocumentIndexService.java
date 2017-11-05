@@ -117,6 +117,7 @@ import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.common.serialization.GsonSerializers;
 import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.services.common.QueryFilter.QueryFilterException;
@@ -131,20 +132,17 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final String SELF_LINK = ServiceUriPaths.CORE_DOCUMENT_INDEX;
 
-    public static final String PROPERTY_NAME_QUERY_THREAD_COUNT = Utils.PROPERTY_NAME_PREFIX
-            + LuceneDocumentIndexService.class.getSimpleName()
-            + ".QUERY_THREAD_COUNT";
+    public static final int QUERY_THREAD_COUNT = (int) XenonConfiguration.integer(
+            LuceneDocumentIndexService.class,
+            "QUERY_THREAD_COUNT",
+            Utils.DEFAULT_THREAD_COUNT * 2
+    );
 
-    public static final int QUERY_THREAD_COUNT = Integer.getInteger(
-            PROPERTY_NAME_QUERY_THREAD_COUNT,
-            Utils.DEFAULT_THREAD_COUNT * 2);
-
-    public static final String PROPERTY_NAME_UPDATE_THREAD_COUNT = Utils.PROPERTY_NAME_PREFIX
-            + LuceneDocumentIndexService.class.getSimpleName()
-            + ".UPDATE_THREAD_COUNT";
-    public static final int UPDATE_THREAD_COUNT = Integer.getInteger(
-            PROPERTY_NAME_UPDATE_THREAD_COUNT,
-            Utils.DEFAULT_THREAD_COUNT / 2);
+    public static final int UPDATE_THREAD_COUNT = (int) XenonConfiguration.integer(
+            LuceneDocumentIndexService.class,
+            "UPDATE_THREAD_COUNT",
+            Utils.DEFAULT_THREAD_COUNT / 2
+    );
 
     public static final String FILE_PATH_LUCENE = "lucene";
 

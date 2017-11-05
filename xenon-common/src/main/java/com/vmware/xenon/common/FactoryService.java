@@ -26,6 +26,7 @@ import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.OperationProcessingChain.OperationProcessingContext;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.services.common.NodeGroupBroadcastResponse;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
@@ -46,16 +47,24 @@ public abstract class FactoryService extends StatelessService {
         public EnumSet<ServiceOption> childOptions = EnumSet.noneOf(ServiceOption.class);
     }
 
-    public static final String PROPERTY_NAME_MAX_SYNCH_RETRY_COUNT =
-            Utils.PROPERTY_NAME_PREFIX + "FactoryService.MAX_SYNCH_RETRY_COUNT";
 
     /**
      * Maximum synch-task retry limit.
      * We are using exponential backoff for synchronization retry, that means last synch retry will
      * be tried after 2 ^ 8 * getMaintenanceIntervalMicros(), which is ~4 minutes if maintenance interval is 1 second.
      */
-    public static final int MAX_SYNCH_RETRY_COUNT = Integer.getInteger(
-            PROPERTY_NAME_MAX_SYNCH_RETRY_COUNT, 8);
+    public static final int MAX_SYNCH_RETRY_COUNT = (int) XenonConfiguration.integer(
+            FactoryService.class,
+            "MAX_SYNCH_RETRY_COUNT",
+            8
+    );
+
+    public static final Integer SELF_QUERY_RESULT_LIMIT = (int) XenonConfiguration.integer(
+            FactoryService.class,
+            "SELF_QUERY_RESULT_LIMIT",
+            1000
+    );
+
     /**
      * Creates a factory service instance that starts the specified child service
      * on POST
@@ -106,10 +115,6 @@ public abstract class FactoryService extends StatelessService {
             Class<? extends ServiceDocument> childServiceDocumentType) {
         return create(childServiceType, childServiceDocumentType, ServiceOption.IDEMPOTENT_POST);
     }
-
-    public static final Integer SELF_QUERY_RESULT_LIMIT = Integer.getInteger(
-            Utils.PROPERTY_NAME_PREFIX
-                    + "FactoryService.SELF_QUERY_RESULT_LIMIT", 1000);
 
     private boolean useBodyForSelfLink = false;
     private EnumSet<ServiceOption> childOptions;
