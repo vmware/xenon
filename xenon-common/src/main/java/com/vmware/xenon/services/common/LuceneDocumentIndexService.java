@@ -117,6 +117,7 @@ import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.common.serialization.GsonSerializers;
 import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.services.common.QueryFilter.QueryFilterException;
@@ -131,20 +132,29 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final String SELF_LINK = ServiceUriPaths.CORE_DOCUMENT_INDEX;
 
-    public static final String PROPERTY_NAME_QUERY_THREAD_COUNT = Utils.PROPERTY_NAME_PREFIX
-            + LuceneDocumentIndexService.class.getSimpleName()
-            + ".QUERY_THREAD_COUNT";
+    public static final int QUERY_THREAD_COUNT = XenonConfiguration.integer(
+            LuceneDocumentIndexService.class,
+            "QUERY_THREAD_COUNT",
+            Utils.DEFAULT_THREAD_COUNT * 2
+    );
 
-    public static final int QUERY_THREAD_COUNT = Integer.getInteger(
-            PROPERTY_NAME_QUERY_THREAD_COUNT,
-            Utils.DEFAULT_THREAD_COUNT * 2);
+    public static final int UPDATE_THREAD_COUNT = XenonConfiguration.integer(
+            LuceneDocumentIndexService.class,
+            "UPDATE_THREAD_COUNT",
+            Utils.DEFAULT_THREAD_COUNT / 2
+    );
 
-    public static final String PROPERTY_NAME_UPDATE_THREAD_COUNT = Utils.PROPERTY_NAME_PREFIX
-            + LuceneDocumentIndexService.class.getSimpleName()
-            + ".UPDATE_THREAD_COUNT";
-    public static final int UPDATE_THREAD_COUNT = Integer.getInteger(
-            PROPERTY_NAME_UPDATE_THREAD_COUNT,
-            Utils.DEFAULT_THREAD_COUNT / 2);
+    public static final int QUERY_QUEUE_DEPTH = XenonConfiguration.integer(
+            LuceneDocumentIndexService.class,
+            "queryQueueDepth",
+            Service.OPERATION_QUEUE_DEFAULT_LIMIT
+    );
+
+    public static final int UPDATE_QUEUE_DEPTH = XenonConfiguration.integer(
+            LuceneDocumentIndexService.class,
+            "updateQueueDepth",
+            10 * Service.OPERATION_QUEUE_DEFAULT_LIMIT
+    );
 
     public static final String FILE_PATH_LUCENE = "lucene";
 
@@ -253,11 +263,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         return metadataUpdateMaxQueueDepth;
     }
 
-    public static final String PROPERTY_NAME_QUERY_QUEUE_DEPTH = Utils.PROPERTY_NAME_PREFIX
-            + "LuceneDocumentIndexService.queryQueueDepth";
 
-    public static final String PROPERTY_NAME_UPDATE_QUEUE_DEPTH = Utils.PROPERTY_NAME_PREFIX
-            + "LuceneDocumentIndexService.updateQueueDepth";
 
     static final String LUCENE_FIELD_NAME_BINARY_SERIALIZED_STATE = "binarySerializedState";
 
@@ -436,12 +442,10 @@ public class LuceneDocumentIndexService extends StatelessService {
     private Set<String> fieldsToLoadWithExpand;
 
     private final RoundRobinOperationQueue queryQueue = new RoundRobinOperationQueue(
-            "index-service-query",
-            Integer.getInteger(PROPERTY_NAME_QUERY_QUEUE_DEPTH, Service.OPERATION_QUEUE_DEFAULT_LIMIT));
+            "index-service-query", QUERY_QUEUE_DEPTH);
 
     private final RoundRobinOperationQueue updateQueue = new RoundRobinOperationQueue(
-            "index-service-update",
-            Integer.getInteger(PROPERTY_NAME_UPDATE_QUEUE_DEPTH, 10 * Service.OPERATION_QUEUE_DEFAULT_LIMIT));
+            "index-service-update", UPDATE_QUEUE_DEPTH);
 
     private URI uri;
 

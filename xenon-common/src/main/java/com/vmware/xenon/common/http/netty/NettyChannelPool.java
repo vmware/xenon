@@ -47,6 +47,7 @@ import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.common.http.netty.NettyChannelContext.Protocol;
 
 /**
@@ -155,9 +156,11 @@ public class NettyChannelPool {
     public static final Logger LOGGER = Logger.getLogger(NettyChannelPool.class
             .getName());
 
-    private static final long CHANNEL_EXPIRATION_MICROS = Long.getLong(
-            Utils.PROPERTY_NAME_PREFIX + "NettyChannelPool.CHANNEL_EXPIRATION_MICROS",
-            ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS * 10);
+    private static final long CHANNEL_EXPIRATION_MICROS = XenonConfiguration.number(
+            NettyChannelPool.class,
+            "CHANNEL_EXPIRATION_MICROS",
+            ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS * 10
+    );
 
     private ExecutorService nettyExecutorService;
     private ExecutorService executor;

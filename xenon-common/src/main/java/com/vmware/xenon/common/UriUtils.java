@@ -30,6 +30,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.vmware.xenon.common.Service.ServiceOption;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
@@ -37,11 +38,11 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
  */
 public final class UriUtils {
 
-    private static final String DISABLE_QUERY_PAGE_FORWARDING_PROPERTY_NAME =
-            Utils.PROPERTY_NAME_PREFIX + UriUtils.class.getSimpleName() + "DISABLE_QUERY_PAGE_FORWARDING";
-
-    private static final boolean DISABLE_QUERY_PAGE_FORWARDING = Boolean.getBoolean(
-            DISABLE_QUERY_PAGE_FORWARDING_PROPERTY_NAME);
+    private static final boolean DISABLE_QUERY_PAGE_FORWARDING = XenonConfiguration.bool(
+            UriUtils.class,
+            "DISABLE_QUERY_PAGE_FORWARDING",
+            false
+    );
 
     public enum ForwardingTarget {
         PEER_ID, KEY_HASH, ALL

@@ -13,121 +13,50 @@
 
 package com.vmware.xenon.common.opentracing;
 
-import static org.junit.Assert.assertNotNull;
-
-import java.lang.reflect.Field;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.function.Consumer;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import static org.junit.Assert.assertTrue;
 
 import brave.opentracing.BraveTracer;
 import io.opentracing.NoopTracer;
 import io.opentracing.Tracer;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.ExternalResource;
 
 import com.vmware.xenon.common.ServiceHost;
+import com.vmware.xenon.common.config.TestXenonConfiguration;
 import com.vmware.xenon.common.test.VerificationHost;
 
 public class TracerFactoryTest {
 
-    public static class IsolateEnvironment extends ExternalResource {
-        private Map<String, String> env;
-
-        @Override
-        protected void after() {
-            try {
-                setEnv((env) -> {
-                    env.clear();
-                    env.putAll(this.env);
-                });
-            } catch (Exception e) {
-                Logger.getAnonymousLogger().log(Level.INFO, "Failure", e);
-                throw new RuntimeException("Failed to reset environment");
-            }
-            super.after();
-        }
-
-        @Override
-        protected void before() throws Throwable {
-            super.before();
-            this.env = new HashMap<>();
-            this.env.putAll(System.getenv());
-        }
-
-        public void setEnv(Consumer<Map<String, String>> mutate) throws Exception {
-        /* All platforms */
-            try {
-                Class<?> processEnvironmentClass = Class.forName("java.lang.ProcessEnvironment");
-                Field theUnmodifiableEnvironmentField = processEnvironmentClass.getDeclaredField("theUnmodifiableEnvironment");
-                theUnmodifiableEnvironmentField.setAccessible(true);
-                @SuppressWarnings("unchecked")
-                Map<String,String> theUnmodifiableEnvironment = (Map<String,String>)theUnmodifiableEnvironmentField.get(null);
-
-                Class<?> theUnmodifiableEnvironmentClass = theUnmodifiableEnvironment.getClass();
-                Field theModifiableEnvField = theUnmodifiableEnvironmentClass.getDeclaredField("m");
-                theModifiableEnvField.setAccessible(true);
-                @SuppressWarnings("unchecked")
-                Map<String,String> modifiableEnv = (Map<String,String>) theModifiableEnvField.get(theUnmodifiableEnvironment);
-                mutate.accept(modifiableEnv);
-            /* windows */
-                try {
-                    Field theCaseInsensitiveEnvironmentField = processEnvironmentClass.getDeclaredField("theCaseInsensitiveEnvironment");
-                    theCaseInsensitiveEnvironmentField.setAccessible(true);
-                    @SuppressWarnings("unchecked")
-                    Map<String, String> cienv = (Map<String, String>) theCaseInsensitiveEnvironmentField.get(null);
-                    mutate.accept(cienv);
-                } catch (NoSuchFieldException e) {
-                    // Nothing to do when the field does not exist.
-                }
-            } catch (Exception e) {
-                Logger.getAnonymousLogger().log(Level.SEVERE, "failed to access writable map", e);
-                throw new RuntimeException("Unable to access writable environment variable map.", e);
-            }
-        }
-
-    }
-
-    @Rule
-    public final IsolateEnvironment environment = new IsolateEnvironment();
-
     @Test
     public void defaultIsNoop() throws Exception {
-        this.environment.setEnv((env) -> env.remove("XENON_TRACER"));
+        TestXenonConfiguration.override(TracerFactory.class, "provider", TracerFactory.IMPL_NONE);
         ServiceHost h = VerificationHost.create(0);
         Tracer tracer = TracerFactory.factory.create(h);
-        assertNotNull((NoopTracer)tracer);
+        assertTrue(tracer instanceof NoopTracer);
     }
 
     @Test
     public void jaegerGetsJaeger() throws Exception {
-        this.environment.setEnv((env) -> {
-            env.put("XENON_TRACER", "jaeger");
-            env.put("JAEGER_SERVICE_NAME", "test");
-        });
+        TestXenonConfiguration.override(TracerFactory.class, "provider", TracerFactory.IMPL_JAEGER);
+        System.setProperty("JAEGER_SERVICE_NAME", "test");
         ServiceHost h = VerificationHost.create(0);
         Tracer tracer = TracerFactory.factory.create(h);
-        assertNotNull((com.uber.jaeger.Tracer)tracer);
+        assertTrue(tracer instanceof com.uber.jaeger.Tracer);
     }
 
     @Test
     public void zipkinGetsZipkin() throws Exception {
-        this.environment.setEnv((env) -> {
-            env.put("XENON_TRACER", "zipkin");
-            env.put("ZIPKIN_URL", "http://host/api/v1/spans/");
-            env.put("ZIPKIN_SERVICE_NAME", "test");
-        });
+        TestXenonConfiguration.override(TracerFactory.class, "provider", TracerFactory.IMPL_ZIPKIN);
+        System.setProperty("ZIPKIN_URL", "http://host/api/v1/spans/");
+        System.setProperty("ZIPKIN_SERVICE_NAME", "test");
+
         ServiceHost h = VerificationHost.create(0);
         Tracer tracer = TracerFactory.factory.create(h);
-        assertNotNull((BraveTracer)tracer);
+        assertTrue(tracer instanceof BraveTracer);
     }
 
     @Test(expected = RuntimeException.class)
     public void invalidTracer() throws Exception {
-        this.environment.setEnv((env) -> env.put("XENON_TRACER", "invalid"));
+        TestXenonConfiguration.override(TracerFactory.class, "provider", "random junk");
         ServiceHost h = VerificationHost.create(0);
         TracerFactory.factory.create(h);
     }

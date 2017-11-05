@@ -13,7 +13,6 @@
 
 package com.vmware.xenon.common.opentracing;
 
-import java.util.Map;
 import java.util.logging.Logger;
 
 import brave.Tracing;
@@ -32,13 +31,23 @@ import com.vmware.xenon.common.ServiceHost;
 
 public class Zipkin implements TracerFactoryInterface {
 
+    /**
+     * Behave the same as Jaeger
+     * @param name
+     * @return
+     */
+    private static String getProperty(String name) {
+        return System.getProperty(name, System.getenv(name));
+    }
+
     @Override
     public Tracer create(ServiceHost host) {
         Logger logger = Logger.getLogger(getClass().getName());
-        Map<String, String> env = System.getenv();
-        String zipkinUrl = env.get("ZIPKIN_URL");
-        String serviceName = env.get("ZIPKIN_SERVICE_NAME");
-        String sampleRateString = env.get("ZIPKIN_SAMPLERATE");
+
+        String zipkinUrl = getProperty("ZIPKIN_URL");
+        String serviceName = getProperty("ZIPKIN_SERVICE_NAME");
+        String sampleRateString = getProperty("ZIPKIN_SAMPLERATE");
+
         if (zipkinUrl == null || zipkinUrl.isEmpty()) {
             throw new RuntimeException("Zipkin tracing requires ZIPKIN_URL set.");
         }
@@ -55,8 +64,8 @@ public class Zipkin implements TracerFactoryInterface {
                 rate = 1.0f;
             }
         }
-        Sender sender = null;
-        Reporter<Span> spanReporter = null;
+        Sender sender;
+        Reporter<Span> spanReporter;
         if (zipkinUrl.contains("/v1/")) {
             sender = URLConnectionSender.create(zipkinUrl);
             spanReporter = AsyncReporter.builder(sender)
@@ -65,12 +74,14 @@ public class Zipkin implements TracerFactoryInterface {
             sender = OkHttpSender.create(zipkinUrl);
             spanReporter = AsyncReporter.create(sender);
         }
+
         Tracing braveTracing = Tracing.newBuilder()
                 .localServiceName(serviceName)
                 .spanReporter(spanReporter)
                 .sampler(BoundarySampler.create(rate))
                 .build();
         logger.info("Opentracing support using Zipkin");
+
         return BraveTracer.create(braveTracing);
     }
 }

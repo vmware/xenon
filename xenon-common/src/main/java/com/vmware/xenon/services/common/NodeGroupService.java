@@ -37,6 +37,7 @@ import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.services.common.NodeState.NodeOption;
 import com.vmware.xenon.services.common.NodeState.NodeStatus;
 
@@ -47,12 +48,11 @@ import com.vmware.xenon.services.common.NodeState.NodeStatus;
 public class NodeGroupService extends StatefulService {
     public static final String STAT_NAME_JOIN_RETRY_COUNT = "joinRetryCount";
 
-    public static final String PROPERTY_NAME_PEER_REQUEST_TIMEOUT_MICROS = Utils.PROPERTY_NAME_PREFIX
-            + "NodeGroupService.peerRequestTimeoutMicros";
-
-    public static final long PEER_REQUEST_TIMEOUT_MICROS = Long.getLong(
-            PROPERTY_NAME_PEER_REQUEST_TIMEOUT_MICROS,
-            ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS / 3);
+    public static final long PEER_REQUEST_TIMEOUT_MICROS = XenonConfiguration.integer(
+            NodeGroupService.class,
+            "peerRequestTimeoutMicros",
+            ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS / 3
+    );
 
     private enum NodeGroupChange {
         PEER_ADDED, PEER_STATUS_CHANGE, SELF_CHANGE
@@ -588,8 +588,8 @@ public class NodeGroupService extends StatefulService {
         }
         body.id = getHost().getId();
         body.status = NodeStatus.SYNCHRONIZING;
-        Integer q = Integer.getInteger(NodeState.PROPERTY_NAME_MEMBERSHIP_QUORUM);
-        if (q != null) {
+        int q = XenonConfiguration.integer(NodeState.class, "membershipQuorum", 0);
+        if (q != 0) {
             body.membershipQuorum = q;
         } else {
             // Initialize default quorum based on service host peerHosts argument
@@ -597,8 +597,9 @@ public class NodeGroupService extends StatefulService {
             int quorum = (total / 2) + 1;
             body.membershipQuorum = Math.max(1, quorum);
         }
-        Integer lq = Integer.getInteger(NodeState.PROPERTY_NAME_LOCATION_QUORUM);
-        if (lq != null) {
+        int lq = XenonConfiguration.integer(NodeState.class, "locationQuorum", 0);
+
+        if (lq != 0) {
             body.locationQuorum = lq;
         } else {
             body.locationQuorum = 1;

@@ -29,15 +29,17 @@ import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeState.NodeOption;
 
 public class NodeSelectorReplicationService extends StatelessService {
 
-    public static final int BINARY_SERIALIZATION = Integer.getInteger(
-            Utils.PROPERTY_NAME_PREFIX
-                    + "NodeSelectorReplicationService.BINARY_SERIALIZATION",
-            1);
+    public static final int BINARY_SERIALIZATION = XenonConfiguration.integer(
+            NodeSelectorReplicationService.class,
+            "BINARY_SERIALIZATION",
+            1
+    );
 
     private Service parent;
     private Map<String, Integer> nodeCountPerLocation;

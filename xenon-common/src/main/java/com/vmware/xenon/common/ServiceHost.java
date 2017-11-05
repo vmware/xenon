@@ -94,6 +94,7 @@ import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.common.http.netty.NettyHttpListener;
 import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
 import com.vmware.xenon.common.jwt.JWTUtils;
@@ -380,18 +381,17 @@ public class ServiceHost implements ServiceRequestSender {
      */
     public static final int DEFAULT_SERVICE_INSTANCE_COST_BYTES = 4096;
 
-    private static final String PROPERTY_NAME_APPEND_PORT_TO_SANDBOX = Utils.PROPERTY_NAME_PREFIX
-            + "ServiceHost.APPEND_PORT_TO_SANDBOX";
-
     /**
      * Control creating a directory using port number under sandbox directory.
      *
      * VM argument: "-Dxenon.ServiceHost.APPEND_PORT_TO_SANDBOX=[true|false]"
      * Default is set to true.
      */
-    public static final boolean APPEND_PORT_TO_SANDBOX = System
-            .getProperty(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX) == null
-            || Boolean.getBoolean(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX);
+    private static final boolean APPEND_PORT_TO_SANDBOX = XenonConfiguration.bool(
+            ServiceHost.class,
+            "APPEND_PORT_TO_SANDBOX",
+            true
+    );
 
     /**
      * Request rate limiting configuration and real time statistics
@@ -447,8 +447,7 @@ public class ServiceHost implements ServiceRequestSender {
             NONE, WANT, NEED
         }
 
-        public static final long DEFAULT_MAINTENANCE_INTERVAL_MICROS = TimeUnit.SECONDS
-                .toMicros(1);
+        public static final long DEFAULT_MAINTENANCE_INTERVAL_MICROS = TimeUnit.SECONDS.toMicros(1);
         public static final long DEFAULT_OPERATION_TIMEOUT_MICROS = TimeUnit.SECONDS.toMicros(60);
         public static final long DEFAULT_SERVICE_CACHE_CLEAR_DELAY_MICROS = TimeUnit.SECONDS.toMicros(60);
 

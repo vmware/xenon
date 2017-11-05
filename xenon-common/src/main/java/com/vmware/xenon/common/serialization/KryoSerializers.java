@@ -39,24 +39,17 @@ import com.esotericsoftware.kryo.io.Output;
 import com.esotericsoftware.kryo.serializers.CollectionSerializer;
 import com.esotericsoftware.kryo.serializers.MapSerializer;
 import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
-
 import org.objenesis.strategy.StdInstantiatorStrategy;
 
 import com.vmware.xenon.common.ServiceDocument;
-import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.config.XenonConfiguration;
 
 public final class KryoSerializers {
-    private static final String PROPERTY_KRYO_HANDLE_BUILTIN_COLLECTIONS
-            = Utils.PROPERTY_NAME_PREFIX + "kryo.handleBuiltInCollections";
-
-    private static boolean KRYO_HANDLE_BUILTIN_COLLECTIONS = true;
-
-    static {
-        String v = System.getProperty(PROPERTY_KRYO_HANDLE_BUILTIN_COLLECTIONS);
-        if (v != null) {
-            KRYO_HANDLE_BUILTIN_COLLECTIONS = Boolean.valueOf(v);
-        }
-    }
+    private static boolean KRYO_HANDLE_BUILTIN_COLLECTIONS = XenonConfiguration.bool(
+            "kryo",
+            "handleBuiltInCollections",
+            true
+    );
 
 
     /**
