@@ -1,5 +1,7 @@
 # CHANGELOG
 
+## 1.5.7-CR4-SNAPSHOT
+
 ## 1.5.7-CR3
 
 * Do not downcast document object for auth check in index-service
