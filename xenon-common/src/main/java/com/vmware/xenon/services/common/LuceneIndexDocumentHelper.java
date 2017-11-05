@@ -49,7 +49,7 @@ import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.TaskState;
-import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 
@@ -73,11 +73,13 @@ class LuceneIndexDocumentHelper {
     public static final String FIELD_NAME_INDEXING_METADATA_VALUE_TOMBSTONE_TIME =
             FIELD_NAME_INDEXING_PREFIX + ".metadata.tombstone.time";
 
-    private static final String DISABLE_SORT_FIELD_NAMING_PROPERTY_NAME =
-            Utils.PROPERTY_NAME_PREFIX + "LuceneIndexDocumentHelper.DISABLE_SORT_FIELD_NAMING";
+    private static final boolean DISABLE_SORT_FIELD_NAMING = XenonConfiguration.bool(
+            LuceneIndexDocumentHelper.class,
+            "DISABLE_SORT_FIELD_NAMING",
+            false
 
-    private static boolean DISABLE_SORT_FIELD_NAMING = Boolean.getBoolean(
-            DISABLE_SORT_FIELD_NAMING_PROPERTY_NAME);
+    );
+
 
     public static final long ACTIVE_DOCUMENT_TOMBSTONE_TIME = Long.MAX_VALUE;
 

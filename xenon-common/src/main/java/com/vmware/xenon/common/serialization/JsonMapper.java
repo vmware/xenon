@@ -35,6 +35,7 @@ import com.google.gson.stream.JsonWriter;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.config.XenonConfiguration;
 
 /**
  * A helper that serializes/deserializes service documents to/from JSON. The implementation
@@ -45,17 +46,13 @@ import com.vmware.xenon.common.Utils;
  */
 public class JsonMapper {
 
-    public static final String PROPERTY_JSON_SUPPRESS_GSON_SERIALIZATION_ERRORS
-            = Utils.PROPERTY_NAME_PREFIX + "json.suppressGsonSerializationErrors";
 
-    private static boolean JSON_SUPPRESS_GSON_SERIALIZATION_ERRORS = false;
+    private static final boolean JSON_SUPPRESS_GSON_SERIALIZATION_ERRORS = XenonConfiguration.bool(
+            "json",
+            "suppressGsonSerializationErrors",
+            false
+    );
 
-    static {
-        String v = System.getProperty(PROPERTY_JSON_SUPPRESS_GSON_SERIALIZATION_ERRORS);
-        if (v != null) {
-            JSON_SUPPRESS_GSON_SERIALIZATION_ERRORS = Boolean.valueOf(v);
-        }
-    }
 
     private static final int MAX_SERIALIZATION_ATTEMPTS = 100;
     private static final String JSON_INDENT = "  ";
