@@ -79,7 +79,6 @@ final class FieldInfoCache {
                     this.storePayloads,
                     this.indexOptions, this.docValuesType, this.dvGen, this.attributes,
                     this.pointDimensionCount, this.pointNumBytes);
-
             fi.checkConsistency();
             return fi;
         }
@@ -93,6 +92,7 @@ final class FieldInfoCache {
             FieldInfoKey that = (FieldInfoKey) obj;
             return this.fieldNumber == that.fieldNumber &&
                     this.name.equals(that.name) &&
+                    this.attributes.equals(that.attributes) &&
                     this.pointDimensionCount == that.pointDimensionCount &&
                     this.pointNumBytes == that.pointNumBytes &&
                     this.dvGen == that.dvGen &&
@@ -181,7 +181,7 @@ final class FieldInfoCache {
      * @param fieldInfos
      */
     @SuppressWarnings("unchecked")
-    private void trimFieldInfos(FieldInfos fieldInfos) {
+    void trimFieldInfos(FieldInfos fieldInfos) {
         try {
             Object obj = fiByNumberTable.get(fieldInfos);
             if (obj == null) {

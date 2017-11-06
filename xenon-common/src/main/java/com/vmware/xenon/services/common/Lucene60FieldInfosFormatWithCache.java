@@ -38,19 +38,24 @@ import org.apache.lucene.store.IndexOutput;
  * with ///////////////////.
  *
  */
-public final class Lucene60FieldInfosFormatWithCache extends FieldInfosFormat {
+final class Lucene60FieldInfosFormatWithCache extends FieldInfosFormat {
 
     ///////////////////
-    private final FieldInfoCache cache = new FieldInfoCache();
+    private final FieldInfoCache cache;
     ///////////////////
 
-    /** Sole constructor. */
-    public Lucene60FieldInfosFormatWithCache() {
+    ///////////////////
+    public Lucene60FieldInfosFormatWithCache(FieldInfoCache fieldInfoCache) {
+        this.cache = fieldInfoCache;
     }
+    ///////////////////
 
     @Override
     public FieldInfos read(Directory directory, SegmentInfo segmentInfo, String segmentSuffix, IOContext context) throws
             IOException {
+        //////////////////////
+        boolean checkInfosCache = true;
+        //////////////////////
         final String fileName = IndexFileNames.segmentFileName(segmentInfo.name, segmentSuffix, EXTENSION);
         try (ChecksumIndexInput input = directory.openChecksumInput(fileName, context)) {
             Throwable priorE = null;
@@ -101,10 +106,20 @@ public final class Lucene60FieldInfosFormatWithCache extends FieldInfosFormat {
 
                     try {
                         //////////////////////
-                        infos[i] = this.cache
-                                .dedupFieldInfo(name, fieldNumber, storeTermVector, omitNorms, storePayloads,
-                                        indexOptions, docValuesType, dvGen, attributes,
-                                        pointDimensionCount, pointNumBytes);
+                        if (dvGen >= 0) {
+                            // skip fields with docValues, they don't cache well
+                            checkInfosCache = false;
+                            infos[i] = new FieldInfo(name, fieldNumber, storeTermVector,
+                                    omitNorms,
+                                    storePayloads,
+                                    indexOptions, docValuesType, dvGen, attributes,
+                                    pointDimensionCount, pointNumBytes);
+                        } else {
+                            infos[i] = this.cache
+                                    .dedupFieldInfo(name, fieldNumber, storeTermVector, omitNorms, storePayloads,
+                                            indexOptions, docValuesType, dvGen, attributes,
+                                            pointDimensionCount, pointNumBytes);
+                        }
                         //////////////////////
                     } catch (IllegalStateException e) {
                         throw new CorruptIndexException(
@@ -118,7 +133,13 @@ public final class Lucene60FieldInfosFormatWithCache extends FieldInfosFormat {
             }
 
             //////////////////////
-            return this.cache.dedupFieldInfos(infos);
+            if (checkInfosCache) {
+                return this.cache.dedupFieldInfos(infos);
+            } else {
+                FieldInfos result = new FieldInfos(infos);
+                this.cache.trimFieldInfos(result);
+                return result;
+            }
             //////////////////////
         }
     }
@@ -251,12 +272,6 @@ public final class Lucene60FieldInfosFormatWithCache extends FieldInfosFormat {
             CodecUtil.writeFooter(output);
         }
     }
-
-    ///////////////////
-    public void handleMaintenance() {
-        this.cache.handleMaintenance();
-    }
-    ///////////////////
 
     /** Extension of field infos */
     static final String EXTENSION = "fnm";
