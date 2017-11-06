@@ -38,15 +38,17 @@ import org.apache.lucene.store.IndexOutput;
  * with ///////////////////.
  *
  */
-public final class Lucene60FieldInfosFormatWithCache extends FieldInfosFormat {
+final class Lucene60FieldInfosFormatWithCache extends FieldInfosFormat {
 
     ///////////////////
-    private final FieldInfoCache cache = new FieldInfoCache();
+    private final FieldInfoCache cache;
     ///////////////////
 
-    /** Sole constructor. */
-    public Lucene60FieldInfosFormatWithCache() {
+    ///////////////////
+    public Lucene60FieldInfosFormatWithCache(FieldInfoCache fieldInfoCache) {
+        this.cache = fieldInfoCache;
     }
+    ///////////////////
 
     @Override
     public FieldInfos read(Directory directory, SegmentInfo segmentInfo, String segmentSuffix, IOContext context) throws
@@ -251,12 +253,6 @@ public final class Lucene60FieldInfosFormatWithCache extends FieldInfosFormat {
             CodecUtil.writeFooter(output);
         }
     }
-
-    ///////////////////
-    public void handleMaintenance() {
-        this.cache.handleMaintenance();
-    }
-    ///////////////////
 
     /** Extension of field infos */
     static final String EXTENSION = "fnm";

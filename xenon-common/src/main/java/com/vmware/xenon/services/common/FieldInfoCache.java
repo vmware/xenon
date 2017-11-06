@@ -17,7 +17,9 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -35,6 +37,9 @@ final class FieldInfoCache {
     private static final Field fiValues;
 
     private static final Field fiByNumberTable;
+
+    private static final Class<?> UNMODIFIABLE_MAP_TYPE =
+            Collections.unmodifiableMap(Collections.emptyMap()).getClass();
 
     static {
         // remove this when upgraded to lucene 7.5/8.0
@@ -74,12 +79,15 @@ final class FieldInfoCache {
             return h;
         }
 
-        public FieldInfo toFieldInfo() {
-            FieldInfo fi = new FieldInfo(this.name, this.fieldNumber, this.storeTermVector, this.omitNorms,
-                    this.storePayloads,
-                    this.indexOptions, this.docValuesType, this.dvGen, this.attributes,
-                    this.pointDimensionCount, this.pointNumBytes);
+        public FieldInfo toFieldInfo(FieldInfoCache cache) {
+            // dedupe the string in the cache key: they are the same string, different object ids
+            this.name = cache.dedupCommonString(this.name);
 
+            FieldInfo fi = new FieldInfo(this.name, this.fieldNumber, this.storeTermVector,
+                    this.omitNorms,
+                    this.storePayloads,
+                    this.indexOptions, this.docValuesType, this.dvGen, cache.dedupMap(this.attributes),
+                    this.pointDimensionCount, this.pointNumBytes);
             fi.checkConsistency();
             return fi;
         }
@@ -101,6 +109,32 @@ final class FieldInfoCache {
                     this.storeTermVector == that.storeTermVector &&
                     this.omitNorms == that.omitNorms;
         }
+    }
+
+    private Map<String, String> dedupMap(Map<String, String> attributes) {
+        if (attributes.isEmpty()) {
+            return attributes;
+        }
+
+        Map<String, String> res = new HashMap<>();
+        for (Entry<String, String> e : attributes.entrySet()) {
+            res.put(dedupCommonString(e.getKey()), dedupCommonString(e.getValue()));
+        }
+
+        if (attributes.getClass() == UNMODIFIABLE_MAP_TYPE) {
+            return Collections.unmodifiableMap(res);
+        } else {
+            return res;
+        }
+    }
+
+    private String dedupCommonString(String key) {
+        String old = this.commonStrings.putIfAbsent(key, key);
+        if (old == null) {
+            old = key;
+        }
+
+        return old;
     }
 
     public static int hashCode(FieldInfo fi) {
@@ -134,8 +168,14 @@ final class FieldInfoCache {
      */
     private FieldInfos longest;
 
+    /**
+     * Includes lucene metadata and field names.
+     */
+    private final ConcurrentMap<String, String> commonStrings;
+
     public FieldInfoCache() {
         this.infoCache = new ConcurrentHashMap<>();
+        this.commonStrings = new ConcurrentHashMap<>();
     }
 
     /**
@@ -181,7 +221,7 @@ final class FieldInfoCache {
      * @param fieldInfos
      */
     @SuppressWarnings("unchecked")
-    private void trimFieldInfos(FieldInfos fieldInfos) {
+    void trimFieldInfos(FieldInfos fieldInfos) {
         try {
             Object obj = fiByNumberTable.get(fieldInfos);
             if (obj == null) {
@@ -217,7 +257,7 @@ final class FieldInfoCache {
         key.pointDimensionCount = pointDimensionCount;
         key.pointNumBytes = pointNumBytes;
 
-        return this.infoCache.computeIfAbsent(key, FieldInfoKey::toFieldInfo);
+        return this.infoCache.computeIfAbsent(key, k -> k.toFieldInfo(this));
     }
 
     public void handleMaintenance() {
