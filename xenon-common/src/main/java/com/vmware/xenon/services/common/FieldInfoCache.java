@@ -17,7 +17,9 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -74,10 +76,11 @@ final class FieldInfoCache {
             return h;
         }
 
-        public FieldInfo toFieldInfo() {
-            FieldInfo fi = new FieldInfo(this.name, this.fieldNumber, this.storeTermVector, this.omitNorms,
+        public FieldInfo toFieldInfo(FieldInfoCache cache) {
+            FieldInfo fi = new FieldInfo(cache.dedupFieldName(this.name), this.fieldNumber, this.storeTermVector,
+                    this.omitNorms,
                     this.storePayloads,
-                    this.indexOptions, this.docValuesType, this.dvGen, this.attributes,
+                    this.indexOptions, this.docValuesType, this.dvGen, cache.dedupCommonAttributes(this.attributes),
                     this.pointDimensionCount, this.pointNumBytes);
 
             fi.checkConsistency();
@@ -100,6 +103,33 @@ final class FieldInfoCache {
                     this.storePayloads == that.storePayloads &&
                     this.storeTermVector == that.storeTermVector &&
                     this.omitNorms == that.omitNorms;
+        }
+    }
+
+    private Map<String, String> dedupCommonAttributes(Map<String, String> attributes) {
+        Map<String, String> res = new HashMap<>();
+        for (Entry<String, String> e : attributes.entrySet()) {
+            res.put(alwaysDedup(e.getKey()), alwaysDedup(e.getValue()));
+        }
+
+        return Collections.unmodifiableMap(res);
+    }
+
+    private String alwaysDedup(String key) {
+        String old = this.commonLuceneStrings.putIfAbsent(key, key);
+        if (old == null) {
+            old = key;
+        }
+
+        return old;
+    }
+
+    private String dedupFieldName(String name) {
+        if (name.indexOf('.') < 0) {
+            // only cache top-level properties. Caching Maps and nested may OOM
+            return alwaysDedup(name);
+        } else {
+            return name;
         }
     }
 
@@ -134,8 +164,11 @@ final class FieldInfoCache {
      */
     private FieldInfos longest;
 
+    private final ConcurrentMap<String, String> commonLuceneStrings;
+
     public FieldInfoCache() {
         this.infoCache = new ConcurrentHashMap<>();
+        this.commonLuceneStrings = new ConcurrentHashMap<>();
     }
 
     /**
@@ -217,7 +250,7 @@ final class FieldInfoCache {
         key.pointDimensionCount = pointDimensionCount;
         key.pointNumBytes = pointNumBytes;
 
-        return this.infoCache.computeIfAbsent(key, FieldInfoKey::toFieldInfo);
+        return this.infoCache.computeIfAbsent(key, k -> k.toFieldInfo(this));
     }
 
     public void handleMaintenance() {
