@@ -74,12 +74,15 @@ final class FieldInfoCache {
             return h;
         }
 
-        public FieldInfo toFieldInfo() {
-            FieldInfo fi = new FieldInfo(this.name, this.fieldNumber, this.storeTermVector, this.omitNorms,
+        public FieldInfo toFieldInfo(FieldInfoCache cache) {
+            // dedupe the string in the cache key: they are the same string, different object ids
+            // this.name = cache.dedupCommonString(this.name);
+
+            FieldInfo fi = new FieldInfo(this.name, this.fieldNumber, this.storeTermVector,
+                    this.omitNorms,
                     this.storePayloads,
                     this.indexOptions, this.docValuesType, this.dvGen, this.attributes,
                     this.pointDimensionCount, this.pointNumBytes);
-
             fi.checkConsistency();
             return fi;
         }
@@ -114,6 +117,7 @@ final class FieldInfoCache {
     public static boolean equals(FieldInfo a, FieldInfo b) {
         return a.number == b.number &&
                 a.name.equals(b.name) &&
+                a.attributes().equals(b.attributes()) &&
                 a.getPointDimensionCount() == b.getPointDimensionCount() &&
                 a.getPointNumBytes() == b.getPointNumBytes() &&
                 a.getDocValuesGen() == b.getDocValuesGen() &&
@@ -173,6 +177,19 @@ final class FieldInfoCache {
         return update;
     }
 
+    public FieldInfos dedupFieldInfos(FieldInfos fn) {
+        return dedupFieldInfos(extractFieldInfoContent(fn));
+    }
+
+    private FieldInfo[] extractFieldInfoContent(FieldInfos fn) {
+        FieldInfo[] contents = new FieldInfo[fn.size()];
+        int i = 0;
+        for (FieldInfo fieldInfo : fn) {
+            contents[i++] = fieldInfo;
+        }
+        return contents;
+    }
+
     /**
      * A bug in lucene keeps a treemap for every non-sparse FieldInfos unnecessary so.
      * This method does a copy of the field * {@link FieldInfos#values} allowing the underlying Map to be gc'ed.
@@ -181,7 +198,7 @@ final class FieldInfoCache {
      * @param fieldInfos
      */
     @SuppressWarnings("unchecked")
-    private void trimFieldInfos(FieldInfos fieldInfos) {
+    void trimFieldInfos(FieldInfos fieldInfos) {
         try {
             Object obj = fiByNumberTable.get(fieldInfos);
             if (obj == null) {
@@ -217,7 +234,7 @@ final class FieldInfoCache {
         key.pointDimensionCount = pointDimensionCount;
         key.pointNumBytes = pointNumBytes;
 
-        return this.infoCache.computeIfAbsent(key, FieldInfoKey::toFieldInfo);
+        return this.infoCache.computeIfAbsent(key, k -> k.toFieldInfo(this));
     }
 
     public void handleMaintenance() {
