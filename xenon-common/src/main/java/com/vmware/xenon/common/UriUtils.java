@@ -92,6 +92,8 @@ public final class UriUtils {
     private static final char URI_QUERY_PARAM_LINK_CHAR_CONST = '&';
     private static final char URI_QUERY_PARAM_KV_CHAR_CONST = '=';
 
+    static final String URI_LEGAL_CHARS = "-_.~?#[]@!$&'()*+,;=:";
+
     private UriUtils() {
     }
 
@@ -981,6 +983,46 @@ public final class UriUtils {
             return "";
         }
         return link.substring(link.lastIndexOf(UriUtils.URI_PATH_CHAR) + 1);
+    }
+
+    static boolean isValidDocumentId(String suffix, String factoryLink) {
+        // Skip validation for core services
+        if (suffix.startsWith(ServiceUriPaths.CORE + UriUtils.URI_PATH_CHAR)) {
+            return true;
+        }
+
+        int index = 0;
+        if (UriUtils.isChildPath(suffix, factoryLink)) {
+            index = factoryLink.length() + 1;
+        }
+
+        final int len = suffix.length();
+        if (index < len && suffix.charAt(index) == UriUtils.URI_PATH_CHAR.charAt(0)) {
+            index = index + 1;
+        }
+
+        if (index >= len) {
+            return false;
+        }
+
+        for (int i = index; i < len; i++) {
+            char ch = suffix.charAt(i);
+            if (ch >= '0' && ch <= '9') {
+                continue;
+            }
+            if (ch >= 'a' && ch <= 'z') {
+                continue;
+            }
+            if (ch >= 'A' && ch <= 'Z') {
+                continue;
+            }
+            if (URI_LEGAL_CHARS.indexOf(ch) >= 0) {
+                continue;
+            }
+            return false;
+        }
+
+        return true;
     }
 
     /**
