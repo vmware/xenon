@@ -390,11 +390,9 @@ public abstract class FactoryService extends StatelessService {
                 }
             }
 
-            if (!o.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK)) {
-                if (!isValidDocumentId(suffix)) {
-                    o.fail(new IllegalArgumentException(suffix + " is an invalid id"));
-                    return;
-                }
+            if (!UriUtils.isValidDocumentId(suffix, this.getSelfLink())) {
+                o.fail(new IllegalArgumentException(suffix + " is an invalid id"));
+                return;
             }
 
             // check suffix does not already contain the prefix i.e. the factory's self link
@@ -433,35 +431,6 @@ public abstract class FactoryService extends StatelessService {
 
         // complete request, initiate local service start
         completePostRequest(o, childService);
-    }
-
-    private boolean isValidDocumentId(String suffix) {
-        // Skip validation for core services
-        if (suffix.startsWith(ServiceUriPaths.CORE + UriUtils.URI_PATH_CHAR)) {
-            return true;
-        }
-
-        String id = suffix;
-        if (UriUtils.isChildPath(suffix, getSelfLink())) {
-            id = suffix.substring(getSelfLink().length() + 1);
-        }
-
-        if (id.startsWith(UriUtils.URI_PATH_CHAR)) {
-            id = id.substring(1);
-        }
-
-        if (id.contains(UriUtils.URI_PATH_CHAR)) {
-            return false;
-        }
-
-        try {
-            // Treat Id as path in the URI constructor.
-            new URI("/" + id);
-        } catch (URISyntaxException e) {
-            return false;
-        }
-
-        return true;
     }
 
     protected String buildDefaultChildSelfLink() {

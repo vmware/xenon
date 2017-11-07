@@ -23,12 +23,61 @@ import java.util.EnumSet;
 import java.util.Map;
 import java.util.UUID;
 
+import com.sun.jndi.toolkit.url.Uri;
 import org.junit.Test;
 
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 public class TestUriUtils {
+
+    @Test
+    public void validDocumentId() throws Throwable {
+        assertTrue(UriUtils.isValidDocumentId(UriUtils.URI_LEGAL_CHARS, "foo"));
+        assertTrue(isValidUri(UriUtils.URI_LEGAL_CHARS));
+
+        String testId = "/t/e/s/t";
+        assertEquals(UriUtils.isValidDocumentId(testId, "/foo"),
+                    false);
+
+        testId = "/foo/t/e/s/t";
+        assertEquals(UriUtils.isValidDocumentId(testId, "/foo"),
+                false);
+
+        testId = "/foo/test";
+        assertEquals(UriUtils.isValidDocumentId(testId, "/foo"),
+                true);
+
+        testId = "/test";
+        assertEquals(UriUtils.isValidDocumentId(testId, "/foo"),
+                true);
+
+        testId = "{{test}}";
+        assertEquals(UriUtils.isValidDocumentId(testId, "/foo"),
+                isValidUri(testId));
+        assertEquals(UriUtils.isValidDocumentId(testId, "/foo"),
+                false);
+
+        testId = "test:123123";
+        assertEquals(UriUtils.isValidDocumentId(testId, "/foo"),
+                isValidUri(testId));
+        testId = "123:123123";
+        assertEquals(UriUtils.isValidDocumentId(testId, "/foo"),
+                true);
+
+        testId = UriUtils.URI_LEGAL_CHARS;
+        assertEquals(UriUtils.isValidDocumentId(testId, "foo"),
+                isValidUri(testId));
+    }
+
+    private boolean isValidUri(String uri) {
+        try {
+            new URI(uri);
+        } catch(URISyntaxException e) {
+            return false;
+        }
+        return true;
+    }
 
     @Test
     public void normalizePath() throws Throwable {
