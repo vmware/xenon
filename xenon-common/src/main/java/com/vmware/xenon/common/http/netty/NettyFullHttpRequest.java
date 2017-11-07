@@ -69,7 +69,7 @@ public class NettyFullHttpRequest extends DefaultFullHttpRequest {
                 method(),
                 uri(),
                 copyContent ? content().copy()
-                        : newContent == null ? Unpooled.buffer(0) : newContent,
+                        : newContent == null ? Unpooled.EMPTY_BUFFER : newContent,
                 false);
         copy.headers().set(headers());
         copy.trailingHeaders().set(trailingHeaders());

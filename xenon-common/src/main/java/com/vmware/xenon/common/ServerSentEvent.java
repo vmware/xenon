@@ -87,11 +87,13 @@ public class ServerSentEvent {
         return this;
     }
 
-    @Override public String toString() {
+    @Override
+    public String toString() {
         return Utils.toJsonHtml(this);
     }
 
-    @Override public boolean equals(Object obj) {
+    @Override
+    public boolean equals(Object obj) {
         if (this == obj) {
             return true;
         }
@@ -105,7 +107,8 @@ public class ServerSentEvent {
                 Objects.equals(this.retry, other.retry);
     }
 
-    @Override public int hashCode() {
+    @Override
+    public int hashCode() {
         return Objects.hash(this.data, this.event, this.id, this.retry);
     }
 }

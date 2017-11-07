@@ -360,6 +360,38 @@ public class NettyHttpServiceClientTest {
     }
 
     @Test
+    public void getQueueServiceAvailability() throws Throwable {
+        String targetPath = UUID.randomUUID().toString();
+        Operation startOp = Operation.createPost(UriUtils.buildUri(this.host, targetPath))
+                .setCompletion(this.host.getCompletion());
+        StatelessService testStatelessService = new StatelessService() {
+            @Override
+            public void handleRequest(Operation update) {
+                update.complete();
+            }
+        };
+        this.host.testStart(2);
+        Operation get = Operation
+                .createGet(UriUtils.buildUri(this.host, targetPath))
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)
+                .setCompletion(
+                        (op, ex) -> {
+                            int statusCode = op.getStatusCode();
+                            if (statusCode == Operation.STATUS_CODE_OK) {
+                                this.host.completeIteration();
+                                return;
+                            }
+
+                            this.host.failIteration(new Throwable(
+                                    "Expected Operation.STATUS_CODE_OK but was " + statusCode));
+                        });
+
+        this.host.send(get);
+        this.host.startService(startOp, testStatelessService);
+        this.host.testWait();
+    }
+
+    @Test
     public void sendRequestWithTimeout() throws Throwable {
         for (int i = 0; i < this.iterationCount; i++) {
             doRemotePatchWithTimeout();

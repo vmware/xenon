@@ -242,13 +242,12 @@ public class ServiceHost implements ServiceRequestSender {
          * complete synchronization in time. The availability indicator on /available is a hint, it does
          * not prevent the factory from functioning.
          *
-         * The default value of 10 minutes allows for 1.8M services to synchronize, given an estimate of
-         * 3,000 service synchronizations per second, on a three node cluster, on a local network.
+         * The default value of 1 hour would roughly allows for 1.8M services to synchronize.
          *
          * Synchronization starts automatically if {@link Arguments#isPeerSynchronizationEnabled} is true,
          * and the node group has observed a node joining or leaving (becoming unavailable)
          */
-        public int perFactoryPeerSynchronizationLimitSeconds = (int) TimeUnit.MINUTES.toSeconds(10);
+        public int perFactoryPeerSynchronizationLimitSeconds = (int) TimeUnit.HOURS.toSeconds(1);
 
         /**
          * Value indicating whether node group changes will automatically
@@ -2630,6 +2629,7 @@ public class ServiceHost implements ServiceRequestSender {
                 || post.isSynchronize();
         Service existing = null;
         boolean synchPendingDelete = false;
+        boolean isOnDemandStart = onDemandTriggeringOp != null;
 
         synchronized (this.state) {
             existing = this.attachedServices.get(servicePath);
@@ -2641,7 +2641,7 @@ public class ServiceHost implements ServiceRequestSender {
                 synchPendingDelete = true;
             } else {
                 if (existing != null) {
-                    if (isCreateOrSynchRequest
+                    if ((isCreateOrSynchRequest || isOnDemandStart)
                             && existing.getProcessingStage() == ProcessingStage.STOPPED) {
                         // service was just stopped and about to be removed. We are creating a new instance, so
                         // its fine to re-attach. We will do a state version check if this is a persisted service
@@ -2682,15 +2682,14 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         if (!isIdempotent && !post.isSynchronize()) {
-            ProcessingStage ps = existing.getProcessingStage();
-
-            if (onDemandTriggeringOp != null && ServiceHost.isServiceStartingOrAvailable(ps)) {
+            if (isOnDemandStart) {
                 // this is an on-demand start and the service is already attached -
                 // no need to continue with start
                 post.complete();
                 return true;
             }
 
+            ProcessingStage ps = existing.getProcessingStage();
             if (ps == ProcessingStage.STOPPED || ServiceHost.isServiceStarting(ps)) {
                 // there is a possibility of collision with a synchronization attempt: The sync task
                 // attaches a child it enumerated from a peer, starts in stage CREATED while loading
@@ -3411,7 +3410,6 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         String path = service.getSelfLink();
-        EnumSet<ServiceOption> options = null;
         synchronized (this.state) {
             Service existing = this.attachedServices.remove(path);
             if (existing == null) {
@@ -3420,7 +3418,6 @@ public class ServiceHost implements ServiceRequestSender {
             }
 
             if (existing != null) {
-                options = existing.getOptions();
                 existing.setProcessingStage(ProcessingStage.STOPPED);
                 if (existing.hasOption(ServiceOption.URI_NAMESPACE_OWNER)) {
                     this.attachedNamespaceServices.remove(path);
@@ -3431,12 +3428,6 @@ public class ServiceHost implements ServiceRequestSender {
             this.serviceResourceTracker.clearCachedServiceState(service, null);
 
             this.state.serviceCount--;
-        }
-
-        // we do not remove from maintenance tracker, service will
-        // be ignored and never schedule for maintenance if its stopped
-        if (options == null || this.managementService == null) {
-            return;
         }
     }
 

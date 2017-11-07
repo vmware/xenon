@@ -1685,11 +1685,8 @@ public class StatefulService implements Service {
                 return;
             }
 
-            if (this.context.processingStage == ProcessingStage.STOPPED
-                    && stage == ProcessingStage.AVAILABLE) {
-                // a service can be stopped while an attempt to start is being processed.
-                // Instead of failing the attempt that marks it available, accept the
-                // transition from STOPPED -> AVAILABLE
+            if (this.context.processingStage == ProcessingStage.STOPPED) {
+                // a service can be stopped while an attempt to start is being processed
                 logTransition = true;
             } else if (this.context.processingStage.ordinal() > stage.ordinal()) {
                 throw new IllegalArgumentException(this.context.processingStage

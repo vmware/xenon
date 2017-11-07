@@ -462,7 +462,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             HttpMethod method = toHttpMethod(op.getAction());
             if (body == null || body.length == 0) {
                 request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery,
-                        Unpooled.buffer(0), false);
+                        Unpooled.EMPTY_BUFFER, false);
             } else {
                 ByteBuf content = Unpooled.wrappedBuffer(body, 0, (int) op.getContentLength());
                 request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery,
@@ -471,7 +471,7 @@ public class NettyHttpServiceClient implements ServiceClient {
 
             HttpHeaders httpHeaders = request.headers();
 
-            /**
+            /*
              * NOTE: Pay close attention to calls that access the operation request headers, since
              * they will cause a memory allocation. We avoid the allocation by first checking if
              * the operation has any custom headers to begin with, then we check for the specific

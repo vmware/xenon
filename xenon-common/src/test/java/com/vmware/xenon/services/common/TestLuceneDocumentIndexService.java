@@ -1906,6 +1906,7 @@ public class TestLuceneDocumentIndexService {
             return true;
         });
 
+        verifyOnDemandLoadWithPragmaQueueForService(factoryUri);
         this.host.log("ODL verification done");
     }
 
@@ -1953,6 +1954,54 @@ public class TestLuceneDocumentIndexService {
             delete = Operation.createDelete(serviceToDelete);
             this.host.sendAndWaitExpectSuccess(delete);
         }
+    }
+
+    private void verifyOnDemandLoadWithPragmaQueueForService(URI factoryUri) throws Throwable {
+        Operation get;
+        Operation post;
+        ExampleServiceState body;
+        // verify request gets queued, for a ODL service, not YET created
+        // attempt to on demand load a service that *never* existed
+        body = new ExampleServiceState();
+        body.documentSelfLink = this.host.nextUUID();
+        body.name = "queue-for-avail-" + UUID.randomUUID().toString();
+        URI yetToBeCreatedChildUri = UriUtils.extendUri(factoryUri, body.documentSelfLink);
+
+        // in parallel issue a GET to the yet to be created service, with a PRAGMA telling the
+        // runtime to queue the request, until service start
+        long getCount = this.serviceCount;
+        TestContext ctx = this.host.testCreate(getCount + 1);
+        for (int gi = 0; gi < getCount; gi++) {
+            get = Operation.createGet(yetToBeCreatedChildUri)
+                    .setConnectionSharing(true)
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            ctx.fail(e);
+                            return;
+                        }
+                        this.host.log("(%d) GET rsp from %s", o.getId(), o.getUri().getPath());
+                        ctx.complete();
+                    })
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY);
+            this.host.log("(%d) sending GET to %s", get.getId(), get.getUri().getPath());
+            this.host.send(get);
+            if (gi == getCount / 2) {
+                // now issue the POST to create the service, in parallel with most of the GETs
+                post = Operation.createPost(factoryUri)
+                        .setConnectionSharing(true)
+                        .setCompletion((o, e) -> {
+                            if (e != null) {
+                                ctx.fail(e);
+                                return;
+                            }
+                            this.host.log("POST for %s done", yetToBeCreatedChildUri);
+                            ctx.complete();
+                        })
+                        .setBody(body);
+                this.host.send(post);
+            }
+        }
+        this.host.testWait(ctx);
     }
 
     private void verifyOnDemandLoadDeleteOnUnknown(URI factoryUri) {

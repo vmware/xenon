@@ -340,17 +340,17 @@ public interface Service extends ServiceRequestSender {
      * Estimate on run time context cost in bytes, per service instance. Services should not use instanced
      * fields, so, other than queuing context and utility service usage, the memory overhead should be small
      */
-    static final int MAX_SERIALIZED_SIZE_BYTES = 1024 * 64;
+    int MAX_SERIALIZED_SIZE_BYTES = 1024 * 64;
 
     /**
      * Default operation queue limit
      */
-    static final int OPERATION_QUEUE_DEFAULT_LIMIT = 10000;
+    int OPERATION_QUEUE_DEFAULT_LIMIT = 10000;
 
     /**
      * Default Synchronization queue limit
      */
-    static final int SYNCH_QUEUE_DEFAULT_LIMIT = 100;
+    int SYNCH_QUEUE_DEFAULT_LIMIT = 100;
 
     /**
      * Equivalent to {@code getSelfId} and {@code UriUtils.getLastPathSegment}

@@ -15,6 +15,7 @@ package com.vmware.xenon.common;
 
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation.CompletionHandler;
@@ -64,14 +65,27 @@ public class ServiceAvailabilityFilter implements Filter {
             servicePath = UriUtils.getParentPath(servicePath);
         }
 
-        if (service != null && ServiceHost.isServiceStartingOrAvailable(service.getProcessingStage())) {
-            // service is in the process of starting - we will resume processing when
-            // it's available
+        boolean queueForServiceAvailability =
+                op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY);
+        if ((service != null && ServiceHost.isServiceStartingOrAvailable(service.getProcessingStage())) ||
+                queueForServiceAvailability) {
+            // service is in the process of starting or client has asked us to wait for availability -
+            // we will resume processing when the service is available
             Service finalService = service;
             op.nestCompletion((o, e) -> {
                 if (e != null || !ServiceHost.isServiceAvailable(finalService)) {
-                    // service might have failed to start and might even be detached -
+                    // service might have failed to start and might even be detached.
+                    // we check operation expiration before retrying
+                    if (op.getExpirationMicrosUtc() < Utils.getNowMicrosUtc()) {
+                        TimeoutException te = new TimeoutException();
+                        op.fail(te);
+                        context.resumeProcessingRequest(op, FilterReturnCode.FAILED_STOP_PROCESSING, te);
+                        return;
+                    }
+
                     // we will retry, which will most likely trigger an on-demand start
+                    // (unless the client has explicitly requested to wait for service availability,
+                    // in that case we wait until the service becomes available or the operation expires)
                     context.resumeProcessingRequest(op, FilterReturnCode.RESUME_PROCESSING, null);
                     return;
                 }
@@ -82,7 +96,11 @@ public class ServiceAvailabilityFilter implements Filter {
 
             final String finalServicePath = servicePath;
             context.setSuspendConsumer(o -> {
-                context.getHost().getOperationTracker().trackServiceStartCompletion(finalServicePath, op);
+                if (queueForServiceAvailability) {
+                    context.getHost().registerForServiceAvailability(op, finalServicePath);
+                } else {
+                    context.getHost().getOperationTracker().trackServiceStartCompletion(finalServicePath, op);
+                }
             });
             return FilterReturnCode.SUSPEND_PROCESSING;
         }

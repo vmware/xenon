@@ -33,6 +33,7 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
+import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
@@ -355,6 +356,93 @@ public class TestSubscriptions extends BasicTestCase {
         host.testWait(notifyDeleteContext);
     }
 
+    @Test
+    public void subscribeAndWaitForServiceAvailability() throws Throwable {
+        // until HTTP2 support is we must only subscribe to less than max connections!
+        // otherwise we deadlock: the connection for the queued subscribe is used up,
+        // no more connections can be created, to that owner.
+        this.serviceCount = NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST / 2;
+        setUpPeers();
+
+        this.host.waitForReplicatedFactoryServiceAvailable(
+                this.host.getPeerServiceUri(ExampleService.FACTORY_LINK));
+
+        // Pick one host to post to
+        VerificationHost serviceHost = this.host.getPeerHost();
+
+        // Create example service states to subscribe to
+        List<ExampleServiceState> states = new ArrayList<>();
+        for (int i = 0; i < this.serviceCount; i++) {
+            ExampleServiceState state = new ExampleServiceState();
+            state.documentSelfLink = UriUtils.buildUriPath(
+                    ExampleService.FACTORY_LINK,
+                    UUID.randomUUID().toString());
+            state.name = UUID.randomUUID().toString();
+            states.add(state);
+        }
+
+        AtomicInteger notifications = new AtomicInteger();
+        // Subscription target
+        ServiceSubscriber sr = createAndStartNotificationTarget((update) -> {
+            if (update.getAction() != Action.PATCH) {
+                // because we start multiple nodes and we do not wait for factory start
+                // we will receive synchronization related PUT requests, on each service.
+                // Ignore everything but the PATCH we send from the test
+                return false;
+            }
+            this.host.completeIteration();
+            this.host.log("notification %d", notifications.incrementAndGet());
+            update.complete();
+            return true;
+        });
+
+        this.host.log("Subscribing to %d services", this.serviceCount);
+        // Subscribe to factory (will not complete until factory is started again)
+        for (ExampleServiceState state : states) {
+            URI uri = UriUtils.buildUri(serviceHost, state.documentSelfLink);
+            subscribeToService(uri, sr);
+        }
+
+        // First the subscription requests will be sent and will be queued.
+        // So N completions come from the subscribe requests.
+        // After that, the services will be POSTed and started. This is the second set
+        // of N completions.
+        this.host.testStart(2 * this.serviceCount);
+        this.host.log("Sending parallel POST for %d services", this.serviceCount);
+
+        AtomicInteger postCount = new AtomicInteger();
+        // Create example services, triggering subscriptions to complete
+        for (ExampleServiceState state : states) {
+            URI uri = UriUtils.buildFactoryUri(serviceHost, ExampleService.class);
+            Operation op = Operation.createPost(uri)
+                    .setBody(state)
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            this.host.failIteration(e);
+                            return;
+                        }
+                        this.host.log("POST count %d", postCount.incrementAndGet());
+                        this.host.completeIteration();
+                    });
+            this.host.send(op);
+        }
+
+        this.host.testWait();
+
+        this.host.testStart(2 * this.serviceCount);
+        // now send N PATCH ops so we get notifications
+        for (ExampleServiceState state : states) {
+            // send a PATCH, to trigger notification
+            URI u = UriUtils.buildUri(serviceHost, state.documentSelfLink);
+            state.counter = Utils.getNowMicrosUtc();
+            Operation patch = Operation.createPatch(u)
+                    .setBody(state)
+                    .setCompletion(this.host.getCompletion());
+            this.host.send(patch);
+        }
+        this.host.testWait();
+    }
+
     private void doFactoryPostNotifications(URI factoryUri, int childCount, String prefix,
             Long counterValue,
             URI[] childUris) throws Throwable {
@@ -608,6 +696,11 @@ public class TestSubscriptions extends BasicTestCase {
     }
 
     private ServiceSubscriber createAndStartNotificationTarget(
+            Function<Operation, Boolean> h) throws Throwable {
+        return createAndStartNotificationTarget(UUID.randomUUID().toString(), h);
+    }
+
+    private ServiceSubscriber createAndStartNotificationTarget(
             String link,
             Function<Operation, Boolean> h) throws Throwable {
         StatelessService notificationTarget = createNotificationTargetService(h);
@@ -663,7 +756,8 @@ public class TestSubscriptions extends BasicTestCase {
         this.host.send(Operation.createPost(subUri)
                 .setCompletion(this.host.getCompletion())
                 .setReferer(this.host.getReferer())
-                .setBody(sr));
+                .setBody(sr)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY));
     }
 
     private void unsubscribeFromChildren(URI[] uris, URI targetUri,

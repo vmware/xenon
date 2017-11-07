@@ -34,6 +34,7 @@ public class EventStreamService extends StatelessService {
     private final long period;
     private final TimeUnit timeUnit;
     private final ExecutorService executorService;
+    private int repeat;
     private Exception failException;
 
     /**
@@ -43,16 +44,19 @@ public class EventStreamService extends StatelessService {
      * @param timeUnit
      * @param parallelism The number of parallel operations that the service can handle
      */
-    public EventStreamService(List<ServerSentEvent> events, long initialDelay, long period, TimeUnit timeUnit, int parallelism) {
+    public EventStreamService(List<ServerSentEvent> events, long initialDelay, long period, TimeUnit timeUnit,
+            int parallelism, int repeat) {
         this.events = events;
         this.initialDelay = initialDelay;
         this.period = period;
         this.timeUnit = timeUnit;
         // Intentionally using ThreadPoolExecutor instead of ScheduledExecutor, in order to simulate load.
         this.executorService = Executors.newFixedThreadPool(parallelism);
+        this.repeat = repeat;
     }
 
-    @Override public void handleGet(Operation get) {
+    @Override
+    public void handleGet(Operation get) {
         this.replayEvents(get);
     }
 
@@ -67,21 +71,16 @@ public class EventStreamService extends StatelessService {
     private void replayEvents(Operation op) {
         op.startEventStream();
         this.executorService.execute(() -> {
-            try {
-                Thread.sleep(this.timeUnit.toMillis(this.initialDelay));
-            } catch (InterruptedException e) {
-                op.fail(e);
-            }
-            for (int i = 0; i < this.events.size(); ++i) {
-                op.sendServerSentEvent(this.events.get(i));
-                if (i < this.events.size() - 1) {
-                    try {
-                        Thread.sleep(this.timeUnit.toMillis(this.period));
-                    } catch (InterruptedException e) {
-                        op.fail(e);
+            sleep(op, this.timeUnit.toMillis(this.initialDelay));
+            for (int r = 0; r < this.repeat; r++) {
+                for (int i = 0; i < this.events.size(); ++i) {
+                    op.sendServerSentEvent(this.events.get(i));
+                    if (i < this.events.size() - 1) {
+                        sleep(op, this.timeUnit.toMillis(this.period));
                     }
                 }
             }
+
             if (this.failException == null) {
                 op.complete();
             } else {
@@ -90,7 +89,19 @@ public class EventStreamService extends StatelessService {
         });
     }
 
-    @Override public void handleStop(Operation delete) {
+    private void sleep(Operation op, long millis) {
+        if (millis <= 0) {
+            return;
+        }
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            op.fail(e);
+        }
+    }
+
+    @Override
+    public void handleStop(Operation delete) {
         this.executorService.shutdownNow();
     }
 }

@@ -399,14 +399,15 @@ public class SynchronizationTaskService
             // back to QUERY stage.
             task.taskInfo.stage = TaskState.TaskStage.STARTED;
             task.subStage = SubStage.QUERY;
+            task.synchCompletionCount = 0;
+            setStat(STAT_NAME_CHILD_SYNCH_RETRY_COUNT, 0);
+            setStat(STAT_NAME_CHILD_SYNCH_FAILURE_COUNT, 0);
         } else {
             updateState(task, body);
         }
 
-        if (this.isDetailedLoggingEnabled) {
-            logInfo("Transitioning task from %s-%s to %s-%s, Synch completed services: %d",
-                    currentStage, currentSubStage, task.taskInfo.stage, task.subStage, task.synchCompletionCount);
-        }
+        logInfo("Transitioning task from %s-%s to %s-%s, Services synchronized: %d",
+                currentStage, currentSubStage, task.taskInfo.stage, task.subStage, task.synchCompletionCount);
 
         boolean isTaskFinished = TaskState.isFinished(task.taskInfo);
         if (isTaskFinished) {
@@ -576,6 +577,7 @@ public class SynchronizationTaskService
         sendRequest(Operation.createGet(task.queryPageReference)
                 .setConnectionSharing(true)
                 .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION)
+                .setRetryCount(3)
                 .setCompletion(c));
     }
 
@@ -839,6 +841,12 @@ public class SynchronizationTaskService
                     }
                 });
         sendRequest(put);
+    }
+
+    @Override
+    protected void sendSelfPatch(State taskState, TaskState.TaskStage stage, Consumer<State> updateTaskState) {
+        taskState.failureMessage = "";
+        super.sendSelfPatch(taskState, stage, updateTaskState);
     }
 
     private Consumer<State> subStageSetter(SubStage subStage) {

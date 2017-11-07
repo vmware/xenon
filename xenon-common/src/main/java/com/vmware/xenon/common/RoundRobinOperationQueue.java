@@ -24,17 +24,9 @@ import java.util.Queue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-public class RoundRobinOperationQueue {
+public final class RoundRobinOperationQueue {
 
-    public static final int INITIAL_CAPACITY = 256;
-
-    public static RoundRobinOperationQueue create() {
-        return create("");
-    }
-
-    public static RoundRobinOperationQueue create(String queueDescription) {
-        return new RoundRobinOperationQueue(queueDescription);
-    }
+    private static final int INITIAL_CAPACITY = 256;
 
     private final NavigableMap<String, Queue<Operation>> queues = new ConcurrentSkipListMap<>();
 
@@ -42,8 +34,13 @@ public class RoundRobinOperationQueue {
 
     private String description = "";
 
-    private RoundRobinOperationQueue(String description) {
+    private final int limit;
+
+    private int totalCount;
+
+    public RoundRobinOperationQueue(String description, int limit) {
         this.description = description;
+        this.limit = limit;
     }
 
     /**
@@ -54,15 +51,21 @@ public class RoundRobinOperationQueue {
             throw new IllegalArgumentException(format("key and operation are required (%s)", this.description));
         }
 
-        Queue<Operation> q = this.queues.computeIfAbsent(key, (k) -> new ArrayDeque<>(INITIAL_CAPACITY));
-
-        if (!q.offer(op)) {
+        if (this.totalCount >= this.limit) {
             op.setStatusCode(Operation.STATUS_CODE_UNAVAILABLE);
-            op.fail(new CancellationException(format("queue limit exceeded (%s)", this.description)));
+            op.fail(new CancellationException(format("Limit for queue %s exceeded: %d", this.description, this.limit)));
             return false;
         }
 
+        Queue<Operation> q = this.queues.computeIfAbsent(key, this::makeQueue);
+        q.offer(op);
+        this.totalCount++;
+
         return true;
+    }
+
+    private Queue<Operation> makeQueue(String key) {
+        return new ArrayDeque<>(INITIAL_CAPACITY);
     }
 
     /**
@@ -80,6 +83,7 @@ public class RoundRobinOperationQueue {
             this.activeKey = nextActive.getKey();
             Operation op = nextActive.getValue().poll();
             if (op != null) {
+                this.totalCount--;
                 return op;
             } else {
                 this.queues.remove(nextActive.getKey());
@@ -100,6 +104,7 @@ public class RoundRobinOperationQueue {
                 sizes.put(queueEntry.getKey(), queueEntry.getValue().size());
             }
         }
+
         return sizes;
     }
 }

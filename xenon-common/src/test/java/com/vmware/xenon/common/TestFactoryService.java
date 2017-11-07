@@ -1111,14 +1111,13 @@ public class TestFactoryService extends BasicReusableHostTestCase {
     @Test
     public void testFactoryPostHandling() throws Throwable {
         startFactoryService();
-
-        this.host.testStart(5);
-        idempotentPostReturnsUpdatedOpBody();
-        checkDerivedSelfLinkWhenProvidedSelfLinkIsJustASuffix();
-        checkDerivedSelfLinkWhenProvidedSelfLinkAlreadyContainsAPath();
-        failPostWhenProvidedSelfLinkContainsUriPathChar();
-        failPostWhenProvidedSelfLinkContainsInvalidPathChar();
-        this.host.testWait();
+        TestRequestSender sender = host.getTestRequestSender();
+        idempotentPostReturnsUpdatedOpBody(sender);
+        checkDerivedSelfLinkWhenProvidedSelfLinkIsJustASuffix(sender);
+        checkDerivedSelfLinkWhenProvidedSelfLinkAlreadyContainsAPath(sender);
+        checkSelfLinkWithAcceptableChars(sender);
+        failPostWhenProvidedSelfLinkContainsUriPathChar(sender);
+        failPostWhenProvidedSelfLinkContainsInvalidPathChar(sender);
     }
 
     @Test
@@ -1365,125 +1364,114 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         this.host.waitForServiceAvailable(SomeFactoryService.SELF_LINK);
     }
 
-    private void idempotentPostReturnsUpdatedOpBody() throws Throwable {
+    @Test
+    public void postFactoryQueueing() throws Throwable {
         SomeDocument doc = new SomeDocument();
-        doc.documentSelfLink = "/subpath/fff/apple";
-        doc.value = 2;
+        doc.documentSelfLink = "/subpath-" + UUID.randomUUID().toString();
 
-        this.host.send(Operation.createPost(this.factoryUri)
+        if (this.host.checkServiceAvailable(this.factoryUri.getPath())) {
+            this.host.testStart(1);
+            this.host.send(Operation.createDelete(this.factoryUri).setCompletion(
+                    this.host.getCompletion()));
+            this.host.testWait();
+        }
+
+        this.host.testStart(1);
+        Operation post = Operation
+                .createPost(UriUtils.buildUri(this.factoryUri))
                 .setBody(doc)
                 .setCompletion(
-                        (o, e) -> {
-                            if (e != null) {
-                                this.host.failIteration(e);
+                        (op, ex) -> {
+                            if (op.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
+                                this.host.completeIteration();
                                 return;
                             }
 
-                            this.host.send(Operation.createPost(this.factoryUri)
-                                    .setBody(doc)
-                                    .setCompletion(
-                                            (o2, e2) -> {
-                                                if (e2 != null) {
-                                                    this.host.failIteration(e2);
-                                                    return;
-                                                }
+                            this.host.failIteration(new Throwable(
+                                    "Expected Operation.STATUS_CODE_NOT_FOUND"));
+                        });
 
-                                                SomeDocument doc2 = o2.getBody(SomeDocument.class);
-                                                try {
-                                                    assertNotNull(doc2);
-                                                    assertEquals(4, doc2.value);
-                                                    this.host.completeIteration();
-                                                } catch (AssertionError e3) {
-                                                    this.host.failIteration(e3);
-                                                }
-                                            }));
-                        }));
+        this.host.send(post);
+        this.host.testWait();
+
+        this.host.testStart(2);
+        post = Operation
+                .createPost(this.factoryUri)
+                .setBody(doc)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)
+                .setCompletion(
+                        (op, ex) -> {
+                            if (op.getStatusCode() == Operation.STATUS_CODE_OK) {
+                                this.host.completeIteration();
+                                return;
+                            }
+
+                            this.host.failIteration(new Throwable(
+                                    "Expected Operation.STATUS_CODE_OK"));
+                        });
+        this.host.send(post);
+        this.host.startService(
+                Operation.createPost(this.factoryUri),
+                new SomeFactoryService());
+        this.host.registerForServiceAvailability(this.host.getCompletion(),
+                SomeFactoryService.SELF_LINK);
+        this.host.testWait();
     }
 
-    private void checkDerivedSelfLinkWhenProvidedSelfLinkIsJustASuffix() throws Throwable {
+    private void idempotentPostReturnsUpdatedOpBody(TestRequestSender sender) throws Throwable {
+        SomeDocument doc = new SomeDocument();
+        doc.documentSelfLink = "/subpath/fff/apple";
+        doc.value = 2;
+        sender.sendAndWait(Operation.createPost(this.factoryUri).setBody(doc));
+        Operation o = sender.sendAndWait(Operation.createPost(this.factoryUri).setBody(doc));
+        SomeDocument doc2 = o.getBody(SomeDocument.class);
+        assertNotNull(doc2);
+        assertEquals(4, doc2.value);
+    }
+
+    private void checkDerivedSelfLinkWhenProvidedSelfLinkIsJustASuffix(TestRequestSender sender) throws Throwable {
         SomeDocument doc = new SomeDocument();
         doc.documentSelfLink = "freddy-x1";
-
-        this.host.send(Operation.createPost(this.factoryUri)
-                .setBody(doc)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.failIteration(e);
-                        return;
-                    }
-
-                    String selfLink = o.getBody(SomeDocument.class).documentSelfLink;
-                    URI opUri = o.getUri();
-
-                    String expectedPath = "/subpath/fff/freddy-x1";
-                    try {
-                        assertEquals(expectedPath, selfLink);
-                        assertEquals(UriUtils.buildUri(this.host, expectedPath), opUri);
-                        this.host.completeIteration();
-                    } catch (Throwable e2) {
-                        this.host.failIteration(e2);
-                    }
-                }));
+        Operation o = sender.sendAndWait(Operation.createPost(this.factoryUri)
+                .setBody(doc));
+        String selfLink = o.getBody(SomeDocument.class).documentSelfLink;
+        URI opUri = o.getUri();
+        String expectedPath = "/subpath/fff/freddy-x1";
+        assertEquals(expectedPath, selfLink);
+        assertEquals(UriUtils.buildUri(this.host, expectedPath), opUri);
     }
 
-    private void checkDerivedSelfLinkWhenProvidedSelfLinkAlreadyContainsAPath() throws Throwable {
+    private void checkDerivedSelfLinkWhenProvidedSelfLinkAlreadyContainsAPath(TestRequestSender sender) throws Throwable {
         SomeDocument doc = new SomeDocument();
         doc.documentSelfLink = "/subpath/fff/freddy-x2";
-
-        this.host.send(Operation.createPost(this.factoryUri)
-                .setBody(doc)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.failIteration(e);
-                        return;
-                    }
-
-                    String selfLink = o.getBody(SomeDocument.class).documentSelfLink;
-                    URI opUri = o.getUri();
-
-                    String expectedPath = "/subpath/fff/freddy-x2";
-                    try {
-                        assertEquals(expectedPath, selfLink);
-                        assertEquals(UriUtils.buildUri(this.host, expectedPath), opUri);
-                        this.host.completeIteration();
-                    } catch (Throwable e2) {
-                        this.host.failIteration(e2);
-                    }
-                }));
+        Operation o = sender.sendAndWait(Operation.createPost(this.factoryUri)
+                .setBody(doc));
+        String selfLink = o.getBody(SomeDocument.class).documentSelfLink;
+        URI opUri = o.getUri();
+        String expectedPath = "/subpath/fff/freddy-x2";
+        assertEquals(expectedPath, selfLink);
+        assertEquals(UriUtils.buildUri(this.host, expectedPath), opUri);
     }
 
-    private void failPostWhenProvidedSelfLinkContainsUriPathChar()
+    private void failPostWhenProvidedSelfLinkContainsUriPathChar(TestRequestSender sender)
             throws Throwable {
         SomeDocument doc = new SomeDocument();
         doc.documentSelfLink = "reddy/x3";
-
-        this.host.send(Operation.createPost(this.factoryUri)
-                .setBody(doc)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.completeIteration();
-                        return;
-                    }
-
-                    this.host.failIteration(new Throwable());
-                }));
+        sender.sendAndWaitFailure(Operation.createPost(this.factoryUri).setBody(doc));
     }
 
-    private void failPostWhenProvidedSelfLinkContainsInvalidPathChar()
+    private void failPostWhenProvidedSelfLinkContainsInvalidPathChar(TestRequestSender sender)
             throws Throwable {
         SomeDocument doc = new SomeDocument();
         doc.documentSelfLink = "{{reddyx3}}";
+        sender.sendAndWaitFailure(Operation.createPost(this.factoryUri).setBody(doc));
+    }
 
-        this.host.send(Operation.createPost(this.factoryUri)
-                .setBody(doc)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.completeIteration();
-                        return;
-                    }
-
-                    this.host.failIteration(new Throwable());
-                }));
+    private void checkSelfLinkWithAcceptableChars(TestRequestSender sender)
+            throws Throwable {
+        SomeDocument doc = new SomeDocument();
+        doc.documentSelfLink = "1212:red::123";
+        sender.sendAndWait(Operation.createPost(this.factoryUri).setBody(doc));
     }
 
     @Test
