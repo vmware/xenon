@@ -118,6 +118,7 @@ import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.config.XenonConfiguration;
+import com.vmware.xenon.common.opentracing.TracingExecutor;
 import com.vmware.xenon.common.serialization.GsonSerializers;
 import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.services.common.QueryFilter.QueryFilterException;
@@ -556,15 +557,15 @@ public class LuceneDocumentIndexService extends StatelessService {
         // so its worth caching (plus we only have a very small number of index services
         this.uri = super.getUri();
 
-        this.privateQueryExecutor = new ThreadPoolExecutor(QUERY_THREAD_COUNT, QUERY_THREAD_COUNT,
+        this.privateQueryExecutor = TracingExecutor.create(new ThreadPoolExecutor(QUERY_THREAD_COUNT, QUERY_THREAD_COUNT,
                 1, TimeUnit.MINUTES,
                 new ArrayBlockingQueue<>(Service.OPERATION_QUEUE_DEFAULT_LIMIT),
-                new NamedThreadFactory(getUri() + "/queries"));
+                new NamedThreadFactory(getUri() + "/queries")), this.getHost().getTracer());
 
-        this.privateIndexingExecutor = new ThreadPoolExecutor(QUERY_THREAD_COUNT, QUERY_THREAD_COUNT,
+        this.privateIndexingExecutor = TracingExecutor.create(new ThreadPoolExecutor(QUERY_THREAD_COUNT, QUERY_THREAD_COUNT,
                 1, TimeUnit.MINUTES,
                 new ArrayBlockingQueue<>(10 * Service.OPERATION_QUEUE_DEFAULT_LIMIT),
-                new NamedThreadFactory(getUri() + "/updates"));
+                new NamedThreadFactory(getUri() + "/updates")), this.getHost().getTracer());
 
         initializeInstance();
 
