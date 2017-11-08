@@ -14,6 +14,7 @@
 package com.vmware.xenon.common.opentracing;
 
 import static junit.framework.TestCase.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import brave.opentracing.BraveTracer;
@@ -33,6 +34,7 @@ public class TracerFactoryTest {
         ServiceHost h = VerificationHost.create(0);
         Tracer tracer = TracerFactory.factory.create(h);
         assertTrue(tracer instanceof NoopTracer);
+        assertFalse(TracerFactory.factory.enabled());
     }
 
     @Test
@@ -42,6 +44,7 @@ public class TracerFactoryTest {
         ServiceHost h = VerificationHost.create(0);
         Tracer tracer = TracerFactory.factory.create(h);
         assertTrue(tracer instanceof com.uber.jaeger.Tracer);
+        assertTrue(TracerFactory.factory.enabled());
     }
 
     @Test
@@ -63,6 +66,7 @@ public class TracerFactoryTest {
         ServiceHost h = VerificationHost.create(0);
         Tracer tracer = TracerFactory.factory.create(h);
         assertTrue(tracer instanceof BraveTracer);
+        assertTrue(TracerFactory.factory.enabled());
     }
 
     @Test(expected = RuntimeException.class)
