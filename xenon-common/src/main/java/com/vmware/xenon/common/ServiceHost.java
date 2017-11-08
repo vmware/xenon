@@ -51,9 +51,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinWorkerThread;
-import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
@@ -103,6 +103,8 @@ import com.vmware.xenon.common.jwt.JWTUtils;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.common.jwt.Verifier;
 import com.vmware.xenon.common.opentracing.TracerFactory;
+import com.vmware.xenon.common.opentracing.TracingExecutor;
+import com.vmware.xenon.common.opentracing.TracingScheduledExecutor;
 import com.vmware.xenon.common.opentracing.TracingUtils;
 import com.vmware.xenon.services.common.AuthCredentialsService;
 import com.vmware.xenon.services.common.AuthorizationContextService;
@@ -181,16 +183,6 @@ public class ServiceHost implements ServiceRequestSender {
 
         public ServiceNotFoundException(String servicePath, String customErrorMessage) {
             super("Service not found: " + servicePath + ". " + customErrorMessage);
-        }
-    }
-
-    private abstract static class RunnableWithContinuation implements Runnable {
-        ActiveSpan.Continuation cont;
-
-        public void activateAndClose() {
-            if (this.cont != null) {
-                this.cont.activate().close();
-            }
         }
     }
 
@@ -597,7 +589,9 @@ public class ServiceHost implements ServiceRequestSender {
     private final ServiceDocumentDescription.Builder descriptionBuilder = Builder.create();
 
     private ExecutorService executor;
+    private ForkJoinPool executorPool; // For service resource tracking
     private ScheduledExecutorService scheduledExecutor;
+    private ScheduledThreadPoolExecutor scheduledExecutorPool; // For service resource tracking
 
     private final ConcurrentHashMap<String, Service> attachedServices = new ConcurrentHashMap<>();
     private final ConcurrentSkipListMap<String, Service> attachedNamespaceServices = new ConcurrentSkipListMap<>();
@@ -805,14 +799,17 @@ public class ServiceHost implements ServiceRequestSender {
             this.serviceScheduledExecutor.shutdownNow();
         }
 
-        this.executor = new ForkJoinPool(Utils.DEFAULT_THREAD_COUNT, (pool) -> {
+        this.executorPool = new ForkJoinPool(Utils.DEFAULT_THREAD_COUNT, (pool) -> {
             ForkJoinWorkerThread res = ForkJoinPool.defaultForkJoinWorkerThreadFactory.newThread(pool);
             res.setName(getUri() + "/" + res.getName());
             return res;
         }, null, false);
+        this.executor = TracingExecutor.create(this.executorPool, this.otTracer);
 
-        this.scheduledExecutor = Executors.newScheduledThreadPool(Utils.DEFAULT_THREAD_COUNT,
+        this.scheduledExecutorPool = (ScheduledThreadPoolExecutor) Executors.newScheduledThreadPool(
+                Utils.DEFAULT_THREAD_COUNT,
                 new NamedThreadFactory(getUri() + "/scheduled"));
+        this.scheduledExecutor = TracingScheduledExecutor.create(this.scheduledExecutorPool, this.otTracer);
 
         this.serviceScheduledExecutor = Executors.newScheduledThreadPool(
                 Utils.DEFAULT_THREAD_COUNT / 2,
@@ -901,6 +898,25 @@ public class ServiceHost implements ServiceRequestSender {
         }
         this.state.location = location;
     }
+
+    /**
+     * Exposes the underlying executor pool for resource tracking: deliberately package-local.
+     *
+     * @return
+     */
+    ScheduledThreadPoolExecutor getScheduledExecutorPool() {
+        return this.scheduledExecutorPool;
+    }
+
+    /**
+     * Exposes the underlying executor pool for resource tracking: deliberately package-local.
+     *
+     * @return
+     */
+    ForkJoinPool getExecutorPool() {
+        return this.executorPool;
+    }
+
 
     protected void configureLogging(File storageSandboxDir) throws IOException {
         String logConfigFile = System.getProperty("java.util.logging.config.file");
@@ -1436,7 +1452,9 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     public ExecutorService allocateExecutor(Service s, int threadCount) {
-        return Executors.newFixedThreadPool(threadCount, new NamedThreadFactory(s.getUri().toString()));
+        return TracingExecutor.create(
+                Executors.newFixedThreadPool(threadCount, new NamedThreadFactory(s.getUri().toString())),
+                this.otTracer);
     }
 
     @SuppressWarnings("try")
@@ -3690,54 +3708,17 @@ public class ServiceHost implements ServiceRequestSender {
         if (s.queueRequest(op)) {
             return;
         }
-
-        RunnableWithContinuation runnable;
-        if (this.tracingEnabled) {
-            ActiveSpan span = this.otTracer.activeSpan();
-            ActiveSpan.Continuation cont = null != span ? span.capture() : null;
-            runnable = new RunnableWithContinuation() {
-                @Override
-                public void run() {
-                    OperationContext opCtx = extractAndApplyContext(op);
-                    try {
-                        ActiveSpan contspan = null != cont ? cont.activate() : null;
-                        try {
-                            s.handleRequest(op);
-                        } finally {
-                            if (contspan != null) {
-                                contspan.close();
-                            }
-                        }
-                    } catch (Exception e) {
-                        handleUncaughtException(s, op, e);
-                    } finally {
-                        OperationContext.setFrom(opCtx);
-                    }
-                }
-            };
-            runnable.cont = cont;
-        } else {
-            runnable = new RunnableWithContinuation() {
-                @Override
-                public void run() {
-                    OperationContext opCtx = extractAndApplyContext(op);
-                    try {
-                        s.handleRequest(op);
-                    } catch (Exception e) {
-                        handleUncaughtException(s, op, e);
-                    } finally {
-                        OperationContext.setFrom(opCtx);
-                    }
-                }
-            };
-        }
-
-        try {
-            this.executor.execute(runnable);
-        } catch (RejectedExecutionException e) {
-            runnable.activateAndClose();
-            throw e;
-        }
+        Runnable r = () -> {
+            OperationContext opCtx = extractAndApplyContext(op);
+            try {
+                s.handleRequest(op);
+            } catch (Exception e) {
+                handleUncaughtException(s, op, e);
+            } finally {
+                OperationContext.setFrom(opCtx);
+            }
+        };
+        this.executor.execute(r);
     }
 
     private void handleUncaughtException(Service s, Operation op, Throwable e) {
@@ -4658,42 +4639,10 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         OperationContext origContext = OperationContext.getOperationContext();
-        RunnableWithContinuation runnable;
-        if (this.tracingEnabled) {
-            /* Pass any current tracing span potentially cross-thread */
-            ActiveSpan span = this.otTracer.activeSpan();
-            ActiveSpan.Continuation cont = null != span ? span.capture() : null;
-            runnable = new RunnableWithContinuation() {
-                @Override
-                public void run() {
-                    ActiveSpan contspan = null != cont ? cont.activate() : null;
-                    try {
-                        OperationContext.setFrom(origContext);
-                        executeRunnableSafe(task);
-                    } finally {
-                        if (contspan != null) {
-                            contspan.close();
-                        }
-                    }
-                }
-            };
-            runnable.cont = cont;
-        } else {
-            runnable = new RunnableWithContinuation() {
-                @Override
-                public void run() {
-                    OperationContext.setFrom(origContext);
-                    executeRunnableSafe(task);
-                }
-            };
-        }
-
-        try {
-            executor.execute(runnable);
-        } catch (RejectedExecutionException e) {
-            runnable.activateAndClose();
-            throw e;
-        }
+        executor.execute(() -> {
+            OperationContext.setFrom(origContext);
+            executeRunnableSafe(task);
+        });
     }
 
     /**
