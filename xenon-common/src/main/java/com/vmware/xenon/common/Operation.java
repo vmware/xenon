@@ -319,7 +319,7 @@ public class Operation implements Cloneable {
         public int port;
         public String path;
         public String query;
-        public Long id;
+        public long id;
         public URI referer;
         public String jsonBody;
         public int statusCode;
@@ -363,7 +363,7 @@ public class Operation implements Cloneable {
         }
 
         public static boolean isValid(SerializedOperation sop) {
-            if (sop.action == null || sop.id == null || sop.jsonBody == null || sop.path == null
+            if (sop.action == null || sop.id == 0 || sop.jsonBody == null || sop.path == null
                     || sop.referer == null) {
                 return false;
             }
@@ -660,7 +660,7 @@ public class Operation implements Cloneable {
     private static final char DIRECTIVE_PRAGMA_VALUE_SEPARATOR_CHAR_CONST = ';';
     private static final char HEADER_FIELD_VALUE_SEPARATOR_CHAR_CONST = ':';
 
-    private static final AtomicLong idCounter = new AtomicLong();
+    private static final AtomicLong idCounter = new AtomicLong(1);
     private static final AtomicReferenceFieldUpdater<Operation, CompletionHandler> completionUpdater = AtomicReferenceFieldUpdater
             .newUpdater(Operation.class, CompletionHandler.class, "completion");
 
@@ -696,7 +696,7 @@ public class Operation implements Cloneable {
         op.action = ctx.action;
         op.body = ctx.jsonBody;
         op.expirationMicrosUtc = ctx.documentExpirationTimeMicros;
-        op.setContextId(ctx.id.toString());
+        op.setContextId(Long.toString(ctx.id));
         op.referer = ctx.referer;
         op.uri = UriUtils.buildUri(host, ctx.path, ctx.query, ctx.userInfo);
         op.transactionId = ctx.transactionId;
