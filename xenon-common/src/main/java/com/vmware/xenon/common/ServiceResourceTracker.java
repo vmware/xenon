@@ -272,14 +272,14 @@ public class ServiceResourceTracker {
                     http2TagInfo.availableConnectionCount);
         }
 
-        ForkJoinPool executor = (ForkJoinPool) this.host.getExecutor();
+        ForkJoinPool executor = this.host.getExecutorPool();
         if (executor != null) {
             createTimeSeriesStat(
                     ServiceHostManagementService.STAT_NAME_EXECUTOR_QUEUE_DEPTH,
                     executor.getQueuedSubmissionCount());
         }
 
-        ScheduledThreadPoolExecutor scheduledExecutor = (ScheduledThreadPoolExecutor) this.host.getScheduledExecutor();
+        ScheduledThreadPoolExecutor scheduledExecutor = this.host.getScheduledExecutorPool();
         if (scheduledExecutor != null) {
             createTimeSeriesStat(
                     ServiceHostManagementService.STAT_NAME_SCHEDULED_EXECUTOR_QUEUE_DEPTH,

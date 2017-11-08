@@ -39,6 +39,7 @@ public class TracerFactory {
      * not perform any host-specific customisations.
      *
      * @return A {@link io.opentracing.Tracer} instance for tracing the given {@link com.vmware.xenon.common.ServiceHost}
+     * If tracing is not enabled, them a {@link io.opentracing.NoopTracer} is returned.
      */
     @SuppressWarnings("unchecked")
     public synchronized Tracer create(ServiceHost host) {
@@ -76,5 +77,15 @@ public class TracerFactory {
         }
 
         return factory.create(host);
+    }
+
+    /**
+     * Is Tracing enabled? {@link TracerFactory#create(ServiceHost)} will return a {@link io.opentracing.NoopTracer}
+     *
+     * @return
+     */
+    public boolean enabled() {
+        String impl = XenonConfiguration.string(TracerFactory.class, "provider", null);
+        return impl != null;
     }
 }
