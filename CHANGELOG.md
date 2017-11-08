@@ -2,6 +2,8 @@
 
 ## 1.6.1-SNAPSHOT
 
+* Time spent in an executor queue is now reported in OpenTracing traces.
+
 ## 1.6.0
 
 * Deprecated ServiceOption.ON_DEMAND_LOAD. While the option still exists
