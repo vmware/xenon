@@ -20,19 +20,15 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.logging.Level;
 
-import io.opentracing.Tracer;
 import io.opentracing.mock.MockSpan;
 import io.opentracing.mock.MockTracer;
 import io.opentracing.tag.Tags;
-import io.opentracing.util.ThreadLocalActiveSpanSource;
 import org.junit.After;
 import org.junit.ClassRule;
 import org.junit.Test;
-import org.junit.rules.ExternalResource;
 
 import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.Operation;
-import com.vmware.xenon.common.ServiceHost;
 
 
 public class TracingTest extends BasicReusableHostTestCase {
@@ -91,6 +87,10 @@ public class TracingTest extends BasicReusableHostTestCase {
         for (MockSpan span : finishedSpans) {
             this.host.log(Level.INFO, "span %s", span.toString());
             assertEquals(String.format("broken trace span %s", span.toString()), traceId, span.context().traceId());
+            if (span.operationName().equals("Queue")) {
+                /* internal housekeeping of executor/scheduling */
+                continue;
+            }
             assertEquals(String.format("trace span %s", span.toString()), "GET", span.tags().get(Tags.HTTP_METHOD.getKey()));
             assertEquals(String.format("trace span %s", span.toString()), "200", span.tags().get(Tags.HTTP_STATUS.getKey()));
         }
@@ -99,47 +99,22 @@ public class TracingTest extends BasicReusableHostTestCase {
         String stateless = uris.get(1);
         assertEquals(stateless, finishedSpans.get(0).tags().get(Tags.HTTP_URL.getKey()));
         assertEquals(stateless, finishedSpans.get(1).tags().get(Tags.HTTP_URL.getKey()));
-        assertEquals(stateful, finishedSpans.get(2).tags().get(Tags.HTTP_URL.getKey()));
         assertEquals(stateful, finishedSpans.get(3).tags().get(Tags.HTTP_URL.getKey()));
         assertEquals(stateful, finishedSpans.get(4).tags().get(Tags.HTTP_URL.getKey()));
-        assertEquals(stateful, finishedSpans.get(5).tags().get(Tags.HTTP_URL.getKey()));
+        assertEquals(stateful, finishedSpans.get(7).tags().get(Tags.HTTP_URL.getKey()));
+        assertEquals(stateful, finishedSpans.get(8).tags().get(Tags.HTTP_URL.getKey()));
         /* kinds: even should be outbound CLIENT spans, odd inbound SERVER spans. */
         assertEquals(Tags.SPAN_KIND_CLIENT, finishedSpans.get(0).tags().get(Tags.SPAN_KIND.getKey()));
         assertEquals(Tags.SPAN_KIND_SERVER, finishedSpans.get(1).tags().get(Tags.SPAN_KIND.getKey()));
-        assertEquals(Tags.SPAN_KIND_CLIENT, finishedSpans.get(2).tags().get(Tags.SPAN_KIND.getKey()));
-        assertEquals(Tags.SPAN_KIND_SERVER, finishedSpans.get(3).tags().get(Tags.SPAN_KIND.getKey()));
-        assertEquals(Tags.SPAN_KIND_CLIENT, finishedSpans.get(4).tags().get(Tags.SPAN_KIND.getKey()));
-        assertEquals(Tags.SPAN_KIND_SERVER, finishedSpans.get(5).tags().get(Tags.SPAN_KIND.getKey()));
+        assertEquals(Tags.SPAN_KIND_CLIENT, finishedSpans.get(3).tags().get(Tags.SPAN_KIND.getKey()));
+        assertEquals(Tags.SPAN_KIND_SERVER, finishedSpans.get(4).tags().get(Tags.SPAN_KIND.getKey()));
+        assertEquals(Tags.SPAN_KIND_CLIENT, finishedSpans.get(7).tags().get(Tags.SPAN_KIND.getKey()));
+        assertEquals(Tags.SPAN_KIND_SERVER, finishedSpans.get(8).tags().get(Tags.SPAN_KIND.getKey()));
         // TODO: test of error paths to ensure capturing of status is robust
         // TODO -, operationName should be the factory
         /* Only one trace expected */
         /* TODO: io.opentracing.tag.Tags#PEER_HOSTNAME, io.opentracing.tag.Tags#PEER_PORT */
-        assertEquals(6, finishedSpans.toArray().length);
-    }
-
-    public static class InjectMockTracer extends ExternalResource {
-        TracerFactory factory;
-        MockTracer tracer;
-
-        @Override
-        protected void after() {
-            TracerFactory.factory = this.factory;
-            super.after();
-        }
-
-        @Override
-        protected void before() throws Throwable {
-            super.before();
-            this.factory = TracerFactory.factory;
-            MockTracer tracer = new MockTracer(new ThreadLocalActiveSpanSource(), MockTracer.Propagator.TEXT_MAP);
-            this.tracer = tracer;
-            TracerFactory.factory = new TracerFactory() {
-                @Override
-                public Tracer create(ServiceHost host) {
-                    return tracer;
-                }
-            };
-        }
+        assertEquals(11 , finishedSpans.toArray().length);
     }
 }
 
