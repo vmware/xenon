@@ -101,6 +101,7 @@ import com.vmware.xenon.common.jwt.JWTUtils;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.common.jwt.Verifier;
 import com.vmware.xenon.common.opentracing.TracerFactory;
+import com.vmware.xenon.common.opentracing.TracingExecutor;
 import com.vmware.xenon.common.opentracing.TracingUtils;
 import com.vmware.xenon.services.common.AuthCredentialsService;
 import com.vmware.xenon.services.common.AuthorizationContextService;
@@ -785,14 +786,14 @@ public class ServiceHost implements ServiceRequestSender {
             this.serviceScheduledExecutor.shutdownNow();
         }
 
-        this.executor = new ForkJoinPool(Utils.DEFAULT_THREAD_COUNT, (pool) -> {
+        this.executor = new TracingExecutor(new ForkJoinPool(Utils.DEFAULT_THREAD_COUNT, (pool) -> {
             ForkJoinWorkerThread res = ForkJoinPool.defaultForkJoinWorkerThreadFactory.newThread(pool);
             res.setName(getUri() + "/" + res.getName());
             return res;
-        }, null, false);
+        }, null, false), this.otTracer);
 
-        this.scheduledExecutor = Executors.newScheduledThreadPool(Utils.DEFAULT_THREAD_COUNT,
-                new NamedThreadFactory(getUri() + "/scheduled"));
+        this.scheduledExecutor = new TracingExecutor(Executors.newScheduledThreadPool(Utils.DEFAULT_THREAD_COUNT,
+                new NamedThreadFactory(getUri() + "/scheduled")), this.otTracer);
 
         this.serviceScheduledExecutor = Executors.newScheduledThreadPool(
                 Utils.DEFAULT_THREAD_COUNT / 2,
@@ -1416,7 +1417,9 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     public ExecutorService allocateExecutor(Service s, int threadCount) {
-        return Executors.newFixedThreadPool(threadCount, new NamedThreadFactory(s.getUri().toString()));
+        return new TracingExecutor(
+                Executors.newFixedThreadPool(threadCount, new NamedThreadFactory(s.getUri().toString())),
+                this.otTracer);
     }
 
     @SuppressWarnings("try")
@@ -4602,27 +4605,10 @@ public class ServiceHost implements ServiceRequestSender {
             throw new IllegalStateException("Stopped");
         }
         OperationContext origContext = OperationContext.getOperationContext();
-        /* Pass any current tracing span potentially cross-thread */
-        ActiveSpan span = this.otTracer.activeSpan();
-        final ActiveSpan.Continuation cont = null != span ? span.capture() : null;
-        try {
-            executor.execute(() -> {
-                ActiveSpan contspan = null != cont ? cont.activate() : null;
-                try {
-                    OperationContext.setFrom(origContext);
-                    executeRunnableSafe(task);
-                } finally {
-                    if (contspan != null) {
-                        contspan.close();
-                    }
-                }
-            });
-        } catch (RejectedExecutionException e) {
-            if (cont != null) {
-                cont.activate().close();
-            }
-            throw e;
-        }
+        executor.execute(() -> {
+            OperationContext.setFrom(origContext);
+            executeRunnableSafe(task);
+        });
     }
 
     /**
