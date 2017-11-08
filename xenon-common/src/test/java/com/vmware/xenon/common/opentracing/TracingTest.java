@@ -16,7 +16,7 @@ package com.vmware.xenon.common.opentracing;
 import static org.junit.Assert.assertEquals;
 
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.logging.Level;
 
@@ -82,7 +82,7 @@ public class TracingTest extends BasicReusableHostTestCase {
 
         List<MockSpan> finishedSpans = tracer.finishedSpans();
         /* Spans can potentially complete out of order */
-        Collections.sort(finishedSpans, (e1, e2) -> Long.compare(e1.context().spanId(), e2.context().spanId()));
+        finishedSpans.sort(Comparator.comparingLong(e -> e.context().spanId()));
         // TODO: provide a nice declarative check. e.g. a matcher that takes a yaml expression.
         // We want to check:
         // for each span opname tags, type.
