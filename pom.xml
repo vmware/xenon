@@ -150,6 +150,13 @@
     </profile>
 
     <profile>
+      <id>jmh</id>
+      <properties>
+        <skipAnalysis>true</skipAnalysis>
+      </properties>
+    </profile>
+
+    <profile>
       <id>performance</id>
       <modules>
         <module>xenon-host</module>
@@ -338,7 +345,7 @@
           <compilerId>javac</compilerId>
           <compilerArgs>
             <arg>-Werror</arg>
-            <arg>-Xlint</arg>
+            <arg>-Xlint:-processing</arg>
           </compilerArgs>
           <showWarnings>true</showWarnings>
         </configuration>
