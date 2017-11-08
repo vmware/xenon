@@ -2,6 +2,8 @@
 
 ## 1.6.2-SNAPSHOT
 
+* Time spent in an executor queue is now reported in OpenTracing traces.
+
 ## 1.6.1
 
   Preparing in different branch
