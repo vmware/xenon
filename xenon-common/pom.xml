@@ -22,6 +22,7 @@
     <iozipkin.version>2.0.2</iozipkin.version>
     <jaeger.version>0.21.0</jaeger.version>
     <findbugs.version>3.0.1</findbugs.version>
+    <jmh.version>1.19</jmh.version>
   </properties>
 
   <profiles>
@@ -33,6 +34,62 @@
       <properties>
         <xenon.ci>true</xenon.ci>
       </properties>
+    </profile>
+    <profile>
+      <id>jmh</id>
+      <properties>
+        <jmh.uberjar>xenon-benchmarks</jmh.uberjar>
+        <skipTests>true</skipTests>
+      </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>build-helper-maven-plugin</artifactId>
+            <version>3.0.0</version>
+            <executions>
+              <execution>
+                <id>add-test-source</id>
+                <phase>generate-test-sources</phase>
+                <goals>
+                  <goal>add-test-source</goal>
+                </goals>
+                <configuration>
+                  <sources>
+                    <source>src/test/benchmarks</source>
+                  </sources>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <artifactId>maven-assembly-plugin</artifactId>
+            <configuration>
+              <descriptors>
+                <descriptor>src/main/assembly/benchmarks.xml</descriptor>
+              </descriptors>
+            </configuration>
+            <executions>
+              <execution>
+                <id>make-assembly</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>single</goal>
+                </goals>
+                <configuration>
+                  <finalName>${jmh.uberjar}</finalName>
+                  <appendAssemblyId>false</appendAssemblyId>
+                  <archive>
+                    <manifest>
+                      <mainClass>org.openjdk.jmh.Main</mainClass>
+                    </manifest>
+                  </archive>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
     </profile>
   </profiles>
 
@@ -120,6 +177,18 @@
       <groupId>io.opentracing</groupId>
       <artifactId>opentracing-util</artifactId>
       <version>${opentracing.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.openjdk.jmh</groupId>
+      <artifactId>jmh-core</artifactId>
+      <version>${jmh.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.openjdk.jmh</groupId>
+      <artifactId>jmh-generator-annprocess</artifactId>
+      <version>${jmh.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
