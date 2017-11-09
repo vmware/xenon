@@ -92,10 +92,17 @@ public class OperationProcessingChain {
          */
         private Consumer<Operation> suspendConsumer;
 
-        private OperationProcessingContext(ServiceHost host, OperationProcessingChain opProcessingChain) {
+        private OperationProcessingContext(ServiceHost host,
+                OperationProcessingChain opProcessingChain, Service service) {
             this.host = host;
             this.opProcessingChain = opProcessingChain;
             this.currentFilterPosition = -1;
+            this.service = service;
+        }
+
+        private OperationProcessingContext(ServiceHost host,
+                OperationProcessingChain opProcessingChain) {
+            this(host, opProcessingChain, null);
         }
 
         public ServiceHost getHost() {
@@ -143,6 +150,10 @@ public class OperationProcessingChain {
         default void close() {}
     }
 
+    public OperationProcessingContext createContext(ServiceHost host, Service service) {
+        return new OperationProcessingContext(host, this, service);
+    }
+
     public OperationProcessingContext createContext(ServiceHost host) {
         return new OperationProcessingContext(host, this);
     }
@@ -188,7 +199,6 @@ public class OperationProcessingChain {
         }
         this.filters.clear();
     }
-
 
     /**
      * Processes an operation by passing it through the chain of filters.

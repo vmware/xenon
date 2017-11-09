@@ -39,7 +39,8 @@ public class TestOperationProcessingChain extends BasicTestCase {
     public static class OperationLogger implements Filter {
         @Override
         public FilterReturnCode processRequest(Operation op, OperationProcessingContext context) {
-            Utils.log(getClass(), getClass().getName(), Level.INFO, "Operation: %s", op);
+            Utils.log(context.getService().getClass(), context.getService().getClass().getName(),
+                    Level.INFO, "Operation: %s", op);
             return FilterReturnCode.CONTINUE_PROCESSING;
         }
     }
