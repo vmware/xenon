@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.NumericRange;
 import com.vmware.xenon.services.common.QueryTask.Query;
@@ -72,13 +73,28 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
  * </pre>
  */
 public class QueryTaskClientHelper<T extends ServiceDocument> {
-    public static final long QUERY_RETRIEVAL_RETRY_INTERVAL_MILLIS = Long.getLong(
-            "xenon.querytaskclienthelper.query.retry.interval.millis", 300);
-    public static final long DEFAULT_EXPIRATION_TIME_IN_MICROS = Long.getLong(
-            "xenon.querytaskclienthelper.query.documents.default.expiration.millis",
-            TimeUnit.SECONDS.toMicros(120));
-    public static final Integer DEFAULT_QUERY_RESULT_LIMIT = Integer.getInteger(
-            "xenon.querytaskclienthelper.query.documents.default.resultLimit", 50);
+    public static final long QUERY_RETRIEVAL_RETRY_INTERVAL_MICROS = XenonConfiguration.duration(
+            QueryTaskClientHelper.class,
+            "retryInterval",
+            TimeUnit.MILLISECONDS,
+            1000 * Long.getLong("xenon.querytaskclienthelper.query.retry.interval.millis", 300)
+    );
+
+    public static final long DEFAULT_EXPIRATION_TIME_IN_MICROS = XenonConfiguration.duration(
+            QueryTaskClientHelper.class,
+            "taskExpiration",
+            TimeUnit.MICROSECONDS,
+            // the property names below says millis but value is interpreted as micros, so to retain FULL
+            // backward compatibility the bug is still preserved, assuming users have always passed micros anyway
+            Long.getLong("xenon.querytaskclienthelper.query.documents.default.expiration.millis",
+                    TimeUnit.SECONDS.toMicros(120))
+    );
+
+    public static final Integer DEFAULT_QUERY_RESULT_LIMIT = XenonConfiguration.integer(
+            QueryTaskClientHelper.class,
+            "resultLimit",
+            Integer.getInteger("xenon.querytaskclienthelper.query.documents.default.resultLimit", 50)
+    );
 
     private final Class<T> type;
     private ServiceHost host;
@@ -314,7 +330,7 @@ public class QueryTaskClientHelper<T extends ServiceDocument> {
                     if (!TaskState.isFinished(rsp.taskInfo)) {
                         this.host.log(Level.FINE, "Resource query not complete yet, retrying...");
                         this.host.scheduleCore(() -> processQuery(rsp, handler),
-                                QUERY_RETRIEVAL_RETRY_INTERVAL_MILLIS, TimeUnit.MILLISECONDS);
+                                QUERY_RETRIEVAL_RETRY_INTERVAL_MICROS, TimeUnit.MICROSECONDS);
                         return;
                     }
 

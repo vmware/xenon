@@ -50,7 +50,8 @@ public final class XenonConfiguration {
     }
 
     /**
-     * Returns a number, can be negative.
+     * Returns a long interger, can be negative.
+     * @see XenonConfiguration#integer(Class, String, long)
      * @param subsystem
      * @param property
      * @param defaultValue
