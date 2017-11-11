@@ -2,6 +2,8 @@
 
 ## 1.6.2-SNAPSHOT
 
+* Resource cost of using `SINGLE_USE` query becomes same as regular query.
+
 ## 1.6.1
 
   Preparing in different branch
