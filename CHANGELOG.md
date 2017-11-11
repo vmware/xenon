@@ -4,6 +4,9 @@
 
 * Time spent in an executor queue is now reported in OpenTracing traces.
 
+* Resource cost of using `SINGLE_USE` query becomes same as regular query.
+
+
 ## 1.6.1
 
   Preparing in different branch

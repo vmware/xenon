@@ -18,6 +18,7 @@ import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
 import static javax.xml.bind.DatatypeConverter.printBase64Binary;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -25,6 +26,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import static com.vmware.xenon.services.common.LuceneDocumentIndexService.DEFAULT_PAGINATED_SEARCHER_EXPIRATION_DELAY;
+import static com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption.SINGLE_USE;
 
 import java.io.File;
 import java.io.IOException;
@@ -155,6 +157,17 @@ class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexServic
 
     public TreeMap<Long, PaginatedSearcherInfo> getPaginatedSearchersByExpirationTime() {
         return this.paginatedSearchersByCreationTime;
+    }
+
+    public List<PaginatedSearcherInfo> getPaginatedSearcherInfos() {
+        // quick check the paginated searcher cache
+        synchronized (this.searchSync) {
+            long searcherCountInExpiration = this.paginatedSearchersByExpirationTime.values().stream()
+                    .flatMap(Collection::stream).distinct().count();
+            int searcherCountInCreation = this.paginatedSearchersByCreationTime.size();
+            assertEquals(searcherCountInCreation, searcherCountInExpiration);
+        }
+        return new ArrayList<>(this.paginatedSearchersByCreationTime.values());
     }
 
     /*
@@ -860,7 +873,7 @@ public class TestLuceneDocumentIndexService {
         queryTask = QueryTask.Builder.create()
                 .setQuery(query)
                 .setResultLimit(2)
-                .addOption(QueryOption.SINGLE_USE)
+                .addOption(SINGLE_USE)
                 .build();
         queryTask.documentExpirationTimeMicros = extendedQueryExpirationTimeMicros;
 
@@ -4636,6 +4649,256 @@ public class TestLuceneDocumentIndexService {
 
         FailureResponse failure = sender.sendAndWaitFailure(Operation.createGet(nonOwnerHost, fooPath).forceRemote());
         assertEquals(Operation.STATUS_CODE_NOT_FOUND, failure.op.getStatusCode());
+    }
+
+
+    @Test
+    public void paginatedSearcherSharingMixedWithNormalAndSingleUse() throws Throwable {
+        setUpHost(false);
+        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
+
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+
+        // create example services
+        List<Operation> posts = new ArrayList<>();
+        for (int i = 0; i < 30; i++) {
+            ExampleServiceState state = new ExampleServiceState();
+            state.name = "foo-" + i;
+            posts.add(Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(state));
+        }
+        sender.sendAndWait(posts, ExampleServiceState.class);
+
+        // create normal paginated query
+        QueryTask task = QueryTask.Builder.createDirectTask()
+                .setQuery(Query.Builder.create().addKindFieldClause(ExampleServiceState.class).build())
+                .setResultLimit(2)
+                .build();
+        Operation post = Operation.createPost(this.host, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS).setBody(task);
+        sender.sendAndWait(post, QueryTask.class);
+
+        List<PaginatedSearcherInfo> infoList = this.indexService.getPaginatedSearcherInfos();
+        assertEquals(1, infoList.size());
+        assertEquals(1, infoList.get(0).refCount);
+        assertEquals(1, getPaginatedSearcherUpdateCountStat());
+
+
+        int numOfSingleUseQueries = 10;
+
+        // perform multiple SINGLE_USE queries
+        List<QueryTask> pages = new ArrayList<>();
+        for (int i = 0; i < numOfSingleUseQueries; i++) {
+            task = QueryTask.Builder.createDirectTask()
+                    .setQuery(Query.Builder.create().addKindFieldClause(ExampleServiceState.class).build())
+                    .addOption(SINGLE_USE)
+                    .setResultLimit(2)
+                    .build();
+            post = Operation.createPost(this.host, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS).setBody(task);
+            QueryTask result = sender.sendAndWait(post, QueryTask.class);
+            pages.add(result);
+        }
+
+        infoList = this.indexService.getPaginatedSearcherInfos();
+        assertEquals("existing searcher should be reused", 1, infoList.size());
+        assertEquals("shared by all queries", 1 + numOfSingleUseQueries, infoList.get(0).refCount);
+        assertEquals(1, getPaginatedSearcherUpdateCountStat());
+
+        // Go through single use query page results
+        for (QueryTask page : pages) {
+            String nextPageLink = page.results.nextPageLink;
+            while (nextPageLink != null) {
+                page = sender.sendAndWait(Operation.createGet(this.host, nextPageLink), QueryTask.class);
+                nextPageLink = page.results.nextPageLink;
+            }
+        }
+
+        this.host.waitFor("Wait for single-use queries decrement ref count", () -> {
+            List<PaginatedSearcherInfo> list = this.indexService.getPaginatedSearcherInfos();
+            assertEquals(1, list.size());
+            return list.get(0).refCount == 1;
+        });
+
+
+        // Update a document
+        ExampleServiceState state = new ExampleServiceState();
+        state.name = "foo-update";
+        sender.sendAndWait(Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(state));
+
+
+        pages.clear();
+        // Perform multiple SINGLE_USE search again
+        for (int i = 0; i < numOfSingleUseQueries; i++) {
+            task = QueryTask.Builder.createDirectTask()
+                    .setQuery(Query.Builder.create().addKindFieldClause(ExampleServiceState.class).build())
+                    .addOption(SINGLE_USE)
+                    .setResultLimit(2)
+                    .build();
+            post = Operation.createPost(this.host, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS).setBody(task);
+            QueryTask result = sender.sendAndWait(post, QueryTask.class);
+            pages.add(result);
+        }
+
+        infoList = this.indexService.getPaginatedSearcherInfos();
+        assertEquals("new searcher should be created",2, infoList.size());
+        assertThat(infoList).extracting(info -> info.refCount).contains(1, numOfSingleUseQueries);
+        assertEquals(2, getPaginatedSearcherUpdateCountStat());
+
+        int searcherDeleteCount = getPaginatedSearcherForceDeletionCountStat();
+
+        // Go through single use query page results
+        for (QueryTask page : pages) {
+            String nextPageLink = page.results.nextPageLink;
+            while (nextPageLink != null) {
+                page = sender.sendAndWait(Operation.createGet(this.host, nextPageLink), QueryTask.class);
+                nextPageLink = page.results.nextPageLink;
+            }
+        }
+
+        this.host.waitFor("Wait searcher get closed", () -> {
+            return searcherDeleteCount < getPaginatedSearcherForceDeletionCountStat();
+        });
+        infoList = this.indexService.getPaginatedSearcherInfos();
+        assertEquals(1, infoList.size());
+
+    }
+
+    @Test
+    public void paginatedSearcherSharingExpiration() throws Throwable {
+        setUpHost(false);
+        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
+
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+        // create example services
+        List<Operation> posts = new ArrayList<>();
+        for (int i = 0; i < 30; i++) {
+            ExampleServiceState state = new ExampleServiceState();
+            state.name = "foo-" + i;
+            posts.add(Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(state));
+        }
+        sender.sendAndWait(posts, ExampleServiceState.class);
+
+
+        long now = Utils.getNowMicrosUtc();
+        long nowToOneHour = now + TimeUnit.HOURS.toMicros(1);
+        long nowToTwoHour = now + TimeUnit.HOURS.toMicros(2);
+        long nowToThreeHour = now + TimeUnit.HOURS.toMicros(3);
+
+        // create paginated query with 2-hour expiration
+        QueryTask task = QueryTask.Builder.createDirectTask()
+                .setQuery(Query.Builder.create().addKindFieldClause(ExampleServiceState.class).build())
+                .setResultLimit(2)
+                .build();
+        task.documentExpirationTimeMicros = nowToTwoHour;
+        Operation post = Operation.createPost(this.host, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS).setBody(task);
+        sender.sendAndWait(post, QueryTask.class);
+
+        List<PaginatedSearcherInfo> infoList = this.indexService.getPaginatedSearcherInfos();
+        assertEquals(1, infoList.size());
+        assertEquals(1, infoList.get(0).refCount);
+        assertEquals(nowToTwoHour, infoList.get(0).expirationTimeMicros - DEFAULT_PAGINATED_SEARCHER_EXPIRATION_DELAY);
+        assertEquals(1, getPaginatedSearcherUpdateCountStat());
+
+
+        // create paginated query with 1-hour(shorter) expiration
+        task = QueryTask.Builder.createDirectTask()
+                .setQuery(Query.Builder.create().addKindFieldClause(ExampleServiceState.class).build())
+                .setResultLimit(2)
+                .build();
+        task.documentExpirationTimeMicros = nowToOneHour;
+        post = Operation.createPost(this.host, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS).setBody(task);
+        sender.sendAndWait(post, QueryTask.class);
+
+        infoList = this.indexService.getPaginatedSearcherInfos();
+        assertEquals(1, infoList.size());
+        assertEquals(2, infoList.get(0).refCount);
+        assertEquals("expiration should still be 2-hours",
+                nowToTwoHour, infoList.get(0).expirationTimeMicros - DEFAULT_PAGINATED_SEARCHER_EXPIRATION_DELAY);
+
+        assertEquals(1, getPaginatedSearcherUpdateCountStat());
+
+        // create paginated query with 3-hour(longer) expiration
+        task = QueryTask.Builder.createDirectTask()
+                .setQuery(Query.Builder.create().addKindFieldClause(ExampleServiceState.class).build())
+                .setResultLimit(2)
+                .build();
+        task.documentExpirationTimeMicros = nowToThreeHour;
+        post = Operation.createPost(this.host, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS).setBody(task);
+        sender.sendAndWait(post, QueryTask.class);
+
+        infoList = this.indexService.getPaginatedSearcherInfos();
+        assertEquals(1, infoList.size());
+        assertEquals(3, infoList.get(0).refCount);
+        assertEquals("expiration should be changed to 3-hours",
+                nowToThreeHour, infoList.get(0).expirationTimeMicros - DEFAULT_PAGINATED_SEARCHER_EXPIRATION_DELAY);
+
+        assertEquals(1, getPaginatedSearcherUpdateCountStat());
+
+    }
+
+    private int getPaginatedSearcherUpdateCountStat() {
+        String key = LuceneDocumentIndexService.STAT_NAME_PAGINATED_SEARCHER_UPDATE_COUNT + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
+        return (int) getLuceneStat(key).latestValue;
+    }
+
+    private int getPaginatedSearcherForceDeletionCountStat() {
+        String key = LuceneDocumentIndexService.STAT_NAME_PAGINATED_SEARCHER_FORCE_DELETION_COUNT + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
+        return (int) getLuceneStat(key).latestValue;
+    }
+
+    @Test
+    public void paginatedSearcherSharingForSingleUseQueries() throws Throwable {
+        setUpHost(false);
+        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
+
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+        // create example services
+        List<Operation> posts = new ArrayList<>();
+        for (int i = 0; i < 30; i++) {
+            ExampleServiceState state = new ExampleServiceState();
+            state.name = "foo-" + i;
+            posts.add(Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(state));
+        }
+        sender.sendAndWait(posts, ExampleServiceState.class);
+
+        int numOfQueries = 10;
+        List<QueryTask> results = new ArrayList<>();
+
+        // perform multiple SINGLE_USE queries
+        for (int i = 0; i < numOfQueries; i++) {
+            QueryTask task = QueryTask.Builder.createDirectTask()
+                    .setQuery(Query.Builder.create().addKindFieldClause(ExampleServiceState.class).build())
+                    .addOption(SINGLE_USE)
+                    .setResultLimit(5)
+                    .build();
+            Operation post = Operation.createPost(this.host, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS).setBody(task);
+            QueryTask result = sender.sendAndWait(post, QueryTask.class);
+            results.add(result);
+        }
+
+        List<PaginatedSearcherInfo> infoList = this.indexService.getPaginatedSearcherInfos();
+        assertEquals(1, infoList.size());
+        assertEquals(numOfQueries, infoList.get(0).refCount);
+        assertEquals(1, getPaginatedSearcherUpdateCountStat());
+
+
+        int statCountBefore = getPaginatedSearcherForceDeletionCountStat();
+
+        // Go through single use query page results, once it reaches to the last page, it will close the searcher
+        for (QueryTask page : results) {
+            String nextPageLink = page.results.nextPageLink;
+            while (nextPageLink != null) {
+                page = sender.sendAndWait(Operation.createGet(this.host, nextPageLink), QueryTask.class);
+                nextPageLink = page.results.nextPageLink;
+            }
+        }
+
+        this.host.waitFor("Wait for single-use query closes searcher", () -> {
+            return statCountBefore < getPaginatedSearcherForceDeletionCountStat();
+        });
+
+        assertEquals(0, this.indexService.getPaginatedSearcherInfos().size());
     }
 
 }
