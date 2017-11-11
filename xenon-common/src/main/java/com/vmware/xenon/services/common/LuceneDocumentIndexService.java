@@ -401,9 +401,130 @@ public class LuceneDocumentIndexService extends StatelessService {
     /**
      * Searchers used for paginated query tasks.
      */
-    protected TreeMap<Long, PaginatedSearcherInfo> paginatedSearchersByCreationTime = new TreeMap<>();
+    protected PaginatedSearcherManager paginatedSearcherManager = new PaginatedSearcherManager();
 
-    protected TreeMap<Long, List<PaginatedSearcherInfo>> paginatedSearchersByExpirationTime = new TreeMap<>();
+
+    // TODO: documentation
+    public static class PaginatedSearcherManager {
+        protected TreeMap<Long, PaginatedSearcherInfo> paginatedSearchersByCreationTime = new TreeMap<>();
+        protected TreeMap<Long, List<PaginatedSearcherInfo>> paginatedSearchersByExpirationTime = new TreeMap<>();
+
+        public void removeSearcher(IndexSearcher searcher) {
+            PaginatedSearcherInfo infoToRemove = null;
+            Iterator<Entry<Long, PaginatedSearcherInfo>> itr = this.paginatedSearchersByCreationTime.entrySet().iterator();
+            while (itr.hasNext()) {
+                PaginatedSearcherInfo info = itr.next().getValue();
+                if (info.searcher.equals(searcher)) {
+                    if (!info.singleUse) {
+                        throw new IllegalStateException(
+                                "Context deletion is supported only for SINGLE_USE queries");
+                    }
+
+                    infoToRemove = info;
+                    itr.remove();
+                    break;
+                }
+            }
+
+            if (infoToRemove == null) {
+                return;
+            }
+
+            long expirationTime = infoToRemove.expirationTimeMicros;
+            List<PaginatedSearcherInfo> expirationList =
+                    this.paginatedSearchersByExpirationTime.get(expirationTime);
+            expirationList.remove(infoToRemove);
+            if (expirationList.isEmpty()) {
+                this.paginatedSearchersByExpirationTime.remove(expirationTime);
+            }
+        }
+
+        public Collection<PaginatedSearcherInfo> getPaginatedSearcherInfosOrderByCreationDesc() {
+            return this.paginatedSearchersByCreationTime.descendingMap().values();
+        }
+
+
+        public void updateExpirationTime(PaginatedSearcherInfo info, long newExpirationMicros) {
+            long currentExpirationMicros = info.expirationTimeMicros;
+            List<PaginatedSearcherInfo> expirationList = this.paginatedSearchersByExpirationTime.get(
+                    currentExpirationMicros);
+            if (expirationList == null || !expirationList.contains(info)) {
+                throw new IllegalStateException("Searcher not found in expiration list");
+            }
+
+            expirationList.remove(info);
+            if (expirationList.isEmpty()) {
+                this.paginatedSearchersByExpirationTime.remove(currentExpirationMicros);
+            }
+
+            info.expirationTimeMicros = newExpirationMicros;
+
+            expirationList = this.paginatedSearchersByExpirationTime.computeIfAbsent(
+                    newExpirationMicros, (k) -> new ArrayList<>());
+            expirationList.add(info);
+        }
+
+        public void addNewSearcher(IndexSearcher searcher, long creationMicros, long expirationMicros, boolean singleUse) {
+            PaginatedSearcherInfo info = new PaginatedSearcherInfo();
+            info.creationTimeMicros = creationMicros;
+            info.expirationTimeMicros = expirationMicros;
+            info.singleUse = singleUse;
+            info.searcher = searcher;
+
+            this.paginatedSearchersByCreationTime.put(info.creationTimeMicros, info);
+            List<PaginatedSearcherInfo> expirationList = this.paginatedSearchersByExpirationTime
+                    .computeIfAbsent(info.expirationTimeMicros, (k) -> new ArrayList<>());
+            expirationList.add(info);
+        }
+
+        public Map<Long, List<PaginatedSearcherInfo>> removeExpiredSearcherInfos(long now) {
+            Map<Long, List<PaginatedSearcherInfo>> expired = new HashMap<>();
+
+
+            Iterator<Entry<Long, List<PaginatedSearcherInfo>>> itr =
+                    this.paginatedSearchersByExpirationTime.entrySet().iterator();
+            while (itr.hasNext()) {
+                Entry<Long, List<PaginatedSearcherInfo>> entry = itr.next();
+                long expirationMicros = entry.getKey();
+                if (expirationMicros > now) {
+                    break;
+                }
+
+                List<PaginatedSearcherInfo> expirationList = entry.getValue();
+                for (PaginatedSearcherInfo info : expirationList) {
+                    this.paginatedSearchersByCreationTime.remove(info.creationTimeMicros);
+                }
+
+                expired.put(expirationMicros, expirationList);
+                itr.remove();
+            }
+            return expired;
+        }
+
+        public void closeAllSearchers() {
+            for (PaginatedSearcherInfo info : this.paginatedSearchersByCreationTime.values()) {
+                try {
+                    IndexSearcher s = info.searcher;
+                    s.getIndexReader().close();
+                } catch (Exception ignored) {
+                }
+            }
+        }
+
+        public int getSize() {
+            return this.paginatedSearchersByCreationTime.size();
+        }
+
+        public boolean isEmpty() {
+            return this.paginatedSearchersByCreationTime.isEmpty();
+        }
+
+        public void clear() {
+            this.paginatedSearchersByCreationTime.clear();
+            this.paginatedSearchersByExpirationTime.clear();
+        }
+
+    }
 
     protected IndexWriter writer = null;
 
@@ -614,8 +735,6 @@ public class LuceneDocumentIndexService extends StatelessService {
         this.liveVersionsPerLink.clear();
         this.updatesPerLink.clear();
         this.searcherUpdateTimesMicros.clear();
-        this.paginatedSearchersByCreationTime.clear();
-        this.paginatedSearchersByExpirationTime.clear();
         this.versionSort = new Sort(new SortedNumericSortField(ServiceDocument.FIELD_NAME_VERSION,
                 SortField.Type.LONG, true));
 
@@ -840,59 +959,19 @@ public class LuceneDocumentIndexService extends StatelessService {
             throw new IllegalArgumentException("Native searcher must be present");
         }
 
-        PaginatedSearcherInfo infoToRemove;
         synchronized (this.searchSync) {
-            infoToRemove = removeSearcherInfoUnsafe(nativeSearcher);
-        }
-
-        if (infoToRemove == null) {
-            op.complete();
-            return;
+            this.paginatedSearcherManager.removeSearcher(nativeSearcher);
+            this.searcherUpdateTimesMicros.remove(nativeSearcher.hashCode());
         }
 
         try {
-            infoToRemove.searcher.getIndexReader().close();
+            nativeSearcher.getIndexReader().close();
         } catch (Exception ignored) {
         }
-
         op.complete();
 
         adjustTimeSeriesStat(STAT_NAME_PAGINATED_SEARCHER_FORCE_DELETION_COUNT,
                 AGGREGATION_TYPE_SUM, 1);
-    }
-
-    private PaginatedSearcherInfo removeSearcherInfoUnsafe(IndexSearcher searcher) {
-        PaginatedSearcherInfo infoToRemove = null;
-        Iterator<Entry<Long, PaginatedSearcherInfo>> itr =
-                this.paginatedSearchersByCreationTime.entrySet().iterator();
-        while (itr.hasNext()) {
-            PaginatedSearcherInfo info = itr.next().getValue();
-            if (info.searcher.equals(searcher)) {
-                if (!info.singleUse) {
-                    throw new IllegalStateException(
-                            "Context deletion is supported only for SINGLE_USE queries");
-                }
-
-                infoToRemove = info;
-                itr.remove();
-                break;
-            }
-        }
-
-        if (infoToRemove == null) {
-            return null;
-        }
-
-        long expirationTime = infoToRemove.expirationTimeMicros;
-        List<PaginatedSearcherInfo> expirationList =
-                this.paginatedSearchersByExpirationTime.get(expirationTime);
-        expirationList.remove(infoToRemove);
-        if (expirationList.isEmpty()) {
-            this.paginatedSearchersByExpirationTime.remove(expirationTime);
-        }
-
-        this.searcherUpdateTimesMicros.remove(infoToRemove.searcher.hashCode());
-        return infoToRemove;
     }
 
     private void handleBackup(Operation op) throws Exception {
@@ -1224,14 +1303,14 @@ public class LuceneDocumentIndexService extends StatelessService {
     private IndexSearcher getOrUpdateExistingSearcher(long newExpirationMicros,
             Set<String> kindScope, boolean doNotRefresh) {
 
-        if (this.paginatedSearchersByCreationTime.isEmpty()) {
+        if (this.paginatedSearcherManager.isEmpty()) {
             return null;
         }
 
         int maxAttempts = SEARCHER_REUSE_MAX_ATTEMPTS;
 
         PaginatedSearcherInfo info = null;
-        for (PaginatedSearcherInfo i : this.paginatedSearchersByCreationTime.descendingMap().values()) {
+        for (PaginatedSearcherInfo i : this.paginatedSearcherManager.getPaginatedSearcherInfosOrderByCreationDesc()) {
             if (maxAttempts-- < 0) {
                 break;
             }
@@ -1267,25 +1346,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         // update paginatedSearchersByExpirationTime with new expiration
 
-        List<PaginatedSearcherInfo> expirationList = this.paginatedSearchersByExpirationTime.get(
-                currentExpirationMicros);
-        if (expirationList == null || !expirationList.contains(info)) {
-            throw new IllegalStateException("Searcher not found in expiration list");
-        }
-
-        expirationList.remove(info);
-        if (expirationList.isEmpty()) {
-            this.paginatedSearchersByExpirationTime.remove(currentExpirationMicros);
-        }
-
-        info.expirationTimeMicros = newExpirationMicros;
-
-        // initialize the array with size = 1: unlikely that two searcher will expire
-        // at the same microsecond. The default size of 10 is almost never filled up.
-        expirationList = this.paginatedSearchersByExpirationTime.computeIfAbsent(
-                newExpirationMicros, _k -> new ArrayList<>(1));
-
-        expirationList.add(info);
+        this.paginatedSearcherManager.updateExpirationTime(info, newExpirationMicros);
 
         return info.searcher;
     }
@@ -1303,17 +1364,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         IndexSearcher s = new IndexSearcher(DirectoryReader.open(w, true, true));
         s.setSimilarity(s.getSimilarity(false));
 
-        PaginatedSearcherInfo info = new PaginatedSearcherInfo();
-        info.creationTimeMicros = now;
-        info.expirationTimeMicros = expirationMicros;
-        info.singleUse = singleUse;
-        info.searcher = s;
-
         synchronized (this.searchSync) {
-            this.paginatedSearchersByCreationTime.put(info.creationTimeMicros, info);
-            List<PaginatedSearcherInfo> expirationList = this.paginatedSearchersByExpirationTime
-                    .computeIfAbsent(info.expirationTimeMicros, _k -> new ArrayList<>(1));
-            expirationList.add(info);
+            this.paginatedSearcherManager.addNewSearcher(s, now, expirationMicros, singleUse);
             this.searcherUpdateTimesMicros.put(s.hashCode(), now);
         }
 
@@ -3556,19 +3608,11 @@ public class LuceneDocumentIndexService extends StatelessService {
                 return;
             }
 
-            logInfo("Closing all paginated searchers (%d)",
-                    this.paginatedSearchersByCreationTime.size());
+            logInfo("Closing all paginated searchers (%d)", this.paginatedSearcherManager.getSize());
 
-            for (PaginatedSearcherInfo info : this.paginatedSearchersByCreationTime.values()) {
-                try {
-                    IndexSearcher s = info.searcher;
-                    s.getIndexReader().close();
-                } catch (Exception ignored) {
-                }
-            }
+            this.paginatedSearcherManager.closeAllSearchers();
+            this.paginatedSearcherManager.clear();
 
-            this.paginatedSearchersByCreationTime.clear();
-            this.paginatedSearchersByExpirationTime.clear();
             this.searcherUpdateTimesMicros.clear();
 
             try {
@@ -3642,29 +3686,16 @@ public class LuceneDocumentIndexService extends StatelessService {
         long now = Utils.getNowMicrosUtc();
         applyMemoryLimitToDocumentUpdateInfo();
 
-        Map<Long, List<PaginatedSearcherInfo>> entriesToClose = new HashMap<>();
+        Map<Long, List<PaginatedSearcherInfo>> entriesToClose;
         long activePaginatedQueries;
         synchronized (this.searchSync) {
-            Iterator<Entry<Long, List<PaginatedSearcherInfo>>> itr =
-                    this.paginatedSearchersByExpirationTime.entrySet().iterator();
-            while (itr.hasNext()) {
-                Entry<Long, List<PaginatedSearcherInfo>> entry = itr.next();
-                long expirationMicros = entry.getKey();
-                if (expirationMicros > now) {
-                    break;
-                }
-
-                List<PaginatedSearcherInfo> expirationList = entry.getValue();
-                for (PaginatedSearcherInfo info : expirationList) {
-                    this.paginatedSearchersByCreationTime.remove(info.creationTimeMicros);
+            entriesToClose = this.paginatedSearcherManager.removeExpiredSearcherInfos(now);
+            for (List<PaginatedSearcherInfo> infos : entriesToClose.values()) {
+                for (PaginatedSearcherInfo info : infos) {
                     this.searcherUpdateTimesMicros.remove(info.searcher.hashCode());
                 }
-
-                entriesToClose.put(expirationMicros, expirationList);
-                itr.remove();
             }
-
-            activePaginatedQueries = this.paginatedSearchersByCreationTime.size();
+            activePaginatedQueries = this.paginatedSearcherManager.getSize();
         }
 
         setTimeSeriesStat(STAT_NAME_ACTIVE_PAGINATED_QUERIES, AGGREGATION_TYPE_AVG_MAX,
