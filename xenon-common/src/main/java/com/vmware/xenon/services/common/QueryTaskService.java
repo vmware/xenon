@@ -40,13 +40,27 @@ import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 
 public class QueryTaskService extends StatefulService {
-    private static final long DEFAULT_EXPIRATION_SECONDS = 600;
+    private static final long DEFAULT_EXPIRATION_MICROS = XenonConfiguration.duration(
+            QueryTaskService.class,
+            "defaultExpiration",
+            TimeUnit.MINUTES,
+            10
+    );
+
+    private static final long MAX_EXPIRATION_MICROS = XenonConfiguration.duration(
+            QueryTaskService.class,
+            "maxExpiration",
+            TimeUnit.DAYS,
+            7
+    );
+
     private static final Integer DEFAULT_RESULT_LIMIT = Integer.MAX_VALUE;
     private ServiceDocumentQueryResult results;
 
@@ -75,11 +89,16 @@ public class QueryTaskService extends StatefulService {
             return;
         }
 
+        long now = Utils.getSystemNowMicrosUtc();
         if (initState.documentExpirationTimeMicros == 0) {
             // always set expiration so we do not accumulate tasks
-            initState.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
-                    TimeUnit.SECONDS.toMicros(DEFAULT_EXPIRATION_SECONDS));
+            initState.documentExpirationTimeMicros = now + DEFAULT_EXPIRATION_MICROS;
         }
+        long maxExp = now + MAX_EXPIRATION_MICROS;
+        if (initState.documentExpirationTimeMicros > maxExp) {
+            initState.documentExpirationTimeMicros = maxExp;
+        }
+
         initState.taskInfo.stage = TaskStage.CREATED;
 
         if (!initState.taskInfo.isDirect) {
