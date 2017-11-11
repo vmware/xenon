@@ -38,6 +38,8 @@ import com.vmware.xenon.common.Service.Action;
  *
  * The primary benefit of using a RequestRouter to map incoming requests to handlers is that the API is being modeled in a way that can later be parsed, for example
  * API documentation can be auto-generated. In addition, it encourages separating logic of each logical operation into its own method/code block.
+ *
+ * RequestRouter is serialized/deserialized by {@link com.vmware.xenon.common.serialization.RequestRouteConverter}.
  */
 public class RequestRouter implements Filter {
 

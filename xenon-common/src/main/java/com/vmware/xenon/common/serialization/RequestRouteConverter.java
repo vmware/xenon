@@ -33,11 +33,11 @@ import com.google.gson.JsonParseException;
 import com.google.gson.JsonSerializationContext;
 import com.google.gson.JsonSerializer;
 import com.google.gson.reflect.TypeToken;
-
 import io.netty.util.internal.StringUtil;
 
 import com.vmware.xenon.common.RequestRouter;
 import com.vmware.xenon.common.RequestRouter.Route;
+import com.vmware.xenon.common.RequestRouter.Route.SupportLevel;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
@@ -64,6 +64,7 @@ public enum RequestRouteConverter implements JsonSerializer<Route>, JsonDeserial
     private static final String FIELD_VALUE = "value";
     private static final String FIELD_PARAM_DEF = "paramDef";
     private static final String FIELD_PARAMETERS = "parameters";
+    private static final String FIELD_SUPPORT_LEVEL = "supportLevel";
 
     /**
      * Serialize the Route instance. For matcher field, toString() is used for serialization
@@ -106,6 +107,10 @@ public enum RequestRouteConverter implements JsonSerializer<Route>, JsonDeserial
                 jsonArray.add(jsonObject);
             });
             ob.add(FIELD_PARAMETERS, jsonArray);
+        }
+
+        if (src.supportLevel != null) {
+            ob.addProperty(FIELD_SUPPORT_LEVEL, src.supportLevel.name());
         }
 
         return ob;
@@ -183,6 +188,9 @@ public enum RequestRouteConverter implements JsonSerializer<Route>, JsonDeserial
 
             String responseType = checkAndGetFromJson(jsonObject, FIELD_RESPONSE_TYPE);
             route.responseType = responseType == null ? null : Class.forName(responseType);
+
+            String supportLevel = checkAndGetFromJson(jsonObject, FIELD_SUPPORT_LEVEL);
+            route.supportLevel = supportLevel == null ? null : Enum.valueOf(SupportLevel.class, supportLevel);
         } catch (ClassNotFoundException e) {
             throw new IllegalStateException(e);
         }

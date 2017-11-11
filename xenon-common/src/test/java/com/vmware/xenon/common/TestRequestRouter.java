@@ -18,7 +18,6 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.net.URI;
-
 import java.util.Collections;
 import java.util.List;
 
@@ -27,6 +26,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import com.vmware.xenon.common.OperationProcessingChain.FilterReturnCode;
+import com.vmware.xenon.common.RequestRouter.Route.SupportLevel;
 import com.vmware.xenon.common.Service.Action;
 
 class RequestBody {
@@ -186,6 +186,23 @@ public class TestRequestRouter {
         assertEquals(route.action, routeDeserialize.action);
         assertEquals(route.description, routeDeserialize.description);
         assertEquals(route.path, routeDeserialize.path);
+    }
+
+    @Test
+    public void testSerializationWithSupportLevel() {
+        RequestRouter.Route route = new RequestRouter.Route();
+        route.action = Action.PATCH;
+        route.description = "Testing Empty Matcher";
+        route.supportLevel = SupportLevel.INTERNAL;
+
+        String routeSer = Utils.toJson(route);
+        assertTrue(routeSer.contains(route.description));
+        assertTrue(routeSer.contains("supportLevel"));
+
+        RequestRouter.Route routeDeserialize = Utils.fromJson(routeSer, RequestRouter.Route.class);
+        assertEquals(route.action, routeDeserialize.action);
+        assertEquals(route.description, routeDeserialize.description);
+        assertEquals(route.supportLevel, routeDeserialize.supportLevel);
     }
 
     private void doX(Operation op) {
