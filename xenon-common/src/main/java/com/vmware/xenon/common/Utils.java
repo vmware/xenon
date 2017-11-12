@@ -22,6 +22,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.lang.reflect.Type;
 import java.net.Inet6Address;
 import java.net.InetAddress;
@@ -46,6 +47,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.logging.Level;
+import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
@@ -64,7 +66,6 @@ import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.SystemHostInfo.OsFamily;
-import com.vmware.xenon.common.logging.StackAwareLogRecord;
 import com.vmware.xenon.common.serialization.GsonSerializers;
 import com.vmware.xenon.common.serialization.JsonMapper;
 import com.vmware.xenon.common.serialization.KryoSerializers;
@@ -404,16 +405,16 @@ public final class Utils {
         }
 
         String message = messageSupplier.get();
-        StackAwareLogRecord lr = new StackAwareLogRecord(level, message);
-        Exception e = new Exception();
-        StackTraceElement[] stacks = e.getStackTrace();
-        if (stacks.length > nestingLevel) {
-            StackTraceElement stack = stacks[nestingLevel];
-            lr.setStackElement(stack);
-            lr.setSourceMethodName(stack.getMethodName());
+        LogRecord lr = new LogRecord(level, message);
+
+        StackTraceElement frame = StackFrameExtractor.getStackFrameAt(nestingLevel);
+        if (frame != null) {
+            lr.setSourceMethodName(frame.getMethodName());
         }
+
         lr.setSourceClassName(classOrUri);
         lr.setLoggerName(lg.getName());
+
         lg.log(lr);
     }
 
@@ -1106,6 +1107,45 @@ public final class Utils {
         SPECIAL_MERGE,   // whether the patch body represented a special update request
                          // (if not set, the patch body is assumed to be a service state)
         STATE_CHANGED    // whether the current state was changed as a result of the merge
+    }
+
+    private static final class StackFrameExtractor {
+        private static final Method getStackTraceElement;
+
+        static {
+            Method m = null;
+            try {
+                m = Throwable.class.getDeclaredMethod("getStackTraceElement", int.class);
+                m.setAccessible(true);
+            } catch (Exception ignore) {
+
+            }
+
+            getStackTraceElement = m;
+        }
+
+        static StackTraceElement getStackFrameAt(int i) {
+            Exception exception = new Exception();
+            if (getStackTraceElement == null) {
+                StackTraceElement[] stackTrace = exception.getStackTrace();
+                if (stackTrace.length > i + 1) {
+                    return exception.getStackTrace()[i + 1];
+                } else {
+                    return null;
+                }
+            }
+
+            try {
+                return (StackTraceElement) getStackTraceElement.invoke(exception, i + 1);
+            } catch (Exception e) {
+                StackTraceElement[] stackTrace = exception.getStackTrace();
+                if (stackTrace.length > i + 1) {
+                    return exception.getStackTrace()[i + 1];
+                } else {
+                    return null;
+                }
+            }
+        }
     }
 
     /**
