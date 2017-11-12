@@ -536,6 +536,106 @@ public class TestNodeGroupService {
     }
 
     @Test
+    public void synchronizationManyDocuments() throws Throwable {
+        this.isPeerSynchronizationEnabled = false;
+        setUp(this.nodeCount);
+        this.host.setTimeoutSeconds((int) TimeUnit.HOURS.toSeconds(5));
+        //this.host.setMaintenanceIntervalMicros(ServiceHostState.DEFAULT_MAINTENANCE_INTERVAL_MICROS);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+
+        // relax quorum, so we can perform updates after a host is stopped
+        this.host.setNodeGroupQuorum(this.nodeCount - 1);
+
+        // expire node that went away quickly to avoid a lot of log spam from gossip failures
+        NodeGroupConfig cfg = new NodeGroupConfig();
+        cfg.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(1);
+        this.host.setNodeGroupConfig(cfg);
+
+        // stop one of the hosts, preserve its index
+        VerificationHost stoppedHost = this.host.getPeerHost();
+        this.host.stopHostAndPreserveState(stoppedHost);
+
+        // wait for stopped host to be removed from node group
+        this.host.waitForNodeGroupConvergence(this.nodeCount - 1, this.nodeCount - 1);
+
+        // Create some services
+        VerificationHost peerHost = this.host.getPeerHost();
+        URI peerHostUri = peerHost.getUri();
+        //Map<String, ExampleServiceState> exampleStatesPerSelfLink = createExampleServices(
+        //        peerHostUri);
+
+        int batch = 20;
+        URI factoryUri = UriUtils.buildUri(peerHostUri, this.replicationTargetFactoryLink);
+        TestRequestSender sender = this.host.getTestRequestSender();
+        List<Operation> ops = new ArrayList<>(batch);
+
+        for (int i = 0; i < this.serviceCount; i++) {
+            ExampleServiceState state = new ExampleServiceState();
+            state.name = UUID.randomUUID().toString();
+            Operation createPost = Operation.createPost(factoryUri);
+            createPost.setBody(state);
+            ops.add(createPost);
+
+            if (ops.size() == batch) {
+                sender.sendAndWait(ops);
+                ops.clear();
+            }
+
+            if ((i + 1) % (batch * 5) == 0) {
+                this.host.log("Created %d documents", i + 1);
+            }
+        }
+
+        // update services to create some version history
+        //doExampleServicePatch(exampleStatesPerSelfLink, peerHostUri);
+
+        // increase quorum on existing nodes, so they wait for restarted host to join
+        this.host.setNodeGroupQuorum(this.nodeCount);
+
+        // restart stopped host
+        this.host.log("DEBUG: Restarting stopped host");
+        stoppedHost.setPort(0);
+        stoppedHost.setSecurePort(0);
+        stoppedHost.setPeerSynchronizationEnabled(false);
+        assertTrue(VerificationHost.restartStatefulHost(stoppedHost, false));
+
+        // join restarted host and wait for node group convergence
+        this.host.addPeerNode(stoppedHost);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+
+        // set quorum on new node as well
+        this.host.setNodeGroupQuorum(this.nodeCount);
+        this.host.log("DEBUG: Waiting for node group convergence");
+        this.host.waitForNodeGroupConvergence();
+
+        // find example factory owner
+        VerificationHost owner = this.host.getInProcessHostMap().values().stream()
+                .filter(h -> h.isOwner(ExampleService.FACTORY_LINK, ServiceUriPaths.DEFAULT_NODE_SELECTOR))
+                .findFirst().get();
+
+        // wait for node selector availability before manually trigger a synchronization task
+        this.host.waitFor("wait node selector available timeout", () -> {
+            Operation op = Operation.createGet(owner, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+            NodeSelectorState nss = this.host.getTestRequestSender().sendAndWait(op, NodeSelectorState.class);
+            if (nss.status == NodeSelectorState.Status.AVAILABLE) {
+                return true;
+            }
+            return false;
+        });
+
+        // kick-off factory synchronization and wait for it to finish
+        this.host.log("DEBUG: Kicking of %s synchronization", ExampleService.FACTORY_LINK);
+        startSynchronizationTaskAndWait(owner,
+                ExampleService.FACTORY_LINK, ExampleServiceState.class, 1L);
+        /*
+        this.host.waitForReplicatedFactoryChildServiceConvergence(
+                getFactoriesPerNodeGroup(ExampleService.FACTORY_LINK),
+                exampleStatesPerSelfLink,
+                this.exampleStateConvergenceChecker, exampleStatesPerSelfLink.size(),
+                this.updateCount, this.replicationFactor);*/
+    }
+
+    @Test
     public void synchronizationAfterStaleHostRestart() throws Throwable {
         // This test verifies that if a stale host joins
         // a node-group after restart, synchronization updates
@@ -780,20 +880,18 @@ public class TestNodeGroupService {
         task.taskInfo = TaskState.create();
         task.taskInfo.isDirect = true;
 
-        TestContext synchCtx = this.host.testCreate(1);
         Operation synchPost = Operation
                 .createPost(owner, SynchronizationTaskService.FACTORY_LINK)
                 .setBody(task)
                 .setReferer(this.host.getUri())
-                .setCompletion(synchCtx.getCompletion());
+                .setExpiration(Utils.fromNowMicrosUtc(TimeUnit.HOURS.toMicros(5)));
 
         // create the synchronization task placeholder
-        this.host.sendRequest(synchPost);
-        synchCtx.await();
+        this.host.getTestRequestSender().sendAndWait(synchPost);
 
         // kick-off synchronization state machine
-        synchCtx = this.host.testCreate(1);
-        synchPost.setCompletion(synchCtx.getCompletion());
+        //synchCtx = this.host.testCreate(1);
+        //synchPost.setCompletion(synchCtx.getCompletion());
     }
 
     @Test

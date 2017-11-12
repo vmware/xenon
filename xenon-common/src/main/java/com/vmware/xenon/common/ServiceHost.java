@@ -4718,6 +4718,8 @@ public class ServiceHost implements ServiceRequestSender {
      * when the final stage is complete.
      */
     void performMaintenanceStage(Operation post, MaintenanceStage stage, long deadline) {
+        MaintenanceStage originalStage = stage;
+        
         try {
             long now = Utils.getSystemNowMicrosUtc();
 
@@ -4765,7 +4767,7 @@ public class ServiceHost implements ServiceRequestSender {
             }
             performMaintenanceStage(post, stage, deadline);
         } catch (Exception e) {
-            log(Level.SEVERE, "Uncaught exception: %s", e.toString());
+            log(Level.SEVERE, "Uncaught exception: during stage %s (POST %d): %s", originalStage, post.getId(), e.toString());
             post.fail(e);
         }
     }

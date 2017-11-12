@@ -173,6 +173,9 @@ class ServiceMaintenanceTracker {
                     s.adjustStat(Service.STAT_NAME_MAINTENANCE_COUNT, 1);
                 }
                 start[0] = Utils.getSystemNowMicrosUtc();
+                if (servicePath.contains("/core/examples"))
+                this.host.log(Level.INFO, "DEBUG: Invoking handleMaintenance with %s %d on service %s",
+                        servicePost.getAction(), servicePost.getId(), s.getSelfLink());
                 s.handleMaintenance(servicePost);
             } catch (Exception ex) {
                 // Mostly at this point, CompletionHandler for servicePost has already consumed in
@@ -201,6 +204,7 @@ class ServiceMaintenanceTracker {
         ServiceStats.ServiceStat durationStat = ServiceStatUtils.getOrCreateHistogramStat(s,
                 Service.STAT_NAME_MAINTENANCE_DURATION);
         s.setStat(durationStat, actual);
+        /*
         if (limit * 2 < actual) {
             this.host.log(Level.WARNING,
                     "Service %s exceeded maintenance interval %d. Actual: %d",
@@ -208,5 +212,6 @@ class ServiceMaintenanceTracker {
             s.adjustStat(
                     Service.STAT_NAME_MAINTENANCE_COMPLETION_DELAYED_COUNT, 1);
         }
+        */
     }
 }

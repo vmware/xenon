@@ -581,7 +581,8 @@ public class SynchronizationTaskService
                 .setConnectionSharing(true)
                 .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION)
                 .setRetryCount(3)
-                .setCompletion(c));
+                .setCompletion(c)
+                .setExpiration(Utils.fromNowMicrosUtc(TimeUnit.HOURS.toMicros(3))));
     }
 
     private void synchronizeChildrenInQueryPage(State task, ServiceDocumentQueryResult rsp, List<String> documentLinks, int retryCount, int totalServiceCount) {

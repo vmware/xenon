@@ -1007,9 +1007,12 @@ public abstract class FactoryService extends StatelessService {
         maintOp.nestCompletion((o, e) -> {
             if (e != null) {
                 logWarning("Synchronization failed: %s", e.toString());
+            } else {
+                logInfo("%s maintenance: finished synchronization", this.getSelfLink());
             }
             maintOp.complete();
         });
+        logInfo("%s maintenance: starting synchronization", this.getSelfLink());
         startFactorySynchronizationTask(maintOp, membershipUpdateTimeMicros);
     }
 
