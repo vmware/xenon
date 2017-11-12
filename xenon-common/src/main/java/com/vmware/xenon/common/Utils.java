@@ -28,12 +28,17 @@ import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.URLDecoder;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CharsetEncoder;
+import java.nio.charset.CoderResult;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -111,8 +116,59 @@ public final class Utils {
      */
     private static final long PING_LAUNCH_TOLERANCE_MS = 50;
 
-    private static final ThreadLocal<CharsetDecoder> decodersPerThread = ThreadLocal
-            .withInitial(CHARSET_OBJECT::newDecoder);
+    private static final Field sbuilderValueField;
+
+    static {
+        try {
+            Field value = StringBuilder.class.getSuperclass().getDeclaredField("value");
+            value.setAccessible(true);
+            sbuilderValueField = value;
+        } catch (NoSuchFieldException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
+
+    private static final class DecoderEncoder {
+        private static final int BUFFER_INITIAL_CAPACITY = KryoSerializers.DEFAULT_BUFFER_SIZE_BYTES;
+        private static final int THREAD_LOCAL_BUFFER_LIMIT_BYTES = KryoSerializers.THREAD_LOCAL_BUFFER_LIMIT_BYTES;
+
+        final CharsetEncoder encoder;
+
+        final CharsetDecoder decoder;
+
+        final StringBuilder builder;
+
+        DecoderEncoder() {
+            this.encoder = CHARSET_OBJECT.newEncoder()
+                .onMalformedInput(CodingErrorAction.REPLACE)
+                .onUnmappableCharacter(CodingErrorAction.REPLACE);
+            this.decoder = CHARSET_OBJECT.newDecoder();
+
+            this.builder =  new StringBuilder(BUFFER_INITIAL_CAPACITY);
+        }
+
+        public StringBuilder resetBuilder() {
+            if (this.builder.length() > THREAD_LOCAL_BUFFER_LIMIT_BYTES) {
+                // try to trim the buffer to acceptable size
+                this.builder.setLength(BUFFER_INITIAL_CAPACITY);
+                this.builder.trimToSize();
+            }
+
+            this.builder.setLength(0);
+            return this.builder;
+        }
+
+        public char[] getBackingArray() {
+            try {
+                return (char[]) sbuilderValueField.get(this.builder);
+            } catch (IllegalAccessException e) {
+                throw new AssertionError(e);
+            }
+        }
+    }
+
+    private static final ThreadLocal<DecoderEncoder> decodersPerThread = ThreadLocal
+            .withInitial(DecoderEncoder::new);
 
     private static final AtomicLong previousTimeValue = new AtomicLong();
     private static long timeComparisonEpsilon = initializeTimeEpsilon();
@@ -121,9 +177,6 @@ public final class Utils {
 
     private static final ConcurrentMap<String, String> KINDS = new ConcurrentSkipListMap<>();
     private static final ConcurrentMap<String, Class<?>> KIND_TO_TYPE = new ConcurrentSkipListMap<>();
-
-
-    private static final StringBuilderThreadLocal builderPerThread = new StringBuilderThreadLocal();
 
     private Utils() {
     }
@@ -260,6 +313,46 @@ public final class Utils {
 
     public static String computeHash(CharSequence content) {
         return Long.toHexString(FNVHash.compute(content));
+    }
+
+    public static byte[] toJsonUtf8Bytes(Object body) {
+        if (body instanceof String) {
+            return ((String) body).getBytes(CHARSET_OBJECT);
+        }
+
+        DecoderEncoder decoderEncoder = decodersPerThread.get();
+        StringBuilder content = decoderEncoder.resetBuilder();
+
+        JsonMapper mapper = getJsonMapperFor(body);
+        mapper.toJson(body, content);
+        int contentLength = content.length();
+
+        CharBuffer charBuffer;
+
+        boolean isAscii = true;
+        char[] array = decoderEncoder.getBackingArray();
+        for (int i = 0; i < contentLength; i++) {
+            if (array[i] > 0x7f) {
+                isAscii = false;
+                break;
+            }
+        }
+        if (isAscii) {
+            byte[] res = new byte[contentLength];
+            for (int i = 0; i < contentLength; i++) {
+                res[i] = (byte) array[i];
+            }
+            return res;
+        } else {
+            charBuffer = CharBuffer.wrap(decoderEncoder.getBackingArray(), 0, contentLength);
+        }
+
+        // max 3 bytes per char in utf8
+        ByteBuffer byteBuffer = ByteBuffer.wrap(getBuffer(contentLength * 3));
+
+        CharsetEncoder encoder = decoderEncoder.encoder.reset();
+        encoder.encode(charBuffer, byteBuffer, true);
+        return Arrays.copyOf(byteBuffer.array(), byteBuffer.position());
     }
 
     public static String toJson(Object body) {
@@ -785,12 +878,10 @@ public final class Utils {
         }
 
         if (data == null) {
-            String encodedBody;
-            encodedBody = Utils.toJson(body);
             if (op.getAction() != Action.GET && contentType == null) {
                 op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
             }
-            data = encodedBody.getBytes(Utils.CHARSET);
+            data = Utils.toJsonUtf8Bytes(body);
             op.setContentLength(data.length);
         }
 
@@ -829,7 +920,7 @@ public final class Utils {
         return data;
     }
 
-   /**
+    /**
      * Compresses byte[] to gzip byte[]
      */
     private static byte[] compressGZip(byte[] input) throws Exception {
@@ -918,10 +1009,19 @@ public final class Utils {
 
         String body = null;
         if (isContentTypeText(contentType)) {
-            CharsetDecoder decoder = decodersPerThread.get().reset();
-            body = decoder.decode(buffer).toString();
+            DecoderEncoder decoderEncoder = decodersPerThread.get();
+            StringBuilder builder = decoderEncoder.builder;
+            // expand buffer
+            builder.setLength(buffer.remaining());
+            CharBuffer out = CharBuffer.wrap(decoderEncoder.getBackingArray());
+
+            CoderResult cr = decoderEncoder.decoder.reset().decode(buffer, out, true);
+            if (cr.isError()) {
+                cr.throwException();
+            }
+            return out.flip().toString();
         } else if (contentType.contains(Operation.MEDIA_TYPE_APPLICATION_X_WWW_FORM_ENCODED)) {
-            CharsetDecoder decoder = decodersPerThread.get().reset();
+            CharsetDecoder decoder = decodersPerThread.get().decoder.reset();
             body = decoder.decode(buffer).toString();
             try {
                 body = URLDecoder.decode(body, Utils.CHARSET);
@@ -935,7 +1035,7 @@ public final class Utils {
 
     private static ByteBuffer decompressGZip(ByteBuffer bb) throws Exception {
         GZIPInputStream zis = new GZIPInputStream(new ByteBufferInputStream(bb));
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream out = new ByteArrayOutputStream(bb.remaining() * 2);
 
         try {
             byte[] buffer = Utils.getBuffer(1024);
@@ -1331,7 +1431,7 @@ public final class Utils {
      * @return
      */
     public static StringBuilder getBuilder() {
-        return builderPerThread.get();
+        return decodersPerThread.get().resetBuilder();
     }
 
     /**

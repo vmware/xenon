@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.common;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
@@ -628,6 +629,23 @@ public class TestUtils {
         ServiceDocumentDescription desc = Builder.create()
                 .buildDescription(QueryValidationServiceState.class);
 
+        QueryValidationServiceState document = makeSampleDocument();
+
+        long start = System.nanoTime();
+        for (int i = 0; i < this.iterationCount; i++) {
+            Utils.computeSignature(document, desc);
+        }
+
+        long duration = System.nanoTime() - start;
+
+        double thpt = this.iterationCount * 1000.0 * 1000.0 * 1000.0 / duration;
+        Logger.getAnonymousLogger().info(
+                String.format(
+                        "Signature calculation throughput: %.2f/sec", thpt));
+        this.testResults.getReport().lastValue(TestResults.KEY_THROUGHPUT, thpt);
+    }
+
+    private QueryValidationServiceState makeSampleDocument() {
         QueryValidationServiceState document = VerificationHost.buildQueryValidationState();
         document.documentKind = Utils.buildKind(document.getClass());
         document.documentSelfLink = UUID.randomUUID().toString();
@@ -651,19 +669,7 @@ public class TestUtils {
         document.serviceLink = document.documentSelfLink;
         document.dateValue = new Date();
         document.listOfStrings = Arrays.asList("1", "2", "3", "4", "5");
-
-        long start = System.nanoTime();
-        for (int i = 0; i < this.iterationCount; i++) {
-            Utils.computeSignature(document, desc);
-        }
-
-        long duration = System.nanoTime() - start;
-
-        double thpt = this.iterationCount * 1000.0 * 1000.0 * 1000.0 / duration;
-        Logger.getAnonymousLogger().info(
-                String.format(
-                        "Signature calculation throughput: %.2f/sec", thpt));
-        this.testResults.getReport().lastValue(TestResults.KEY_THROUGHPUT, thpt);
+        return document;
     }
 
     public QueryValidationServiceState serializedAndCompareDocuments(
@@ -800,6 +806,19 @@ public class TestUtils {
         ServiceDocument doc = new ServiceDocument();
         String json = Utils.toJsonHtml(doc);
         assertTrue(json.contains("  "));
+    }
+
+    @Test
+    public void toJsonUtf8Bytes() {
+        QueryValidationServiceState doc = makeSampleDocument();
+        assertArrayEquals(Utils.toJson(doc).getBytes(Utils.CHARSET_OBJECT), Utils.toJsonUtf8Bytes(doc));
+    }
+
+    @Test
+    public void toJsonUtf8BytesWithUtf8Content() {
+        QueryValidationServiceState doc = makeSampleDocument();
+        doc.id += "日本語";
+        assertArrayEquals(Utils.toJson(doc).getBytes(Utils.CHARSET_OBJECT), Utils.toJsonUtf8Bytes(doc));
     }
 
     @Test

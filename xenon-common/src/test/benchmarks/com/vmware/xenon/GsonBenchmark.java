@@ -59,4 +59,14 @@ public class GsonBenchmark {
     public Object deserializeBigDoc() {
         return Utils.fromJson(bigRepr, bigDocument.getClass());
     }
+
+    @Benchmark
+    public byte[] serializeBigDocToBytes() {
+        return Utils.toJsonUtf8Bytes(bigDocument);
+    }
+
+    @Benchmark
+    public byte[] serializeBigDocToStringThenBytes() {
+        return Utils.toJson(bigDocument).getBytes(Utils.CHARSET_OBJECT);
+    }
 }

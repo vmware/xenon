@@ -81,9 +81,12 @@ public final class KryoSerializers {
     private static ThreadLocal<Kryo> kryoForObjectPerThreadCustom;
     private static ThreadLocal<Kryo> kryoForDocumentPerThreadCustom;
 
-    public static final long THREAD_LOCAL_BUFFER_LIMIT_BYTES = 1024 * 1024;
-    private static final int DEFAULT_BUFFER_SIZE_BYTES = 4096;
-    private static final BufferThreadLocal bufferPerThread = new BufferThreadLocal();
+    public static final int THREAD_LOCAL_BUFFER_LIMIT_BYTES = 1024 * 1024;
+
+    public static final int DEFAULT_BUFFER_SIZE_BYTES = 4096;
+
+    private static final ThreadLocal<byte[]> bufferPerThread = ThreadLocal.withInitial(() ->
+            new byte[DEFAULT_BUFFER_SIZE_BYTES]);
 
     public static Kryo create(boolean isObjectSerializer) {
         Kryo k = new Kryo();
