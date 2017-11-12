@@ -1447,9 +1447,8 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     public ExecutorService allocateExecutor(Service s, int threadCount) {
-        return TracingExecutor.create(
-                Executors.newFixedThreadPool(threadCount, new NamedThreadFactory(s.getUri().toString())),
-                this.otTracer);
+        ExecutorService result = Executors.newFixedThreadPool(threadCount, new NamedThreadFactory(s.getUri().toString()));
+        return this.tracingEnabled ? TracingExecutor.create(result, this.otTracer) : result;
     }
 
     @SuppressWarnings("try")
