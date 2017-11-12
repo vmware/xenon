@@ -484,6 +484,7 @@ public class ServiceHost implements ServiceRequestSender {
         public boolean isAuthorizationEnabled;
         public transient boolean isStarted;
         public transient boolean isStopping;
+        public transient boolean isTracingEnabled;
         public SystemHostInfo systemInfo;
         public long lastMaintenanceTimeUtcMicros;
         public boolean isProcessOwner;
@@ -607,8 +608,6 @@ public class ServiceHost implements ServiceRequestSender {
      */
     private final Tracer otTracer;
 
-    private final boolean tracingEnabled;
-
     private OperationProcessingChain opProcessingChain;
     private AuthorizationFilter authorizationFilter;
 
@@ -659,8 +658,8 @@ public class ServiceHost implements ServiceRequestSender {
     protected ServiceHost() {
         this.state = new ServiceHostState();
         this.state.id = UUID.randomUUID().toString();
+        this.state.isTracingEnabled = TracerFactory.factory.enabled();
         this.otTracer = TracerFactory.factory.create(this);
-        this.tracingEnabled = TracerFactory.factory.enabled();
     }
 
     public ServiceHost initialize(String[] args) throws Throwable {
@@ -799,12 +798,12 @@ public class ServiceHost implements ServiceRequestSender {
             res.setName(getUri() + "/" + res.getName());
             return res;
         }, null, false);
-        this.executor = this.tracingEnabled ? TracingExecutor.create(this.executorPool, this.otTracer) : this.executorPool;
+        this.executor = TracingExecutor.create(this.executorPool, this.otTracer);
 
         this.scheduledExecutorPool = (ScheduledThreadPoolExecutor) Executors.newScheduledThreadPool(
                 Utils.DEFAULT_THREAD_COUNT,
                 new NamedThreadFactory(getUri() + "/scheduled"));
-        this.scheduledExecutor = this.tracingEnabled ? TracingScheduledExecutor.create(this.scheduledExecutorPool, this.otTracer) : this.scheduledExecutorPool;
+        this.scheduledExecutor = TracingScheduledExecutor.create(this.scheduledExecutorPool, this.otTracer);
 
         this.serviceScheduledExecutor = Executors.newScheduledThreadPool(
                 Utils.DEFAULT_THREAD_COUNT / 2,
@@ -978,6 +977,7 @@ public class ServiceHost implements ServiceRequestSender {
                                 }
                                 fileState.isStarted = this.state.isStarted;
                                 fileState.isStopping = this.state.isStopping;
+                                fileState.isTracingEnabled = this.state.isTracingEnabled;
                                 if (fileState.maintenanceIntervalMicros < Service.MIN_MAINTENANCE_INTERVAL_MICROS) {
                                     fileState.maintenanceIntervalMicros = Service.MIN_MAINTENANCE_INTERVAL_MICROS;
                                 }
@@ -1032,6 +1032,10 @@ public class ServiceHost implements ServiceRequestSender {
 
     public boolean isServiceStateCaching() {
         return this.state.isServiceStateCaching;
+    }
+
+    public boolean isTracingEnabled() {
+        return this.state.isTracingEnabled;
     }
 
     public ServiceHost setServiceStateCaching(boolean enable) {
@@ -1447,14 +1451,13 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     public ExecutorService allocateExecutor(Service s, int threadCount) {
-        return TracingExecutor.create(
-                Executors.newFixedThreadPool(threadCount, new NamedThreadFactory(s.getUri().toString())),
-                this.otTracer);
+        ExecutorService result = Executors.newFixedThreadPool(threadCount, new NamedThreadFactory(s.getUri().toString()));
+        return TracingExecutor.create(result, this.otTracer);
     }
 
     @SuppressWarnings("try")
     public ServiceHost start() throws Throwable {
-        if (!this.tracingEnabled) {
+        if (!isTracingEnabled()) {
             return startImpl();
         } else {
             try (ActiveSpan span = this.otTracer.buildSpan("ServiceHost.start").startActive()) {
@@ -3598,7 +3601,7 @@ public class ServiceHost implements ServiceRequestSender {
             return true;
         }
 
-        if (this.tracingEnabled) {
+        if (isTracingEnabled()) {
             // Create a tracing span for this new request we're handling
             SpanContext extractedContext = this.otTracer.extract(
                     Format.Builtin.HTTP_HEADERS,
@@ -3742,7 +3745,7 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
-        if (!this.tracingEnabled) {
+        if (!isTracingEnabled()) {
             c.send(op);
         } else {
             // Trace the request we're about to send.

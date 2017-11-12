@@ -557,15 +557,17 @@ public class LuceneDocumentIndexService extends StatelessService {
         // so its worth caching (plus we only have a very small number of index services
         this.uri = super.getUri();
 
-        this.privateQueryExecutor = TracingExecutor.create(new ThreadPoolExecutor(QUERY_THREAD_COUNT, QUERY_THREAD_COUNT,
+        ExecutorService es = new ThreadPoolExecutor(QUERY_THREAD_COUNT, QUERY_THREAD_COUNT,
                 1, TimeUnit.MINUTES,
                 new ArrayBlockingQueue<>(Service.OPERATION_QUEUE_DEFAULT_LIMIT),
-                new NamedThreadFactory(getUri() + "/queries")), this.getHost().getTracer());
+                new NamedThreadFactory(getUri() + "/queries"));
+        this.privateQueryExecutor = TracingExecutor.create(es, this.getHost().getTracer());
 
-        this.privateIndexingExecutor = TracingExecutor.create(new ThreadPoolExecutor(QUERY_THREAD_COUNT, QUERY_THREAD_COUNT,
+        es = new ThreadPoolExecutor(QUERY_THREAD_COUNT, QUERY_THREAD_COUNT,
                 1, TimeUnit.MINUTES,
                 new ArrayBlockingQueue<>(10 * Service.OPERATION_QUEUE_DEFAULT_LIMIT),
-                new NamedThreadFactory(getUri() + "/updates")), this.getHost().getTracer());
+                new NamedThreadFactory(getUri() + "/updates"));
+        this.privateIndexingExecutor = TracingExecutor.create(es, this.getHost().getTracer());
 
         initializeInstance();
 
