@@ -43,6 +43,7 @@ public class TracingTest extends BasicReusableHostTestCase {
 
     @Test
     public void testIncomingTraces() throws Throwable {
+        this.host.setTracingEnabled(true);
         MockTracer tracer = TracingTest.injectMockTracer.tracer;
         List<String> uris = new ArrayList<String>();
 

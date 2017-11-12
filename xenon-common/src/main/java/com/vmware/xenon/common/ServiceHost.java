@@ -462,6 +462,8 @@ public class ServiceHost implements ServiceRequestSender {
         public long maintenanceIntervalMicros = DEFAULT_MAINTENANCE_INTERVAL_MICROS;
         public long operationTimeoutMicros = DEFAULT_OPERATION_TIMEOUT_MICROS;
         public long serviceCacheClearDelayMicros = DEFAULT_SERVICE_CACHE_CLEAR_DELAY_MICROS;
+        // TODO: merge with operationTracingLevel
+        public boolean tracingEnabled;
         public String operationTracingLevel;
         public SslClientAuthMode sslClientAuthMode;
         public int responsePayloadSizeLimit;
@@ -607,8 +609,6 @@ public class ServiceHost implements ServiceRequestSender {
      */
     private final Tracer otTracer;
 
-    private final boolean tracingEnabled;
-
     private OperationProcessingChain opProcessingChain;
     private AuthorizationFilter authorizationFilter;
 
@@ -660,7 +660,6 @@ public class ServiceHost implements ServiceRequestSender {
         this.state = new ServiceHostState();
         this.state.id = UUID.randomUUID().toString();
         this.otTracer = TracerFactory.factory.create(this);
-        this.tracingEnabled = TracerFactory.factory.enabled();
     }
 
     public ServiceHost initialize(String[] args) throws Throwable {
@@ -799,12 +798,12 @@ public class ServiceHost implements ServiceRequestSender {
             res.setName(getUri() + "/" + res.getName());
             return res;
         }, null, false);
-        this.executor = this.tracingEnabled ? TracingExecutor.create(this.executorPool, this.otTracer) : this.executorPool;
+        this.executor = this.isTracingEnabled() ? TracingExecutor.create(this.executorPool, this.otTracer) : this.executorPool;
 
         this.scheduledExecutorPool = (ScheduledThreadPoolExecutor) Executors.newScheduledThreadPool(
                 Utils.DEFAULT_THREAD_COUNT,
                 new NamedThreadFactory(getUri() + "/scheduled"));
-        this.scheduledExecutor = this.tracingEnabled ? TracingScheduledExecutor.create(this.scheduledExecutorPool, this.otTracer) : this.scheduledExecutorPool;
+        this.scheduledExecutor = this.isTracingEnabled() ? TracingScheduledExecutor.create(this.scheduledExecutorPool, this.otTracer) : this.scheduledExecutorPool;
 
         this.serviceScheduledExecutor = Executors.newScheduledThreadPool(
                 Utils.DEFAULT_THREAD_COUNT / 2,
@@ -881,6 +880,13 @@ public class ServiceHost implements ServiceRequestSender {
             this.state.autoBackupDirectoryReference = s.toPath().resolve(DEFAULT_AUTO_BACKUP_DIR).toUri();
         }
         this.state.isAutoBackupEnabled = args.isAutoBackupEnabled;
+
+        // XenonConfiguration-based config properties
+        this.state.tracingEnabled = XenonConfiguration.bool(
+                ServiceHostState.class,
+                "TRACING_ENABLED",
+                false
+        );
     }
 
     public String getLocation() {
@@ -1454,7 +1460,7 @@ public class ServiceHost implements ServiceRequestSender {
 
     @SuppressWarnings("try")
     public ServiceHost start() throws Throwable {
-        if (!this.tracingEnabled) {
+        if (!this.isTracingEnabled()) {
             return startImpl();
         } else {
             try (ActiveSpan span = this.otTracer.buildSpan("ServiceHost.start").startActive()) {
@@ -3598,7 +3604,7 @@ public class ServiceHost implements ServiceRequestSender {
             return true;
         }
 
-        if (this.tracingEnabled) {
+        if (this.isTracingEnabled()) {
             // Create a tracing span for this new request we're handling
             SpanContext extractedContext = this.otTracer.extract(
                     Format.Builtin.HTTP_HEADERS,
@@ -3742,7 +3748,7 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
-        if (!this.tracingEnabled) {
+        if (!this.isTracingEnabled()) {
             c.send(op);
         } else {
             // Trace the request we're about to send.
@@ -4157,6 +4163,15 @@ public class ServiceHost implements ServiceRequestSender {
 
     public ServiceHost setOperationTracingLevel(Level newLevel) {
         this.state.operationTracingLevel = newLevel.toString();
+        return this;
+    }
+
+    public boolean isTracingEnabled() {
+        return this.state.tracingEnabled;
+    }
+
+    public ServiceHost setTracingEnabled(boolean tracingEnabled) {
+        this.state.tracingEnabled = tracingEnabled;
         return this;
     }
 
