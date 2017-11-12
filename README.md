@@ -213,15 +213,15 @@ Xenon ships with an inbuilt intracluster tracing mechanism as well as optional s
 for OpenTracing tracers.
 
 Configure a tracer by providing an `io.opentracing.Tracer` instance to your `ServiceHost`
-or by setting the environment variable `XENON_TRACER`, plus any additional settings needed
-by your chosen implementation.
+or by setting the environment variable `XENON_TRACER_FACTORY_PROVIDER`, plus any
+additional settings needed by your chosen implementation.
 
 ## 2.5.1 Tracing configuration
 
 ### Core settings
-| Environment variable  | effect
-|-----------------------|-------
-| XENON_TRACER          | (Required) Set to select a tracer: `zipkin` or `jaeger`
+| Environment variable                   | effect
+|----------------------------------------|-------
+| XENON_TRACER_FACTORY_PROVIDER          | (Required) Set to select a tracer: `zipkin` or `jaeger`
 
 Be sure to include the appropriate implementation JAR files in your builds:
 they are marked optional by `xenon-common`.
