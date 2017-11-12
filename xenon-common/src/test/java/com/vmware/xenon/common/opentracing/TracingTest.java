@@ -84,8 +84,14 @@ public class TracingTest extends BasicReusableHostTestCase {
         // for each span opname tags, type.
         MockSpan finishedSpan = finishedSpans.get(0);
         long traceId = finishedSpan.context().traceId();
+        List<MockSpan> relevantSpans = new ArrayList<>();
         for (MockSpan span : finishedSpans) {
             this.host.log(Level.INFO, "span %s", span.toString());
+            String op = span.operationName();
+            // Filter out spans that are not part of the test - e.g. gossip maintenance
+            if (!op.equals("/stateless") && !op.equals("/stateful/foo") && !op.equals("Queue")) {
+                continue;
+            }
             assertEquals(String.format("broken trace span %s", span.toString()), traceId, span.context().traceId());
             if (span.operationName().equals("Queue")) {
                 /* internal housekeeping of executor/scheduling */
@@ -93,28 +99,29 @@ public class TracingTest extends BasicReusableHostTestCase {
             }
             assertEquals(String.format("trace span %s", span.toString()), "GET", span.tags().get(Tags.HTTP_METHOD.getKey()));
             assertEquals(String.format("trace span %s", span.toString()), "200", span.tags().get(Tags.HTTP_STATUS.getKey()));
+            relevantSpans.add(span);
         }
         /* Urls: 0 and 1 are the client and server handling of stateless, 2 through 5 stateful/foo. */
         String stateful = uris.get(0);
         String stateless = uris.get(1);
-        assertEquals(stateless, finishedSpans.get(0).tags().get(Tags.HTTP_URL.getKey()));
-        assertEquals(stateless, finishedSpans.get(1).tags().get(Tags.HTTP_URL.getKey()));
-        assertEquals(stateful, finishedSpans.get(3).tags().get(Tags.HTTP_URL.getKey()));
-        assertEquals(stateful, finishedSpans.get(4).tags().get(Tags.HTTP_URL.getKey()));
-        assertEquals(stateful, finishedSpans.get(7).tags().get(Tags.HTTP_URL.getKey()));
-        assertEquals(stateful, finishedSpans.get(8).tags().get(Tags.HTTP_URL.getKey()));
+        assertEquals(stateless, relevantSpans.get(0).tags().get(Tags.HTTP_URL.getKey()));
+        assertEquals(stateless, relevantSpans.get(1).tags().get(Tags.HTTP_URL.getKey()));
+        assertEquals(stateful, relevantSpans.get(2).tags().get(Tags.HTTP_URL.getKey()));
+        assertEquals(stateful, relevantSpans.get(3).tags().get(Tags.HTTP_URL.getKey()));
+        assertEquals(stateful, relevantSpans.get(4).tags().get(Tags.HTTP_URL.getKey()));
+        assertEquals(stateful, relevantSpans.get(5).tags().get(Tags.HTTP_URL.getKey()));
         /* kinds: even should be outbound CLIENT spans, odd inbound SERVER spans. */
-        assertEquals(Tags.SPAN_KIND_CLIENT, finishedSpans.get(0).tags().get(Tags.SPAN_KIND.getKey()));
-        assertEquals(Tags.SPAN_KIND_SERVER, finishedSpans.get(1).tags().get(Tags.SPAN_KIND.getKey()));
-        assertEquals(Tags.SPAN_KIND_CLIENT, finishedSpans.get(3).tags().get(Tags.SPAN_KIND.getKey()));
-        assertEquals(Tags.SPAN_KIND_SERVER, finishedSpans.get(4).tags().get(Tags.SPAN_KIND.getKey()));
-        assertEquals(Tags.SPAN_KIND_CLIENT, finishedSpans.get(7).tags().get(Tags.SPAN_KIND.getKey()));
-        assertEquals(Tags.SPAN_KIND_SERVER, finishedSpans.get(8).tags().get(Tags.SPAN_KIND.getKey()));
+        assertEquals(Tags.SPAN_KIND_CLIENT, relevantSpans.get(0).tags().get(Tags.SPAN_KIND.getKey()));
+        assertEquals(Tags.SPAN_KIND_SERVER, relevantSpans.get(1).tags().get(Tags.SPAN_KIND.getKey()));
+        assertEquals(Tags.SPAN_KIND_CLIENT, relevantSpans.get(2).tags().get(Tags.SPAN_KIND.getKey()));
+        assertEquals(Tags.SPAN_KIND_SERVER, relevantSpans.get(3).tags().get(Tags.SPAN_KIND.getKey()));
+        assertEquals(Tags.SPAN_KIND_CLIENT, relevantSpans.get(4).tags().get(Tags.SPAN_KIND.getKey()));
+        assertEquals(Tags.SPAN_KIND_SERVER, relevantSpans.get(5).tags().get(Tags.SPAN_KIND.getKey()));
         // TODO: test of error paths to ensure capturing of status is robust
         // TODO -, operationName should be the factory
         /* Only one trace expected */
         /* TODO: io.opentracing.tag.Tags#PEER_HOSTNAME, io.opentracing.tag.Tags#PEER_PORT */
-        assertEquals(11 , finishedSpans.toArray().length);
+        assertEquals(6 , relevantSpans.toArray().length);
     }
 }
 
