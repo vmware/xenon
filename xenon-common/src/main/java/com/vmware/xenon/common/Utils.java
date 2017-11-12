@@ -46,6 +46,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.logging.Level;
+import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
@@ -64,7 +65,6 @@ import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.SystemHostInfo.OsFamily;
-import com.vmware.xenon.common.logging.StackAwareLogRecord;
 import com.vmware.xenon.common.serialization.GsonSerializers;
 import com.vmware.xenon.common.serialization.JsonMapper;
 import com.vmware.xenon.common.serialization.KryoSerializers;
@@ -404,16 +404,15 @@ public final class Utils {
         }
 
         String message = messageSupplier.get();
-        StackAwareLogRecord lr = new StackAwareLogRecord(level, message);
-        Exception e = new Exception();
-        StackTraceElement[] stacks = e.getStackTrace();
+        LogRecord lr = new LogRecord(level, message);
+        StackTraceElement[] stacks = new Exception().getStackTrace();
         if (stacks.length > nestingLevel) {
             StackTraceElement stack = stacks[nestingLevel];
-            lr.setStackElement(stack);
             lr.setSourceMethodName(stack.getMethodName());
         }
         lr.setSourceClassName(classOrUri);
         lr.setLoggerName(lg.getName());
+
         lg.log(lr);
     }
 
