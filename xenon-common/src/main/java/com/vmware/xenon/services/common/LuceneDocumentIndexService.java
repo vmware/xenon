@@ -171,6 +171,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final int DEFAULT_METADATA_UPDATE_MAX_QUEUE_DEPTH = 10000;
 
+    public static final long DEFAULT_PAGINATED_SEARCHER_EXPIRATION_DELAY = TimeUnit.SECONDS.toMicros(1);
+
     private static final String DOCUMENTS_WITHOUT_RESULTS = "DocumentsWithoutResults";
 
     /**
@@ -1154,10 +1156,13 @@ public class LuceneDocumentIndexService extends StatelessService {
                 && qs.resultLimit != Integer.MAX_VALUE
                 && !qs.options.contains(QueryOption.TOP_RESULTS)) {
             // this is a paginated query. If this is the start of the query, create a dedicated searcher
-            // for this query and all its pages. It will be expired when the query task itself expires
+            // for this query and all its pages. It will be expired when the query task itself expires.
+            // Since expiration of QueryPageService and index-searcher uses different mechanism, to guarantee
+            // that index-searcher still exists when QueryPageService expired, add some delay for searcher
+            // expiration time.
             Set<String> documentKind = qs.context.kindScope;
-            s = createOrUpdatePaginatedQuerySearcher(task.documentExpirationTimeMicros,
-                    this.writer, documentKind, qs.options);
+            long expiration = task.documentExpirationTimeMicros + DEFAULT_PAGINATED_SEARCHER_EXPIRATION_DELAY;
+            s = createOrUpdatePaginatedQuerySearcher(expiration, this.writer, documentKind, qs.options);
         }
 
         if (!queryIndex(s, op, null, qs.options, luceneQuery, lucenePage,
@@ -1758,8 +1763,11 @@ public class LuceneDocumentIndexService extends StatelessService {
         Set<String> kindScope = qs.context.kindScope;
 
         if (s == null && qs.groupResultLimit != null) {
-            s = createOrUpdatePaginatedQuerySearcher(task.documentExpirationTimeMicros,
-                    this.writer, kindScope, qs.options);
+            // Since expiration of QueryPageService and index-searcher uses different mechanism, to guarantee
+            // that index-searcher still exists when QueryPageService expired, add some delay for searcher
+            // expiration time.
+            long expiration = task.documentExpirationTimeMicros + DEFAULT_PAGINATED_SEARCHER_EXPIRATION_DELAY;
+            s = createOrUpdatePaginatedQuerySearcher(expiration, this.writer, kindScope, qs.options);
         }
 
         if (s == null) {

@@ -24,6 +24,8 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import static com.vmware.xenon.services.common.LuceneDocumentIndexService.DEFAULT_PAGINATED_SEARCHER_EXPIRATION_DELAY;
+
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
@@ -742,15 +744,16 @@ public class TestLuceneDocumentIndexService {
         queryTask.documentExpirationTimeMicros = queryExpirationTimeMicros;
         this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
 
+        long expectedSearcherExpirationTime = queryExpirationTimeMicros + DEFAULT_PAGINATED_SEARCHER_EXPIRATION_DELAY;
         // Assert that the paginated searcher lists in the index service have the same content.
         paginatedSearchers = this.indexService.verifyPaginatedSearcherListsEqual();
         assertEquals(1, paginatedSearchers.size());
         for (Entry<Long, List<PaginatedSearcherInfo>> entry : paginatedSearchers.entrySet()) {
-            assertEquals(queryExpirationTimeMicros, (long) entry.getKey());
+            assertEquals(expectedSearcherExpirationTime, (long) entry.getKey());
             List<PaginatedSearcherInfo> expirationList = entry.getValue();
             assertEquals(2, expirationList.size());
             for (PaginatedSearcherInfo info : expirationList) {
-                assertEquals(queryExpirationTimeMicros, info.expirationTimeMicros);
+                assertEquals(expectedSearcherExpirationTime, info.expirationTimeMicros);
             }
         }
 
@@ -765,14 +768,16 @@ public class TestLuceneDocumentIndexService {
         queryTask.documentExpirationTimeMicros = extendedQueryExpirationTimeMicros;
         this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
 
+        long expectedSearcherExpirationTimeForExtended = extendedQueryExpirationTimeMicros + DEFAULT_PAGINATED_SEARCHER_EXPIRATION_DELAY;
+
         // Assert that the paginated searcher lists in the index service have the same content and
         // that the expiration time of one searcher was updated.
         paginatedSearchers = this.indexService.verifyPaginatedSearcherListsEqual();
         assertEquals(2, paginatedSearchers.size());
         for (Entry<Long, List<PaginatedSearcherInfo>> entry : paginatedSearchers.entrySet()) {
             long expirationMicros = entry.getKey();
-            assertTrue(expirationMicros == queryExpirationTimeMicros
-                    || expirationMicros == extendedQueryExpirationTimeMicros);
+            assertTrue(expirationMicros == expectedSearcherExpirationTime
+                    || expirationMicros == expectedSearcherExpirationTimeForExtended);
             List<PaginatedSearcherInfo> expirationList = entry.getValue();
             assertEquals(1, expirationList.size());
             for (PaginatedSearcherInfo info : expirationList) {
@@ -799,8 +804,8 @@ public class TestLuceneDocumentIndexService {
             assertEquals(2, searcherInfo.size());
             for (Entry<Long, List<PaginatedSearcherInfo>> entry : searcherInfo.entrySet()) {
                 long expirationMicros = entry.getKey();
-                assertTrue(expirationMicros == queryExpirationTimeMicros
-                        || expirationMicros == extendedQueryExpirationTimeMicros);
+                assertTrue(expirationMicros == expectedSearcherExpirationTime
+                        || expirationMicros == expectedSearcherExpirationTimeForExtended);
                 List<PaginatedSearcherInfo> expirationList = entry.getValue();
                 assertEquals(1, expirationList.size());
                 for (PaginatedSearcherInfo info : expirationList) {
@@ -875,9 +880,9 @@ public class TestLuceneDocumentIndexService {
         for (Entry<Long, List<PaginatedSearcherInfo>> entry : paginatedSearchers.entrySet()) {
             long expirationMicros = entry.getKey();
             List<PaginatedSearcherInfo> expirationList = entry.getValue();
-            if (expirationMicros == queryExpirationTimeMicros) {
+            if (expirationMicros == expectedSearcherExpirationTime) {
                 assertEquals(1, expirationList.size());
-            } else if (expirationMicros == extendedQueryExpirationTimeMicros) {
+            } else if (expirationMicros == expectedSearcherExpirationTimeForExtended) {
                 assertEquals(3, expirationList.size());
             } else {
                 throw new IllegalStateException("Unexpected expiration time: " + expirationMicros);
@@ -920,9 +925,9 @@ public class TestLuceneDocumentIndexService {
             for (Entry<Long, List<PaginatedSearcherInfo>> entry : searcherInfo.entrySet()) {
                 long expirationMicros = entry.getKey();
                 List<PaginatedSearcherInfo> expirationList = entry.getValue();
-                if (expirationMicros == queryExpirationTimeMicros) {
+                if (expirationMicros == expectedSearcherExpirationTime) {
                     assertEquals(1, expirationList.size());
-                } else if (expirationMicros != extendedQueryExpirationTimeMicros) {
+                } else if (expirationMicros != expectedSearcherExpirationTimeForExtended) {
                     throw new IllegalStateException("Unexpected expiration time: "
                             + expirationMicros);
                 } else {
