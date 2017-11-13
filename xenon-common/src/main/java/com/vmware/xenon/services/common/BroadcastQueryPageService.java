@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 
@@ -101,6 +102,9 @@ public class BroadcastQueryPageService extends StatelessService {
                                     });
                         }
                     });
+            op.setExpiration(Utils.fromNowMicrosUtc(TimeUnit.MINUTES.toMicros(5)));
+            logInfo("DEBUG: sending GET %d to %s with timeout %d (seconds from now)", op.getId(), op.getUri(),
+                    TimeUnit.MICROSECONDS.toSeconds(op.getExpirationMicrosUtc() - Utils.getNowMicrosUtc()));
             this.getHost().sendRequest(op);
         }
     }

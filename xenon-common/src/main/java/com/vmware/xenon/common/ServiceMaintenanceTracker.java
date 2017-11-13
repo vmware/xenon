@@ -173,9 +173,10 @@ class ServiceMaintenanceTracker {
                     s.adjustStat(Service.STAT_NAME_MAINTENANCE_COUNT, 1);
                 }
                 start[0] = Utils.getSystemNowMicrosUtc();
-                if (servicePath.contains("/core/examples"))
-                this.host.log(Level.INFO, "DEBUG: Invoking handleMaintenance with %s %d on service %s",
-                        servicePost.getAction(), servicePost.getId(), s.getSelfLink());
+                if (servicePath.contains("/core/examples")) {
+                    this.host.log(Level.INFO, "DEBUG: Invoking handleMaintenance with %s %d on service %s",
+                            servicePost.getAction(), servicePost.getId(), s.getSelfLink());
+                }
                 s.handleMaintenance(servicePost);
             } catch (Exception ex) {
                 // Mostly at this point, CompletionHandler for servicePost has already consumed in

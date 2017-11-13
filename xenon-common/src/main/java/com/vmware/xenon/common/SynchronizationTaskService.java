@@ -787,6 +787,7 @@ public class SynchronizationTaskService
                 .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
                 .setRetryCount(0);
+        synchRequest.setExpiration(Utils.fromNowMicrosUtc(TimeUnit.MINUTES.toMicros(5)));
         try {
             sendRequest(synchRequest);
         } catch (Exception e) {

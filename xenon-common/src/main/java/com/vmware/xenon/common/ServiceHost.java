@@ -4719,7 +4719,7 @@ public class ServiceHost implements ServiceRequestSender {
      */
     void performMaintenanceStage(Operation post, MaintenanceStage stage, long deadline) {
         MaintenanceStage originalStage = stage;
-        
+
         try {
             long now = Utils.getSystemNowMicrosUtc();
 
