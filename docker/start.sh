@@ -1,9 +1,5 @@
 #!/bin/sh
 
-set -o errexit
-set -o pipefail
-set -o nounset
-
 XENON_HOME=/opt/xenon
 
 mkdir -p $XENON_HOME/log $XENON_HOME/hprof $XENON_HOME/sandbox || true
@@ -65,19 +61,53 @@ if [ "${DEBUG_PORT:-}" != "" ]; then
   fi
 fi
 
-if [ "${JMX_PORT:-}" != "" ]; then
-DEFAULT_OPTS="$DEFAULT_OPTS \
--Dcom.sun.management.jmxremote= \
--Dcom.sun.management.jmxremote.port=$JMX_PORT \
--Dcom.sun.management.jmxremote.rmi.port=$JMX_PORT \
--Dcom.sun.management.jmxremote.ssl=false \
--Dcom.sun.management.jmxremote.authenticate=false \
-"
+
+if [ -z $BINDING_ADDRESS ]
+then
+  BINDING_ADDRESS="0.0.0.0"
+fi
+echo "Setting bind address to: $BINDING_ADDRESS"
+
+if [ -z $BINDING_PORT ]
+then
+  BINDING_PORT=8000
 fi
 
+if [ -z $ADMIN_PASSWORD ]
+then
+  ADMIN_PASSWORD=vmw@r3
+fi
+
+echo "Setting port to: $BINDING_PORT"
+
+if [ -n "$JMX_PORT" ]
+then
+  echo "Enabling JMX connection on port: $JMX_PORT"
+  JAVA_OPTS="${JAVA_OPTS:-} -Dcom.sun.management.jmxremote \
+                            -Dcom.sun.management.jmxremote.port=$JMX_PORT \
+                            -Dcom.sun.management.jmxremote.rmi.port=$JMX_PORT \
+                            -Djava.rmi.server.hostname=127.0.0.1 \
+                            -Dcom.sun.management.jmxremote.ssl=false \
+                            -Dcom.sun.management.jmxremote.local.only=false \
+                            -Dcom.sun.management.jmxremote.authenticate=false"
+fi
+
+if [ -n "$JVM_HEAP" ]
+then
+  echo "Setting heap to $JVM_HEAP"
+  JAVA_OPTS="${JAVA_OPTS:-} -Xms$JVM_HEAP -Xmx$JVM_HEAP"
+fi
+
+if [ -n "$JVM_METASPACE" ]
+then
+  echo "Setting metaspace to $JVM_METASPACE"
+  JAVA_OPTS="${JAVA_OPTS:-} -XX:MetaspaceSize=$JVM_METASPACE -XX:MaxMetaspaceSize=$JVM_METASPACE"
+fi
 
 java ${DEFAULT_OPTS} \
      ${JAVA_OPTS:-} \
      -Djava.util.logging.config.file=$XENON_HOME/logging.properties \
-     -jar $XENON_HOME/app.jar \
-     --bindAddress=0.0.0.0 --port=8000 --sandbox=$XENON_HOME/sandbox "$@"
+     -jar $XENON_HOME/test.jar \
+     --bindAddress=$BINDING_ADDRESS --port=$BINDING_PORT --sandbox=$XENON_HOME/sandbox "$@" \
+     --adminPassword=$ADMIN_PASSWORD \
+     --id=$HOSTNAME
