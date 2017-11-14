@@ -897,7 +897,7 @@ public class NodeGroupService extends StatefulService {
 
             // versions move forward only, ignore stale nodes
             if (remoteEntry.documentVersion < currentEntry.documentVersion) {
-                logInfo("v:%d - q:%d, v:%d - q:%d , %s - %s (local:%s %d)",
+                logFine("v:%d - q:%d, v:%d - q:%d , %s - %s (local:%s %d)",
                         currentEntry.documentVersion,
                         currentEntry.membershipQuorum,
                         remoteEntry.documentVersion, remoteEntry.membershipQuorum,
