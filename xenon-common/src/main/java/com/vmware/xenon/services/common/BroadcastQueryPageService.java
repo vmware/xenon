@@ -33,6 +33,13 @@ public class BroadcastQueryPageService extends StatelessService {
     public static final String SELF_LINK_PREFIX = "broadcast-query-page";
     public static final String KIND = Utils.buildKind(QueryTask.class);
 
+    public static class ServiceDocumentBroadcastQueryResult extends ServiceDocumentQueryResult {
+        /**
+         * List of query result page links that were used to construct broad cast result
+         */
+        public List<String> sourcePageLinks;
+    }
+
     private final QueryTask.QuerySpecification spec;
     private final List<String> pageLinks;
     private final long expirationMicros;
@@ -90,15 +97,17 @@ public class BroadcastQueryPageService extends StatelessService {
                         }
                         int r = remainingQueries.decrementAndGet();
                         if (r == 0) {
-                            collectPagesAndStartNewServices(responses,
-                                    (response, error) -> {
-                                        if (error != null) {
-                                            get.fail(error);
-                                            return;
-                                        }
-                                        rsp.results = response;
-                                        get.setBodyNoCloning(rsp).complete();
-                                    });
+                            collectPagesAndStartNewServices(responses, (response, error) -> {
+                                if (error != null) {
+                                    get.fail(error);
+                                    return;
+                                }
+                                // we know this is a broadcast result
+                                ServiceDocumentBroadcastQueryResult broadcastResult = (ServiceDocumentBroadcastQueryResult) response;
+                                broadcastResult.sourcePageLinks = this.pageLinks;
+                                rsp.results = response;
+                                get.setBodyNoCloning(rsp).complete();
+                            });
                         }
                     });
             this.getHost().sendRequest(op);
@@ -126,7 +135,7 @@ public class BroadcastQueryPageService extends StatelessService {
             }
         }
 
-        ServiceDocumentQueryResult mergeResults = new ServiceDocumentQueryResult();
+        ServiceDocumentBroadcastQueryResult mergeResults = new ServiceDocumentBroadcastQueryResult();
         if (!nextPageLinks.isEmpty()) {
             mergeResults.nextPageLink = startNewService(nextPageLinks);
         }
@@ -150,9 +159,8 @@ public class BroadcastQueryPageService extends StatelessService {
     }
 
     private String startNewService(List<String> pageLinks) {
-        URI broadcastPageServiceUri = UriUtils.buildUri(this.getHost(), UriUtils.buildUriPath(ServiceUriPaths.CORE,
-                        BroadcastQueryPageService.SELF_LINK_PREFIX,
-                        String.valueOf(Utils.getNowMicrosUtc())));
+        URI broadcastPageServiceUri = UriUtils.buildUri(this.getHost(), UriUtils.buildUriPath(
+                ServiceUriPaths.CORE_QUERY_BROADCAST_PAGE, String.valueOf(Utils.getNowMicrosUtc())));
 
         URI forwarderUri = UriUtils.buildForwardToPeerUri(broadcastPageServiceUri, getHost().getId(),
                 ServiceUriPaths.DEFAULT_NODE_SELECTOR, EnumSet.noneOf(ServiceOption.class));

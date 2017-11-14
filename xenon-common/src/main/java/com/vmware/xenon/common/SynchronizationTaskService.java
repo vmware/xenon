@@ -17,13 +17,16 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.config.XenonConfiguration;
+import com.vmware.xenon.services.common.BroadcastQueryPageService.ServiceDocumentBroadcastQueryResult;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.TaskService;
@@ -568,7 +571,31 @@ public class SynchronizationTaskService
                 return;
             }
 
-            ServiceDocumentQueryResult rsp = o.getBody(QueryTask.class).results;
+            // since we used broadcast query and local query task, response has ServiceDocumentBroadcastQueryResult
+            ServiceDocumentBroadcastQueryResult rsp = (ServiceDocumentBroadcastQueryResult) o.getBody(QueryTask.class).results;
+
+            // Delete query result pages that no longer needed:
+            // - QueryPageServices used to construct BroadCastQueryPageService (rsp.sourcePageLinks)
+            // - Since synch doesn't go back pages, previous page. (rsp.prevPageLink)
+            // - Broadcast query result page itself (task.queryPageReference)
+
+            // construct URI that only have paths
+            Stream<URI> uriStream = Stream.concat(rsp.sourcePageLinks.stream(), Stream.of(rsp.prevPageLink))
+                    .map(path -> UriUtils.buildUri(getHost(), path))
+                    .filter(Objects::nonNull);
+            // delete all URIs asynchronously
+            Stream.concat(Stream.of(task.queryPageReference), uriStream).forEach(uri ->
+                    Operation.createDelete(uri)
+                            .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION)
+                            .setCompletion((op, ex) -> {
+                                if (ex != null) {
+                                    logWarning("Failed to delete query result page %s: %s", rsp.documentSelfLink, Utils.toString(ex));
+                                }
+                            })
+                            .sendWith(this)
+            );
+
+
             if (rsp.documentCount == 0 || rsp.documentLinks.isEmpty()) {
                 sendSelfPatch(task, TaskState.TaskStage.STARTED, subStageSetter(SubStage.CHECK_NG_AVAILABILITY));
                 return;

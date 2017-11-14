@@ -74,6 +74,9 @@ public final class ServiceUriPaths {
     public static final String CORE_QUERY_PAGE = UriUtils.buildUriPath(ServiceUriPaths.CORE,
             "query-page");
 
+    public static final String CORE_QUERY_BROADCAST_PAGE = UriUtils.buildUriPath(ServiceUriPaths.CORE,
+            BroadcastQueryPageService.SELF_LINK_PREFIX);
+
     public static final String CORE_QUERY_PAGE_FORWARDING = UriUtils.buildUriPath(
             ServiceUriPaths.CORE, "query-page-forwarding");
 

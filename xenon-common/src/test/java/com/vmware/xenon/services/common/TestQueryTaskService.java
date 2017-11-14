@@ -44,7 +44,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import com.google.gson.annotations.SerializedName;
-
 import org.junit.After;
 import org.junit.Rule;
 import org.junit.Test;
@@ -79,6 +78,7 @@ import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
+import com.vmware.xenon.services.common.BroadcastQueryPageService.ServiceDocumentBroadcastQueryResult;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryTask.Builder;
 import com.vmware.xenon.services.common.QueryTask.NumericRange;
@@ -127,24 +127,18 @@ public class TestQueryTaskService {
         }
         CommandLineArgumentParser.parseFromProperties(this.host);
         CommandLineArgumentParser.parseFromProperties(this);
-        try {
-            this.host.setStressTest(this.host.isStressTest);
-            // disable synchronization so it does not interfere with the various test assumptions
-            // on index stats.
-            this.host.setPeerSynchronizationEnabled(false);
-            this.host.start();
-            if (this.host.isStressTest()) {
-                Utils.setTimeDriftThreshold(TimeUnit.HOURS.toMicros(1));
-            } else {
-                this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS
-                        .toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
-                this.host.toggleServiceOptions(this.host.getDocumentIndexServiceUri(),
-                        EnumSet.of(ServiceOption.INSTRUMENTATION),
-                        null);
-            }
-
-        } catch (Throwable e) {
-            throw new Exception(e);
+        this.host.setStressTest(this.host.isStressTest);
+        // disable synchronization so it does not interfere with the various test assumptions
+        // on index stats.
+        this.host.setPeerSynchronizationEnabled(false);
+        this.host.start();
+        if (this.host.isStressTest()) {
+            Utils.setTimeDriftThreshold(TimeUnit.HOURS.toMicros(1));
+        } else {
+            this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS
+                    .toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
+            this.host.toggleServiceOptions(this.host.getDocumentIndexServiceUri(),
+                    EnumSet.of(ServiceOption.INSTRUMENTATION), null);
         }
     }
 
@@ -5163,4 +5157,65 @@ public class TestQueryTaskService {
         }
         this.host.testWait(ctx);
     }
+
+    @Test
+    public void broadcastQueryResponseSourcePageLinks() throws Throwable {
+        final int nodeCount = 3;
+
+        setUpHost();
+        this.host.setPeerSynchronizationEnabled(true);
+
+        this.host.setUpPeerHosts(nodeCount);
+        this.host.joinNodesAndVerifyConvergence(nodeCount, true);
+
+        URI exampleFactoryUri = UriUtils.buildUri(
+                this.host.getPeerServiceUri(ExampleService.FACTORY_LINK));
+        this.host.waitForReplicatedFactoryServiceAvailable(exampleFactoryUri);
+
+        TestRequestSender sender = this.host.getTestRequestSender();
+        // find factory owner
+        VerificationHost factoryOwner = this.host.getInProcessHostMap().values().stream()
+                .filter(peer -> {
+                    ServiceStats stats = sender.sendStatsGetAndWait(UriUtils.buildUri(peer, ExampleService.FACTORY_LINK));
+                    return stats.entries.get(Service.STAT_NAME_AVAILABLE).latestValue == Service.STAT_VALUE_TRUE;
+                })
+                .findFirst().orElseThrow(() -> new RuntimeException("Cannot find factory owner host"));
+
+
+        // create example services
+        URI exampleFactoryURI = UriUtils.buildUri(factoryOwner, ExampleService.FACTORY_LINK);
+        List<URI> exampleServices = new ArrayList<>();
+        createExampleServices(exampleFactoryURI, exampleServices);
+
+
+        // create broadcast query
+        QueryTask task = QueryTask.Builder.createDirectTask()
+                .setQuery(Query.Builder.create().addKindFieldClause(ExampleServiceState.class).build())
+                .addOption(QueryOption.BROADCAST)
+                .setResultLimit(2)
+                .build();
+        task.taskInfo.isDirect = true;
+
+        Operation post = Operation.createPost(factoryOwner, ServiceUriPaths.CORE_QUERY_TASKS).setBody(task);
+        QueryTask queryTaskResult = sender.sendAndWait(post, QueryTask.class);
+
+        // Retrieve next page. Since this is a remote call(sender to factoryOwner), response becomes json string.
+        // If we map to QueryTask, the "results" maps to ServiceDocumentQueryResult.
+        // Since here we want to check that "results" to be ServiceDocumentBroadcastQueryResult, check the raw json.
+        Operation nextPageGet = Operation.createGet(factoryOwner, queryTaskResult.results.nextPageLink);
+        Operation nextPageResponse = sender.sendAndWait(nextPageGet);
+        ServiceDocumentBroadcastQueryResult broadcastResult = Utils.getJsonMapValue(nextPageResponse.getBodyRaw(), "results",
+                ServiceDocumentBroadcastQueryResult.class);
+
+        assertNotNull("'results' attributes should be able to map to ServiceDocumentBroadcastQueryResult", broadcastResult);
+
+        // verify sourcePageLinks
+        assertEquals(nodeCount, broadcastResult.sourcePageLinks.size());
+        for (String link : broadcastResult.sourcePageLinks) {
+            Operation get = Operation.createGet(factoryOwner, link);
+            Operation response = sender.sendAndWait(get);
+            assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
+        }
+    }
+
 }

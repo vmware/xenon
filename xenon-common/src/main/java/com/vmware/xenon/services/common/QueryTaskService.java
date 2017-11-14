@@ -375,9 +375,8 @@ public class QueryTaskService extends StatefulService {
             QueryTaskUtils.processQueryResults(getHost(), queryResults, isAscOrder,
                     queryTask.querySpec.options, nodeGroupResponse, result, onCompletion);
         } else {
-            URI broadcastPageServiceUri = UriUtils.buildUri(this.getHost(), UriUtils.buildUriPath(ServiceUriPaths.CORE,
-                            BroadcastQueryPageService.SELF_LINK_PREFIX,
-                            String.valueOf(Utils.getNowMicrosUtc())));
+            URI broadcastPageServiceUri = UriUtils.buildUri(this.getHost(), UriUtils.buildUriPath(
+                    ServiceUriPaths.CORE_QUERY_BROADCAST_PAGE, String.valueOf(Utils.getNowMicrosUtc())));
 
             URI forwarderUri = UriUtils.buildForwardToPeerUri(broadcastPageServiceUri, getHost().getId(),
                     queryTask.nodeSelectorLink != null ? queryTask.nodeSelectorLink : ServiceUriPaths.DEFAULT_NODE_SELECTOR,
