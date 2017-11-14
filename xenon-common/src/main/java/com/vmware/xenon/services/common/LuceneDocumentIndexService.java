@@ -68,6 +68,7 @@ import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.index.KeepOnlyLastCommitDeletionPolicy;
 import org.apache.lucene.index.SegmentCommitInfo;
+import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.SegmentInfos;
 import org.apache.lucene.index.SnapshotDeletionPolicy;
 import org.apache.lucene.index.Term;
@@ -747,6 +748,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 new KeepOnlyLastCommitDeletionPolicy()));
 
         IndexWriter w = new IndexWriter(dir, iwc);
+        overwriteCodecInSegmentsBeforeInitialCommit(iwc.getCodec(), w);
         w.commit();
 
         synchronized (this.searchSync) {
@@ -756,6 +758,49 @@ public class LuceneDocumentIndexService extends StatelessService {
             this.writerCreationTimeMicros = this.writerUpdateTimeMicros;
         }
         return this.writer;
+    }
+
+    /**
+     * This hack is needed because segment knows which codec they are committed with.
+     * The {@link LuceneCodecWithFixes} declares the same name as the default code and when read back from
+     * disk the non-caching coded will be used.
+     *
+     * Codecs are meant to be stateless so this is why there is no easy way to encode during segment read. The
+     * {@link LuceneCodecWithFixes} though keeps state in a {@link FieldInfoCache}.
+     *
+     * That's why after initial load the segment are having their codec overwritten using horrendous reflection.
+     * This method will bail out at the first error ignoring all optimizations but will be able to read any index
+     * on disk.
+     * @param codec
+     * @param writer
+     */
+    private void overwriteCodecInSegmentsBeforeInitialCommit(Codec codec, IndexWriter writer) {
+        if (this.fieldInfoCache == null) {
+            return;
+        }
+
+        try {
+            Field segmentInfosF = writer.getClass().getDeclaredField("segmentInfos");
+            segmentInfosF.setAccessible(true);
+            SegmentInfos segmentInfos = (SegmentInfos) segmentInfosF.get(writer);
+
+            // must use reflection as codec can be set once only
+            // in this case it's OK as the replaced object is the same 99%
+            // and thread-safe by design
+            Field codecF = SegmentInfo.class.getDeclaredField("codec");
+            codecF.setAccessible(true);
+
+            for (SegmentCommitInfo sci : segmentInfos) {
+                Codec originalCodec = sci.info.getCodec();
+                if (originalCodec.fieldInfosFormat() instanceof Lucene60FieldInfosFormat) {
+                    // only change it if we know how to handle it.
+                    codecF.set(sci.info, codec);
+                }
+            }
+        } catch (Exception e) {
+            getHost().log(Level.WARNING,
+                    "Caching of FieldInfos will not be be enabled on committed segments: %s", e);
+        }
     }
 
     private Codec createCodec() {
