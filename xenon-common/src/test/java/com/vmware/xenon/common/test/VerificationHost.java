@@ -3719,4 +3719,16 @@ public class VerificationHost extends ExampleServiceHost {
     public TestRequestSender getTestRequestSender() {
         return this.sender;
     }
+
+    /**
+     * Return list of attached service paths that prefix match to the given path
+     * @return list of service paths
+     */
+    public List<String> getServicePathsByPrefix(String servicePathPrefix) {
+        Operation dummy = Operation.createGet(null);
+        this.queryServiceUris(UriUtils.buildUriPath(servicePathPrefix, UriUtils.URI_WILDCARD_CHAR), dummy);
+        List<String> links = dummy.getBody(ServiceDocumentQueryResult.class).documentLinks;
+        return links;
+    }
+
 }
