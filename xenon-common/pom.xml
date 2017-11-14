@@ -23,6 +23,7 @@
     <jaeger.version>0.21.0</jaeger.version>
     <findbugs.version>3.0.1</findbugs.version>
     <jmh.version>1.19</jmh.version>
+    <docker.java.version>3.0.14</docker.java.version>
   </properties>
 
   <profiles>
@@ -214,6 +215,11 @@
       <artifactId>jsr305</artifactId>
       <version>${findbugs.version}</version>
       <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.github.docker-java</groupId>
+      <artifactId>docker-java</artifactId>
+      <version>${docker.java.version}</version>
     </dependency>
   </dependencies>
   <build>
