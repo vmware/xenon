@@ -16,6 +16,7 @@ package com.vmware.xenon.services.common;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toSet;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -108,13 +109,13 @@ public class TestExampleService {
         initialState.name = rsp.name + "update-1";
         ExampleServiceState state = sender.sendAndWait(Operation.createPatch(host, rsp.documentSelfLink)
                 .setBody(initialState), ExampleServiceState.class);
-        assertTrue(state.name.endsWith("update-1"));
+        assertThat(state.name).endsWith("update-1");
 
         initialState.name = rsp.name + "update-2";
         initialState.counter = 1L;
         state = sender.sendAndWait(Operation.createPatch(host, rsp.documentSelfLink)
                 .setBody(initialState), ExampleServiceState.class);
-        assertTrue(state.name.endsWith("update-2"));
+        assertThat(state.name).endsWith("update-2");
 
         // Verify that strict update succeeds with correct version
         ExampleService.StrictUpdateRequest strictUpdateRequest = new ExampleService.StrictUpdateRequest();
@@ -123,7 +124,7 @@ public class TestExampleService {
         strictUpdateRequest.kind = Utils.buildKind(ExampleService.StrictUpdateRequest.class);
         state = sender.sendAndWait(Operation.createPatch(host, rsp.documentSelfLink)
                 .setBody(strictUpdateRequest), ExampleServiceState.class);
-        assertTrue(state.name.endsWith("update-3"));
+        assertThat(state.name).endsWith("update-3");
 
         // Verify that strict update fails with wrong version
         strictUpdateRequest.documentVersion = state.documentVersion - 1;
@@ -159,7 +160,8 @@ public class TestExampleService {
         ServiceDocumentQueryResult templateResult = sender.sendGetAndWait(uri,
                 ServiceDocumentQueryResult.class);
 
-        assertTrue(templateResult.documentLinks.size() == templateResult.documents.size());
+        assertThat(templateResult.documentLinks).hasSameSizeAs(templateResult.documents.keySet());
+
         ExampleServiceState childTemplate = Utils.fromJson(
                 templateResult.documents.get(templateResult.documentLinks.iterator().next()),
                 ExampleServiceState.class);
@@ -167,15 +169,13 @@ public class TestExampleService {
         assertNotNull(childTemplate.counter);
         assertNotNull(childTemplate.name);
         assertNotNull(childTemplate.documentDescription);
-        assertNotNull(childTemplate.documentDescription.propertyDescriptions);
-        assertTrue(childTemplate.documentDescription.propertyDescriptions.size() > 0);
-        assertTrue(childTemplate.documentDescription.propertyDescriptions.containsKey("name"));
-        assertTrue(childTemplate.documentDescription.propertyDescriptions.containsKey("counter"));
+        assertThat(childTemplate.documentDescription.propertyDescriptions).size().isGreaterThan(3);
+        assertThat(childTemplate.documentDescription.propertyDescriptions).containsKeys("name", "counter");
 
         PropertyDescription pdMap = childTemplate.documentDescription.propertyDescriptions
                 .get(ExampleServiceState.FIELD_NAME_KEY_VALUES);
-        assertTrue(pdMap.usageOptions.contains(PropertyUsageOption.OPTIONAL));
-        assertTrue(pdMap.indexingOptions.contains(PropertyIndexingOption.EXPAND));
+        assertThat(pdMap.usageOptions).contains(PropertyUsageOption.OPTIONAL);
+        assertThat(pdMap.indexingOptions).contains(PropertyIndexingOption.EXPAND);
     }
 
     @Test
@@ -195,7 +195,7 @@ public class TestExampleService {
         //test that example services are created correctly
         for (ExampleServiceState s : childStates) {
             assertEquals(COUNTER_VALUE, s.counter);
-            assertTrue(s.name.startsWith(PREFIX));
+            assertThat(s.name).startsWith(PREFIX);
             assertEquals(host.getId(), s.documentOwner);
             assertEquals(3, s.keyValues.size());
             assertEquals("test-value-1", s.keyValues.get("test-key-1"));
@@ -221,7 +221,7 @@ public class TestExampleService {
         List<ExampleServiceState> patchedStates = getExampleServiceStates(host, childPaths);
         for (ExampleServiceState s : patchedStates) {
             assertEquals(COUNTER_VALUE, s.counter);
-            assertTrue(s.name.startsWith(PREFIX));
+            assertThat(s.name).startsWith(PREFIX);
             assertEquals(host.getId(), s.documentOwner);
             assertEquals(3, s.keyValues.size());
             assertEquals("test-value-1-patch-1", s.keyValues.get("test-key-1"));
@@ -247,7 +247,7 @@ public class TestExampleService {
         List<ExampleServiceState> patchesToSetNullStates = getExampleServiceStates(host, childPaths);
         for (ExampleServiceState s : patchesToSetNullStates) {
             assertEquals(COUNTER_VALUE, s.counter);
-            assertTrue(s.name.startsWith(PREFIX));
+            assertThat(s.name).startsWith(PREFIX);
             assertEquals(host.getId(), s.documentOwner);
             assertEquals(1, s.keyValues.size());
             assertEquals("test-value-1-patch-1", s.keyValues.get("test-key-1"));
@@ -556,7 +556,7 @@ public class TestExampleService {
                 .map(ServiceHost::getId)
                 .collect(toSet());
         String msg = String.format("DocumentOwner %s is not in %s", postResult.documentOwner, expectedOwnerIds);
-        assertTrue(msg, expectedOwnerIds.contains(postResult.documentOwner));
+        assertThat(expectedOwnerIds).as(msg).contains(postResult.documentOwner);
 
 
         // send a GET to host4 which is in groupB. It should fail.
