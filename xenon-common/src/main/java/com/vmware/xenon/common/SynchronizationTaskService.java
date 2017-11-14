@@ -25,6 +25,7 @@ import java.util.function.Supplier;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.services.common.QueryTask;
+import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.TaskService;
 
@@ -527,8 +528,7 @@ public class SynchronizationTaskService
         queryTask.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(timeoutMicros);
 
         // Make this a broadcast query so that we get child services from all peer nodes.
-        queryTask.querySpec.options = EnumSet.of(
-                QueryTask.QuerySpecification.QueryOption.BROADCAST);
+        queryTask.querySpec.options = EnumSet.of(QueryOption.BROADCAST, QueryOption.FORWARD_ONLY);
 
         // Set the node-selector link.
         queryTask.nodeSelectorLink = task.nodeSelectorLink;
@@ -569,6 +569,19 @@ public class SynchronizationTaskService
             }
 
             ServiceDocumentQueryResult rsp = o.getBody(QueryTask.class).results;
+
+            // Delete the read page.
+            // Since this is a broadcast query, deleting the result page cascade deletes query result pages.
+            // Also, there will be no previous pages since FORWARD_ONLY option is enabled.
+            Operation.createDelete(task.queryPageReference)
+                    .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION)
+                    .setCompletion((op, ex) -> {
+                        if (ex != null) {
+                            logWarning("Failed to delete query result page %s: %s", rsp.documentSelfLink, Utils.toString(ex));
+                        }
+                    })
+                    .sendWith(this);
+
             if (rsp.documentCount == 0 || rsp.documentLinks.isEmpty()) {
                 sendSelfPatch(task, TaskState.TaskStage.STARTED, subStageSetter(SubStage.CHECK_NG_AVAILABILITY));
                 return;

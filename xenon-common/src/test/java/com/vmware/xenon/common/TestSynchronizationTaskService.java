@@ -904,4 +904,51 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         this.host.sendRequest(op);
         testWait(ctx);
     }
+
+    @Test
+    public void queryPageCleanUp() throws Throwable {
+        setUpMultiNode();
+        VerificationHost node = this.host.getPeerHost();
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+        node.createExampleServices(node, this.serviceCount, null);
+
+        // find factory owner
+        VerificationHost factoryOwner = this.host.getInProcessHostMap().values().stream()
+                .filter(peer -> {
+                    ServiceStats stats = sender.sendStatsGetAndWait(UriUtils.buildUri(peer, ExampleService.FACTORY_LINK));
+                    return stats.entries.get(Service.STAT_NAME_AVAILABLE).latestValue == Service.STAT_VALUE_TRUE;
+                })
+                .findFirst().orElseThrow(() -> new RuntimeException("Cannot find factory owner host"));
+
+
+        // make sure currently there is no query service
+        int queryPageCountBefore = factoryOwner.getServicePathsByPrefix(ServiceUriPaths.CORE_QUERY_PAGE).size();
+        int broadCastPageCountBefore = factoryOwner.getServicePathsByPrefix(ServiceUriPaths.CORE_QUERY_BROADCAST_PAGE).size();
+        assertEquals("Expect no query pages", 0, queryPageCountBefore);
+        assertEquals("Expect no broad cast pages", 0, broadCastPageCountBefore);
+
+        SynchronizationTaskService.State task = createSynchronizationTaskState(Long.MAX_VALUE, ExampleService.FACTORY_LINK);
+        task.queryResultLimit = this.serviceCount / 5;
+
+        Operation op = Operation
+                .createPost(UriUtils.buildUri(factoryOwner, SynchronizationTaskService.FACTORY_LINK))
+                .setBody(task);
+
+        SynchronizationTaskService.State result = sender.sendAndWait(op, SynchronizationTaskService.State.class);
+        factoryOwner.waitForTask(SynchronizationTaskService.State.class, result.documentSelfLink, TaskState.TaskStage.FINISHED);
+
+        int queryPageCountAfter = factoryOwner.getServicePathsByPrefix(ServiceUriPaths.CORE_QUERY_PAGE).size();
+        int broadcastPageCountAfter = factoryOwner.getServicePathsByPrefix(ServiceUriPaths.CORE_QUERY_BROADCAST_PAGE).size();
+        assertEquals("Expect no query pages", 0, queryPageCountAfter);
+        assertEquals("Expect no broad cast pages", 0, broadcastPageCountAfter);
+    }
+
+    private int getNumOfServices(VerificationHost node, String servicePrefix) {
+        Operation dummy = Operation.createGet(null);
+        node.queryServiceUris(UriUtils.buildUriPath(servicePrefix, UriUtils.URI_WILDCARD_CHAR), dummy);
+        List<String> links = dummy.getBody(ServiceDocumentQueryResult.class).documentLinks;
+        return links.size();
+    }
+
 }
