@@ -32,6 +32,8 @@ import org.apache.lucene.index.IndexOptions;
 final class FieldInfoCache {
     private static final int MAX_FIELD_INFO_COUNT = 1500;
 
+    private static final int MAX_INFOS_COUNT = 500;
+
     private static final Field fiValues;
 
     private static final Field fiByNumberTable;
@@ -103,10 +105,50 @@ final class FieldInfoCache {
         }
     }
 
+    private static final class FieldInfosKey {
+        final FieldInfo[] infos;
+
+        FieldInfosKey(FieldInfo[] infos) {
+            this.infos = infos;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (!(obj instanceof FieldInfosKey)) {
+                return false;
+            }
+
+            FieldInfosKey that = (FieldInfosKey) obj;
+
+            if (this.infos.length != that.infos.length) {
+                return false;
+            }
+
+            for (int i = 0; i < this.infos.length; i++) {
+                if (!FieldInfoCache.equals(this.infos[i], that.infos[i])) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        @Override
+        public int hashCode() {
+            int h = 17;
+            for (FieldInfo info : this.infos) {
+                h = h * 31 + FieldInfoCache.hashCode(info);
+            }
+
+            return h;
+        }
+    }
+
     public static int hashCode(FieldInfo fi) {
         int h = 17;
         h = h * 31 + fi.number;
         h = h * 31 + fi.name.hashCode();
+        h = h * 31 + (int) fi.getDocValuesGen();
         // skip attributes on purpose for performance
         return h;
     }
@@ -114,9 +156,9 @@ final class FieldInfoCache {
     public static boolean equals(FieldInfo a, FieldInfo b) {
         return a.number == b.number &&
                 a.name.equals(b.name) &&
+                a.getDocValuesGen() == b.getDocValuesGen() &&
                 a.getPointDimensionCount() == b.getPointDimensionCount() &&
                 a.getPointNumBytes() == b.getPointNumBytes() &&
-                a.getDocValuesGen() == b.getDocValuesGen() &&
                 a.getIndexOptions() == b.getIndexOptions() &&
                 a.hasPayloads() == b.hasPayloads() &&
                 a.hasVectors() == b.hasVectors() &&
@@ -129,13 +171,11 @@ final class FieldInfoCache {
      */
     private final ConcurrentMap<FieldInfoKey, FieldInfo> infoCache;
 
-    /**
-     * The longest FieldInfos ever seen. Harmless race reading/writing this.
-     */
-    private FieldInfos longest;
+    private final ConcurrentMap<FieldInfosKey, FieldInfos> infosCache;
 
     public FieldInfoCache() {
         this.infoCache = new ConcurrentHashMap<>();
+        this.infosCache = new ConcurrentHashMap<>();
     }
 
     /**
@@ -146,31 +186,12 @@ final class FieldInfoCache {
      * @return
      */
     public FieldInfos dedupFieldInfos(FieldInfo[] infos) {
-        FieldInfos cached = this.longest;
-        if (cached == null || cached.size() < infos.length) {
-            cached = new FieldInfos(infos);
-            trimFieldInfos(cached);
-            this.longest = cached;
-            return cached;
-        }
-
-        if (cached.size() == infos.length) {
-            for (FieldInfo a : infos) {
-                FieldInfo b = cached.fieldInfo(a.number);
-                if (b == null || !FieldInfoCache.equals(a, b)) {
-                    FieldInfos update = new FieldInfos(infos);
-                    trimFieldInfos(update);
-                    this.longest = update;
-                    return update;
-                }
-            }
-
-            return cached;
-        }
-
-        FieldInfos update = new FieldInfos(infos);
-        trimFieldInfos(update);
-        return update;
+        FieldInfosKey key = new FieldInfosKey(infos);
+        return this.infosCache.computeIfAbsent(key, k -> {
+            FieldInfos res = new FieldInfos(k.infos);
+            trimFieldInfos(res);
+            return res;
+        });
     }
 
     /**
@@ -222,7 +243,12 @@ final class FieldInfoCache {
 
     public void handleMaintenance() {
         if (this.infoCache.size() > MAX_FIELD_INFO_COUNT) {
-            this.infoCache.clear();
+            // remove only fields with docValues: the rest will be present everywhere
+            this.infoCache.values().removeIf(fieldInfo -> fieldInfo.getDocValuesGen() >= 0);
+        }
+
+        if (this.infosCache.size() > MAX_INFOS_COUNT) {
+            this.infosCache.clear();
         }
     }
 }

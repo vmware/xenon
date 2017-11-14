@@ -53,9 +53,6 @@ final class Lucene60FieldInfosFormatWithCache extends FieldInfosFormat {
     @Override
     public FieldInfos read(Directory directory, SegmentInfo segmentInfo, String segmentSuffix, IOContext context) throws
             IOException {
-        //////////////////////
-        boolean checkInfosCache = true;
-        //////////////////////
         final String fileName = IndexFileNames.segmentFileName(segmentInfo.name, segmentSuffix, EXTENSION);
         try (ChecksumIndexInput input = directory.openChecksumInput(fileName, context)) {
             Throwable priorE = null;
@@ -106,20 +103,10 @@ final class Lucene60FieldInfosFormatWithCache extends FieldInfosFormat {
 
                     try {
                         //////////////////////
-                        if (dvGen >= 0) {
-                            // skip fields with docValues, they don't cache well
-                            checkInfosCache = false;
-                            infos[i] = new FieldInfo(name, fieldNumber, storeTermVector,
-                                    omitNorms,
-                                    storePayloads,
-                                    indexOptions, docValuesType, dvGen, attributes,
-                                    pointDimensionCount, pointNumBytes);
-                        } else {
-                            infos[i] = this.cache
-                                    .dedupFieldInfo(name, fieldNumber, storeTermVector, omitNorms, storePayloads,
-                                            indexOptions, docValuesType, dvGen, attributes,
-                                            pointDimensionCount, pointNumBytes);
-                        }
+                        infos[i] = this.cache
+                                .dedupFieldInfo(name, fieldNumber, storeTermVector, omitNorms, storePayloads,
+                                        indexOptions, docValuesType, dvGen, attributes,
+                                        pointDimensionCount, pointNumBytes);
                         //////////////////////
                     } catch (IllegalStateException e) {
                         throw new CorruptIndexException(
@@ -133,13 +120,7 @@ final class Lucene60FieldInfosFormatWithCache extends FieldInfosFormat {
             }
 
             //////////////////////
-            if (checkInfosCache) {
-                return this.cache.dedupFieldInfos(infos);
-            } else {
-                FieldInfos result = new FieldInfos(infos);
-                this.cache.trimFieldInfos(result);
-                return result;
-            }
+            return this.cache.dedupFieldInfos(infos);
             //////////////////////
         }
     }
