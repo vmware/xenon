@@ -904,4 +904,38 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         this.host.sendRequest(op);
         testWait(ctx);
     }
+
+    @Test
+    public void queryPageCleanUp() throws Throwable {
+        setUpMultiNode();
+        VerificationHost node = this.host.getPeerHost();
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+        node.createExampleServices(node, this.serviceCount, null);
+
+        // find factory owner
+        VerificationHost factoryOwner = this.host.getOwnerPeer(ExampleService.FACTORY_LINK, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+
+        // make sure currently there is no query service
+        int queryPageCountBefore = factoryOwner.getServicePathsByPrefix(ServiceUriPaths.CORE_QUERY_PAGE).size();
+        int broadCastPageCountBefore = factoryOwner.getServicePathsByPrefix(ServiceUriPaths.CORE_QUERY_BROADCAST_PAGE).size();
+        assertEquals("Expect no query pages", 0, queryPageCountBefore);
+        assertEquals("Expect no broad cast pages", 0, broadCastPageCountBefore);
+
+        SynchronizationTaskService.State task = createSynchronizationTaskState(Long.MAX_VALUE, ExampleService.FACTORY_LINK);
+        task.queryResultLimit = this.serviceCount / 5;
+
+        Operation op = Operation
+                .createPost(UriUtils.buildUri(factoryOwner, SynchronizationTaskService.FACTORY_LINK))
+                .setBody(task);
+
+        SynchronizationTaskService.State result = sender.sendAndWait(op, SynchronizationTaskService.State.class);
+        factoryOwner.waitForTask(SynchronizationTaskService.State.class, result.documentSelfLink, TaskState.TaskStage.FINISHED);
+
+        int queryPageCountAfter = factoryOwner.getServicePathsByPrefix(ServiceUriPaths.CORE_QUERY_PAGE).size();
+        int broadcastPageCountAfter = factoryOwner.getServicePathsByPrefix(ServiceUriPaths.CORE_QUERY_BROADCAST_PAGE).size();
+        assertEquals("Expect no query pages", 0, queryPageCountAfter);
+        assertEquals("Expect no broad cast pages", 0, broadcastPageCountAfter);
+    }
+
 }
