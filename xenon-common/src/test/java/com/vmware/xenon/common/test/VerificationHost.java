@@ -3719,4 +3719,24 @@ public class VerificationHost extends ExampleServiceHost {
     public TestRequestSender getTestRequestSender() {
         return this.sender;
     }
+
+    /**
+     * Return list of attached service paths that prefix match to the given path
+     * @return list of service paths
+     */
+    public List<String> getServicePathsByPrefix(String servicePathPrefix) {
+        Operation dummy = Operation.createGet(null);
+        this.queryServiceUris(UriUtils.buildUriPath(servicePathPrefix, UriUtils.URI_WILDCARD_CHAR), dummy);
+        List<String> links = dummy.getBody(ServiceDocumentQueryResult.class).documentLinks;
+        return links;
+    }
+
+    /**
+     * Returns an owner peer for the given service path from in-memory nodes.
+     */
+    public VerificationHost getOwnerPeer(String path, String nodeSelectorPath) {
+        return getInProcessHostMap().values().stream()
+                .filter(h -> h.isOwner(path, nodeSelectorPath))
+                .findFirst().orElseThrow(() -> new RuntimeException("couldn't find owner node"));
+    }
 }
