@@ -15,9 +15,27 @@ package com.vmware.xenon.common.serialization;
 
 import com.vmware.xenon.common.ServiceHost;
 
-public class BufferThreadLocal extends ThreadLocal<byte[]> {
+/**
+ */
+public class StringBuilderThreadLocal extends ThreadLocal<StringBuilder> {
+
+    public static final int DEFAULT_INITIAL_CAPACITY = ServiceHost.DEFAULT_SERVICE_STATE_COST_BYTES;
+
     @Override
-    protected byte[] initialValue() {
-        return new byte[ServiceHost.DEFAULT_SERVICE_STATE_COST_BYTES];
+    protected StringBuilder initialValue() {
+        return new StringBuilder(DEFAULT_INITIAL_CAPACITY);
+    }
+
+    @Override
+    public StringBuilder get() {
+        StringBuilder result = super.get();
+
+        if (result.length() > KryoSerializers.THREAD_LOCAL_BUFFER_LIMIT_BYTES) {
+            result.setLength(DEFAULT_INITIAL_CAPACITY);
+            result.trimToSize();
+        }
+
+        result.setLength(0);
+        return result;
     }
 }

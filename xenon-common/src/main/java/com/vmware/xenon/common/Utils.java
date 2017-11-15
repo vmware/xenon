@@ -69,6 +69,7 @@ import com.vmware.xenon.common.SystemHostInfo.OsFamily;
 import com.vmware.xenon.common.serialization.GsonSerializers;
 import com.vmware.xenon.common.serialization.JsonMapper;
 import com.vmware.xenon.common.serialization.KryoSerializers;
+import com.vmware.xenon.common.serialization.StringBuilderThreadLocal;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**

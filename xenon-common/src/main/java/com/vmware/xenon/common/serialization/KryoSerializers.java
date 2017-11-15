@@ -42,6 +42,7 @@ import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
 import org.objenesis.strategy.StdInstantiatorStrategy;
 
 import com.vmware.xenon.common.ServiceDocument;
+import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.config.XenonConfiguration;
 
 public final class KryoSerializers {
@@ -83,7 +84,9 @@ public final class KryoSerializers {
 
     public static final long THREAD_LOCAL_BUFFER_LIMIT_BYTES = 1024 * 1024;
     private static final int DEFAULT_BUFFER_SIZE_BYTES = 4096;
-    private static final BufferThreadLocal bufferPerThread = new BufferThreadLocal();
+
+    private static final ThreadLocal<byte[]> bufferPerThread = ThreadLocal.withInitial(
+            () -> new byte[ServiceHost.DEFAULT_SERVICE_STATE_COST_BYTES]);
 
     public static Kryo create(boolean isObjectSerializer) {
         Kryo k = new Kryo();
