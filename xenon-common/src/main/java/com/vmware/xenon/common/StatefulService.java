@@ -209,8 +209,8 @@ public class StatefulService implements Service {
             return true;
         }
 
-        // we can stop the service and cancel pending requests
-        setProcessingStage(Service.ProcessingStage.STOPPED);
+        // we can cancel pending requests. the service will be stopped by the host
+        // using proper locking
         cancelPendingRequests(op);
         return false;
     }
