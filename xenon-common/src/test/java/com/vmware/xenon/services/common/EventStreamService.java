@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServerSentEvent;
 import com.vmware.xenon.common.StatelessService;
+import com.vmware.xenon.common.Utils;
 
 /**
  * Event stream service for testing the Server Sent Events functionality.
@@ -34,8 +35,10 @@ public class EventStreamService extends StatelessService {
     private final long period;
     private final TimeUnit timeUnit;
     private final ExecutorService executorService;
+
     private int repeat;
     private Exception failException;
+    private Operation sessionOp;
 
     /**
      * @param events The events to replay
@@ -53,6 +56,43 @@ public class EventStreamService extends StatelessService {
         // Intentionally using ThreadPoolExecutor instead of ScheduledExecutor, in order to simulate load.
         this.executorService = Executors.newFixedThreadPool(parallelism);
         this.repeat = repeat;
+    }
+
+    @Override
+    public void handlePost(Operation post) {
+        if (this.sessionOp != null) {
+            post.fail(Operation.STATUS_CODE_CONFLICT);
+            return;
+        }
+        post.startEventStream();
+        this.sessionOp = post;
+    }
+
+    @Override
+    public void handlePatch(Operation patch) {
+        if (this.sessionOp == null) {
+            patch.fail(new IllegalStateException("session does not exist"));
+            return;
+        }
+        ServerSentEvent event = new ServerSentEvent()
+                .setData(Utils.toJson(patch.getBodyRaw()))
+                .setCompletionCallback(t -> {
+                    if (t != null) {
+                        patch.fail(t);
+                        return;
+                    }
+                    patch.complete();
+                });
+        this.sessionOp.sendServerSentEvent(event);
+    }
+
+    @Override
+    public void handleDelete(Operation delete) {
+        if (this.sessionOp != null) {
+            this.sessionOp.complete();
+            this.sessionOp = null;
+        }
+        super.handleDelete(delete);
     }
 
     @Override

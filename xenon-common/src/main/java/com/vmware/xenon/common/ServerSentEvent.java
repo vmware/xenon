@@ -14,6 +14,7 @@
 package com.vmware.xenon.common;
 
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * Defines the Server Sent Event model according to <a href="https://www.w3.org/TR/eventsource/">the specification</a>
@@ -46,6 +47,15 @@ public class ServerSentEvent {
      * The reconnection time in milliseconds. Optional.
      */
     public Long retry;
+
+    /**
+     * Allows callers to determine if the ServerSentEvent was
+     * delivered to the client application. If the event was delivered
+     * successfully, the callback is invoked with a no throwable.
+     * Otherwise, a throwable is passed in the callback that indicates
+     * the cause of the failure. Optional.
+     */
+    public Consumer<Throwable> completionCallback;
 
     /**
      * Sets the event type for this event.
@@ -84,6 +94,16 @@ public class ServerSentEvent {
      */
     public ServerSentEvent setRetry(Long retry) {
         this.retry = retry;
+        return this;
+    }
+
+    /**
+     * Sets the completion callback for this event.
+     * @param completionCallback
+     * @return
+     */
+    public ServerSentEvent setCompletionCallback(Consumer<Throwable> completionCallback) {
+        this.completionCallback = completionCallback;
         return this;
     }
 
