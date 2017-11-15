@@ -464,6 +464,8 @@ public class Operation implements Cloneable {
     public static final String ACCEPT_ENCODING_HEADER = "accept-encoding";
     public static final String AUTHORIZATION_HEADER = "authorization";
     public static final String ACCEPT_LANGUAGE_HEADER = "accept-language";
+    public static final String TRANSFER_ENCODING_HEADER = "transfer-encoding";
+    public static final String CHUNKED_ENCODING = "chunked";
     public static final String LAST_EVENT_ID_HEADER = "last-event-id";
 
     // HTTP2 Header definitions
@@ -1327,8 +1329,9 @@ public class Operation implements Cloneable {
      * Send the appropriate headers and prepare the connection for streaming.
      */
     public void startEventStream() {
-        this.setContentType(MEDIA_TYPE_TEXT_EVENT_STREAM);
-        this.sendHeaders();
+        setContentType(MEDIA_TYPE_TEXT_EVENT_STREAM);
+        addResponseHeader(Operation.TRANSFER_ENCODING_HEADER, Operation.CHUNKED_ENCODING);
+        sendHeaders();
     }
 
     public void fail(int statusCode) {
