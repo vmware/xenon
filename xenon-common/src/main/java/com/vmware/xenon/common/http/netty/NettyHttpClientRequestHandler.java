@@ -378,7 +378,20 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                     if (this.isStreamingEnabled.get()) {
                         byte[] data = ServerSentEventConverter.INSTANCE.serialize(event).getBytes(ServerSentEventConverter.ENCODING_CHARSET);
                         ByteBuf byteBuf = Unpooled.wrappedBuffer(data);
-                        ctx.writeAndFlush(byteBuf);
+                        ChannelFuture future = ctx.writeAndFlush(byteBuf);
+
+                        if (event.completionCallback != null) {
+                            future.addListener(f -> {
+                                if (f.isSuccess()) {
+                                    event.completionCallback.accept(null);
+                                } else {
+                                    String errMsg = String.format("Failed to push event. Failure: %s",
+                                            f.cause() != null ? f.cause().getMessage() : "unknown");
+                                    event.completionCallback.accept(
+                                            new IllegalStateException(errMsg, f.cause()));
+                                }
+                            });
+                        }
                     } else {
                         throw new RuntimeException("Call to startEventStream() or sendHeaders() is necessary to enable streaming!");
                     }
