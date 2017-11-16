@@ -335,9 +335,10 @@ public class TestEventStreams extends BasicReusableHostTestCase {
         this.sender.sendAndWait(patchOps);
 
         // Verify that the client received the expected number of events
-        this.host.waitFor("Client did not received the expected number of events", () -> {
+        this.host.waitFor("Client did not receive the expected number of events", () -> {
             Map<String, ServiceStats.ServiceStat> svcStats = this.host.getServiceStats(clientUri);
-            return svcStats.get(SessionClientService.STAT_NAME_EVENT_COUNT).latestValue == eventCount;
+            ServiceStats.ServiceStat countStat = svcStats.get(SessionClientService.STAT_NAME_EVENT_COUNT);
+            return countStat != null && countStat.latestValue == eventCount;
         });
 
         // Stop the client to simulate a disconnect
