@@ -56,6 +56,8 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.StampedLock;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -443,6 +445,12 @@ public class ServiceHost implements ServiceRequestSender {
         public Boolean skipForwardingRequests = true;
     }
 
+    public static class AttachedServiceInfo {
+        public Service service;
+        public Lock lock;
+        // TODO: public ServiceDocument cachedState
+    }
+
     public static class ServiceHostState extends ServiceDocument {
         public enum MemoryLimitType {
             LOW_WATERMARK, HIGH_WATERMARK, EXACT
@@ -594,14 +602,11 @@ public class ServiceHost implements ServiceRequestSender {
     private ScheduledExecutorService scheduledExecutor;
     private ScheduledThreadPoolExecutor scheduledExecutorPool; // For service resource tracking
 
-    private final ConcurrentHashMap<String, Service> attachedServices = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, AttachedServiceInfo> attachedServices = new ConcurrentHashMap<>();
     private final ConcurrentSkipListMap<String, Service> attachedNamespaceServices = new ConcurrentSkipListMap<>();
 
     private final ConcurrentSkipListSet<String> coreServices = new ConcurrentSkipListSet<>();
     private final ConcurrentHashMap<String, Class<? extends Service>> privilegedServiceTypes = new ConcurrentHashMap<>();
-
-    private final Set<String> pendingServiceDeletions = Collections
-            .synchronizedSet(new HashSet<String>());
 
     /**
      * OpenTracing tracer. Currently spans have recount semantics, unlike OperationContext, so rather than
@@ -1244,7 +1249,8 @@ public class ServiceHost implements ServiceRequestSender {
 
         long minInterval = micros;
         // verify that attached services have intervals greater or equal to suggested value
-        for (Service s : this.attachedServices.values()) {
+        for (AttachedServiceInfo serviceInfo : this.attachedServices.values()) {
+            Service s = serviceInfo.service;
             if (s.getProcessingStage() == ProcessingStage.STOPPED) {
                 continue;
             }
@@ -2526,6 +2532,7 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         boolean attachService = !post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_VERSION);
+        Lock serviceStartLock = null;
 
         // if the service is a helper for one of the known URI suffixes, do not
         // add it to the map. We will special case dispatching to it
@@ -2542,34 +2549,58 @@ public class ServiceHost implements ServiceRequestSender {
             attachService = false;
         }
 
-        if (attachService && checkIfServiceExistsAndAttach(service, servicePath, post, onDemandTriggeringOp)) {
-            // service exists, do not proceed with start
-            return this;
+        if (attachService) {
+            serviceStartLock = checkIfServiceExistsAndAttach(service, servicePath, post, onDemandTriggeringOp);
+            if (serviceStartLock == null) {
+                // service exists, do not proceed with start
+                return this;
+            }
         }
 
         try {
             service.setProcessingStage(ProcessingStage.CREATED);
         } catch (Exception e) {
             log(Level.SEVERE, "Unhandled error: %s", Utils.toString(e));
+            stopService(service, serviceStartLock != null);
+            if (serviceStartLock != null) {
+                releaseServiceLock(serviceStartLock);
+            }
             post.fail(e);
             return this;
         }
 
         // make sure we detach the service on start failure
         final boolean finalAttachService = attachService;
+        final Lock finalServiceStartLock = serviceStartLock;
         post.nestCompletion((o, e) -> {
             this.operationTracker.removeStartOperation(post);
             if (e == null) {
+                // start was successful
+
+                if (onDemandTriggeringOp != null) {
+                    // successful on-demand start - atomically dispatch triggering op before
+                    // we release the service start lock
+                    atomicDispatch(post, service, onDemandTriggeringOp, finalServiceStartLock);
+                    return;
+                }
+
+                if (finalServiceStartLock != null) {
+                    releaseServiceLock(finalServiceStartLock);
+                }
                 post.complete();
                 return;
             }
 
+            // start failed
             if (!finalAttachService) {
                 post.fail(o.getStatusCode(), e, o.getBodyRaw());
                 return;
             }
 
-            stopService(service);
+            stopService(service, finalServiceStartLock != null);
+            if (finalServiceStartLock != null) {
+                releaseServiceLock(finalServiceStartLock);
+            }
             this.serviceSynchTracker.failStartServiceOrSynchronize(service, post, o, e);
         });
 
@@ -2741,34 +2772,24 @@ public class ServiceHost implements ServiceRequestSender {
         startService(post, service, onDemandTriggeringOp);
     }
 
-    private boolean checkIfServiceExistsAndAttach(Service service, String servicePath,
+    private Lock checkIfServiceExistsAndAttach(Service service, String servicePath,
             Operation post, Operation onDemandTriggeringOp) {
-        boolean isCreateOrSynchRequest = post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED)
-                || post.isSynchronize();
-        Service existing = null;
-        boolean synchPendingDelete = false;
-        boolean isOnDemandStart = onDemandTriggeringOp != null;
+        AttachedServiceInfo serviceInfo;
+        boolean serviceInfoCreated;
 
-        synchronized (this.state) {
-            existing = this.attachedServices.get(servicePath);
-            if (this.pendingServiceDeletions.contains(servicePath) &&
-                    post.isSynchronizeOwner()) {
-                // We may receive a synch request while a delete is being processed.
-                // If we don't look at pendingServiceDeletions, we may end up starting
-                // a service that is in the deletion phase.
-                synchPendingDelete = true;
-            } else {
-                if (existing != null) {
-                    if ((isCreateOrSynchRequest || isOnDemandStart)
-                            && existing.getProcessingStage() == ProcessingStage.STOPPED) {
-                        // service was just stopped and about to be removed. We are creating a new instance, so
-                        // its fine to re-attach. We will do a state version check if this is a persisted service
-                        existing = null;
-                    }
-                }
+        // TODO: this section needs to be rewritten to re-get the attached
+        // service info if we have released the service lock, along the lines of:
+        /*
+        boolean serviceAttachedAndLocked = false;
+        while (!serviceAttachedAndLocked) {
+            synchronized (this.state) {
+                serviceInfo = this.attachedServices.get(servicePath);
 
-                if (existing == null) {
-                    this.attachedServices.put(servicePath, service);
+                if (serviceInfo == null) {
+                    serviceInfo = new AttachedServiceInfo();
+                    serviceInfo.service = service;
+                    serviceInfo.lock = new StampedLock().asWriteLock();
+                    this.attachedServices.put(servicePath, serviceInfo);
                     if (service.hasOption(ServiceOption.URI_NAMESPACE_OWNER)) {
                         this.attachedNamespaceServices.put(servicePath, service);
                     }
@@ -2778,19 +2799,66 @@ public class ServiceHost implements ServiceRequestSender {
                         this.serviceSynchTracker.addService(servicePath, 0L);
                     }
                     this.state.serviceCount++;
-                    return false;
+                    serviceInfoCreated = true;
+                } else {
+                    serviceInfoCreated = false;
                 }
+
+                boolean hostStateLockReleased = acquireServiceLock(serviceInfo.lock);
+                serviceAttachedAndLocked = !hostStateLockReleased;
             }
         }
+        */
 
-        if (synchPendingDelete) {
-            // If this is a synch request and the service was going
-            // through deletion, we fail the synch request.
-            Operation.failServiceMarkedDeleted(servicePath, post);
-            return true;
+        synchronized (this.state) {
+            serviceInfo = this.attachedServices.get(servicePath);
+
+            if (serviceInfo == null) {
+                serviceInfo = new AttachedServiceInfo();
+                serviceInfo.service = service;
+                serviceInfo.lock = new StampedLock().asWriteLock();
+                this.attachedServices.put(servicePath, serviceInfo);
+                if (service.hasOption(ServiceOption.URI_NAMESPACE_OWNER)) {
+                    this.attachedNamespaceServices.put(servicePath, service);
+                }
+
+                if (service.hasOption(ServiceOption.REPLICATION)
+                        && service.hasOption(ServiceOption.FACTORY)) {
+                    this.serviceSynchTracker.addService(servicePath, 0L);
+                }
+                this.state.serviceCount++;
+                serviceInfoCreated = true;
+            } else {
+                serviceInfoCreated = false;
+            }
+
+            acquireServiceLock(serviceInfo.lock);
         }
 
+        // At this point we have a lock on the attached service entry - we will hold it for the
+        // duration of the start, so that no other operation can stop or start it (they will
+        // need to obtain the same lock to do that)
+
+        if (serviceInfoCreated) {
+            return serviceInfo.lock;
+        }
+
+        // The service is already attached - we should not proceed with start.
+        // We will therefore release the service entry lock and check if we need to fail
+        // the request or handle it without a start.
+        releaseServiceLock(serviceInfo.lock);
+        failAsAlreadyStartedOrHandleRequest(post, service, servicePath, onDemandTriggeringOp,
+                serviceInfo.service);
+        return null;
+    }
+
+    private void failAsAlreadyStartedOrHandleRequest(Operation post, Service service, String servicePath,
+            Operation onDemandTriggeringOp, Service existing) {
+        boolean isCreateOrSynchRequest = post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED)
+                || post.isSynchronize();
+        boolean isOnDemandStart = onDemandTriggeringOp != null;
         boolean isIdempotent = service.hasOption(ServiceOption.IDEMPOTENT_POST);
+
         if (!isIdempotent) {
             // check factory, its more likely to have the IDEMPOTENT option
             String parentPath = UriUtils.getParentPath(servicePath);
@@ -2804,7 +2872,7 @@ public class ServiceHost implements ServiceRequestSender {
                 // this is an on-demand start and the service is already attached -
                 // no need to continue with start
                 post.complete();
-                return true;
+                return;
             }
 
             ProcessingStage ps = existing.getProcessingStage();
@@ -2821,13 +2889,13 @@ public class ServiceHost implements ServiceRequestSender {
                 scheduleCore(() -> {
                     startService(post, service, onDemandTriggeringOp);
                 }, this.getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
-                return true;
+                return;
             }
 
             // service already attached, not idempotent, and this is not a synchronization attempt.
             // We fail request with conflict
             failRequestServiceAlreadyStarted(servicePath, service, post);
-            return true;
+            return;
         }
 
         if (!isCreateOrSynchRequest) {
@@ -2835,7 +2903,7 @@ public class ServiceHost implements ServiceRequestSender {
             // can happen if a service is just starting. This means it will replicate and there is
             // no need for explicit synch
             post.complete();
-            return true;
+            return;
         }
 
         if (existing.getProcessingStage() != ProcessingStage.AVAILABLE) {
@@ -2847,7 +2915,7 @@ public class ServiceHost implements ServiceRequestSender {
             scheduleCore(() -> {
                 handleRequest(null, post);
             }, this.getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
-            return true;
+            return;
         }
 
         // service exists, on IDEMPOTENT factory or sync request. Convert to a PUT
@@ -2859,7 +2927,6 @@ public class ServiceHost implements ServiceRequestSender {
         post.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_POST_TO_PUT);
 
         handleRequest(null, post);
-        return true;
     }
 
     public static boolean isServiceIndexed(Service s) {
@@ -2872,7 +2939,6 @@ public class ServiceHost implements ServiceRequestSender {
 
     private void processServiceStart(ProcessingStage next, Service s,
             Operation post, boolean hasClientSuppliedInitialState) {
-
         if (next == s.getProcessingStage()) {
             post.complete();
             return;
@@ -2943,6 +3009,15 @@ public class ServiceHost implements ServiceRequestSender {
                         ? ProcessingStage.EXECUTING_CREATE_HANDLER
                         : ProcessingStage.EXECUTING_START_HANDLER;
                 if (s.hasOption(ServiceOption.FACTORY) || !s.hasOption(ServiceOption.REPLICATION)) {
+                    if (!ServiceHost.isServiceCreate(post) &&
+                            post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK) &&
+                            post.getLinkedState() == null) {
+                        // typically synchronization fails with NotFound in this case, but
+                        // we skip synchronization so we fail here
+                        Operation.failServiceNotFound(post);
+                        return;
+                    }
+
                     processServiceStart(nxt, s, post, hasClientSuppliedInitialState);
                     break;
                 }
@@ -3468,8 +3543,7 @@ public class ServiceHost implements ServiceRequestSender {
             return true;
         }
 
-        boolean isDeleted = ServiceDocument.isDeleted(stateFromStore)
-                || this.pendingServiceDeletions.contains(s.getSelfLink());
+        boolean isDeleted = ServiceDocument.isDeleted(stateFromStore);
         boolean synchVersion = serviceStartPost.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_VERSION);
 
         if (!serviceStartPost.hasBody()) {
@@ -3531,20 +3605,43 @@ public class ServiceHost implements ServiceRequestSender {
         return true;
     }
 
-    void markAsPendingDelete(Service service) {
-        if (isServiceIndexed(service)) {
-            this.pendingServiceDeletions.add(service.getSelfLink());
-            this.managementService.adjustStat(
-                    ServiceHostManagementService.STAT_NAME_PENDING_SERVICE_DELETION_COUNT, 1);
+    /**
+     * Acquires the specified service lock under the assumption that the host state
+     * lock has already been acquired by the current thread
+     *
+     * Returns true if the host state lock has been temporarily released, false
+     *  otherwise.
+     */
+    private boolean acquireServiceLock(Lock lock) {
+        boolean hostStateLockReleased = false;
+
+        // we attempt to obtain the service entry lock in a non-blocking manner,
+        // because we're holding the host state lock
+        while (!lock.tryLock()) {
+            try {
+                // we could not obtain the service entry lock - some other operation is
+                // starting or stopping this service. We must release the host state lock
+                // to allow other services to start/stop - we will be notified when
+                // services complete/fail their start/stop and retry
+                this.state.wait();
+                hostStateLockReleased = true;
+            } catch (InterruptedException e) {
+                this.log(Level.SEVERE, "Interrupted while waiting on host state lock: %s", e.getMessage());
+            }
         }
+
+        return hostStateLockReleased;
     }
 
-    void unmarkAsPendingDelete(Service service) {
-        if (isServiceIndexed(service)) {
-            this.pendingServiceDeletions.remove(service.getSelfLink());
-            this.managementService.adjustStat(
-                    ServiceHostManagementService.STAT_NAME_PENDING_SERVICE_DELETION_COUNT, -1);
-
+    /**
+     * Releases the specified service lock
+     */
+    private void releaseServiceLock(Lock lock) {
+        lock.unlock();
+        synchronized (this.state) {
+            // notify other threads that temporarily released the host state lock
+            // because they could not obtain the service lock
+            this.state.notify();
         }
     }
 
@@ -3560,23 +3657,40 @@ public class ServiceHost implements ServiceRequestSender {
             throw new IllegalArgumentException("service is required");
         }
 
-        String path = service.getSelfLink();
+        stopService(service, false);
+    }
+
+    void stopService(Service service, boolean serviceInfoAlreadyLocked) {
+        stopService(service.getSelfLink(), serviceInfoAlreadyLocked);
+    }
+
+    void stopService(String path, boolean serviceInfoAlreadyLocked) {
         synchronized (this.state) {
-            Service existing = this.attachedServices.remove(path);
-            if (existing == null) {
+            AttachedServiceInfo serviceInfo = this.attachedServices.get(path);
+            if (serviceInfo == null) {
                 path = UriUtils.normalizeUriPath(path);
-                existing = this.attachedServices.remove(path);
+                serviceInfo = this.attachedServices.get(path);
             }
 
-            if (existing != null) {
-                existing.setProcessingStage(ProcessingStage.STOPPED);
-                if (existing.hasOption(ServiceOption.URI_NAMESPACE_OWNER)) {
+            if (serviceInfo != null) {
+                if (!serviceInfoAlreadyLocked) {
+                    acquireServiceLock(serviceInfo.lock);
+                }
+
+                serviceInfo.service.setProcessingStage(ProcessingStage.STOPPED);
+                this.attachedServices.remove(path);
+
+                if (serviceInfo.service.hasOption(ServiceOption.URI_NAMESPACE_OWNER)) {
                     this.attachedNamespaceServices.remove(path);
+                }
+
+                if (!serviceInfoAlreadyLocked) {
+                    releaseServiceLock(serviceInfo.lock);
                 }
             }
 
             this.serviceSynchTracker.removeService(path);
-            this.serviceResourceTracker.clearCachedServiceState(service, null);
+            this.serviceResourceTracker.clearCachedServiceState(path, null);
 
             this.state.serviceCount--;
         }
@@ -3587,20 +3701,21 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     protected Service findService(String uriPath, boolean doExactMatch) {
-        Service s = this.attachedServices.get(uriPath);
-        if (s != null) {
-            return s;
+        AttachedServiceInfo serviceInfo = this.attachedServices.get(uriPath);
+        if (serviceInfo != null) {
+            return serviceInfo.service;
         }
 
         String normalizedUriPath = UriUtils.normalizeUriPath(uriPath);
         // Check if we got a new normalized uri path
         if (!normalizedUriPath.equals(uriPath)) {
-            s = this.attachedServices.get(normalizedUriPath);
-            if (s != null) {
-                return s;
+            serviceInfo = this.attachedServices.get(normalizedUriPath);
+            if (serviceInfo != null) {
+                return serviceInfo.service;
             }
         }
 
+        Service s = null;
         if (isHelperServicePath(uriPath)) {
             s = findHelperService(uriPath);
             if (s != null) {
@@ -3648,12 +3763,12 @@ public class ServiceHost implements ServiceRequestSender {
             subPath = uriPath.substring(0, uriPath.lastIndexOf(UriUtils.URI_PATH_CHAR));
         }
         // use the prefix to find the actual service
-        Service s = this.attachedServices.get(subPath);
-        if (s == null) {
+        AttachedServiceInfo serviceInfo = this.attachedServices.get(subPath);
+        if (serviceInfo == null) {
             return null;
         }
         // now find the helper, given the suffix
-        return s.getUtilityService(uriPath);
+        return serviceInfo.service.getUtilityService(uriPath);
     }
 
     /**
@@ -3666,8 +3781,15 @@ public class ServiceHost implements ServiceRequestSender {
     /**
      * Infrastructure use only
      */
-    @SuppressWarnings("try")
     public boolean handleRequest(Service service, Operation inboundOp) {
+        return handleRequest(service, inboundOp, false);
+    }
+
+    /**
+     * Infrastructure use only
+     */
+    @SuppressWarnings("try")
+    boolean handleRequest(Service service, Operation inboundOp, boolean alreadyLocked) {
         if (inboundOp == null && service != null) {
             inboundOp = service.dequeueRequest();
         }
@@ -3711,25 +3833,26 @@ public class ServiceHost implements ServiceRequestSender {
                 // capture the response code of the operation
                 final ActiveSpan.Continuation completion_cont = span.capture();
                 nestContinuationActivation(inboundOp, completion_cont);
-                passThroughProcessingChain(inboundOp);
+                passThroughProcessingChain(inboundOp, alreadyLocked);
                 return true;
             }
         } else {
-            passThroughProcessingChain(inboundOp);
+            passThroughProcessingChain(inboundOp, alreadyLocked);
             return true;
         }
     }
 
-    private void passThroughProcessingChain(Operation inboundOp) {
+    private void passThroughProcessingChain(Operation inboundOp, boolean alreadyLocked) {
         // Pass the operation through the processing chain.
         OperationProcessingContext context = this.opProcessingChain.createContext(this);
         final Operation finalInboundOp = inboundOp;
         this.opProcessingChain.processRequest(inboundOp, context, o -> {
-            handleRequestAfterOpProcessingChain(context.getService(), finalInboundOp);
+            handleRequestAfterOpProcessingChain(context.getService(), finalInboundOp, alreadyLocked);
         });
     }
 
-    private void handleRequestAfterOpProcessingChain(Service service, Operation inboundOp) {
+    private void handleRequestAfterOpProcessingChain(Service service, Operation inboundOp,
+            boolean alreadyLocked) {
         if (service == null) {
             String path = inboundOp.getUri().getPath();
             if (path == null) {
@@ -3748,17 +3871,112 @@ public class ServiceHost implements ServiceRequestSender {
 
         traceOperation(inboundOp);
 
+        authorizeAndDispatchRequest(service, inboundOp, alreadyLocked);
+    }
+
+    private void authorizeAndDispatchRequest(Service service, Operation op, boolean alreadyLocked) {
         if (isAuthorizationEnabled()) {
-            final Service sFinal = service;
-            inboundOp.nestCompletion((o) -> {
-                queueOrScheduleRequest(sFinal, inboundOp);
+            op.nestCompletion(o -> {
+                dispatchRequest(service, op, alreadyLocked);
             });
-            service.authorizeRequest(inboundOp);
+            service.authorizeRequest(op);
             return;
         }
 
-        queueOrScheduleRequest(service, inboundOp);
-        return;
+        dispatchRequest(service, op, alreadyLocked);
+    }
+
+    private void dispatchRequest(Service service, Operation op, boolean alreadyLocked) {
+        String path = service.getSelfLink();
+        if (path == null) {
+            path = op.getUri().getPath();
+        }
+
+        if (alreadyLocked) {
+            // service is already locked - continue with common path
+            queueOrScheduleRequest(service, op);
+            return;
+        }
+
+        if (!isServiceLockingRequired(service, op)) {
+            // no locking is required - continue with common path
+            queueOrScheduleRequest(service, op);
+            return;
+        }
+
+        // obtain a lock on the service entry to prevent start or stop during
+        // processing of this DELETE request
+        //
+        // TODO: the serviceInfo entry should be passed from the context (under lock),
+        //  to avoid an additional map lookup
+        AttachedServiceInfo serviceInfo = null;
+        synchronized (this.state) {
+            serviceInfo = this.attachedServices.get(path);
+            if (serviceInfo == null) {
+                path = UriUtils.normalizeUriPath(path);
+                serviceInfo = this.attachedServices.get(path);
+            }
+
+            if (serviceInfo != null) {
+                acquireServiceLock(serviceInfo.lock);
+            }
+        }
+
+        if (serviceInfo == null) {
+            // we could not acquire a lock on the service because it has just been
+            // detached - we're going to retry
+            this.retryOnDemandLoadConflict(op, service);
+            return;
+        }
+
+        nestDeleteCompletion(op, path, serviceInfo.lock, true);
+        queueOrScheduleRequest(service, op);
+    }
+
+    private void atomicDispatch(Operation post, Service service, Operation onDemandTriggeringOp, Lock serviceStartLock) {
+        if (onDemandTriggeringOp.isSynchronizeOwner()) {
+            // no need to dispatch request, as sync-owner has been processed
+            // as part of on-demand start
+            releaseServiceLock(serviceStartLock);
+            post.complete();
+            return;
+        }
+
+        if (!ServiceHost.isServiceLockingRequired(service, onDemandTriggeringOp)) {
+            // no need to hold the lock during dispatch
+            releaseServiceLock(serviceStartLock);
+            authorizeAndDispatchRequest(service, onDemandTriggeringOp, false);
+            post.complete();
+            return;
+        }
+
+        // This is an atomic dispatch of a DELETE after a successful on-demand start -
+        // we will stop the service after DELETE completes, still before unlocking
+        nestDeleteCompletion(onDemandTriggeringOp, service.getSelfLink(), serviceStartLock, true);
+        authorizeAndDispatchRequest(service, onDemandTriggeringOp, true);
+        post.complete();
+    }
+
+    private void nestDeleteCompletion(Operation delete, String path, Lock serviceLock, boolean alreadyLocked) {
+        CompletionHandler ch = (o, e) -> {
+            if (e != null) {
+                // DELETE failed - we're not going to stop the service
+                if (serviceLock != null) {
+                    releaseServiceLock(serviceLock);
+                }
+                delete.fail(e);
+                return;
+            }
+
+            // successful DELETE - stop the service, then release the lock
+            stopService(path, alreadyLocked);
+            if (serviceLock != null) {
+                releaseServiceLock(serviceLock);
+            }
+            delete.complete();
+        };
+
+        delete.nestCompletion(ch);
     }
 
     void retryOnDemandLoadConflict(Operation op, Service s) {
@@ -3777,6 +3995,7 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
+        /*
         if (stage == ProcessingStage.STOPPED) {
             if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_POST_TO_PUT)) {
                 // service stopped after we decided it already existed and attempted
@@ -3789,6 +4008,7 @@ public class ServiceHost implements ServiceRequestSender {
             retryOnDemandLoadConflict(op, s);
             return;
         }
+        */
 
         op.fail(new CancellationException("Service not available, in stage: " + stage));
     }
@@ -3976,7 +4196,9 @@ public class ServiceHost implements ServiceRequestSender {
                 return;
             }
             this.state.isStopping = true;
-            servicesToClose = new HashSet<>(this.attachedServices.values());
+            servicesToClose = new HashSet<>();
+            this.attachedServices.values().stream().forEach(
+                    serviceInfo -> servicesToClose.add(serviceInfo.service));
         }
 
         this.serviceResourceTracker.close();
@@ -3998,7 +4220,6 @@ public class ServiceHost implements ServiceRequestSender {
 
         this.attachedServices.clear();
         this.attachedNamespaceServices.clear();
-        this.pendingServiceDeletions.clear();
         this.state.isStarted = false;
 
         this.authorizationServiceUri = null;
@@ -4102,7 +4323,8 @@ public class ServiceHost implements ServiceRequestSender {
 
         // now do core service shutdown in parallel
         for (String coreServiceLink : this.coreServices) {
-            Service coreService = this.attachedServices.get(coreServiceLink);
+            AttachedServiceInfo coreServiceInfo = this.attachedServices.get(coreServiceLink);
+            Service coreService = coreServiceInfo != null ? coreServiceInfo.service : null;
             if (coreService == null || coreService instanceof ServiceHostManagementService) {
                 // a DELETE to the management service will cause a recursive stop()
                 c.handle(null, null);
@@ -4171,6 +4393,13 @@ public class ServiceHost implements ServiceRequestSender {
     public static boolean isServiceDeleteAndStop(Operation op) {
         return op.getAction() == Action.DELETE
                 && !op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE);
+    }
+
+    public static boolean isServiceLockingRequired(Service s, Operation op) {
+        // only use locking if this is a real DELETE of a service that can
+        // start/stop on-demand, i.e. it's a persistent service
+        return isServiceDeleteAndStop(op) && isServiceIndexed(s) &&
+                !s.hasOption(ServiceOption.FACTORY);
     }
 
     public static boolean isServiceAvailable(Service s) {
@@ -4846,11 +5075,6 @@ public class ServiceHost implements ServiceRequestSender {
                     // the current maintenance run.
                     this.managementService.adjustStat(
                             Service.STAT_NAME_SERVICE_HOST_MAINTENANCE_COUNT, 1);
-
-                    // Update the count of services that are pending delete on the service host.
-                    this.managementService.setStat(
-                            ServiceHostManagementService.STAT_NAME_PENDING_SERVICE_DELETION_COUNT,
-                            this.pendingServiceDeletions.size());
                 }
 
                 post.complete();
@@ -4979,9 +5203,6 @@ public class ServiceHost implements ServiceRequestSender {
         Operation post = Operation.createPost(indexService.getUri())
                 .setBodyNoCloning(body)
                 .setCompletion((o, e) -> {
-                    if (op.getAction() == Action.DELETE) {
-                        unmarkAsPendingDelete(s);
-                    }
                     if (e != null) {
                         if (previousState != null) {
                             this.serviceResourceTracker.resetCachedServiceState(s, previousState, op);
@@ -5166,7 +5387,8 @@ public class ServiceHost implements ServiceRequestSender {
         boolean doPrefixMatch = servicePath.endsWith(UriUtils.URI_WILDCARD_CHAR);
         servicePath = servicePath.replace(UriUtils.URI_WILDCARD_CHAR, "");
 
-        for (Service s : this.attachedServices.values()) {
+        for (AttachedServiceInfo serviceInfo : this.attachedServices.values()) {
+            Service s = serviceInfo.service;
             if (s.getProcessingStage() != ProcessingStage.AVAILABLE) {
                 continue;
             }
@@ -5225,7 +5447,8 @@ public class ServiceHost implements ServiceRequestSender {
             Operation get, EnumSet<ServiceOption> exclusionOptions) {
         ServiceDocumentQueryResult r = new ServiceDocumentQueryResult();
 
-        loop: for (Service s : this.attachedServices.values()) {
+        loop: for (AttachedServiceInfo serviceInfo : this.attachedServices.values()) {
+            Service s = serviceInfo.service;
             if (s.getProcessingStage() != ProcessingStage.AVAILABLE) {
                 continue;
             }
