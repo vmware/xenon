@@ -1441,7 +1441,8 @@ public class TestLuceneDocumentIndexService {
 
     @Test
     public void serviceHostRestartWithDurableServices() throws Throwable {
-        for (int i = 0; i < this.iterationCount; i++) {
+        for (int i = 0; i < 10; i++) {
+            System.out.println("DEBUG: Iteration " + i);
             doServiceHostRestartWithDurableServices();
             tearDown();
         }
@@ -3238,6 +3239,11 @@ public class TestLuceneDocumentIndexService {
             ServiceStat expCountAfter = stMap.get(
                     LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_COUNT
                             + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+
+            if (expCountAfter == null) {
+                this.host.log("Expired count after expiration was null");
+                return false;
+            }
 
             if (deletedCountBaseline.latestValue >= expCountAfter.latestValue) {
                 this.host.log("No service expirations seen, currently at %f",

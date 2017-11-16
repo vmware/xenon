@@ -44,7 +44,6 @@ import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.MinimalFactoryTestService;
 import com.vmware.xenon.services.common.MinimalTestService;
-import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
@@ -232,12 +231,6 @@ public class TestServiceModel extends BasicReusableHostTestCase {
 
         long count = Math.max(this.serviceCount, 10);
 
-        // Determine the current count of pending service deletions.
-        Map<String, ServiceStat> stats = this.host.getServiceStats(this.host.getManagementServiceUri());
-        ServiceStat stat = stats.get(
-                ServiceHostManagementService.STAT_NAME_PENDING_SERVICE_DELETION_COUNT);
-        double oldCount = (stat != null) ? stat.latestValue : 0;
-
         // create example services.
         List<URI> exampleUris = this.host.createExampleServices(this.host, count, null);
 
@@ -256,28 +249,30 @@ public class TestServiceModel extends BasicReusableHostTestCase {
                     .createPost(this.host, ExampleService.FACTORY_LINK)
                     .setBody(doc)
                     .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
-                    .setReferer(this.host.getUri())
-                    .setCompletion((o, e) -> {
-                        this.host.log(Level.INFO, "Sync completed for %s. Failure: %s",
-                                exampleUri, e != null ? e.getMessage() : "none");
-                        ctx.completeIteration();
-                    });
+                    .setReferer(this.host.getUri());
+            synchPost.setCompletion((o, e) -> {
+                this.host.log(Level.INFO, "Sync %d completed for %s. Failure: %s",
+                        synchPost.getId(), exampleUri, e != null ? e.getMessage() : "none");
+                ctx.completeIteration();
+            });
             operations.add(synchPost);
+            this.host.log("Created synchPost %d to %s", synchPost.getId(), exampleUri);
 
             // Deletes should not fail.
             Operation delete = Operation
                     .createDelete(exampleUri)
-                    .setReferer(this.host.getUri())
-                    .setCompletion((o, e) -> {
-                        this.host.log(Level.INFO, "Delete completed for %s. Failure: %s",
-                                exampleUri, e != null ? e.getMessage() : "none");
-                        if (e != null) {
-                            ctx.failIteration(e);
-                            return;
-                        }
-                        ctx.completeIteration();
-                    });
+                    .setReferer(this.host.getUri());
+            delete.setCompletion((o, e) -> {
+                this.host.log(Level.INFO, "Delete %d completed for %s. Failure: %s",
+                        delete.getId(), exampleUri, e != null ? e.getMessage() : "none");
+                if (e != null) {
+                    ctx.failIteration(e);
+                    return;
+                }
+                ctx.completeIteration();
+            });
             operations.add(delete);
+            this.host.log("Created Delete %d to %s", delete.getId(), exampleUri);
         }
 
         // Send all DELETE and SYNCH_OWNER requests together to maximize their
@@ -294,14 +289,6 @@ public class TestServiceModel extends BasicReusableHostTestCase {
                     .getTestRequestSender().sendAndWaitFailure(op);
             assertEquals(Operation.STATUS_CODE_NOT_FOUND, response.op.getStatusCode());
         }
-
-        // Because we are using a shared host, the new pending deletion count should be anywhere
-        // from zero to the count we recorded at the start of this test.
-        this.host.waitFor("pendingServiceCount did not reach expected value", () -> {
-            Map<String, ServiceStat> newStats = this.host.getServiceStats(this.host.getManagementServiceUri());
-            ServiceStat newStat = newStats.get(ServiceHostManagementService.STAT_NAME_PENDING_SERVICE_DELETION_COUNT);
-            return newStat.latestValue >= 0 && newStat.latestValue <= oldCount;
-        });
     }
 
     /**

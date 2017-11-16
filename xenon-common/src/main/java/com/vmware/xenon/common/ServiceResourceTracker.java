@@ -405,8 +405,10 @@ public class ServiceResourceTracker {
     }
 
     public void clearCachedServiceState(Service s, Operation op) {
-        String servicePath = s.getSelfLink();
+        clearCachedServiceState(s.getSelfLink(), op);
+    }
 
+    public void clearCachedServiceState(String servicePath, Operation op) {
         if (!isTransactional(op)) {
             AttachedServiceInfo serviceInfo = this.attachedServices.get(servicePath);
             if (serviceInfo != null) {
@@ -587,15 +589,11 @@ public class ServiceResourceTracker {
 
         op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
 
-        this.host.log(Level.WARNING,
-                "ODL conflict: retrying %s (%d %s) on %s",
-                op.getAction(), op.getId(), op.getContextId(),
-                op.getUri().getPath());
-
-        long interval = Math.max(TimeUnit.SECONDS.toMicros(1),
+        boolean alreadyLocked = ServiceHost.isServiceLockingRequired(s, op);
+        long interval = Math.min(TimeUnit.SECONDS.toMicros(1),
                 this.host.getMaintenanceIntervalMicros());
         this.host.scheduleCore(() -> {
-            this.host.handleRequest(null, op);
+            this.host.handleRequest(null, op, alreadyLocked);
         }, interval, TimeUnit.MICROSECONDS);
     }
 
