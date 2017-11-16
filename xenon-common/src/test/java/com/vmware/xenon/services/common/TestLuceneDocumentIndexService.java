@@ -3230,6 +3230,11 @@ public class TestLuceneDocumentIndexService {
                     LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_COUNT
                             + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
 
+            if (expCountAfter == null) {
+                this.host.log("Expired count after expiration was null");
+                return false;
+            }
+
             if (deletedCountBaseline.latestValue >= expCountAfter.latestValue) {
                 this.host.log("No service expirations seen, currently at %f",
                         expCountAfter.latestValue);
@@ -3436,6 +3441,9 @@ public class TestLuceneDocumentIndexService {
 
         // send a GET immediately and expect either failure or success, we are doing it
         // to ensure it actually completes
+        this.host.toggleOperationProcessingLogging(true).setOperationProcessingLogFilter(o -> {
+            return o.getUri().getPath().contains("/core/examples");
+        });
         boolean sendDelete = expTime != 0 && expTime < Utils.getSystemNowMicrosUtc();
         int count = services.size();
         if (sendDelete) {

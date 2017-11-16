@@ -38,4 +38,12 @@
        <Class name="com.vmware.xenon.common.ServiceHost"/>
        <Method name="allocateExecutors"/>
      </Match>
+
+     <!-- Findbugs reports that we might perform concurrent has map get and -->
+     <!-- then put in a non-atomic way, but we use a synchronized block -->
+     <Match>
+       <Bug pattern="AT_OPERATION_SEQUENCE_ON_CONCURRENT_ABSTRACTION"/>
+       <Class name="com.vmware.xenon.common.ServiceHost"/>
+       <Method name="checkIfServiceExistsAndAttach"/>
+     </Match>
 </FindBugsFilter>
