@@ -22,6 +22,7 @@ import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
@@ -139,6 +140,13 @@ final class LuceneQueryConverter {
     }
 
     static Query convertToLuceneWildcardTermQuery(QueryTask.Query query) {
+        // if the query is a wildcard on a self link that matches all documents, then
+        // special case the query to a MatchAllDocsQuery to avoid looking through
+        // the entire index
+        if ((query.term.propertyName.equals(ServiceDocument.FIELD_NAME_SELF_LINK)) &&
+                query.term.matchValue.equals("*")) {
+            return new MatchAllDocsQuery();
+        }
         return new WildcardQuery(convertToLuceneTerm(query.term));
     }
 
