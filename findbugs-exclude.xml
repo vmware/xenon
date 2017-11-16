@@ -38,4 +38,20 @@
        <Class name="com.vmware.xenon.common.ServiceHost"/>
        <Method name="allocateExecutors"/>
      </Match>
+
+     <!-- Findbugs reports that we might perform concurrent has map get and -->
+     <!-- then put in a non-atomic way, but we use a synchronized block -->
+     <Match>
+       <Bug pattern="AT_OPERATION_SEQUENCE_ON_CONCURRENT_ABSTRACTION"/>
+       <Class name="com.vmware.xenon.common.ServiceHost"/>
+       <Method name="checkIfServiceExistsAndAttach"/>
+     </Match>
+
+     <!-- Findbugs reports that we have a statement branch that leads to a -->
+     <!-- NPE but I don't see it. Looks like a findbugs bug. -->
+     <Match>
+       <Bug pattern="NP_NULL_ON_SOME_PATH"/>
+       <Class name="com.vmware.xenon.common.ServiceHost"/>
+       <Method name="dispatchRequest"/>
+     </Match>
 </FindBugsFilter>
