@@ -5163,4 +5163,83 @@ public class TestQueryTaskService {
         }
         this.host.testWait(ctx);
     }
+
+    @Test
+    public void broadcastQueryResultGet() throws Throwable {
+        final int nodeCount = 3;
+
+        setUpHost();
+        this.host.setPeerSynchronizationEnabled(true);
+
+        this.host.setUpPeerHosts(nodeCount);
+        this.host.joinNodesAndVerifyConvergence(nodeCount, true);
+
+        URI exampleFactoryUri = UriUtils.buildUri(this.host.getPeerServiceUri(ExampleService.FACTORY_LINK));
+        this.host.waitForReplicatedFactoryServiceAvailable(exampleFactoryUri);
+
+        TestRequestSender sender = this.host.getTestRequestSender();
+        VerificationHost peer = this.host.getPeerHost();
+
+        // create example services
+        List<URI> exampleServices = new ArrayList<>();
+        createExampleServices(UriUtils.buildUri(peer, ExampleService.FACTORY_LINK), exampleServices);
+
+        // FORWARD_ONLY query
+        QueryTask task = QueryTask.Builder.createDirectTask()
+                .setQuery(Query.Builder.create().addKindFieldClause(ExampleServiceState.class).build())
+                .addOption(QueryOption.BROADCAST)
+                .setResultLimit(2)
+                .build();
+
+        Operation post = Operation.createPost(peer, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS).setBody(task);
+        QueryTask queryTaskResult = sender.sendAndWait(post, QueryTask.class);
+
+        String broadcastResultPageServicePrefix = UriUtils.buildUriPath(ServiceUriPaths.CORE, BroadcastQueryPageService.SELF_LINK_PREFIX);
+
+        // task result page contains 1 next page link
+        int resultPageCount = getNumOfServices(peer, broadcastResultPageServicePrefix);
+        assertEquals(1, resultPageCount);
+
+        String firstResultPageLink = queryTaskResult.results.nextPageLink;
+
+        // perform GET on the first pagination result page.
+        // This page contains 1 next page link
+        QueryTask firstResultPage = sender.sendAndWait(Operation.createGet(peer, firstResultPageLink), QueryTask.class);
+
+        resultPageCount = getNumOfServices(peer, broadcastResultPageServicePrefix);
+        assertEquals(2, resultPageCount);
+
+        // access same page should not create any new result page service
+        QueryTask firstResultPageSecondAccess = sender.sendAndWait(Operation.createGet(peer, firstResultPageLink), QueryTask.class);
+        resultPageCount = getNumOfServices(peer, broadcastResultPageServicePrefix);
+        assertEquals(2, resultPageCount);
+
+        // verify first and second access returns same link
+        assertEquals(firstResultPage.results.nextPageLink, firstResultPageSecondAccess.results.nextPageLink);
+
+        String secondResultPageLink = firstResultPage.results.nextPageLink;
+
+        // access 2nd page that contains next and prev page links.
+        QueryTask secondResultPage = sender.sendAndWait(Operation.createGet(peer, secondResultPageLink), QueryTask.class);
+        resultPageCount = getNumOfServices(peer, broadcastResultPageServicePrefix);
+        assertEquals(4, resultPageCount);
+
+        // access 2nd page again. this should not create new page services
+        QueryTask secondResultPageSecondAccess = sender.sendAndWait(Operation.createGet(peer, secondResultPageLink), QueryTask.class);
+        resultPageCount = getNumOfServices(peer, broadcastResultPageServicePrefix);
+        assertEquals(4, resultPageCount);
+
+        // verify first and second access returns same link
+        assertEquals(secondResultPage.results.nextPageLink, secondResultPageSecondAccess.results.nextPageLink);
+        assertEquals(secondResultPage.results.prevPageLink, secondResultPageSecondAccess.results.prevPageLink);
+
+    }
+
+    private int getNumOfServices(VerificationHost node, String servicePrefix) {
+        Operation dummy = Operation.createGet(null);
+        node.queryServiceUris(UriUtils.buildUriPath(servicePrefix, UriUtils.URI_WILDCARD_CHAR), dummy);
+        List<String> links = dummy.getBody(ServiceDocumentQueryResult.class).documentLinks;
+        return links.size();
+    }
+
 }
