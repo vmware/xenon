@@ -33,7 +33,6 @@ import com.vmware.xenon.common.ServiceHost.MaintenanceStage;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceMaintenanceRequest.MaintenanceReason;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
-import com.vmware.xenon.services.common.NodeGroupService;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeSelectorSynchronizationService.SynchronizePeersRequest;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -99,6 +98,7 @@ class ServiceSynchronizationTracker {
         this.host.sendRequest(get);
     }
 
+    /*
     void failStartServiceOrSynchronize(
             Service service, Operation start, Operation startRsp, Throwable startEx) {
 
@@ -149,59 +149,6 @@ class ServiceSynchronizationTracker {
                 service, startEx, !start.isFailureLoggingDisabled());
     }
 
-    void failWithNotFoundOrSynchronize(Service parent, String path, Operation op) {
-        // Because the service uses 1X replication, we don't need to synchronize it on-demand.
-        if (parent.getPeerNodeSelectorPath().equals(ServiceUriPaths.DEFAULT_1X_NODE_SELECTOR)) {
-            Operation.failServiceNotFound(op);
-            return;
-        }
-
-        this.host.log(Level.INFO,
-                "Service %s not found on owner. On-demand synchronizing.", op.getUri());
-
-        String documentSelfLink;
-        if (ServiceHost.isHelperServicePath(op.getUri().getPath())) {
-            documentSelfLink = UriUtils.getLastPathSegment(
-                    UriUtils.getParentPath(op.getUri().getPath()));
-        } else {
-            documentSelfLink = UriUtils.getLastPathSegment(op.getUri().getPath());
-        }
-
-        sendSynchRequest(parent.getUri(), documentSelfLink, (o, e) -> {
-            if (e == null) {
-                // Service was found on a remote peer and has been
-                // synchronized successfully. We go ahead and retry
-                // the original request now.
-                this.host.handleRequest(null, op);
-                return;
-            }
-
-            boolean markedDeleted = false;
-            boolean notFound = o.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND;
-
-            if (o.getStatusCode() == Operation.STATUS_CODE_CONFLICT) {
-                if (o.hasBody()) {
-                    ServiceErrorResponse error = o.getBody(ServiceErrorResponse.class);
-                    markedDeleted = error.getErrorCode() ==
-                            ServiceErrorResponse.ERROR_CODE_STATE_MARKED_DELETED;
-                }
-            }
-
-            if (notFound || markedDeleted) {
-                if (op.getAction() == Action.DELETE) {
-                    // do not queue DELETE actions for services not present, complete with success
-                    op.complete();
-                    return;
-                }
-                Operation.failServiceNotFound(op);
-                return;
-            }
-
-            this.host.log(Level.SEVERE, "Failed to synch service not found on owner. Failure: %s", e);
-            op.fail(e);
-        });
-    }
-
     private void sendSynchRequest(URI parentUri, String documentSelfLink, CompletionHandler ch) {
         ServiceDocument synchState = new ServiceDocument();
         synchState.documentSelfLink = documentSelfLink;
@@ -216,6 +163,7 @@ class ServiceSynchronizationTracker {
 
         this.host.handleRequest(null, synchOp);
     }
+    */
 
     /**
      * Infrastructure use only.
@@ -296,7 +244,7 @@ class ServiceSynchronizationTracker {
         t.indexLink = s.getDocumentIndexPath();
         t.stateDescription = this.host.buildDocumentDescription(s);
         t.options = s.getOptions();
-        t.state = op.hasBody() ? op.getBody(s.getStateType()) : null;
+        t.state = op.getLinkedState();
         t.factoryLink = UriUtils.getParentPath(s.getSelfLink());
         if (t.factoryLink == null || t.factoryLink.isEmpty()) {
             String error = String.format("Factory not found for %s."
