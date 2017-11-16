@@ -38,14 +38,21 @@ public class BroadcastQueryPageService extends StatelessService {
     private final List<String> pageLinks;
     private final long expirationMicros;
     private final NodeGroupBroadcastResponse nodeGroupResponse;
+    private String currentPageLink;
+    private String prevPageLink;
+    private String nextPageLink;
 
     public BroadcastQueryPageService(QueryTask.QuerySpecification spec, List<String> pageLinks,
-            long expMicros, NodeGroupBroadcastResponse nodeGroupResponse) {
+            long expMicros, NodeGroupBroadcastResponse nodeGroupResponse, String currentPageLink,
+            String prevPageLink, String nextPageLink) {
         super(QueryTask.class);
         this.spec = spec;
         this.pageLinks = pageLinks;
         this.expirationMicros = expMicros;
         this.nodeGroupResponse = nodeGroupResponse;
+        this.currentPageLink = currentPageLink;
+        this.prevPageLink = prevPageLink;
+        this.nextPageLink = nextPageLink;
     }
 
     @Override
@@ -127,12 +134,21 @@ public class BroadcastQueryPageService extends StatelessService {
         }
 
         ServiceDocumentQueryResult mergeResults = new ServiceDocumentQueryResult();
+
+        // start new BroadcastQueryPageService only when link exists and previously not created
+
         if (!nextPageLinks.isEmpty()) {
-            mergeResults.nextPageLink = startNewService(nextPageLinks);
+            if (this.nextPageLink == null) {
+                this.nextPageLink = startNewService(nextPageLinks, this.currentPageLink, null);
+            }
+            mergeResults.nextPageLink = this.nextPageLink;
         }
 
         if (!prevPageLinks.isEmpty()) {
-            mergeResults.prevPageLink = startNewService(prevPageLinks);
+            if (this.prevPageLink == null) {
+                this.prevPageLink = startNewService(prevPageLinks, null, this.currentPageLink);
+            }
+            mergeResults.prevPageLink = this.prevPageLink;
         }
 
         boolean isAscOrder = this.spec.sortOrder == null
@@ -149,7 +165,7 @@ public class BroadcastQueryPageService extends StatelessService {
         getHost().stopService(this);
     }
 
-    private String startNewService(List<String> pageLinks) {
+    private String startNewService(List<String> pageLinks, String prevPageLink, String nextPageLink) {
         URI broadcastPageServiceUri = UriUtils.buildUri(this.getHost(), UriUtils.buildUriPath(
                 ServiceUriPaths.CORE_QUERY_BROADCAST_PAGE, String.valueOf(Utils.getNowMicrosUtc())));
 
@@ -172,7 +188,8 @@ public class BroadcastQueryPageService extends StatelessService {
                     }
                 });
         this.getHost().startService(startPost,
-                new BroadcastQueryPageService(this.spec, pageLinks, this.expirationMicros, this.nodeGroupResponse));
+                new BroadcastQueryPageService(this.spec, pageLinks, this.expirationMicros, this.nodeGroupResponse,
+                        broadcastQueryPageLink, prevPageLink, nextPageLink));
 
         return broadcastQueryPageLink;
     }
