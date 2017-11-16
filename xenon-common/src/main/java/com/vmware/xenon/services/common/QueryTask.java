@@ -85,6 +85,11 @@ public class QueryTask extends ServiceDocument {
             CONTINUOUS,
 
             /**
+             * Used with CONTINUOUS option. Any update to the index will cause a self PATCH to
+             * be sent on the service if the query filter satisfies the current state or the previous state
+             */
+            TRACK_PREVIOUS_STATE,
+            /**
              * Query results will return the number of documents that satisfy the query and populate the
              * the {@link ServiceDocumentQueryResult#documentCount} field. The results will not contain
              * links or documents

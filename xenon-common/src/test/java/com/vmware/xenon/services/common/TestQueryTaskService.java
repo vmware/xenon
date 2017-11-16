@@ -327,12 +327,13 @@ public class TestQueryTaskService {
 
         // Create a continuous query task with no expiration time.
         String textValue = UUID.randomUUID().toString();
+        String updatedTextValue = UUID.randomUUID().toString();
         Query query = Query.Builder.create()
                 .addFieldClause(QueryValidationServiceState.FIELD_NAME_TEXT_VALUE, textValue)
                 .build();
         QueryTask queryTask = QueryTask.Builder.create()
                 .setQuery(query)
-                .addOptions(EnumSet.of(QueryOption.CONTINUOUS, QueryOption.EXPAND_CONTENT))
+                .addOptions(EnumSet.of(QueryOption.CONTINUOUS, QueryOption.TRACK_PREVIOUS_STATE, QueryOption.EXPAND_CONTENT))
                 .build();
         queryTask.documentExpirationTimeMicros = Long.MAX_VALUE;
         URI queryTaskUri = this.host.createQueryTaskService(queryTask);
@@ -356,7 +357,7 @@ public class TestQueryTaskService {
             for (Object doc : body.results.documents.values()) {
                 QueryValidationServiceState state = Utils.fromJson(doc,
                         QueryValidationServiceState.class);
-                if (!textValue.equals(state.textValue)) {
+                if (!textValue.equals(state.textValue) && !updatedTextValue.equals(state.textValue)) {
                     ctx.fail(new IllegalStateException("Unexpected document: "
                             + Utils.toJsonHtml(state)));
                     return;
@@ -399,6 +400,20 @@ public class TestQueryTaskService {
         newState.stringValue = stringValue;
         newState.textValue = textValue;
 
+        queryCtx = this.host.testCreate(this.serviceCount);
+        ctxRef.set(queryCtx);
+        putSimpleStateOnQueryTargetServices(initialServices, newState);
+        queryCtx.await();
+
+        // Update the services with a name that no longer matches the spec and wait for notifications.
+        newState.textValue = updatedTextValue;
+        queryCtx = this.host.testCreate(this.serviceCount);
+        ctxRef.set(queryCtx);
+        putSimpleStateOnQueryTargetServices(initialServices, newState);
+        queryCtx.await();
+
+        // Update the services again with a name that matches the spec
+        newState.textValue = textValue;
         queryCtx = this.host.testCreate(this.serviceCount);
         ctxRef.set(queryCtx);
         putSimpleStateOnQueryTargetServices(initialServices, newState);
@@ -1647,7 +1662,19 @@ public class TestQueryTaskService {
         setUpHost();
 
         long c = this.host.computeIterationsFromMemory(10);
-        doSelfLinkTest((int) c, 10, false);
+        String prefix = "testPrefix";
+        List<URI> services = createQueryTargetServices((int) c);
+
+        // start two different types of services, creating two sets of documents
+        // first start the query validation service instances, setting the id
+        // field
+        // to the same value
+        QueryValidationServiceState newState = new QueryValidationServiceState();
+        newState.id = prefix + UUID.randomUUID().toString();
+        newState = putStateOnQueryTargetServices(services, 10,
+                newState);
+        doSelfLinkTest((int) c, 10, false, services);
+        doAllDocsTest(services.size());
     }
 
     @Test
@@ -3223,20 +3250,31 @@ public class TestQueryTaskService {
         }
     }
 
-    public void doSelfLinkTest(int serviceCount, int versionCount, boolean forceRemote)
-            throws Throwable {
+    public void doAllDocsTest(int serviceCount) throws Throwable {
+        // issue a query that matches all docs both as aWILDCARD query and a PREFIX query
+        Query query = Query.Builder.create()
+                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, UriUtils.URI_WILDCARD_CHAR, MatchType.WILDCARD)
+                .build();
 
-        String prefix = "testPrefix";
-        List<URI> services = createQueryTargetServices(serviceCount);
+        QueryTask queryTask = QueryTask.Builder.create().setQuery(query).addOption(QueryOption.TOP_RESULTS).setResultLimit(serviceCount).build();
+        URI u = this.host.createQueryTaskService(queryTask, false);
+        QueryTask finishedTaskState = this.host.waitForQueryTaskCompletion(queryTask.querySpec,
+                serviceCount, 0, u, false, true);
+        assertTrue(finishedTaskState.results.documentLinks.size() == serviceCount);
 
-        // start two different types of services, creating two sets of documents
-        // first start the query validation service instances, setting the id
-        // field
-        // to the same value
-        QueryValidationServiceState newState = new QueryValidationServiceState();
-        newState.id = prefix + UUID.randomUUID().toString();
-        newState = putStateOnQueryTargetServices(services, versionCount,
-                newState);
+        query = Query.Builder.create()
+                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, UriUtils.URI_PATH_CHAR, MatchType.PREFIX)
+                .build();
+
+        queryTask = QueryTask.Builder.create().setQuery(query).addOption(QueryOption.TOP_RESULTS).setResultLimit(serviceCount).build();
+        u = this.host.createQueryTaskService(queryTask, false);
+        finishedTaskState = this.host.waitForQueryTaskCompletion(queryTask.querySpec,
+                serviceCount, 0, u, false, true);
+        assertTrue(finishedTaskState.results.documentLinks.size() == serviceCount);
+    }
+
+    private void doSelfLinkTest(int serviceCount, int versionCount,
+            boolean forceRemote, List<URI> services) throws Throwable {
 
         // issue a query that matches a specific link. This is essentially a primary key query
         Query query = Query.Builder.create()
