@@ -86,6 +86,7 @@ public class ServiceAvailabilityFilter implements Filter {
                     // we will retry, which will most likely trigger an on-demand start
                     // (unless the client has explicitly requested to wait for service availability,
                     // in that case we wait until the service becomes available or the operation expires)
+                    context.setService(null);
                     context.resumeProcessingRequest(op, FilterReturnCode.RESUME_PROCESSING, null);
                     return;
                 }
@@ -126,7 +127,7 @@ public class ServiceAvailabilityFilter implements Filter {
                 final String finalServicePath = servicePath;
                 context.setSuspendConsumer(o -> {
                     context.getHost().run(() -> {
-                        checkAndOnDemandStartService(op, finalServicePath, (FactoryService) parentService, context);
+                        startServiceOnDemand(op, finalServicePath, (FactoryService) parentService, context);
                     });
                 });
                 return FilterReturnCode.SUSPEND_PROCESSING;
@@ -135,71 +136,6 @@ public class ServiceAvailabilityFilter implements Filter {
 
         Operation.failServiceNotFound(op);
         return FilterReturnCode.FAILED_STOP_PROCESSING;
-    }
-
-    private void checkAndOnDemandStartService(Operation op, String servicePath, FactoryService factoryService,
-            OperationProcessingContext context) {
-        ServiceHost host = context.getHost();
-
-        host.log(Level.FINE, "(%d) ODL check for %s", op.getId(), servicePath);
-        boolean doProbe = false;
-
-        if (!factoryService.hasOption(ServiceOption.REPLICATION)
-                && op.getAction() == Action.DELETE) {
-            // do a probe (GET) to avoid starting a service on a DELETE request. We only do this
-            // for non replicated services since its safe to do a local only probe. By doing a GET
-            // first, we avoid the following race on local services:
-            // DELETE -> starts service to determine if it exists
-            // client issues POST for same self link while service is starting during ODL start
-            // client sees conflict, even if the service never existed
-            doProbe = true;
-        }
-
-        if (!doProbe) {
-            host.log(Level.FINE, "Skipping probe - starting service %s on-demand due to %s %d (isFromReplication: %b, isSynchronizeOwner: %b, isSynchronizePeer: %b)",
-                    servicePath, op.getAction(), op.getId(),
-                    op.isFromReplication(), op.isSynchronizeOwner(), op.isSynchronizePeer());
-            startServiceOnDemand(op, servicePath, factoryService, context);
-            return;
-        }
-
-        // we should not use startService for checking if a service ever existed. This can cause a race with
-        // a client POST creating the service for the first time, when they use
-        // PRAGMA_QUEUE_FOR_AVAILABILITY. Instead do an attempt to load state for the service path
-        Operation getOp = Operation
-                .createGet(op.getUri())
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)
-                .transferRefererFrom(op)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        context.resumeProcessingRequest(op, FilterReturnCode.FAILED_STOP_PROCESSING, e);
-                        op.fail(e);
-                        return;
-                    }
-
-                    if (!o.hasBody()) {
-                        // the index will return success, but no body if service is not found
-                        context.resumeProcessingRequest(op, FilterReturnCode.FAILED_STOP_PROCESSING,
-                                new ServiceNotFoundException(op.getUri().getPath()));
-                        Operation.failServiceNotFound(op);
-                        return;
-                    }
-
-                    // service state exists, proceed with starting service
-                    host.log(Level.FINE, "Starting service %s on-demand due to %s %d (isFromReplication: %b, isSynchronizeOwner: %b, isSynchronizePeer: %b)",
-                            servicePath, op.getAction(), op.getId(),
-                            op.isFromReplication(), op.isSynchronizeOwner(), op.isSynchronizePeer());
-                    startServiceOnDemand(op, servicePath, factoryService, context);
-                });
-
-        Service indexService = host.getDocumentIndexService();
-        if (indexService == null) {
-            CancellationException e = new CancellationException("Index service is null");
-            context.resumeProcessingRequest(op, FilterReturnCode.FAILED_STOP_PROCESSING, e);
-            op.fail(e);
-            return;
-        }
-        indexService.handleRequest(getOp);
     }
 
     private void startServiceOnDemand(Operation op, String servicePath, FactoryService factoryService,
@@ -214,7 +150,7 @@ public class ServiceAvailabilityFilter implements Filter {
                     host.log(Level.WARNING, "Stop of idle service %s detected, retrying",
                             op.getUri().getPath());
                     host.scheduleCore(() -> {
-                        checkAndOnDemandStartService(op, servicePath, factoryService, context);
+                        startServiceOnDemand(op, servicePath, factoryService, context);
                     }, 1, TimeUnit.SECONDS);
                     return;
                 }
@@ -255,6 +191,9 @@ public class ServiceAvailabilityFilter implements Filter {
                     // This is for consistency in behavior with services already resident in memory.
                     if (op.getAction() == Action.DELETE &&
                             response.statusCode == Operation.STATUS_CODE_NOT_FOUND) {
+                        host.log(Level.INFO,
+                                "Op %s %d: starting service %s with onDemandPost %d: not found - completing successfully",
+                                op.getAction(), op.getId(), servicePath, onDemandPost.getId());
                         context.resumeProcessingRequest(op, FilterReturnCode.SUCCESS_STOP_PROCESSING, null);
                         op.complete();
                         return;
@@ -279,6 +218,14 @@ public class ServiceAvailabilityFilter implements Filter {
                 op.fail(e);
                 return;
             }
+
+            if (op.isSynchronizeOwner()) {
+                // synch-owner request is already completed during on-demand start
+                context.resumeProcessingRequest(op, FilterReturnCode.SUCCESS_STOP_PROCESSING, null);
+                op.complete();
+                return;
+            }
+
             // proceed with handling original client request, service now started
             host.log(Level.FINE,
                     "Successfully started service %s. Resubmitting request %s %d",
