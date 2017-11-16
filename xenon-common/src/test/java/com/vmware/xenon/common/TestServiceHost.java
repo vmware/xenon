@@ -2048,11 +2048,11 @@ public class TestServiceHost {
         this.host.startServiceAndWait(factoryService, "/service", null);
 
         // Test DELETE works on ODL service as it works on non-ODL service.
-        // Delete on non-existent service should fail, and should not leave any side effects behind.
+        // Delete on non-existent service should not fail, and should not leave any side effects behind.
         Operation deleteOp = Operation.createDelete(this.host, "/service/foo")
                 .setBody(new ServiceDocument());
 
-        this.host.sendAndWaitExpectFailure(deleteOp);
+        this.host.sendAndWaitExpectSuccess(deleteOp);
 
         // create a service
         MinimalTestServiceState initialState = new MinimalTestServiceState();
@@ -2167,12 +2167,14 @@ public class TestServiceHost {
                 UriUtils.buildUri(this.host, factoryLink));
 
         // set aggressive cache clear again so ODL services stop
+        /*
         double nowCount = getHostMaintenanceCount();
         this.host.setServiceCacheClearDelayMicros(this.host.getMaintenanceIntervalMicros() / 2);
         this.host.waitFor("wait for main.", () -> {
             double latestCount = getHostMaintenanceCount();
             return latestCount > nowCount + 1;
         });
+        */
 
         // now patch these services, while we issue deletes. The PATCHs can fail, but not
         // the DELETEs
@@ -2180,14 +2182,32 @@ public class TestServiceHost {
         patchAndDeleteCtx.setTestName("Concurrent PATCH / DELETE on ODL").logBefore();
         for (Entry<URI, ExampleServiceState> e : states.entrySet()) {
             patch = Operation.createPatch(e.getKey())
-                    .setBody(e.getValue())
-                    .setCompletion((o, ex) -> {
-                        patchAndDeleteCtx.complete();
-                    });
+                    .setBody(e.getValue());
+            Operation finalPatch = patch;
+            patch.setCompletion((o, ex) -> {
+                this.host.log("%s %d %s: completed", finalPatch.getAction(), finalPatch.getId(),
+                        finalPatch.getUri());
+                patchAndDeleteCtx.complete();
+            });
+            this.host.log("Sending %s %d %s", patch.getAction(), patch.getId(), patch.getUri());
             this.host.send(patch);
             // in parallel send a DELETE
-            this.host.send(Operation.createDelete(e.getKey())
-                    .setCompletion(patchAndDeleteCtx.getCompletion()));
+            Operation delete = Operation.createDelete(e.getKey());
+            Operation finalDelete = delete;
+            delete.setCompletion((o, ex) -> {
+                if (ex != null) {
+                    this.host.log("%s %d %s: failed: %s", finalDelete.getAction(), finalDelete.getId(),
+                            finalDelete.getUri(), ex);
+                    patchAndDeleteCtx.fail(ex);
+                    return;
+                }
+
+                this.host.log("%s %d %s: completed", finalDelete.getAction(), finalDelete.getId(),
+                        finalDelete.getUri());
+                patchAndDeleteCtx.complete();
+            });
+            this.host.log("Sending %s %d %s", delete.getAction(), delete.getId(), delete.getUri());
+            this.host.send(delete);
         }
         patchAndDeleteCtx.await();
         patchAndDeleteCtx.logAfter();

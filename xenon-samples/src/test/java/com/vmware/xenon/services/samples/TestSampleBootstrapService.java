@@ -48,8 +48,8 @@ public class TestSampleBootstrapService extends BasicTestCase {
         // register callback. triggered when service become available in cluster.
         // only one will be created on owner node, and rest will be ignored after converted to PUT
         for (VerificationHost h : this.host.getInProcessHostMap().values()) {
-            h.registerForServiceAvailability(SampleBootstrapService.startTask(h), true,
-                    SampleBootstrapService.FACTORY_LINK);
+            h.registerForServiceAvailability(
+                    SampleBootstrapService.startTask(h), true, SampleBootstrapService.FACTORY_LINK);
         }
 
         host.waitFor("Failed to verify completion of bootstrap/preparation-task", () -> {

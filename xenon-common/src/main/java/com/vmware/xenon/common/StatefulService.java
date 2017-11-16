@@ -132,27 +132,6 @@ public class StatefulService implements Service {
      */
     @Override
     public boolean queueRequest(Operation op) {
-
-        if (checkServiceStopped(op, false)) {
-            return true;
-        }
-
-        if (op.getAction() != Action.DELETE
-                && this.context.processingStage != ProcessingStage.AVAILABLE) {
-
-            if (this.context.processingStage == ProcessingStage.STOPPED) {
-                getHost().retryOnDemandLoadConflict(op, this);
-                return true;
-            }
-
-            // this should never happen since the host will not forward requests if we are not
-            // available
-            logWarning("Service in %s stage, cancelling operation",
-                    this.context.processingStage);
-            op.fail(new CancellationException("Service is not available"));
-            return true;
-        }
-
         if (hasOption(Service.ServiceOption.INSTRUMENTATION)) {
             op.setEnqueueTime(System.nanoTime() / 1000);
         }
@@ -209,8 +188,12 @@ public class StatefulService implements Service {
             return true;
         }
 
-        // we can stop the service and cancel pending requests
-        setProcessingStage(Service.ProcessingStage.STOPPED);
+        // we can stop the service (unless it's under lock, in that case it will
+        // be stopped just before releasing the lock) and cancel pending requests.
+        if (!ServiceHost.isServiceLockingRequired(this, op)) {
+            getHost().stopService(this, false);
+        }
+
         cancelPendingRequests(op);
         return false;
     }
@@ -274,16 +257,6 @@ public class StatefulService implements Service {
         }
 
         if ((stopped & RETURN_TRUE_FLAG) != 0) {
-            return true;
-        }
-
-        if (stopped != 0 && !getHost().isStopping()) {
-            logWarning("Service in stage %s, retrying request", this.context.processingStage);
-            getHost().retryOnDemandLoadConflict(op, this);
-            return true;
-        }
-
-        if (checkServiceStopped(op, false)) {
             return true;
         }
 
@@ -876,11 +849,6 @@ public class StatefulService implements Service {
             return true;
         }
 
-        // DELETE completion runs when a DELETE was issued by a client, not local host shutdown.
-        // It needs to stop the service now, since the handleDelete() and handleStop() handlers
-        // have already run.
-        getHost().markAsPendingDelete(this);
-        getHost().stopService(this);
         return false;
     }
 
@@ -889,7 +857,6 @@ public class StatefulService implements Service {
             return;
         }
 
-        getHost().stopService(this);
         op.complete();
     }
 
@@ -1303,7 +1270,15 @@ public class StatefulService implements Service {
             }
         }
 
-        this.context.host.handleRequest(this, null);
+        Operation nextOp = dequeueRequest();
+        if (nextOp != null) {
+            // before processing the next operation, check if it's a kind of operation
+            // that is processed under a service lock - if it is, since it has already
+            // been enqueued, this service is still under a lock, and therefore should
+            // not be re-locked
+            boolean alreadyLocked = ServiceHost.isServiceLockingRequired(this, nextOp);
+            this.context.host.handleRequest(this, nextOp, alreadyLocked);
+        }
     }
 
     @Override
