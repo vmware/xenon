@@ -296,7 +296,7 @@ class ServiceSynchronizationTracker {
         t.indexLink = s.getDocumentIndexPath();
         t.stateDescription = this.host.buildDocumentDescription(s);
         t.options = s.getOptions();
-        t.state = op.hasBody() ? op.getBody(s.getStateType()) : null;
+        t.state = op.getLinkedState();
         t.factoryLink = UriUtils.getParentPath(s.getSelfLink());
         if (t.factoryLink == null || t.factoryLink.isEmpty()) {
             String error = String.format("Factory not found for %s."
@@ -331,12 +331,17 @@ class ServiceSynchronizationTracker {
         // NodeSelectorSynchronizationService get persisted locally.
         op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER);
 
+        boolean debug = s.getSelfLink().contains("/core/examples");
         CompletionHandler c = (o, e) -> {
             if (this.host.isStopping()) {
                 op.fail(new CancellationException("Host is stopping"));
                 return;
             }
 
+            if (debug) {
+                this.host.log(Level.INFO, "OP %s %d %s: synch returned e=%s, hasBody: %b, linkedState: %s",
+                        op.getAction(), op.getId(), s.getSelfLink(), e, o.hasBody(), op.getLinkedState());
+            }
             if (e != null) {
                 op.setStatusCode(o.getStatusCode());
                 op.fail(e);
