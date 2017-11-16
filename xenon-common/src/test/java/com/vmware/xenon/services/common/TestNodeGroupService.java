@@ -4179,6 +4179,16 @@ public class TestNodeGroupService {
     }
 
     @Test
+    public void replicationWithAuthAndNodeRestartIter() throws Throwable {
+        for (int i = 0; i < 10; i++) {
+            System.out.println("DEBUG: Iteration " + i);
+            replicationWithAuthAndNodeRestart();
+            tearDown();
+            setUp();
+        }
+    }
+
+    @Test
     public void replicationWithAuthAndNodeRestart() throws Throwable {
         AuthorizationHelper authHelper;
 

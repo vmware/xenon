@@ -285,6 +285,19 @@ public class TestAuthorizationContext extends BasicTestCase {
     }
 
     @Test
+    public void testExpiredAuthorizationContextIter() throws Throwable {
+        for (int i = 0; i < 10; i++) {
+            this.host.log("DEBUG: Iteration %d", i);
+            testExpiredAuthorizationContext();
+            this.host.tearDown();
+            this.host = createHost();
+            initializeHost(this.host);
+            this.host.setAuthorizationEnabled(true);
+            this.host.start();
+        }
+    }
+
+    @Test
     public void testExpiredAuthorizationContext() throws Throwable {
         this.host.setSystemAuthorizationContext();
         this.host.addPrivilegedService(SetAuthorizationContextTestService.class);
@@ -447,9 +460,10 @@ public class TestAuthorizationContext extends BasicTestCase {
                 .build();
 
         OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
+        Operation[] ops = new Operation[4];
         URI postUserUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_USERS);
         this.host.testStart(4);
-        this.host.send(Operation
+        /*this.host.send(Operation
                 .createPost(postUserUri)
                 .setBody(userState)
                 .setCompletion((o, e) -> {
@@ -460,25 +474,96 @@ public class TestAuthorizationContext extends BasicTestCase {
 
                     this.host.completeIteration();
                 }));
+                */
+        ops[0] = Operation
+                .createPost(postUserUri)
+                .setBody(userState)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+                    ops[0] = null;
+                    this.host.completeIteration();
+                });
+        this.host.log("DEBUG: creating user - sending %s %d", ops[0].getAction(), ops[0].getId());
+        this.host.send(ops[0]);
 
+        /*
         this.host.send(Operation
                 .createPost(
                         UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_USER_GROUPS))
                 .setBody(userGroupState)
                 .setCompletion(this.host.getCompletion()));
+                */
+        ops[1] = Operation
+                .createPost(
+                        UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_USER_GROUPS))
+                .setBody(userGroupState)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+                    ops[1] = null;
+                    this.host.completeIteration();
+                });
+        this.host.log("DEBUG: creating user group - sending %s %d", ops[1].getAction(), ops[1].getId());
+        this.host.send(ops[1]);
 
+        /*
         this.host.send(Operation
                 .createPost(
                         UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS))
                 .setBody(resourceGroupState)
                 .setCompletion(this.host.getCompletion()));
+                */
+        ops[2] = Operation
+                .createPost(
+                        UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS))
+                .setBody(resourceGroupState)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+                    ops[2] = null;
+                    this.host.completeIteration();
+                });
+        this.host.log("DEBUG: creating resource group - sending %s %d", ops[2].getAction(), ops[2].getId());
+        this.host.send(ops[2]);
 
+        /*
         this.host.send(Operation
                 .createPost(UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_ROLES))
                 .setBody(roleState)
                 .setCompletion(this.host.getCompletion()));
+                */
+        ops[3] = Operation
+                .createPost(UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_ROLES))
+                .setBody(roleState)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+                    ops[3] = null;
+                    this.host.completeIteration();
+                });
+        this.host.log("DEBUG: creating role - sending %s %d", ops[3].getAction(), ops[3].getId());
+        this.host.send(ops[3]);
 
-        this.host.testWait();
+        try {
+            this.host.testWait();
+        } catch (Throwable t) {
+            for (int i = 0; i < 4; i++) {
+                if (ops[i] != null) {
+                    this.host.log("DEBUG: %s %d has not completed successfully",
+                            ops[i].getAction(), ops[i].getId());
+                }
+            }
+            throw t;
+        }
         OperationContext.setAuthorizationContext(null);
     }
 

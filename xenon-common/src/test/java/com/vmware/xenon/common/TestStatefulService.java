@@ -24,8 +24,10 @@ import static com.vmware.xenon.common.Operation.PRAGMA_DIRECTIVE_NO_FORWARDING;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -651,21 +653,27 @@ public class TestStatefulService extends BasicReusableHostTestCase {
     }
 
     @Test
-    public void serviceStopWithInflightRequests() throws Throwable {
-        long c = 100;
+    public void serviceStopWithInflightRequestsIter() throws Throwable {
+        for (int i = 0; i < 10; i++) {
+            this.host.log("DEBUG: Iteration %d", i);
+            serviceStopWithInflightRequests();
+            tearDownOnce();
+            setUpOnce();
+            setUpPerMethod();
+        }
+    }
 
+    @Test
+    public void serviceStopWithInflightRequests() throws Throwable {
         this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
 
+        long c = 100;
         List<Service> services = this.host.doThroughputServiceStart(c,
                 MinimalTestService.class,
                 this.host.buildMinimalTestState(),
                 EnumSet.of(ServiceOption.PERSISTENCE), null);
 
-        ExampleServiceState body = new ExampleServiceState();
-        body.name = UUID.randomUUID().toString();
-
-        // we want to verify that a service and service host will either complete or fail all
-        // requests sent to it even if its in the process of being stopped
+        ServiceDocument body = this.host.buildMinimalTestState();
 
         // first send a PATCH that will induce document expiration, and in parallel, issue more
         // DELETEs, PATCHs, etc. We expect
@@ -674,29 +682,52 @@ public class TestStatefulService extends BasicReusableHostTestCase {
         for (Service s : services) {
             this.host.send(Operation.createPatch(s.getUri()).setBody(body));
         }
-        c = 10;
 
-        CompletionHandler ch = this.host.getSuccessOrFailureCompletion();
+        c = 10;
+        Map<Long, Operation> nonCompletedOps = Collections.synchronizedMap(
+                new HashMap<>((int) c * 4 * services.size()));
+        //CompletionHandler ch = this.host.getSuccessOrFailureCompletion();
+        CompletionHandler ch = (o, e) -> {
+            nonCompletedOps.remove(o.getId());
+            this.host.completeIteration();
+        };
 
         this.host.setTimeoutSeconds(20);
         this.host.toggleNegativeTestMode(true);
         this.host.testStart(c * 4 * services.size());
         for (Service s : services) {
             for (int i = 0; i < c; i++) {
-                this.host.send(Operation.createPatch(s.getUri()).setBody(body).setCompletion(ch));
-                if (i >= 0) {
-                    this.host.send(Operation.createDelete(s.getUri()).setBody(body)
-                            .setCompletion(ch));
-                } else {
-                    this.host.send(Operation.createDelete(s.getUri()).setBody(body)
-                            .setCompletion(ch)
-                            .forceRemote());
-                }
-                this.host.send(Operation.createPut(s.getUri()).setBody(body).setCompletion(ch));
-                this.host.send(Operation.createGet(s.getUri()).setCompletion(ch));
+                //this.host.send(Operation.createPatch(s.getUri()).setBody(body).setCompletion(ch));
+                Operation patch = Operation.createPatch(s.getUri()).setBody(body).setCompletion(ch);
+                nonCompletedOps.put(patch.getId(), patch);
+                this.host.send(patch);
+
+                //this.host.send(Operation.createDelete(s.getUri()).setBody(body)
+                //        .setCompletion(ch));
+                Operation delete = Operation.createDelete(s.getUri()).setCompletion(ch);
+                nonCompletedOps.put(delete.getId(), delete);
+                this.host.send(delete);
+
+                //this.host.send(Operation.createPut(s.getUri()).setBody(body).setCompletion(ch));
+                Operation put = Operation.createPut(s.getUri()).setBody(body).setCompletion(ch);
+                nonCompletedOps.put(put.getId(), put);
+                this.host.send(put);
+
+                //this.host.send(Operation.createGet(s.getUri()).setCompletion(ch));
+                Operation get = Operation.createGet(s.getUri()).setCompletion(ch);
+                nonCompletedOps.put(get.getId(), get);
+                this.host.send(get);
             }
         }
-        this.host.testWait();
+        try {
+            this.host.testWait();
+        } catch (Throwable t) {
+            for (Operation o : nonCompletedOps.values()) {
+                this.host.log("DEBUG: Op %s %d %s has not completed",
+                        o.getAction(), o.getId(), o.getUri().getPath());
+            }
+            throw t;
+        }
         this.host.toggleNegativeTestMode(false);
     }
 
