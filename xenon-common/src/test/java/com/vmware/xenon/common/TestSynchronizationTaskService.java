@@ -114,10 +114,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
 
     @AfterClass
     public static void tearDownClass() throws Exception {
-        TestXenonConfiguration.restore(SynchronizationTaskService.class,
-                "PROPERTY_NAME_SYNCHRONIZATION_LOGGING",
-                "false"
-        );
+        TestXenonConfiguration.restore();
     }
 
     @Override

@@ -13,6 +13,9 @@
 
 package com.vmware.xenon.common.config;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * The test-scoped, write-only half of the XenonConfiguration class.
  */
@@ -21,23 +24,31 @@ public final class TestXenonConfiguration {
 
     }
 
+    private static Map<String, String> original = new HashMap<>();
+
     public static String override(Class<?> subsystem, String property, String value) {
         String key = ConfigurationSource.buildKey(subsystem, property);
         String old = System.getProperty(key);
 
+        original.put(key, old);
+
         if (value != null) {
             System.setProperty(key, value);
         } else {
-            System.getProperties().remove(key);
+            System.clearProperty(key);
         }
 
         return old;
     }
 
-    public static void restore(Class<?> subsystem, String property, String oldValue) {
-        String key = ConfigurationSource.buildKey(subsystem, property);
-        if (oldValue != null) {
-            System.setProperty(key, oldValue);
-        }
+    public static void restore() {
+        original.forEach((key, value) -> {
+            if (value != null) {
+                System.setProperty(key, value);
+            } else {
+                System.clearProperty(key);
+            }
+        });
+        original.clear();
     }
 }

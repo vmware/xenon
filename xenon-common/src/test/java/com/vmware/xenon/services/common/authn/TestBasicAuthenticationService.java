@@ -70,8 +70,6 @@ public class TestBasicAuthenticationService extends BasicTestCase {
     private static final String RESOURCE_GROUP = "guest-resource-group";
     private static final Long UPPER_SESSION_LIMIT = 28800L;
 
-    private static String ORIGINAL_UPPER_SESSION_LIMIT;
-
     @Override
     public void beforeHostStart(VerificationHost h) {
         h.setAuthorizationEnabled(true);
@@ -79,7 +77,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
 
     @BeforeClass
     public static void setUpSystemProperties() throws Exception {
-        ORIGINAL_UPPER_SESSION_LIMIT = TestXenonConfiguration.override(
+        TestXenonConfiguration.override(
                 BasicAuthenticationService.class,
                 "UPPER_SESSION_LIMIT_SECONDS",
                 UPPER_SESSION_LIMIT.toString()
@@ -88,11 +86,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
 
     @AfterClass
     public static void clearSystemProperties() throws Exception {
-        TestXenonConfiguration.restore(
-                BasicAuthenticationService.class,
-                "UPPER_SESSION_LIMIT_SECONDS",
-                ORIGINAL_UPPER_SESSION_LIMIT
-        );
+        TestXenonConfiguration.restore();
     }
 
     @Before
