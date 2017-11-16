@@ -20,6 +20,7 @@ import static org.junit.Assert.assertTrue;
 import brave.opentracing.BraveTracer;
 import io.opentracing.NoopTracer;
 import io.opentracing.Tracer;
+import org.junit.After;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExternalResource;
@@ -32,6 +33,11 @@ public class TracerFactoryTest {
 
     @Rule
     public InjectCleanFactory injectCleanFactory = new InjectCleanFactory();
+
+    @After
+    public void cleanUp() {
+        TestXenonConfiguration.restore(TracerFactory.class, "provider", null);
+    }
 
     @Test
     public void defaultIsNoop() throws Exception {
