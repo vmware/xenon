@@ -36,7 +36,7 @@ public class TracerFactoryTest {
 
     @After
     public void cleanUp() {
-        TestXenonConfiguration.override(TracerFactory.class, "provider", null);
+        TestXenonConfiguration.restore();
     }
 
     @Test

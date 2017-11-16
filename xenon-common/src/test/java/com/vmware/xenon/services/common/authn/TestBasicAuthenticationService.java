@@ -88,11 +88,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
 
     @AfterClass
     public static void clearSystemProperties() throws Exception {
-        TestXenonConfiguration.restore(
-                BasicAuthenticationService.class,
-                "UPPER_SESSION_LIMIT_SECONDS",
-                ORIGINAL_UPPER_SESSION_LIMIT
-        );
+        TestXenonConfiguration.restore();
     }
 
     @Before
