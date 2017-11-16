@@ -279,6 +279,14 @@ public class ServiceAvailabilityFilter implements Filter {
                 op.fail(e);
                 return;
             }
+
+            if (op.isSynchronizeOwner()) {
+                // synch-owner request is already completed during on-demand start
+                context.resumeProcessingRequest(op, FilterReturnCode.SUCCESS_STOP_PROCESSING, null);
+                op.complete();
+                return;
+            }
+
             // proceed with handling original client request, service now started
             host.log(Level.FINE,
                     "Successfully started service %s. Resubmitting request %s %d",
