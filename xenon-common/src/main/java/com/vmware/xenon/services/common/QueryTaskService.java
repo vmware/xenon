@@ -412,8 +412,10 @@ public class QueryTaskService extends StatefulService {
                 queryTask.results.nextPageLink = forwarderUri.getPath() + UriUtils.URI_QUERY_CHAR +
                         forwarderUri.getQuery();
                 this.getHost().startService(startPost,
+                        // first broadcast query result page will not have prevPageLink back to this query result page
                         new BroadcastQueryPageService(queryTask.querySpec, nextPageLinks,
-                                queryTask.documentExpirationTimeMicros, nodeGroupResponse));
+                                queryTask.documentExpirationTimeMicros, nodeGroupResponse,
+                                queryTask.results.nextPageLink, null, null));
             } else {
                 queryTask.results.nextPageLink = null;
             }
