@@ -2048,11 +2048,11 @@ public class TestServiceHost {
         this.host.startServiceAndWait(factoryService, "/service", null);
 
         // Test DELETE works on ODL service as it works on non-ODL service.
-        // Delete on non-existent service should fail, and should not leave any side effects behind.
+        // Delete on non-existent service should not fail, and should not leave any side effects behind.
         Operation deleteOp = Operation.createDelete(this.host, "/service/foo")
                 .setBody(new ServiceDocument());
 
-        this.host.sendAndWaitExpectFailure(deleteOp);
+        this.host.sendAndWaitExpectSuccess(deleteOp);
 
         // create a service
         MinimalTestServiceState initialState = new MinimalTestServiceState();
@@ -2123,6 +2123,11 @@ public class TestServiceHost {
 
         assertEquals(ProcessingStage.AVAILABLE, this.host.getServiceStage(servicePath));
 
+        this.host.toggleOperationProcessingLogging(true).setOperationProcessingLogFilter(o -> {
+            return o.getUri().getPath().contains("/test/on-demand-load-services") ||
+                    o.getUri().getPath().contains("/service/foo");
+        });
+
         requestCount = this.requestCount;
         // service is started. issue updates in parallel and then stop service while requests are
         // still being issued
@@ -2184,10 +2189,13 @@ public class TestServiceHost {
                     .setCompletion((o, ex) -> {
                         patchAndDeleteCtx.complete();
                     });
+            this.host.log("Sending %s %d %s", patch.getAction(), patch.getId(), patch.getUri());
             this.host.send(patch);
             // in parallel send a DELETE
-            this.host.send(Operation.createDelete(e.getKey())
-                    .setCompletion(patchAndDeleteCtx.getCompletion()));
+            Operation delete = Operation.createDelete(e.getKey())
+                    .setCompletion(patchAndDeleteCtx.getCompletion());
+            this.host.log("Sending %s %d %s", delete.getAction(), delete.getId(), delete.getUri());
+            this.host.send(delete);
         }
         patchAndDeleteCtx.await();
         patchAndDeleteCtx.logAfter();
