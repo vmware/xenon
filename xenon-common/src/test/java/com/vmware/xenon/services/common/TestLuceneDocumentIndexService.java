@@ -3241,6 +3241,11 @@ public class TestLuceneDocumentIndexService {
                     LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_COUNT
                             + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
 
+            if (expCountAfter == null) {
+                this.host.log("Expired count after expiration was null");
+                return false;
+            }
+
             if (deletedCountBaseline.latestValue >= expCountAfter.latestValue) {
                 this.host.log("No service expirations seen, currently at %f",
                         expCountAfter.latestValue);

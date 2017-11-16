@@ -27,6 +27,7 @@ import java.util.logging.Level;
 
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceClient.ConnectionPoolMetrics;
+import com.vmware.xenon.common.ServiceHost.AttachedServiceInfo;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
@@ -88,7 +89,7 @@ public class ServiceResourceTracker {
     /**
      * For performance reasons, this map is owned and directly operated by the host
      */
-    private final Map<String, Service> attachedServices;
+    private final Map<String, AttachedServiceInfo> attachedServices;
 
     /**
      * Tracks cached service state. Cleared periodically during maintenance
@@ -121,12 +122,12 @@ public class ServiceResourceTracker {
 
     private Service mgmtService;
 
-    public static ServiceResourceTracker create(ServiceHost host, Map<String, Service> services) {
+    public static ServiceResourceTracker create(ServiceHost host, Map<String, AttachedServiceInfo> services) {
         ServiceResourceTracker srt = new ServiceResourceTracker(host, services);
         return srt;
     }
 
-    public ServiceResourceTracker(ServiceHost host, Map<String, Service> services) {
+    public ServiceResourceTracker(ServiceHost host, Map<String, AttachedServiceInfo> services) {
         this.attachedServices = services;
         this.host = host;
     }
@@ -401,8 +402,10 @@ public class ServiceResourceTracker {
     }
 
     public void clearCachedServiceState(Service s, Operation op) {
-        String servicePath = s.getSelfLink();
+        clearCachedServiceState(s.getSelfLink(), op);
+    }
 
+    public void clearCachedServiceState(String servicePath, Operation op) {
         if (!isTransactional(op)) {
             this.persistedServiceLastAccessTimes.remove(servicePath);
 
@@ -453,7 +456,8 @@ public class ServiceResourceTracker {
         ServiceHostState hostState = this.host.getStateNoCloning();
         int stopServiceCount = 0;
 
-        for (Service service : this.attachedServices.values()) {
+        for (AttachedServiceInfo serviceInfo : this.attachedServices.values()) {
+            Service service = serviceInfo.service;
             ServiceDocument state = this.cachedServiceStates.get(service.getSelfLink());
 
             if (!ServiceHost.isServiceIndexed(service)) {
