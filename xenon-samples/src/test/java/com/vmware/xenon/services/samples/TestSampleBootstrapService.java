@@ -18,6 +18,7 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.BasicTestCase;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.test.VerificationHost;
@@ -48,8 +49,12 @@ public class TestSampleBootstrapService extends BasicTestCase {
         // register callback. triggered when service become available in cluster.
         // only one will be created on owner node, and rest will be ignored after converted to PUT
         for (VerificationHost h : this.host.getInProcessHostMap().values()) {
-            h.registerForServiceAvailability(SampleBootstrapService.startTask(h), true,
-                    SampleBootstrapService.FACTORY_LINK);
+            h.toggleOperationProcessingLogging(true).setOperationProcessingLogFilter(o -> {
+                return o.getAction() == Action.GET && o.getUri().getPath().contains(
+                  "/core/bootstrap/preparation-task");
+            });
+            h.registerForServiceAvailability(
+                    SampleBootstrapService.startTask(h), true, SampleBootstrapService.FACTORY_LINK);
         }
 
         host.waitFor("Failed to verify completion of bootstrap/preparation-task", () -> {
