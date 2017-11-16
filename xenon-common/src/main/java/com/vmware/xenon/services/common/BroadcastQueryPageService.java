@@ -37,6 +37,8 @@ public class BroadcastQueryPageService extends StatelessService {
     private final List<String> pageLinks;
     private final long expirationMicros;
     private final NodeGroupBroadcastResponse nodeGroupResponse;
+    private String prevPageLink;
+    private String nextPageLink;
 
     public BroadcastQueryPageService(QueryTask.QuerySpecification spec, List<String> pageLinks,
             long expMicros, NodeGroupBroadcastResponse nodeGroupResponse) {
@@ -127,12 +129,21 @@ public class BroadcastQueryPageService extends StatelessService {
         }
 
         ServiceDocumentQueryResult mergeResults = new ServiceDocumentQueryResult();
+
+        // start new BroadcastQueryPageService only when link exists and previously not created
+
         if (!nextPageLinks.isEmpty()) {
-            mergeResults.nextPageLink = startNewService(nextPageLinks);
+            if (this.nextPageLink == null) {
+                this.nextPageLink = startNewService(nextPageLinks);
+            }
+            mergeResults.nextPageLink = this.nextPageLink;
         }
 
         if (!prevPageLinks.isEmpty()) {
-            mergeResults.prevPageLink = startNewService(prevPageLinks);
+            if (this.prevPageLink == null) {
+                this.prevPageLink = startNewService(prevPageLinks);
+            }
+            mergeResults.prevPageLink = this.prevPageLink;
         }
 
         boolean isAscOrder = this.spec.sortOrder == null
