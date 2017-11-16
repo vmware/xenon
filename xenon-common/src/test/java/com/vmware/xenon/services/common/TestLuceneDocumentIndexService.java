@@ -3436,6 +3436,9 @@ public class TestLuceneDocumentIndexService {
 
         // send a GET immediately and expect either failure or success, we are doing it
         // to ensure it actually completes
+        this.host.toggleOperationProcessingLogging(true).setOperationProcessingLogFilter(o -> {
+            return o.getUri().getPath().contains("/core/examples");
+        });
         boolean sendDelete = expTime != 0 && expTime < Utils.getSystemNowMicrosUtc();
         int count = services.size();
         if (sendDelete) {

@@ -296,7 +296,8 @@ class ServiceSynchronizationTracker {
         t.indexLink = s.getDocumentIndexPath();
         t.stateDescription = this.host.buildDocumentDescription(s);
         t.options = s.getOptions();
-        t.state = op.hasBody() ? op.getBody(s.getStateType()) : null;
+        //t.state = op.hasBody() ? op.getBody(s.getStateType()) : null;
+        t.state = op.getLinkedState();
         t.factoryLink = UriUtils.getParentPath(s.getSelfLink());
         if (t.factoryLink == null || t.factoryLink.isEmpty()) {
             String error = String.format("Factory not found for %s."

@@ -140,10 +140,12 @@ public class StatefulService implements Service {
         if (op.getAction() != Action.DELETE
                 && this.context.processingStage != ProcessingStage.AVAILABLE) {
 
+            /*
             if (this.context.processingStage == ProcessingStage.STOPPED) {
                 getHost().retryOnDemandLoadConflict(op, this);
                 return true;
             }
+            */
 
             // this should never happen since the host will not forward requests if we are not
             // available
@@ -210,7 +212,7 @@ public class StatefulService implements Service {
         }
 
         // we can stop the service and cancel pending requests
-        setProcessingStage(Service.ProcessingStage.STOPPED);
+        getHost().stopService(this);
         cancelPendingRequests(op);
         return false;
     }
@@ -277,11 +279,13 @@ public class StatefulService implements Service {
             return true;
         }
 
+        /*
         if (stopped != 0 && !getHost().isStopping()) {
             logWarning("Service in stage %s, retrying request", this.context.processingStage);
             getHost().retryOnDemandLoadConflict(op, this);
             return true;
         }
+        */
 
         if (checkServiceStopped(op, false)) {
             return true;
@@ -880,7 +884,6 @@ public class StatefulService implements Service {
         // It needs to stop the service now, since the handleDelete() and handleStop() handlers
         // have already run.
         getHost().markAsPendingDelete(this);
-        getHost().stopService(this);
         return false;
     }
 
@@ -889,7 +892,6 @@ public class StatefulService implements Service {
             return;
         }
 
-        getHost().stopService(this);
         op.complete();
     }
 
