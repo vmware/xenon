@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.common.opentracing;
 
+import java.util.ArrayDeque;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -35,12 +36,46 @@ import io.opentracing.Tracer;
  */
 public class TracingExecutor implements ExecutorService {
 
+    private final ArrayDeque<Thunk> free;
     private final ExecutorService executor;
     protected final Tracer tracer;
+
+    private class Thunk implements Runnable {
+        Runnable command;
+        Span queueSpan;
+        Continuation cont;
+
+        void setContents(Runnable command, Span queueSpan, Continuation cont) {
+            this.command = command;
+            this.queueSpan = queueSpan;
+            this.cont = cont;
+        }
+
+        void clearContents() {
+            this.command = null;
+            this.queueSpan = null;
+            this.cont = null;
+        }
+
+        @Override
+        @SuppressWarnings("try")
+        public void run() {
+            Runnable command = this.command;
+            Span queueSpan = this.queueSpan;
+            Continuation cont = this.cont;
+            clearContents();
+            TracingExecutor.this.push(this);
+            queueSpan.finish();
+            try (ActiveSpan parentSpan = cont.activate()) {
+                command.run();
+            }
+        }
+    }
 
     protected TracingExecutor(ExecutorService executor, Tracer tracer) {
         this.executor = executor;
         this.tracer = tracer;
+        this.free = new ArrayDeque<Thunk>();
     }
 
     /**
@@ -57,6 +92,29 @@ public class TracingExecutor implements ExecutorService {
         } else {
             return new TracingExecutor(executor, tracer);
         }
+    }
+
+    /**
+     * Put thunk into the freelist for reuse. Always clear the thunk first to avoid keeping references
+     * arbitrarily long. (Not done within the function to keep lock granularity fine.
+     */
+    private synchronized void push(Thunk thunk) {
+        this.free.push(thunk);
+    }
+
+    /**
+     * Get a thunk for passing to the underlying executor. At most the executors max queue length + max concurrent
+     * running threads + 1 thunks will be created: one for every item in the queue, one for every thunk that has just
+     * started being executed, and one created for submission to the executor-but-fails-on-oversize.
+     *
+     * @return @{link Thunk}
+     */
+    synchronized Thunk getThunk() {
+        Thunk result = this.free.poll();
+        if (result == null) {
+            result = new Thunk();
+        }
+        return result;
     }
 
     @Override
@@ -120,19 +178,17 @@ public class TracingExecutor implements ExecutorService {
     }
 
     @Override
-    @SuppressWarnings("try")
     public void execute(Runnable command) {
         if (this.tracer.activeSpan() != null) {
             Span queueSpan = this.tracer.buildSpan("Queue").startManual();
             Continuation cont = this.tracer.activeSpan().capture();
+            Thunk thunk = getThunk();
+            thunk.setContents(command, queueSpan, cont);
             try {
-                this.executor.execute(() -> {
-                    queueSpan.finish();
-                    try (ActiveSpan parentSpan = cont.activate()) {
-                        command.run();
-                    }
-                });
+                this.executor.execute(thunk);
             } catch (RejectedExecutionException e) {
+                thunk.clearContents();
+                this.push(thunk);
                 Map<String, Object> map = new HashMap<>();
                 map.put("error.kind", "exception");
                 map.put("error.object", e);
