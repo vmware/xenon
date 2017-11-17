@@ -22,6 +22,7 @@ import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
@@ -35,6 +36,7 @@ import org.apache.lucene.util.BytesRef;
 
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
+import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryRuntimeContext;
 
@@ -135,10 +137,24 @@ final class LuceneQueryConverter {
     }
 
     static Query convertToLucenePrefixQuery(QueryTask.Query query) {
+        // if the query is a prefix on a self link that matches all documents, then
+        // special case the query to a MatchAllDocsQuery to avoid looking through
+        // the entire index as the number of terms is equal to the size of the index
+        if ((query.term.propertyName.equals(ServiceDocument.FIELD_NAME_SELF_LINK)) &&
+                query.term.matchValue.equals(UriUtils.URI_PATH_CHAR)) {
+            return new MatchAllDocsQuery();
+        }
         return new PrefixQuery(convertToLuceneTerm(query.term));
     }
 
     static Query convertToLuceneWildcardTermQuery(QueryTask.Query query) {
+        // if the query is a wildcard on a self link that matches all documents, then
+        // special case the query to a MatchAllDocsQuery to avoid looking through
+        // the entire index as the number of terms is equal to the size of the index
+        if ((query.term.propertyName.equals(ServiceDocument.FIELD_NAME_SELF_LINK)) &&
+                query.term.matchValue.equals(UriUtils.URI_WILDCARD_CHAR)) {
+            return new MatchAllDocsQuery();
+        }
         return new WildcardQuery(convertToLuceneTerm(query.term));
     }
 
