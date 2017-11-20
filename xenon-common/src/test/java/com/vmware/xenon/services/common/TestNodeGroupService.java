@@ -346,6 +346,12 @@ public class TestNodeGroupService {
         this.host.setMultiLocationTest(this.isMultiLocationTest);
         this.host.setUpPeerHosts(localHostCount);
 
+        // expire node that went away quickly to avoid alot of log spam from gossip failures
+        NodeGroupService.NodeGroupConfig cfg = new NodeGroupService.NodeGroupConfig();
+        cfg.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(1);
+        this.host.setNodeGroupConfig(cfg);
+        this.host.setSystemAuthorizationContext();
+
         for (VerificationHost h1 : this.host.getInProcessHostMap().values()) {
             setUpPeerHostWithAdditionalServices(h1);
         }
@@ -2661,6 +2667,12 @@ public class TestNodeGroupService {
         // success threshold: 4, failure threshold: (5 - 4) + 1 = 2
         this.replicationTargetFactoryLink = ExampleService.FACTORY_LINK;
         setUp(this.nodeCount);
+
+        NodeGroupService.NodeGroupConfig cfg = new NodeGroupService.NodeGroupConfig();
+        cfg.nodeRemovalDelayMicros = TimeUnit.MINUTES.toMicros(5);
+        this.host.setNodeGroupConfig(cfg);
+        this.host.setSystemAuthorizationContext();
+
         this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
         this.host.setNodeGroupQuorum(3);
         this.host.setNodeSelectorReplicationQuorum(this.replicationNodeSelector, this.replicationQuorum);

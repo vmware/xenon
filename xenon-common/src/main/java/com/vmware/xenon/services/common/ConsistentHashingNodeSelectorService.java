@@ -760,8 +760,14 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 // every time we update cached state, request convergence check
                 this.isNodeGroupConverged = false;
                 this.isSynchronizationRequired = true;
-            } else {
-                return;
+                // We skip synchronization in case of PEER_UNAVAILABLE because we will triggered synchronization
+                // when that node will get EXPIRED. PEER_UNAVAILABLE indicates that the node just become unavailable
+                // and will be expired after 5 minutes if it does not come back online within that time period.
+                if (ngs.lastChanges != null &&
+                        ngs.lastChanges.size() == 1 &&
+                        ngs.lastChanges.contains(NodeGroupService.NodeGroupChange.PEER_UNAVAILABLE)) {
+                    this.isSynchronizationRequired = false;
+                }
             }
         }
     }
