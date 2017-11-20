@@ -54,8 +54,8 @@ public class NodeGroupService extends StatefulService {
             ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS / 3
     );
 
-    private enum NodeGroupChange {
-        PEER_ADDED, PEER_STATUS_CHANGE, SELF_CHANGE
+    enum NodeGroupChange {
+        PEER_ADDED, PEER_STATUS_CHANGE, SELF_CHANGE, PEER_EXPIRED
     }
 
     public static class JoinPeerRequest {
@@ -147,6 +147,10 @@ public class NodeGroupService extends StatefulService {
          * two way state merges
          */
         public Map<String, NodeState> nodes = new ConcurrentHashMap<>();
+        /**
+         * List of change types that caused the node-group state change.
+         */
+        public EnumSet<NodeGroupChange> lastChanges = EnumSet.noneOf(NodeGroupChange.class);
         /**
          * The maximum value among all reported times from the peers. If one peer has significant
          * time drift compared to others, this value will appears in the future or past, compared to local time.
@@ -957,7 +961,7 @@ public class NodeGroupService extends StatefulService {
             }
 
             if (expirationMicros > 0 && now > expirationMicros) {
-                changes.add(NodeGroupChange.PEER_STATUS_CHANGE);
+                changes.add(NodeGroupChange.PEER_EXPIRED);
                 logInfo("Removing expired unavailable node %s(%s)", l.id, l.groupReference);
                 missingNodes.add(l.id);
             }
@@ -967,6 +971,7 @@ public class NodeGroupService extends StatefulService {
             localState.nodes.remove(id);
         }
 
+        localState.lastChanges = changes;
         boolean isModified = !changes.isEmpty();
         localState.membershipUpdateTimeMicros = Math.max(
                 remotePeerState.membershipUpdateTimeMicros,

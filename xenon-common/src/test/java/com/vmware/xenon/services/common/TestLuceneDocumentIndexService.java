@@ -190,7 +190,7 @@ class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexServic
 public class TestLuceneDocumentIndexService {
 
     public static class InMemoryExampleService extends ExampleService {
-        public static final String FACTORY_LINK = "test/in-memory-examples";
+        public static final String FACTORY_LINK = "/test/in-memory-examples";
 
         public InMemoryExampleService() {
             super();
