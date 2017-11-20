@@ -139,6 +139,11 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
             this.host.joinNodesAndVerifyConvergence(this.nodeCount, true);
             this.host.setNodeGroupQuorum(this.nodeCount);
 
+            // expire node that went away quickly to avoid alot of log spam from gossip failures
+            NodeGroupService.NodeGroupConfig cfg = new NodeGroupService.NodeGroupConfig();
+            cfg.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(1);
+            this.host.setNodeGroupConfig(cfg);
+
             for (VerificationHost host : this.host.getInProcessHostMap().values()) {
                 host.startFactory(new MigrationTaskService());
                 host.startFactory(new ImmutableExampleService());

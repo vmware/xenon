@@ -346,6 +346,12 @@ public class TestNodeGroupService {
         this.host.setMultiLocationTest(this.isMultiLocationTest);
         this.host.setUpPeerHosts(localHostCount);
 
+        // expire node that went away quickly to avoid alot of log spam from gossip failures
+        NodeGroupService.NodeGroupConfig cfg = new NodeGroupService.NodeGroupConfig();
+        cfg.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(1);
+        this.host.setNodeGroupConfig(cfg);
+        this.host.setSystemAuthorizationContext();
+
         for (VerificationHost h1 : this.host.getInProcessHostMap().values()) {
             setUpPeerHostWithAdditionalServices(h1);
         }
@@ -2669,6 +2675,7 @@ public class TestNodeGroupService {
         // success threshold: 4, failure threshold: (5 - 4) + 1 = 2
         this.replicationTargetFactoryLink = ExampleService.FACTORY_LINK;
         setUp(this.nodeCount);
+
         this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
         this.host.setNodeGroupQuorum(3);
         this.host.setNodeSelectorReplicationQuorum(this.replicationNodeSelector, this.replicationQuorum);
@@ -2690,8 +2697,8 @@ public class TestNodeGroupService {
         state.name = state.documentSelfLink = UUID.randomUUID().toString();
         Operation post = Operation.createPost(UriUtils.buildUri(this.host.getPeerHost(), this.replicationTargetFactoryLink)).setBody(state);
         TestRequestSender.FailureResponse rsp = this.host.getTestRequestSender().sendAndWaitFailure(post);
-        assertTrue(rsp.failure.getMessage().contains(String.format("Fail: 2, quorum: %d, failure threshold: %d",
-                this.replicationQuorum, this.nodeCount - this.replicationQuorum + 1)));
+        assertTrue(rsp.failure.getMessage().contains(String.format("Fail: 1, quorum: %d, failure threshold: %d",
+                this.replicationQuorum, this.nodeCount - this.replicationQuorum)));
         this.nodeCount = originalNodeCount;
         this.replicationQuorum = originalReplicationQuorum;
     }
@@ -4877,7 +4884,7 @@ public class TestNodeGroupService {
 
         // reduce node expiration for unavailable hosts so gossip warning
         // messages do not flood the logs
-        this.nodeGroupConfig.nodeRemovalDelayMicros = remainingHost.getMaintenanceIntervalMicros();
+        this.nodeGroupConfig.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(1);;
         this.host.setNodeGroupConfig(this.nodeGroupConfig);
 
         // relax quorum to single remaining host
