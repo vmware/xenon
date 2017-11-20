@@ -346,6 +346,11 @@ public class TestNodeGroupService {
         this.host.setMultiLocationTest(this.isMultiLocationTest);
         this.host.setUpPeerHosts(localHostCount);
 
+        // expire node that went away quickly to avoid alot of log spam from gossip failures
+        NodeGroupService.NodeGroupConfig cfg = new NodeGroupService.NodeGroupConfig();
+        cfg.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(1);
+        this.host.setNodeGroupConfig(cfg);
+
         for (VerificationHost h1 : this.host.getInProcessHostMap().values()) {
             setUpPeerHostWithAdditionalServices(h1);
         }
@@ -4877,7 +4882,7 @@ public class TestNodeGroupService {
 
         // reduce node expiration for unavailable hosts so gossip warning
         // messages do not flood the logs
-        this.nodeGroupConfig.nodeRemovalDelayMicros = remainingHost.getMaintenanceIntervalMicros();
+        this.nodeGroupConfig.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(1);;
         this.host.setNodeGroupConfig(this.nodeGroupConfig);
 
         // relax quorum to single remaining host
