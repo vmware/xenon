@@ -52,6 +52,8 @@ import com.vmware.xenon.services.common.InMemoryLuceneDocumentIndexService;
 import com.vmware.xenon.services.common.NodeGroupService;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.ServiceUriPaths;
+import com.vmware.xenon.services.common.SynchronizationManagementService;
+import com.vmware.xenon.services.common.SynchronizationManagementService.SynchronizationManagementState;
 import com.vmware.xenon.services.common.TestLuceneDocumentIndexService.InMemoryExampleService;
 
 
@@ -153,11 +155,19 @@ public class TestSynchronizationTaskService extends BasicTestCase {
                 this.host.getPeerServiceUri(ExampleService.FACTORY_LINK));
         this.host.waitForReplicatedFactoryServiceAvailable(exampleFactoryUri);
 
+        // expire node that went away quickly to avoid alot of log spam from gossip failures
+        NodeGroupService.NodeGroupConfig cfg = new NodeGroupService.NodeGroupConfig();
+        cfg.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(1);
+        this.host.setNodeGroupConfig(cfg);
+
         for (VerificationHost h : this.host.getInProcessHostMap().values()) {
             h.addPrivilegedService(InMemoryLuceneDocumentIndexService.class);
             h.startCoreServicesSynchronously(new InMemoryLuceneDocumentIndexService());
             h.startFactory(new InMemoryExampleService());
             h.startFactory(new ExampleODLService());
+
+            // expire node that went away quickly to avoid alot of log spam from gossip failures
+            h.setNodeGroupConfig(cfg);
         }
 
         URI inMemoryExampleFactoryUri = UriUtils.buildUri(
@@ -508,7 +518,6 @@ public class TestSynchronizationTaskService extends BasicTestCase {
                 .filter(host -> host.getId().contentEquals(state.documentOwner)).findFirst()
                 .orElseThrow(() -> new RuntimeException("couldn't find owner node"));
 
-
         // Send updates to all services and check consistency after owner stops
         for (ExampleServiceState st : exampleStates) {
             for (int i = 1; i <= patchCount; i++) {
@@ -527,9 +536,22 @@ public class TestSynchronizationTaskService extends BasicTestCase {
                 exampleStatesMap.size(),
                 0, this.nodeCount);
 
-        // Stop the current owner and make sure that new owner is selected and state is consistent
-        this.host.stopHost(owner);
+        // Get current synchronization count.
         VerificationHost peer = this.host.getPeerHost();
+        VerificationHost factoryOwner = this.host.getInProcessHostMap().values().stream()
+                .filter(host -> host.getId().contentEquals(getFactoryOwner(peer, factoryLink))).findFirst()
+                .orElseThrow(() -> new RuntimeException("couldn't find owner node"));
+        ServiceStats.ServiceStat stat = getServiceAvailableStat(factoryLink, sender, factoryOwner);
+
+        // Stop the current owner and make sure that new owner is selected and state is consistent after synchronization.
+        this.host.stopHost(owner);
+        VerificationHost newPeer = this.host.getPeerHost();
+
+        this.host.waitFor("Node did not expired", () -> {
+            NodeGroupService.NodeGroupState ngs = sender.sendAndWait(
+                    Operation.createGet(newPeer, ServiceUriPaths.DEFAULT_NODE_GROUP), NodeGroupService.NodeGroupState.class);
+            return ngs.nodes.size() == 2;
+        });
 
         this.host.waitForReplicatedFactoryChildServiceConvergence(
                 this.host.getNodeGroupToFactoryMap(factoryLink),
@@ -538,13 +560,37 @@ public class TestSynchronizationTaskService extends BasicTestCase {
                 exampleStatesMap.size(),
                 0, this.nodeCount - 1);
 
-        // Verify that state is consistent after original owner node stopped.
-        Operation op = Operation.createGet(peer, state.documentSelfLink);
-        ExampleServiceState newState = sender.sendAndWait(op, ExampleServiceState.class);
+        // Verify that synchronization was triggered only one time.
+        ExampleServiceState newState = sender.sendAndWait(Operation.createGet(newPeer, state.documentSelfLink), ExampleServiceState.class);
+        VerificationHost newFactoryOwner = this.host.getInProcessHostMap().values().stream()
+                .filter(host -> host.getId().contentEquals(getFactoryOwner(newPeer, factoryLink))).findFirst()
+                .orElseThrow(() -> new RuntimeException("couldn't find owner node"));
+        ServiceStats.ServiceStat newStat = getServiceAvailableStat(factoryLink, sender, newFactoryOwner);
+        if (factoryOwner.equals(newFactoryOwner)) {
+            assertEquals(1.0, newStat.accumulatedValue - stat.accumulatedValue, 0);
+        } else {
+            assertEquals(1.0, newStat.accumulatedValue, 0);
+        }
 
+        // Verify that state is consistent after original owner node stopped.
         assertNotNull(newState);
         assertEquals((Long) (state.counter + patchCount), newState.counter);
         assertNotEquals(newState.documentOwner, state.documentOwner);
+    }
+
+    private String getFactoryOwner(VerificationHost host, String factoryLink) {
+        URI serviceUri = UriUtils.buildUri(host, SynchronizationManagementService.class);
+        ServiceDocumentQueryResult result =
+                host.getTestRequestSender().sendAndWait(Operation.createGet(serviceUri), ServiceDocumentQueryResult.class);
+        SynchronizationManagementState s = (SynchronizationManagementState)result.documents.get(factoryLink);
+        return s.owner;
+    }
+
+    private ServiceStats.ServiceStat getServiceAvailableStat(String factoryLink, TestRequestSender sender, VerificationHost newOwner) {
+        URI factoryOwnerServiceStatsUri = UriUtils.buildStatsUri(newOwner, factoryLink);
+        Operation statsOp = Operation.createGet(factoryOwnerServiceStatsUri);
+        ServiceStats stats = sender.sendAndWait(statsOp, ServiceStats.class);
+        return stats.entries.get(Service.STAT_NAME_AVAILABLE);
     }
 
     private VerificationHost restartHost(VerificationHost hostToRestart) throws Throwable {
