@@ -25,6 +25,8 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import com.esotericsoftware.kryo.serializers.VersionFieldSerializer.Since;
+
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.RequestRouter.Route.RouteDocumentation;
@@ -38,6 +40,7 @@ import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.config.XenonConfiguration;
+import com.vmware.xenon.common.serialization.ReleaseConstants;
 import com.vmware.xenon.services.common.NodeState.NodeOption;
 import com.vmware.xenon.services.common.NodeState.NodeStatus;
 
@@ -54,8 +57,36 @@ public class NodeGroupService extends StatefulService {
             ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS / 3
     );
 
-    private enum NodeGroupChange {
-        PEER_ADDED, PEER_STATUS_CHANGE, SELF_CHANGE
+    /**
+     * Change type used internally for synchronization logic. Not expected to be used by external users at all.
+     *
+     * Infrastructure use only.
+     */
+    enum NodeGroupChange {
+        /**
+         * Current node's status changed.
+         */
+        SELF_CHANGE,
+        /**
+         * Quorum of node-group changed.
+         */
+        QUORUM_CHANGED,
+        /**
+         * New peer added to the node-group.
+         */
+        PEER_ADDED,
+        /**
+         * Status of the peer changed (SYNCHRONIZING, AVAILABLE, REPLACED, UNKNOWN)
+         */
+        PEER_STATUS_CHANGE,
+        /**
+         * Status of a peer changed to UNAVAILABLE and will wait for few minutes in node-group before getting expired.
+         */
+        PEER_UNAVAILABLE,
+        /**
+         * Peer expired and will be removed from the node-group.
+         */
+        PEER_EXPIRED
     }
 
     public static class JoinPeerRequest {
@@ -147,6 +178,13 @@ public class NodeGroupService extends StatefulService {
          * two way state merges
          */
         public Map<String, NodeState> nodes = new ConcurrentHashMap<>();
+        /**
+         * List of change types that caused the node-group state change.
+         *
+         * Infrastructure use only
+         */
+        @Since(ReleaseConstants.RELEASE_VERSION_1_6_2)
+        public EnumSet<NodeGroupChange> lastChanges = EnumSet.noneOf(NodeGroupChange.class);
         /**
          * The maximum value among all reported times from the peers. If one peer has significant
          * time drift compared to others, this value will appears in the future or past, compared to local time.
@@ -877,10 +915,19 @@ public class NodeGroupService extends StatefulService {
                 continue;
             }
 
-            boolean needsUpdate = currentEntry.status != remoteEntry.status
-                    || currentEntry.membershipQuorum != remoteEntry.membershipQuorum;
+
+            boolean needsUpdate = currentEntry.status != remoteEntry.status;
             if (needsUpdate) {
-                changes.add(NodeGroupChange.PEER_STATUS_CHANGE);
+                if (currentEntry.status == NodeStatus.AVAILABLE && remoteEntry.status == NodeStatus.UNAVAILABLE) {
+                    changes.add(NodeGroupChange.PEER_UNAVAILABLE);
+                } else if (remoteEntry.documentVersion >= currentEntry.documentVersion) {
+                    changes.add(NodeGroupChange.PEER_STATUS_CHANGE);
+                }
+            }
+
+            if (currentEntry.membershipQuorum != remoteEntry.membershipQuorum) {
+                changes.add(NodeGroupChange.QUORUM_CHANGED);
+                needsUpdate = true;
             }
 
             if (isSelfPatch && isLocalNode && needsUpdate) {
@@ -929,7 +976,7 @@ public class NodeGroupService extends StatefulService {
                         remoteEntry.documentExpirationTimeMicros,
                         remoteEntry.id,
                         remoteEntry.groupReference);
-                changes.add(NodeGroupChange.PEER_STATUS_CHANGE);
+                changes.add(NodeGroupChange.PEER_UNAVAILABLE);
                 needsUpdate = true;
             }
 
@@ -957,7 +1004,7 @@ public class NodeGroupService extends StatefulService {
             }
 
             if (expirationMicros > 0 && now > expirationMicros) {
-                changes.add(NodeGroupChange.PEER_STATUS_CHANGE);
+                changes.add(NodeGroupChange.PEER_EXPIRED);
                 logInfo("Removing expired unavailable node %s(%s)", l.id, l.groupReference);
                 missingNodes.add(l.id);
             }
@@ -967,6 +1014,7 @@ public class NodeGroupService extends StatefulService {
             localState.nodes.remove(id);
         }
 
+        localState.lastChanges = changes;
         boolean isModified = !changes.isEmpty();
         localState.membershipUpdateTimeMicros = Math.max(
                 remotePeerState.membershipUpdateTimeMicros,
