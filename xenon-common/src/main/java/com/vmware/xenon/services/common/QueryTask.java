@@ -85,6 +85,13 @@ public class QueryTask extends ServiceDocument {
             CONTINUOUS,
 
             /**
+             * Query results are updated in real time, by using {@code QueryFilter} instance on the index.
+             * Any update to the index will cause a self PATCH to be sent on the service if the query filter
+             * does not satisfy the new state but was a match for the previous state.
+             */
+            CONTINIOUS_STOP_MATCH,
+
+            /**
              * Query results will return the number of documents that satisfy the query and populate the
              * the {@link ServiceDocumentQueryResult#documentCount} field. The results will not contain
              * links or documents

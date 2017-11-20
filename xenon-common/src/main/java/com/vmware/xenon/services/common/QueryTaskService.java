@@ -178,6 +178,11 @@ public class QueryTaskService extends StatefulService {
                         String.format(errFmt, QueryOption.CONTINUOUS)));
                 return false;
             }
+            if (initState.querySpec.options.contains(QueryOption.CONTINIOUS_STOP_MATCH)) {
+                startPost.fail(new IllegalArgumentException(
+                        String.format(errFmt, QueryOption.CONTINIOUS_STOP_MATCH)));
+                return false;
+            }
             if (initState.querySpec.groupByTerm == null) {
                 startPost.fail(new IllegalArgumentException(
                         "querySpec.groupByTerm is required with " + QueryOption.GROUP_BY));
@@ -200,6 +205,11 @@ public class QueryTaskService extends StatefulService {
             if (initState.querySpec.options.contains(QueryOption.CONTINUOUS)) {
                 startPost.fail(new IllegalArgumentException(
                         String.format(errFmt, QueryOption.CONTINUOUS)));
+                return false;
+            }
+            if (initState.querySpec.options.contains(QueryOption.CONTINIOUS_STOP_MATCH)) {
+                startPost.fail(new IllegalArgumentException(
+                        String.format(errFmt, QueryOption.CONTINIOUS_STOP_MATCH)));
                 return false;
             }
             if (initState.querySpec.linkTerms == null || initState.querySpec.linkTerms.isEmpty()) {
@@ -229,9 +239,10 @@ public class QueryTaskService extends StatefulService {
         }
 
         if (initState.taskInfo.isDirect
-                && initState.querySpec.options.contains(QueryOption.CONTINUOUS)) {
+                && (initState.querySpec.options.contains(QueryOption.CONTINUOUS) ||
+                        initState.querySpec.options.contains(QueryOption.CONTINIOUS_STOP_MATCH))) {
             startPost.fail(new IllegalArgumentException("direct query task is not compatible with "
-                    + QueryOption.CONTINUOUS));
+                    + QueryOption.CONTINUOUS + " or " + QueryOption.CONTINIOUS_STOP_MATCH));
             return false;
         }
 
@@ -507,7 +518,8 @@ public class QueryTaskService extends StatefulService {
             return;
         }
 
-        if (state.querySpec.options.contains(QueryOption.CONTINUOUS)) {
+        if (state.querySpec.options.contains(QueryOption.CONTINUOUS) ||
+                state.querySpec.options.contains(QueryOption.CONTINIOUS_STOP_MATCH)) {
             if (handlePatchForContinuousQuery(state, patchBody, patch)) {
                 return;
             }
@@ -662,7 +674,8 @@ public class QueryTaskService extends StatefulService {
         long delta = task.documentExpirationTimeMicros - Utils.getSystemNowMicrosUtc();
         delta = Math.max(1, delta);
         getHost().scheduleCore(() -> {
-            if (task.querySpec.options.contains(QueryOption.CONTINUOUS)) {
+            if (task.querySpec.options.contains(QueryOption.CONTINUOUS) ||
+                    task.querySpec.options.contains(QueryOption.CONTINIOUS_STOP_MATCH)) {
                 cancelContinuousQueryOnIndex(task);
             }
             sendRequest(delete);
@@ -737,7 +750,8 @@ public class QueryTaskService extends StatefulService {
                 return;
             }
 
-            if (task.querySpec.options.contains(QueryOption.CONTINUOUS)) {
+            if (task.querySpec.options.contains(QueryOption.CONTINUOUS) ||
+                    task.querySpec.options.contains(QueryOption.CONTINIOUS_STOP_MATCH)) {
                 // A continuous query does not cache results: since it receive updates
                 // at any time, a GET on the query will cause the query to be re-computed. This is
                 // costly, so it should be avoided.
