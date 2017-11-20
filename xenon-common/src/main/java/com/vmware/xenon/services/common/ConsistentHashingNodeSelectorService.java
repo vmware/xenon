@@ -760,6 +760,14 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 // every time we update cached state, request convergence check
                 this.isNodeGroupConverged = false;
                 this.isSynchronizationRequired = true;
+                // We skip synchronization in case of PEER_EXPIRED because we have already triggered synchronization
+                // when that node was first got unavailable. PEER_EXPIRED indicates that the node didn't come online
+                // after 5 minute wait and is completely got removed from the node-group.
+                if (ngs.lastChanges != null &&
+                        ngs.lastChanges.size() == 1 &&
+                        ngs.lastChanges.contains(NodeGroupService.NodeGroupChange.PEER_EXPIRED)) {
+                    this.isSynchronizationRequired = false;
+                }
             } else {
                 return;
             }
