@@ -322,6 +322,89 @@ public class TestQueryTaskService {
     }
 
     @Test
+    public void queryTaskWithTrackStopMatch() throws Throwable {
+        setUpHost();
+
+        // Create a continuous query task with no expiration time.
+        String textValue = UUID.randomUUID().toString();
+        String updatedTextValue = UUID.randomUUID().toString();
+        Query query = Query.Builder.create()
+                .addFieldClause(QueryValidationServiceState.FIELD_NAME_TEXT_VALUE, textValue)
+                .build();
+        QueryTask queryTask = QueryTask.Builder.create()
+                .setQuery(query)
+                .addOptions(EnumSet.of(QueryOption.TRACK_STOP_MATCH, QueryOption.EXPAND_CONTENT))
+                .build();
+        queryTask.documentExpirationTimeMicros = Long.MAX_VALUE;
+        URI queryTaskUri = this.host.createQueryTaskService(queryTask);
+
+        // Create a subscription to the continuous query task.
+        AtomicReference<TestContext> ctxRef = new AtomicReference<>();
+        Consumer<Operation> notificationConsumer = (notifyOp) -> {
+            QueryTask body = notifyOp.getBody(QueryTask.class);
+            if (body.results == null || body.results.documentLinks.isEmpty()) {
+                // Query has not completed or no matching services exist yet
+                return;
+            }
+
+            TestContext ctx = ctxRef.get();
+            if (body.results.continuousResults == null) {
+                this.host.log("Query task result %s", Utils.toJsonHtml(body.results));
+                ctx.fail(new IllegalStateException("Continuous results expected"));
+                return;
+            }
+            ctx.complete();
+        };
+
+        TestContext subscriptionCtx = this.host.testCreate(1);
+        Operation post = Operation.createPost(queryTaskUri).setReferer(this.host.getReferer())
+                .setCompletion(subscriptionCtx.getCompletion());
+        this.host.startSubscriptionService(post, notificationConsumer);
+        this.host.testWait(subscriptionCtx);
+
+        // Start some services which match the continuous query filter; This should not result in notifications.
+        QueryValidationServiceState newState = new QueryValidationServiceState();
+        newState.textValue = textValue;
+
+        List<URI> initialServices = startQueryTargetServices(this.serviceCount, newState);
+
+        // Update the services with new state and wait for notifications.
+        TestContext queryCtx = this.host.testCreate(this.serviceCount);
+        ctxRef.set(queryCtx);
+        newState.textValue = updatedTextValue;
+        putSimpleStateOnQueryTargetServices(initialServices, newState);
+        queryCtx.await();
+
+        //add query options CONTINIOUS and TRACK_STOP_MATCH
+        queryTask = QueryTask.Builder.create()
+                .setQuery(query)
+                .addOptions(EnumSet.of(QueryOption.TRACK_STOP_MATCH,
+                        QueryOption.CONTINUOUS, QueryOption.EXPAND_CONTENT))
+                .build();
+        queryTask.documentExpirationTimeMicros = Long.MAX_VALUE;
+        queryTaskUri = this.host.createQueryTaskService(queryTask);
+        subscriptionCtx = this.host.testCreate(1);
+        post = Operation.createPost(queryTaskUri).setReferer(this.host.getReferer())
+                .setCompletion(subscriptionCtx.getCompletion());
+        this.host.startSubscriptionService(post, notificationConsumer);
+        this.host.testWait(subscriptionCtx);
+
+        // update the text value to be a match resulting in notifications
+        queryCtx = this.host.testCreate(this.serviceCount);
+        ctxRef.set(queryCtx);
+        newState.textValue = textValue;
+        putSimpleStateOnQueryTargetServices(initialServices, newState);
+        queryCtx.await();
+
+        // update the text value to not be a match. Wait for notifications from both query tasks
+        queryCtx = this.host.testCreate(this.serviceCount * 2);
+        ctxRef.set(queryCtx);
+        newState.textValue = updatedTextValue;
+        putSimpleStateOnQueryTargetServices(initialServices, newState);
+        queryCtx.await();
+    }
+
+    @Test
     public void continuousQueryTask() throws Throwable {
         setUpHost();
 
