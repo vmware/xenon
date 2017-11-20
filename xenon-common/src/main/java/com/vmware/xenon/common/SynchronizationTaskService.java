@@ -825,7 +825,7 @@ public class SynchronizationTaskService
         body.name = Service.STAT_NAME_AVAILABLE;
         body.latestValue = isAvailable ? STAT_VALUE_TRUE : STAT_VALUE_FALSE;
 
-        Operation put = Operation.createPut(
+        Operation op = Operation.createPost(
                 UriUtils.buildAvailableUri(this.getHost(), task.factorySelfLink))
                 .setBody(body)
                 .setConnectionSharing(true)
@@ -843,7 +843,7 @@ public class SynchronizationTaskService
                         action.accept(o);
                     }
                 });
-        sendRequest(put);
+        sendRequest(op);
     }
 
     @Override
