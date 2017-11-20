@@ -4877,7 +4877,7 @@ public class TestNodeGroupService {
 
         // reduce node expiration for unavailable hosts so gossip warning
         // messages do not flood the logs
-        this.nodeGroupConfig.nodeRemovalDelayMicros = remainingHost.getMaintenanceIntervalMicros();
+        this.nodeGroupConfig.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(1);;
         this.host.setNodeGroupConfig(this.nodeGroupConfig);
 
         // relax quorum to single remaining host
