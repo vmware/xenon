@@ -155,7 +155,7 @@ class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexServic
         return searchersByExpirationTime;
     }
 
-    public TreeMap<Long, PaginatedSearcherInfo> getPaginatedSearchersByExpirationTime() {
+    public TreeMap<Long, PaginatedSearcherInfo> getPaginatedSearchersByCreationTime() {
         return this.paginatedSearchersByCreationTime;
     }
 
@@ -165,7 +165,8 @@ class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexServic
             long searcherCountInExpiration = this.paginatedSearchersByExpirationTime.values().stream()
                     .flatMap(Collection::stream).distinct().count();
             int searcherCountInCreation = this.paginatedSearchersByCreationTime.size();
-            assertEquals(searcherCountInCreation, searcherCountInExpiration);
+            assertEquals("paginated searcher caches need to be consistent",
+                    searcherCountInCreation, searcherCountInExpiration);
         }
         return new ArrayList<>(this.paginatedSearchersByCreationTime.values());
     }
@@ -1091,7 +1092,7 @@ public class TestLuceneDocumentIndexService {
         this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
 
         // verify paginated searcher is NOT reused for the first paginated query.
-        paginatedSearcherSize = this.indexService.getPaginatedSearchersByExpirationTime().size();
+        paginatedSearcherSize = this.indexService.getPaginatedSearchersByCreationTime().size();
         assertEquals("new searcher should be created", 1, paginatedSearcherSize);
 
 
@@ -1107,7 +1108,7 @@ public class TestLuceneDocumentIndexService {
         this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
 
         // verify no searcher is reused so far
-        paginatedSearcherSize = this.indexService.getPaginatedSearchersByExpirationTime().size();
+        paginatedSearcherSize = this.indexService.getPaginatedSearchersByCreationTime().size();
         assertEquals("existing searcher should be reused", 1, paginatedSearcherSize);
 
 
@@ -1116,13 +1117,13 @@ public class TestLuceneDocumentIndexService {
         this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
 
         // a searcher should be reused
-        paginatedSearcherSize = this.indexService.getPaginatedSearchersByExpirationTime().size();
+        paginatedSearcherSize = this.indexService.getPaginatedSearchersByCreationTime().size();
         assertEquals("searcher should be re-used", 1, paginatedSearcherSize);
 
         // Another query task, searcher should be reused
         queryTask = QueryTask.Builder.create().setQuery(query).setResultLimit(2).build();
         this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
-        paginatedSearcherSize = this.indexService.getPaginatedSearchersByExpirationTime().size();
+        paginatedSearcherSize = this.indexService.getPaginatedSearchersByCreationTime().size();
         assertEquals("searcher should be re-used", 1, paginatedSearcherSize);
 
 
@@ -1134,7 +1135,7 @@ public class TestLuceneDocumentIndexService {
         // Even AnotherPersistentState is updated, still searcher should be reused for ExampleServiceState
         queryTask = QueryTask.Builder.create().setQuery(query).setResultLimit(2).build();
         this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
-        paginatedSearcherSize = this.indexService.getPaginatedSearchersByExpirationTime().size();
+        paginatedSearcherSize = this.indexService.getPaginatedSearchersByCreationTime().size();
         assertEquals("searcher should be re-used", 1, paginatedSearcherSize);
 
         // update a ExampleService
@@ -1146,7 +1147,7 @@ public class TestLuceneDocumentIndexService {
         // if ExampleService is updated, new searcher should be used
         queryTask = QueryTask.Builder.create().setQuery(query).setResultLimit(2).build();
         this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
-        paginatedSearcherSize = this.indexService.getPaginatedSearchersByExpirationTime().size();
+        paginatedSearcherSize = this.indexService.getPaginatedSearchersByCreationTime().size();
         assertEquals("searcher should be re-used", 2, paginatedSearcherSize);
     }
 
@@ -4899,6 +4900,66 @@ public class TestLuceneDocumentIndexService {
         });
 
         assertEquals(0, this.indexService.getPaginatedSearcherInfos().size());
+    }
+
+    @Test
+    public void paginatedSearcherCleanupByApplyMemoryLimit() throws Throwable {
+        setUpHost(false);
+        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
+
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+        // create example services
+        List<Operation> posts = new ArrayList<>();
+        for (int i = 0; i < 30; i++) {
+            ExampleServiceState state = new ExampleServiceState();
+            state.name = "foo-" + i;
+            posts.add(Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(state));
+        }
+        sender.sendAndWait(posts, ExampleServiceState.class);
+
+        // turn off maintenance so that searchers will not be removed
+        this.indexService.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, false);
+
+        long expiration = Utils.getSystemNowMicrosUtc();
+
+        // create paginated query with expiration=now to ensure searchers get closed in handleMaintenance
+        QueryTask task = QueryTask.Builder.createDirectTask()
+                .setQuery(Query.Builder.create().addKindFieldClause(ExampleServiceState.class).build())
+                .setResultLimit(2)
+                .build();
+        task.documentExpirationTimeMicros = expiration;
+        Operation post = Operation.createPost(this.host, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS).setBody(task);
+        sender.sendAndWait(post, QueryTask.class);
+
+        // Update(create) a document
+        ExampleServiceState state = new ExampleServiceState();
+        state.name = "foo-update";
+        sender.sendAndWait(Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(state));
+
+        // Create two more tasks. They will share the same searcher. Also use same expiration that previously used.
+        for (int i = 0; i < 2; i++) {
+            task = QueryTask.Builder.createDirectTask()
+                    .setQuery(Query.Builder.create().addKindFieldClause(ExampleServiceState.class).build())
+                    .setResultLimit(2)
+                    .build();
+            task.documentExpirationTimeMicros = expiration;
+            post = Operation.createPost(this.host, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS).setBody(task);
+            sender.sendAndWait(post, QueryTask.class);
+        }
+
+        // Now, there should be two searchers one is used by one task and the other is shared by two tasks.
+        List<PaginatedSearcherInfo> infoList = this.indexService.getPaginatedSearcherInfos();
+        assertThat(infoList).hasSize(2)
+                .as("searcher refCounts").extracting(info -> info.refCount).containsOnly(1, 2);
+
+        // turn on maintenance
+        this.indexService.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
+
+        // all searchers must be closed
+        this.host.waitFor("Wait paginated searchers get expired and caches are in good state", () -> {
+            return this.indexService.getPaginatedSearcherInfos().size() == 0;
+        });
     }
 
 }

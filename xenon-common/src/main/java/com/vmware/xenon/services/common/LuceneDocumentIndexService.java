@@ -3676,15 +3676,12 @@ public class LuceneDocumentIndexService extends StatelessService {
                     break;
                 }
 
+                // They are all expired. Remove/close all of them regardless of refCount value.
                 for (PaginatedSearcherInfo info : entry.getValue()) {
-                    info.refCount--;
-                    if (info.refCount == 0) {
-                        this.paginatedSearchersByCreationTime.remove(info.creationTimeMicros);
-                        this.searcherUpdateTimesMicros.remove(info.searcher.hashCode());
-                        toClose.add(info);
-                    }
+                    this.paginatedSearchersByCreationTime.remove(info.creationTimeMicros);
+                    this.searcherUpdateTimesMicros.remove(info.searcher.hashCode());
+                    toClose.add(info);
                 }
-
                 itr.remove();
             }
 
