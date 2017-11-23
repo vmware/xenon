@@ -867,16 +867,19 @@ public class TestAuthorization extends BasicTestCase {
                         // created above is not being reflected in the auth context for
                         // the user; We are retrying the operation to mitigate the issue
                         // till we have a fix for the issue
-                        for (int retryCounter = 0; retryCounter < 3; retryCounter++) {
+                        int maxRetries = 50;
+                        for (int retryCounter = 0; retryCounter <= maxRetries; retryCounter++) {
                             try {
                                 this.host.sendAndWaitExpectSuccess(
                                         Operation.createPost(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK))
                                         .setBody(exampleState));
                                 break;
                             } catch (Throwable t) {
+                                Thread.sleep(200);
                                 this.host.log(Level.WARNING, "Error creating example service: " + t.getMessage());
-                                if (retryCounter == 2) {
-                                    ctx.fail(new IllegalStateException("Example service creation failed thrice"));
+                                if (retryCounter == maxRetries) {
+                                    ctx.fail(new IllegalStateException("Example service creation failed even after " +
+                                            retryCounter + " retries", t));
                                     return;
                                 }
                             }

@@ -46,6 +46,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -172,12 +173,6 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final long DEFAULT_PAGINATED_SEARCHER_EXPIRATION_DELAY = TimeUnit.SECONDS.toMicros(1);
 
-    private static final int QUERY_EXECUTOR_WORK_QUEUE_CAPACITY = XenonConfiguration.integer(
-            LuceneDocumentIndexService.class,
-            "queryExecutorWorkQueueCapacity",
-            QUERY_QUEUE_DEPTH
-    );
-
     private static final int UPDATE_EXECUTOR_WORK_QUEUE_CAPACITY = XenonConfiguration.integer(
             LuceneDocumentIndexService.class,
             "updateExecutorWorkQueueCapacity",
@@ -190,6 +185,13 @@ public class LuceneDocumentIndexService extends StatelessService {
      * Try to find a reusable searcher this many times.
      */
     private static final int SEARCHER_REUSE_MAX_ATTEMPTS = 50;
+
+    /**
+     * How many threads a query pool will have.
+     * In other words how many times we'd like to have an IndexReader's
+     * data duplicated.
+     */
+    public static final int DEFAULT_THREADS_PER_POOL = 3;
 
     protected String indexDirectory;
 
@@ -443,7 +445,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     ExecutorService privateIndexingExecutor;
 
-    ExecutorService privateQueryExecutor;
+    ExecutorWithAffinity privateQueryExecutor;
 
     private Set<String> fieldsToLoadIndexingIdLookup;
     private Set<String> fieldToLoadVersionLookup;
@@ -566,13 +568,14 @@ public class LuceneDocumentIndexService extends StatelessService {
         // so its worth caching (plus we only have a very small number of index services
         this.uri = super.getUri();
 
-        ExecutorService es = new ThreadPoolExecutor(QUERY_THREAD_COUNT, QUERY_THREAD_COUNT,
-                1, TimeUnit.MINUTES,
-                new ArrayBlockingQueue<>(QUERY_EXECUTOR_WORK_QUEUE_CAPACITY),
-                new NamedThreadFactory(getUri() + "/queries"));
-        this.privateQueryExecutor = TracingExecutor.create(es, this.getHost().getTracer());
+        this.privateQueryExecutor = new ExecutorWithAffinity(DEFAULT_THREADS_PER_POOL, QUERY_THREAD_COUNT) {
+            @Override
+            protected ThreadFactory newThreadFactory(int poolId) {
+                return new NamedThreadFactory(getUri() + "/queries/pool-" + poolId);
+            }
+        };
 
-        es = new ThreadPoolExecutor(QUERY_THREAD_COUNT, QUERY_THREAD_COUNT,
+        ExecutorService es = new ThreadPoolExecutor(QUERY_THREAD_COUNT, QUERY_THREAD_COUNT,
                 1, TimeUnit.MINUTES,
                 new ArrayBlockingQueue<>(UPDATE_EXECUTOR_WORK_QUEUE_CAPACITY),
                 new NamedThreadFactory(getUri() + "/updates"));
@@ -873,7 +876,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         Operation op = Operation.createGet(getUri());
         EnumSet<QueryOption> options = EnumSet.of(QueryOption.INCLUDE_ALL_VERSIONS);
-        IndexSearcherWithMeta s = new IndexSearcherWithMeta(DirectoryReader.open(this.writer, true, true));
+        DirectoryReader reader = DirectoryReader.open(this.writer, true, true);
+        IndexSearcherWithMeta s = new IndexSearcherWithMeta(reader, this.privateQueryExecutor);
         queryIndexPaginated(op, options, s, tq, null, Integer.MAX_VALUE, 0, null, rsp, null,
                 Utils.getNowMicrosUtc());
     }
@@ -1032,7 +1036,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         try {
             if (a == Action.GET || a == Action.PATCH) {
                 if (offerQueryOperation(op)) {
-                    this.privateQueryExecutor.submit(this.queryTaskHandler);
+                    this.privateQueryExecutor.submitToRandomPool(this.queryTaskHandler);
                 }
             } else {
                 if (offerUpdateOperation(op)) {
@@ -1337,8 +1341,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         adjustTimeSeriesStat(STAT_NAME_PAGINATED_SEARCHER_UPDATE_COUNT, AGGREGATION_TYPE_SUM, 1);
 
-
-        IndexSearcherWithMeta s = new IndexSearcherWithMeta(DirectoryReader.open(w, true, true));
+        DirectoryReader reader = DirectoryReader.open(w, true, true);
+        IndexSearcherWithMeta s = new IndexSearcherWithMeta(reader, this.privateQueryExecutor);
         s.setSimilarity(s.getSimilarity(false));
         PaginatedSearcherInfo info = new PaginatedSearcherInfo();
         info.expirationTimeMicros = expirationMicros;
@@ -1683,7 +1687,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             builder.add(versionQuery, Occur.MUST);
         }
 
-        TopDocs hits = s.search(builder.build(), 1, this.versionSort, false, false);
+        TopDocs hits = s.searchWithAffinity(builder.build(), 1, this.versionSort, false, false);
         return hits;
     }
 
@@ -2026,15 +2030,15 @@ public class LuceneDocumentIndexService extends StatelessService {
             // searchAfter(). This will prevent Lucene from holding the full result set in memory.
             if (useDirectSearch) {
                 if (sort == null) {
-                    results = s.search(tq, hitCount);
+                    results = s.searchWithAffinity(tq, hitCount);
                 } else {
-                    results = s.search(tq, hitCount, sort, false, false);
+                    results = s.searchWithAffinity(tq, hitCount, sort, false, false);
                 }
             } else {
                 if (sort == null) {
-                    results = s.searchAfter(after, tq, hitCount);
+                    results = s.searchAfterWithAffinity(after, tq, hitCount);
                 } else {
-                    results = s.searchAfter(after, tq, hitCount, sort, false, false);
+                    results = s.searchAfterWithAffinity(after, tq, hitCount, sort, false, false);
                 }
             }
 
@@ -2171,9 +2175,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             // fetch next page
             TopDocs nextPageResults;
             if (sort == null) {
-                nextPageResults = s.searchAfter(after, tq, count);
+                nextPageResults = s.searchAfterWithAffinity(after, tq, count);
             } else {
-                nextPageResults = s.searchAfter(after, tq, count, sort, false, false);
+                nextPageResults = s.searchAfterWithAffinity(after, tq, count, sort, false, false);
             }
             if (nextPageResults == null) {
                 break;
@@ -2499,12 +2503,12 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private void loadDoc(IndexSearcherWithMeta s, DocumentStoredFieldVisitor visitor, int docId, Set<String> fields) throws IOException {
         visitor.reset(fields);
-        s.doc(docId, visitor);
+        s.docWithAffinity(docId, visitor);
     }
 
     private void augmentDoc(IndexSearcherWithMeta s, DocumentStoredFieldVisitor visitor, int docId, String field) throws IOException {
         visitor.reset(field);
-        s.doc(docId, visitor);
+        s.docWithAffinity(docId, visitor);
     }
 
     private boolean processQueryResultsForOwnerSelection(String json, ServiceDocument state) {
@@ -3172,9 +3176,10 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
 
             oldReader.close();
-            s = new IndexSearcherWithMeta(newReader);
+            s = new IndexSearcherWithMeta(newReader, this.privateQueryExecutor);
         } else {
-            s = new IndexSearcherWithMeta(DirectoryReader.open(w, true, true));
+            DirectoryReader newReader = DirectoryReader.open(w, true, true);
+            s = new IndexSearcherWithMeta(newReader, this.privateQueryExecutor);
         }
 
         s.setSimilarity(s.getSimilarity(false));
@@ -3778,7 +3783,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         Map<String, Long> latestVersions = new HashMap<>();
 
         do {
-            TopDocs results = s.searchAfter(after, versionQuery, expiredDocumentSearchThreshold,
+            TopDocs results = s.searchAfterWithAffinity(after, versionQuery, expiredDocumentSearchThreshold,
                     this.versionSort, false, false);
             if (results.scoreDocs == null || results.scoreDocs.length == 0) {
                 return;

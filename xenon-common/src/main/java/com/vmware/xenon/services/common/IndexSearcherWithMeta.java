@@ -13,21 +13,152 @@
 
 package com.vmware.xenon.services.common;
 
+import java.io.IOException;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.Sort;
+import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.search.TopFieldDocs;
 
 import com.vmware.xenon.common.Utils;
 
 /**
  * Keep a searcher with the associated metadata together.
+ *
  */
 public final class IndexSearcherWithMeta extends IndexSearcher {
-    public long updateTimeMicros;
-    public long createTimeMicros;
+    private final ExecutorWithAffinity executor;
 
-    public IndexSearcherWithMeta(IndexReader r) {
+    public final long createTimeMicros;
+
+    public long updateTimeMicros;
+
+    private final int preferredPoolId;
+
+    public IndexSearcherWithMeta(IndexReader r, ExecutorWithAffinity executor) {
         super(r);
+        if (executor == null) {
+            throw new IllegalArgumentException("executor cannot be null");
+        }
+        this.executor = executor;
+        int poolId = executor.getCurrentPoolId();
+        if (poolId == -1) {
+            poolId = executor.nextValidPoolId();
+        }
+        this.preferredPoolId = poolId;
+
         this.createTimeMicros = Utils.getNowMicrosUtc();
         this.updateTimeMicros = this.createTimeMicros;
+    }
+
+    private <T> T handleExecutionException(ExecutionException e) throws IOException {
+        if (e.getCause() instanceof IOException) {
+            throw (IOException) e.getCause();
+        } else if (e.getCause() instanceof RuntimeException) {
+            throw (RuntimeException) e.getCause();
+        } else {
+            throw new RuntimeException(e.getMessage());
+        }
+    }
+
+    private TopFieldDocs handleInterruptedException(InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new RuntimeException(e);
+    }
+
+    public TopFieldDocs searchWithAffinity(Query query, int n, Sort sort, boolean doDocScores, boolean doMaxScore)
+            throws IOException {
+        if (this.executor.getCurrentPoolId() == this.preferredPoolId) {
+            // we are lucky
+            return super.search(query, n, sort, doDocScores, doMaxScore);
+        } else {
+            Future<TopFieldDocs> fut = resubmit(() -> super.search(query, n, sort, doDocScores, doMaxScore));
+            try {
+                return fut.get();
+            } catch (InterruptedException e) {
+                return handleInterruptedException(e);
+            } catch (ExecutionException e) {
+                return handleExecutionException(e);
+            }
+        }
+    }
+
+    private <T> Future<T> resubmit(Callable<T> task) {
+        return this.executor.resubmit(this.preferredPoolId, task);
+    }
+
+    public TopDocs searchWithAffinity(Query tq, int hitCount) throws IOException {
+        if (this.executor.getCurrentPoolId() == this.preferredPoolId) {
+            // we are lucky
+            return super.search(tq, hitCount);
+        } else {
+            Future<TopDocs> fut = resubmit(() -> super.search(tq, hitCount));
+            try {
+                return fut.get();
+            } catch (InterruptedException e) {
+                return handleInterruptedException(e);
+            } catch (ExecutionException e) {
+                return handleExecutionException(e);
+            }
+        }
+    }
+
+    public TopDocs searchAfterWithAffinity(ScoreDoc after, Query tq, int hitCount) throws IOException {
+        if (this.executor.getCurrentPoolId() == this.preferredPoolId) {
+            // we are lucky
+            return super.searchAfter(after, tq, hitCount);
+        } else {
+            Future<TopDocs> fut = resubmit(() -> super.searchAfter(after, tq, hitCount));
+            try {
+                return fut.get();
+            } catch (InterruptedException e) {
+                return handleInterruptedException(e);
+            } catch (ExecutionException e) {
+                return handleExecutionException(e);
+            }
+        }
+    }
+
+    public TopDocs searchAfterWithAffinity(ScoreDoc after, Query query, int n, Sort sort, boolean doDocScores,
+            boolean doMaxScore)
+            throws IOException {
+        if (this.executor.getCurrentPoolId() == this.preferredPoolId) {
+            // we are lucky
+            return super.searchAfter(after, query, n, sort, doDocScores, doMaxScore);
+        } else {
+            Future<TopDocs> fut = resubmit(() -> super.searchAfter(after, query, n, sort, doDocScores, doMaxScore));
+            try {
+                return fut.get();
+            } catch (InterruptedException e) {
+                return handleInterruptedException(e);
+            } catch (ExecutionException e) {
+                return handleExecutionException(e);
+            }
+        }
+    }
+
+    public void docWithAffinity(int docId, DocumentStoredFieldVisitor visitor) throws IOException {
+        if (this.executor.getCurrentPoolId() == this.preferredPoolId) {
+            // we are lucky
+            super.doc(docId, visitor);
+        } else {
+            Future<TopDocs> fut = resubmit(() -> {
+                super.doc(docId, visitor);
+                return null;
+            });
+            try {
+                fut.get();
+            } catch (InterruptedException e) {
+                handleInterruptedException(e);
+            } catch (ExecutionException e) {
+                handleExecutionException(e);
+            }
+        }
     }
 }

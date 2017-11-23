@@ -52,7 +52,6 @@ import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -185,12 +184,6 @@ class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexServic
             this.writerSync.release(permits);
         } catch (Throwable e) {
         }
-    }
-
-    public ExecutorService setQueryExecutorService(ExecutorService es) {
-        ExecutorService existing = this.privateQueryExecutor;
-        this.privateQueryExecutor = es;
-        return existing;
     }
 
     public ExecutorService setIndexingExecutorService(ExecutorService es) {
@@ -491,10 +484,8 @@ public class TestLuceneDocumentIndexService {
                 }, factoryService.getUri());
 
         // Create an executor service which rejects all attempts to create new threads.
-        ExecutorService blockingExecutor = Executors.newSingleThreadExecutor((r) -> null);
-        ExecutorService queryExecutor = this.indexService.setQueryExecutorService(blockingExecutor);
-        queryExecutor.shutdown();
-        queryExecutor.awaitTermination(this.host.getTimeoutSeconds(), TimeUnit.SECONDS);
+        ExecutorWithAffinity queryExecutor = this.indexService.privateQueryExecutor;
+        queryExecutor.setSuspended(true);
 
         // Now submit a query and wait for the queue depth stat to be set.
         QueryTask queryTask = QueryTask.Builder.create()
@@ -521,6 +512,8 @@ public class TestLuceneDocumentIndexService {
             assertTrue(queueDepthStat.name.contains(ServiceUriPaths.CORE_AUTHZ_GUEST_USER));
             return queueDepthStat.latestValue == 1;
         });
+
+        queryExecutor.setSuspended(false);
     }
 
     @Test
