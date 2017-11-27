@@ -1085,7 +1085,7 @@ public class StatefulService implements Service {
                     failRequest(op, failure);
                     return;
                 }
-                checkAndNestAuthupdateCompletionStage(op);
+                checkAndNestAuthUpdateCompletionStage(op);
             });
 
             ServiceDocument mergedState = op.getLinkedState();
@@ -1105,7 +1105,7 @@ public class StatefulService implements Service {
         op.complete();
     }
 
-    private void checkAndNestAuthupdateCompletionStage(Operation op) {
+    private void checkAndNestAuthUpdateCompletionStage(Operation op) {
         if (!this.getHost().isAuthorizationEnabled() || !this.getHost().isPrivilegedService(this)) {
             processCompletionStageTransactionNotification(op, null);
         } else {
