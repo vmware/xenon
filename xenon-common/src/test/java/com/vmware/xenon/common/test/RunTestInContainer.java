@@ -19,6 +19,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
 import org.junit.After;
+import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -50,11 +51,15 @@ public class RunTestInContainer {
     public void setUp() throws Throwable {
         CommandLineArgumentParser.parseFromProperties(this);
         // create verification host which create xenon node in docker container
-        this.host = ContainerVerificationHost.create(0);
-        int timeout = this.host.getTimeoutSeconds();
-        this.host.testDurationSeconds = this.expireDuration - timeout;
-
-        this.host.start();
+        try {
+            this.host = ContainerVerificationHost.create(0);
+            int timeout = this.host.getTimeoutSeconds();
+            this.host.testDurationSeconds = this.expireDuration - timeout;
+            this.host.start();
+        } catch (IllegalArgumentException e) {
+            // skip test if docker client creation fail
+            Assume.assumeTrue(false);
+        }
     }
 
     @Test
@@ -131,8 +136,10 @@ public class RunTestInContainer {
 
     @After
     public void cleanUp() {
-        this.host.tearDownInProcessPeers();
-        this.host.tearDown();
+        if (this.host != null) {
+            this.host.tearDownInProcessPeers();
+            this.host.tearDown();
+        }
     }
 
 }
