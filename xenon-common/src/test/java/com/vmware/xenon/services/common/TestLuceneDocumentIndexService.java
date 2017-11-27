@@ -44,8 +44,8 @@ import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -56,7 +56,6 @@ import java.util.logging.Level;
 
 import javax.xml.bind.DatatypeConverter;
 
-import org.apache.lucene.search.IndexSearcher;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -113,7 +112,7 @@ class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexServic
 
         for (PaginatedSearcherInfo info : this.paginatedSearchersByCreationTime.values()) {
             try {
-                IndexSearcher s = info.searcher;
+                IndexSearcherContext s = info.searcher;
                 s.getIndexReader().close();
                 this.searcherUpdateTimesMicros.remove(s.hashCode());
             } catch (Throwable ignored) {
@@ -162,8 +161,8 @@ class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexServic
         }
     }
 
-    public ExecutorService setQueryExecutorService(ExecutorService es) {
-        ExecutorService existing = this.privateQueryExecutor;
+    public ExecutorWithAffinity setQueryExecutorService(ExecutorWithAffinity es) {
+        ExecutorWithAffinity existing = this.privateQueryExecutor;
         this.privateQueryExecutor = es;
         return existing;
     }
@@ -446,8 +445,13 @@ public class TestLuceneDocumentIndexService {
                 }, factoryService.getUri());
 
         // Create an executor service which rejects all attempts to create new threads.
-        ExecutorService blockingExecutor = Executors.newSingleThreadExecutor((r) -> null);
-        ExecutorService queryExecutor = this.indexService.setQueryExecutorService(blockingExecutor);
+        ExecutorWithAffinity blockingExecutor = new ExecutorWithAffinity(1,1) {
+            @Override
+            protected ThreadFactory newThreadFactory(int poolId) {
+                return r -> null;
+            }
+        };
+        ExecutorWithAffinity queryExecutor = this.indexService.setQueryExecutorService(blockingExecutor);
         queryExecutor.shutdown();
         queryExecutor.awaitTermination(this.host.getTimeoutSeconds(), TimeUnit.SECONDS);
 
