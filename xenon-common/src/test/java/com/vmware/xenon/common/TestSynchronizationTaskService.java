@@ -17,7 +17,6 @@ import static java.util.stream.Collectors.toList;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -539,7 +538,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         this.host.stopHost(owner);
         VerificationHost newPeer = this.host.getPeerHost();
 
-        this.host.waitFor("Node did not expired", () -> {
+        this.host.waitFor("Node did not expire", () -> {
             NodeGroupService.NodeGroupState ngs = sender.sendAndWait(
                     Operation.createGet(newPeer, ServiceUriPaths.DEFAULT_NODE_GROUP), NodeGroupService.NodeGroupState.class);
             return ngs.nodes.size() == 2;
@@ -555,17 +554,18 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         // Verify that synchronization was triggered only one time.
         ExampleServiceState newState = sender.sendAndWait(Operation.createGet(newPeer, state.documentSelfLink), ExampleServiceState.class);
         VerificationHost newFactoryOwner = this.host.getOwnerPeer(factoryLink, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
-        ServiceStats.ServiceStat newStat = getServiceAvailableStat(factoryLink, sender, newFactoryOwner);
-        if (factoryOwner.equals(newFactoryOwner)) {
-            assertEquals(1.0, newStat.accumulatedValue - stat.accumulatedValue, 0);
-        } else {
-            assertEquals(1.0, newStat.accumulatedValue, 0);
-        }
+        this.host.waitFor("Synch count has not been updated", () -> {
+            ServiceStats.ServiceStat newStat = getServiceAvailableStat(factoryLink, sender, newFactoryOwner);
+            if (factoryOwner.equals(newFactoryOwner)) {
+                return newStat.accumulatedValue - stat.accumulatedValue == 1.0;
+            } else {
+                return newStat.accumulatedValue == 1.0;
+            }
+        });
 
         // Verify that state is consistent after original owner node stopped.
         assertNotNull(newState);
         assertEquals((Long) (state.counter + patchCount), newState.counter);
-        assertNotEquals(newState.documentOwner, state.documentOwner);
     }
 
     private ServiceStats.ServiceStat getServiceAvailableStat(String factoryLink, TestRequestSender sender, VerificationHost newOwner) {

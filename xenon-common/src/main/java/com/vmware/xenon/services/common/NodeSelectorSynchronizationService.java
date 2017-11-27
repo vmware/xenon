@@ -431,18 +431,12 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             logInfo("Using best peer state %s", Utils.toJson(bestPeerRsp));
         }
 
-        // Synchronization is always run from the owner node of the
-        // child-service. If the best state computed from peers does
-        // not mention the owner node as the owner, we increment the Epoch.
-        boolean incrementEpoch = false;
         if (version == null) {
-            incrementEpoch = bestPeerRsp.documentOwner != null &&
-                    !bestPeerRsp.documentOwner.equals(this.getHost().getId());
             bestPeerRsp.documentOwner = this.getHost().getId();
         }
 
         broadcastBestState(rsp.selectedNodes, peerStates, nonRespondingPeers, post, request, bestPeerRsp,
-                incrementEpoch, version);
+                version);
     }
 
     private void broadcastBestState(Map<String, URI> selectedNodes,
@@ -451,8 +445,8 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             Operation post,
             SynchronizePeersRequest request,
             ServiceDocument bestPeerRsp,
-            boolean incrementEpoch,
             Long version) {
+
         try {
             post.setBodyNoCloning(null);
             if (peerStates.isEmpty() && nonRespondingPeers.isEmpty()) {
@@ -479,13 +473,6 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 post.complete();
             };
 
-            if (incrementEpoch) {
-                logFine("Incrementing epoch from %d to %d for %s", bestPeerRsp.documentEpoch,
-                        bestPeerRsp.documentEpoch + 1, bestPeerRsp.documentSelfLink);
-                bestPeerRsp.documentEpoch += 1;
-                bestPeerRsp.documentVersion++;
-            }
-
             post.setBody(bestPeerRsp);
 
             boolean isServiceDeleted = Action.DELETE.toString().equals(
@@ -505,7 +492,8 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                         .compare(bestPeerRsp, peerState, request.stateDescription, Utils.getTimeComparisonEpsilonMicros())
                         .contains(DocumentRelationship.EQUAL_VERSION);
 
-                if (!incrementEpoch && isVersionSame
+                if (isVersionSame
+                        && bestPeerRsp.getClass().equals(peerState.getClass())
                         && ServiceDocument.equals(request.stateDescription, bestPeerRsp, peerState)) {
                     peerOp.complete();
                     continue;

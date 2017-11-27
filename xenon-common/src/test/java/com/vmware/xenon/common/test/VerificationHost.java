@@ -60,7 +60,6 @@ import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 import javax.net.ssl.SSLContext;
 import javax.xml.bind.DatatypeConverter;
 
@@ -2405,7 +2404,6 @@ public class VerificationHost extends ExampleServiceHost {
 
             // build a service link to node map so we can tell on which node each service instance landed
             Map<String, Set<URI>> linkToNodeMap = new HashMap<>();
-            Map<String, String> linkToNodeId = new HashMap<>();
 
             boolean isConverged = true;
             for (Entry<URI, ServiceDocumentQueryResult> entry : childServicesPerNode.entrySet()) {
@@ -2513,27 +2511,6 @@ public class VerificationHost extends ExampleServiceHost {
                         this.log("Epoch is missing, state: %s",
                                 Utils.toJsonHtml(stateOnNode));
                         break;
-                    }
-
-                    List<String> nodeIds = this.getInProcessHostMap().values().stream().map(
-                            host -> host.getId()).collect(Collectors.toList());
-
-                    if (!nodeIds.contains(stateOnNode.documentOwner)) {
-                        this.log("Owner mismatch on peers, Actual Id:%s Expected Id from:%s State: %s",
-                                stateOnNode.documentOwner, String.join(",", nodeIds), Utils.toJsonHtml(stateOnNode));
-                        break;
-                    }
-
-                    if (linkToNodeId.containsKey(stateOnNode.documentSelfLink)) {
-                        if (!linkToNodeId.get(stateOnNode.documentSelfLink).equals(stateOnNode.documentOwner)) {
-                            this.log("Owner mismatch on peers, Actual Id:%s Expected Id:%s state: %s",
-                                    childLinksAndDocsPerHost.documentOwner,
-                                    linkToNodeId.get(stateOnNode.documentSelfLink),
-                                    Utils.toJsonHtml(stateOnNode));
-                            break;
-                        }
-                    } else {
-                        linkToNodeId.put(stateOnNode.documentSelfLink, stateOnNode.documentOwner);
                     }
 
                     // Do not check exampleState.counter, in this validation loop.
