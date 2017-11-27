@@ -22,12 +22,12 @@ import com.vmware.xenon.common.Utils;
  * Keep a searcher with the associated metadata together.
  */
 public final class IndexSearcherWithMeta extends IndexSearcher {
+    public final long createTimeMicros;
+
     public long updateTimeMicros;
-    public long createTimeMicros;
 
     public IndexSearcherWithMeta(IndexReader r) {
         super(r);
         this.createTimeMicros = Utils.getNowMicrosUtc();
-        this.updateTimeMicros = this.createTimeMicros;
     }
 }

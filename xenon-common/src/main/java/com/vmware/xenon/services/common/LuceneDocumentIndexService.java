@@ -1350,6 +1350,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             List<PaginatedSearcherInfo> expirationList = this.paginatedSearchersByExpirationTime
                     .computeIfAbsent(info.expirationTimeMicros, _k -> new ArrayList<>(1));
             expirationList.add(info);
+            s.updateTimeMicros = s.createTimeMicros;
         }
 
         return s;
