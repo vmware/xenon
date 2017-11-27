@@ -74,7 +74,6 @@ import org.apache.lucene.index.SnapshotDeletionPolicy;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
-import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchNoDocsQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
@@ -172,12 +171,6 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final long DEFAULT_PAGINATED_SEARCHER_EXPIRATION_DELAY = TimeUnit.SECONDS.toMicros(1);
 
-    private static final int QUERY_EXECUTOR_WORK_QUEUE_CAPACITY = XenonConfiguration.integer(
-            LuceneDocumentIndexService.class,
-            "queryExecutorWorkQueueCapacity",
-            QUERY_QUEUE_DEPTH
-    );
-
     private static final int UPDATE_EXECUTOR_WORK_QUEUE_CAPACITY = XenonConfiguration.integer(
             LuceneDocumentIndexService.class,
             "updateExecutorWorkQueueCapacity",
@@ -190,6 +183,8 @@ public class LuceneDocumentIndexService extends StatelessService {
      * Try to find a reusable searcher this many times.
      */
     private static final int SEARCHER_REUSE_MAX_ATTEMPTS = 50;
+
+    private static final int DEFAULT_THREADS_PER_POOL = 3;
 
     protected String indexDirectory;
 
@@ -402,7 +397,7 @@ public class LuceneDocumentIndexService extends StatelessService {
      * Map of searchers per thread id. We do not use a ThreadLocal since we need visibility to this map
      * from the maintenance logic
      */
-    protected Map<Long, IndexSearcher> searchers = new HashMap<>();
+    protected Map<Long, IndexSearcherWithMeta> searchers = new HashMap<>();
 
     private ThreadLocal<LuceneIndexDocumentHelper> indexDocumentHelper = ThreadLocal
             .withInitial(LuceneIndexDocumentHelper::new);
@@ -419,7 +414,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
 
     /**
-     * Manages IndexSearcher for paginated queries.
+     * Manages IndexSearcherWithMeta for paginated queries.
      * Calling methods that modifies state need to be done after acquiring "searcherSync" lock.
      */
     public static class PaginatedSearcherManager {
@@ -433,9 +428,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             public int refCount;
         }
 
-        protected Map<IndexSearcher, PaginatedSearcherInfo> infoBySearcher = new HashMap<>();
-        protected TreeMap<Long, IndexSearcher> searcherByCreationTime = new TreeMap<>();
-        protected TreeMap<Long, List<IndexSearcher>> searchersByExpirationTime = new TreeMap<>();
+        protected Map<IndexSearcherWithMeta, PaginatedSearcherInfo> infoBySearcher = new HashMap<>();
+        protected TreeMap<Long, IndexSearcherWithMeta> searcherByCreationTime = new TreeMap<>();
+        protected TreeMap<Long, List<IndexSearcherWithMeta>> searchersByExpirationTime = new TreeMap<>();
 
 
         /**
@@ -444,7 +439,7 @@ public class LuceneDocumentIndexService extends StatelessService {
          * @param searcher searcher to remove
          * @return {@code true} when the searcher is no longer shared(need to be closed by the caller).
          */
-        public boolean removeSearcher(IndexSearcher searcher) {
+        public boolean removeSearcher(IndexSearcherWithMeta searcher) {
 
             PaginatedSearcherInfo info = this.infoBySearcher.get(searcher);
 
@@ -458,7 +453,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 this.searcherByCreationTime.remove(info.creationTimeMicros);
 
                 long expirationTime = info.expirationTimeMicros;
-                List<IndexSearcher> expirationList = this.searchersByExpirationTime.get(expirationTime);
+                List<IndexSearcherWithMeta> expirationList = this.searchersByExpirationTime.get(expirationTime);
                 expirationList.remove(searcher);
                 if (expirationList.isEmpty()) {
                     this.searchersByExpirationTime.remove(expirationTime);
@@ -468,12 +463,12 @@ public class LuceneDocumentIndexService extends StatelessService {
             return info.refCount == 0;
         }
 
-        public List<IndexSearcher> getSearchersOrderByCreationDesc() {
+        public List<IndexSearcherWithMeta> getSearchersOrderByCreationDesc() {
             return new ArrayList<>(this.searcherByCreationTime.descendingMap().values());
         }
 
 
-        public void updateExistingSearcher(IndexSearcher searcher, long newExpirationMicros) {
+        public void updateExistingSearcher(IndexSearcherWithMeta searcher, long newExpirationMicros) {
 
             PaginatedSearcherInfo info = this.infoBySearcher.get(searcher);
             long currentExpirationMicros = info.expirationTimeMicros;
@@ -484,7 +479,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             // update searchersByExpirationTime with new expiration
 
-            List<IndexSearcher> expirationList = this.searchersByExpirationTime.get(currentExpirationMicros);
+            List<IndexSearcherWithMeta> expirationList = this.searchersByExpirationTime.get(currentExpirationMicros);
             if (expirationList == null || !expirationList.contains(searcher)) {
                 throw new IllegalStateException("Searcher not found in expiration list");
             }
@@ -506,7 +501,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             info.refCount++;
         }
 
-        public void addNewSearcher(IndexSearcher searcher, long creationMicros, long expirationMicros) {
+        public void addNewSearcher(IndexSearcherWithMeta searcher, long creationMicros, long expirationMicros) {
 
             PaginatedSearcherInfo info = new PaginatedSearcherInfo();
             info.creationTimeMicros = creationMicros;
@@ -516,7 +511,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             this.infoBySearcher.put(searcher, info);
 
             this.searcherByCreationTime.put(creationMicros, searcher);
-            List<IndexSearcher> expirationList = this.searchersByExpirationTime
+            List<IndexSearcherWithMeta> expirationList = this.searchersByExpirationTime
                     .computeIfAbsent(expirationMicros, k -> new ArrayList<>(1));
             expirationList.add(searcher);
         }
@@ -526,19 +521,19 @@ public class LuceneDocumentIndexService extends StatelessService {
          * @param now expiration time
          * @return a map of expired searcher with expiration time
          */
-        public Map<IndexSearcher, Long> removeExpiredSearchers(long now) {
+        public Map<IndexSearcherWithMeta, Long> removeExpiredSearchers(long now) {
 
-            Map<IndexSearcher, Long> toClose = new HashMap<>();
+            Map<IndexSearcherWithMeta, Long> toClose = new HashMap<>();
 
-            Iterator<Entry<Long, List<IndexSearcher>>> itr = this.searchersByExpirationTime.entrySet().iterator();
+            Iterator<Entry<Long, List<IndexSearcherWithMeta>>> itr = this.searchersByExpirationTime.entrySet().iterator();
             while (itr.hasNext()) {
-                Entry<Long, List<IndexSearcher>> entry = itr.next();
+                Entry<Long, List<IndexSearcherWithMeta>> entry = itr.next();
                 long expirationMicros = entry.getKey();
                 if (expirationMicros > now) {
                     break;
                 }
 
-                for (IndexSearcher searcher : entry.getValue()) {
+                for (IndexSearcherWithMeta searcher : entry.getValue()) {
                     PaginatedSearcherInfo info = this.infoBySearcher.remove(searcher);
                     this.searcherByCreationTime.remove(info.creationTimeMicros);
                     toClose.put(searcher, expirationMicros);
@@ -550,7 +545,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             return toClose;
         }
 
-        public Set<IndexSearcher> getAllSearchers() {
+        public Set<IndexSearcherWithMeta> getAllSearchers() {
             return this.infoBySearcher.keySet();
         }
 
@@ -603,7 +598,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     ExecutorService privateIndexingExecutor;
 
-    ExecutorService privateQueryExecutor;
+    ExecutorWithAffinity privateQueryExecutor;
 
     private Set<String> fieldsToLoadIndexingIdLookup;
     private Set<String> fieldToLoadVersionLookup;
@@ -720,13 +715,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         // so its worth caching (plus we only have a very small number of index services
         this.uri = super.getUri();
 
-        ExecutorService es = new ThreadPoolExecutor(QUERY_THREAD_COUNT, QUERY_THREAD_COUNT,
-                1, TimeUnit.MINUTES,
-                new ArrayBlockingQueue<>(QUERY_EXECUTOR_WORK_QUEUE_CAPACITY),
-                new NamedThreadFactory(getUri() + "/queries"));
-        this.privateQueryExecutor = TracingExecutor.create(es, this.getHost().getTracer());
 
-        es = new ThreadPoolExecutor(QUERY_THREAD_COUNT, QUERY_THREAD_COUNT,
+        this.privateQueryExecutor = new ExecutorWithAffinity(DEFAULT_THREADS_PER_POOL, QUERY_THREAD_COUNT);
+
+        ExecutorService es = new ThreadPoolExecutor(QUERY_THREAD_COUNT, QUERY_THREAD_COUNT,
                 1, TimeUnit.MINUTES,
                 new ArrayBlockingQueue<>(UPDATE_EXECUTOR_WORK_QUEUE_CAPACITY),
                 new NamedThreadFactory(getUri() + "/updates"));
@@ -1027,7 +1019,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         Operation op = Operation.createGet(getUri());
         EnumSet<QueryOption> options = EnumSet.of(QueryOption.INCLUDE_ALL_VERSIONS);
-        IndexSearcher s = new IndexSearcher(DirectoryReader.open(this.writer, true, true));
+        DirectoryReader reader = DirectoryReader.open(this.writer, true, true);
+        IndexSearcherWithMeta s = new IndexSearcherWithMeta(reader, this.privateQueryExecutor);
         queryIndexPaginated(op, options, s, tq, null, Integer.MAX_VALUE, 0, null, rsp, null,
                 Utils.getNowMicrosUtc());
     }
@@ -1039,7 +1032,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             throw new IllegalArgumentException("Context cannot be null");
         }
 
-        IndexSearcher nativeSearcher = (IndexSearcher) request.context.nativeSearcher;
+        IndexSearcherWithMeta nativeSearcher = (IndexSearcherWithMeta) request.context.nativeSearcher;
         if (nativeSearcher == null) {
             throw new IllegalArgumentException("Native searcher must be present");
         }
@@ -1160,7 +1153,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         try {
             if (a == Action.GET || a == Action.PATCH) {
                 if (offerQueryOperation(op)) {
-                    this.privateQueryExecutor.submit(this.queryTaskHandler);
+                    this.privateQueryExecutor.submitToRandomPool(this.queryTaskHandler);
                 }
             } else {
                 if (offerUpdateOperation(op)) {
@@ -1317,7 +1310,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         LuceneQueryPage lucenePage = (LuceneQueryPage) qs.context.nativePage;
-        IndexSearcher s = (IndexSearcher) qs.context.nativeSearcher;
+        IndexSearcherWithMeta s = (IndexSearcherWithMeta) qs.context.nativeSearcher;
         ServiceDocumentQueryResult rsp = new ServiceDocumentQueryResult();
 
         if (s == null && qs.resultLimit != null && qs.resultLimit > 0
@@ -1373,7 +1366,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         return false;
     }
 
-    private IndexSearcher createOrUpdatePaginatedQuerySearcher(long expirationMicros,
+    private IndexSearcherWithMeta createOrUpdatePaginatedQuerySearcher(long expirationMicros,
             IndexWriter w, Set<String> kindScope, EnumSet<QueryOption> queryOptions)
             throws IOException {
 
@@ -1382,7 +1375,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             return createPaginatedQuerySearcher(expirationMicros, w);
         }
 
-        IndexSearcher searcher;
+        IndexSearcherWithMeta searcher;
         synchronized (this.searchSync) {
             searcher = getOrUpdateExistingSearcher(expirationMicros, kindScope, doNotRefresh);
         }
@@ -1394,7 +1387,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         return createPaginatedQuerySearcher(expirationMicros, w);
     }
 
-    private IndexSearcher getOrUpdateExistingSearcher(long newExpirationMicros,
+    private IndexSearcherWithMeta getOrUpdateExistingSearcher(long newExpirationMicros,
             Set<String> kindScope, boolean doNotRefresh) {
 
         if (this.paginatedSearcherManager.isEmpty()) {
@@ -1403,8 +1396,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         int maxAttempts = SEARCHER_REUSE_MAX_ATTEMPTS;
 
-        IndexSearcher paginatedSearcher = null;
-        for (IndexSearcher searcher : this.paginatedSearcherManager.getSearchersOrderByCreationDesc()) {
+        IndexSearcherWithMeta paginatedSearcher = null;
+        for (IndexSearcherWithMeta searcher : this.paginatedSearcherManager.getSearchersOrderByCreationDesc()) {
             if (maxAttempts-- < 0) {
                 break;
             }
@@ -1434,7 +1427,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         return paginatedSearcher;
     }
 
-    private IndexSearcher createPaginatedQuerySearcher(long expirationMicros, IndexWriter w) throws IOException {
+    private IndexSearcherWithMeta createPaginatedQuerySearcher(long expirationMicros, IndexWriter w) throws IOException {
         if (w == null) {
             throw new IllegalStateException("Writer not available");
         }
@@ -1443,8 +1436,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         long now = Utils.getNowMicrosUtc();
 
-        IndexSearcher s = new IndexSearcher(DirectoryReader.open(w, true, true));
-        s.setSimilarity(s.getSimilarity(false));
+        DirectoryReader reader = DirectoryReader.open(w, true, true);
+        IndexSearcherWithMeta s = new IndexSearcherWithMeta(reader, this.privateQueryExecutor);
 
         synchronized (this.searchSync) {
             this.paginatedSearcherManager.addNewSearcher(s, now, expirationMicros);
@@ -1617,7 +1610,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private boolean queryIndex(
-            IndexSearcher s,
+            IndexSearcherWithMeta s,
             Operation op,
             String selfLinkPrefix,
             EnumSet<QueryOption> options,
@@ -1709,7 +1702,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             throw new CancellationException("Index writer is null");
         }
 
-        IndexSearcher s = createOrRefreshSearcher(selfLink, null, 1, w, false);
+        IndexSearcherWithMeta s = createOrRefreshSearcher(selfLink, null, 1, w, false);
 
         long startNanos = System.nanoTime();
         TopDocs hits = queryIndexForVersion(selfLink, s, version, null);
@@ -1763,7 +1756,7 @@ public class LuceneDocumentIndexService extends StatelessService {
      * If given version is null then function returns the latest version.
      * And if given version is not found then no document is returned.
      */
-    private TopDocs queryIndexForVersion(String selfLink, IndexSearcher s, Long version, Long documentsUpdatedBeforeInMicros)
+    private TopDocs queryIndexForVersion(String selfLink, IndexSearcherWithMeta s, Long version, Long documentsUpdatedBeforeInMicros)
             throws IOException {
         Query tqSelfLink = new TermQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK, selfLink));
 
@@ -1782,7 +1775,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             builder.add(versionQuery, Occur.MUST);
         }
 
-        TopDocs hits = s.search(builder.build(), 1, this.versionSort, false, false);
+        TopDocs hits = s.searchWithAffinity(builder.build(), 1, this.versionSort, false, false);
         return hits;
     }
 
@@ -1867,7 +1860,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private void handleGroupByQueryTaskPatch(Operation op, QueryTask task) throws IOException {
         QuerySpecification qs = task.querySpec;
-        IndexSearcher s = (IndexSearcher) qs.context.nativeSearcher;
+        IndexSearcherWithMeta s = (IndexSearcherWithMeta) qs.context.nativeSearcher;
         LuceneQueryPage page = (LuceneQueryPage) qs.context.nativePage;
         Query tq = (Query) qs.context.nativeQuery;
         Sort sort = (Sort) qs.context.nativeSort;
@@ -1917,7 +1910,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         // perform the actual search
         long startNanos = System.nanoTime();
-        TopGroups<?> groups = groupingSearch.search(s, tq, groupOffset, groupLimit);
+        TopGroups<?> groups = s.searchGroupedWithAffinity(groupingSearch, tq, groupOffset, groupLimit);
         long durationNanos = System.nanoTime() - startNanos;
         setTimeSeriesHistogramStat(STAT_NAME_GROUP_QUERY_DURATION_MICROS, AGGREGATION_TYPE_AVG_MAX,
                 TimeUnit.NANOSECONDS.toMicros(durationNanos));
@@ -1974,7 +1967,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         if (qs.groupResultLimit != null && groups.groups.length >= groupLimit) {
             // check if we need to generate a next page for the next set of group results
-            groups = groupingSearch.search(s, tq, groupLimit + groupOffset, groupLimit);
+            groups = s.searchGroupedWithAffinity(groupingSearch, tq, groupLimit + groupOffset, groupLimit);
             if (groups.totalGroupedHitCount > 0) {
                 rsp.nextPageLink = createNextPage(op, s, qs, tq, sort,
                         null, 0, groupLimit + groupOffset,
@@ -1987,7 +1980,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private ServiceDocumentQueryResult queryIndexCount(
             EnumSet<QueryOption> queryOptions,
-            IndexSearcher searcher,
+            IndexSearcherWithMeta searcher,
             Query termQuery,
             ServiceDocumentQueryResult response,
             QuerySpecification querySpec,
@@ -1997,7 +1990,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (queryOptions.contains(QueryOption.INCLUDE_ALL_VERSIONS)) {
             // Special handling for queries which include all versions in order to avoid allocating
             // a large, unnecessary ScoreDocs array.
-            response.documentCount = (long) searcher.count(termQuery);
+            response.documentCount = (long) searcher.countWithAffinity(termQuery);
             long queryTimeMicros = Utils.getNowMicrosUtc() - queryStartTimeMicros;
             response.queryTimeMicros = queryTimeMicros;
             setTimeSeriesHistogramStat(STAT_NAME_QUERY_ALL_VERSIONS_DURATION_MICROS,
@@ -2021,7 +2014,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
         }
         do {
-            results = searcher.searchAfter(after, termQuery, resultLimit);
+            results = searcher.searchAfterWithAffinity(after, termQuery, resultLimit);
             long queryEndTimeMicros = Utils.getNowMicrosUtc();
             long luceneQueryDurationMicros = queryEndTimeMicros - start;
             long queryDurationMicros = queryEndTimeMicros - queryStartTimeMicros;
@@ -2051,7 +2044,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private ServiceDocumentQueryResult queryIndexPaginated(Operation op,
             EnumSet<QueryOption> options,
-            IndexSearcher s,
+            IndexSearcherWithMeta s,
             Query tq,
             LuceneQueryPage page,
             int count,
@@ -2125,15 +2118,15 @@ public class LuceneDocumentIndexService extends StatelessService {
             // searchAfter(). This will prevent Lucene from holding the full result set in memory.
             if (useDirectSearch) {
                 if (sort == null) {
-                    results = s.search(tq, hitCount);
+                    results = s.searchWithAffinity(tq, hitCount);
                 } else {
-                    results = s.search(tq, hitCount, sort, false, false);
+                    results = s.searchWithAffinity(tq, hitCount, sort, false, false);
                 }
             } else {
                 if (sort == null) {
-                    results = s.searchAfter(after, tq, hitCount);
+                    results = s.searchAfterWithAffinity(after, tq, hitCount);
                 } else {
-                    results = s.searchAfter(after, tq, hitCount, sort, false, false);
+                    results = s.searchAfterWithAffinity(after, tq, hitCount, sort, false, false);
                 }
             }
 
@@ -2255,7 +2248,7 @@ public class LuceneDocumentIndexService extends StatelessService {
      */
     private boolean checkNextPageHasEntry(ScoreDoc after,
             EnumSet<QueryOption> options,
-            IndexSearcher s,
+            IndexSearcherWithMeta s,
             Query tq,
             Sort sort,
             int count,
@@ -2270,9 +2263,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             // fetch next page
             TopDocs nextPageResults;
             if (sort == null) {
-                nextPageResults = s.searchAfter(after, tq, count);
+                nextPageResults = s.searchAfterWithAffinity(after, tq, count);
             } else {
-                nextPageResults = s.searchAfter(after, tq, count, sort, false, false);
+                nextPageResults = s.searchAfterWithAffinity(after, tq, count, sort, false, false);
             }
             if (nextPageResults == null) {
                 break;
@@ -2303,7 +2296,7 @@ public class LuceneDocumentIndexService extends StatelessService {
      * index searcher and search pointers. The page can be used for both grouped queries or
      * document queries
      */
-    private String createNextPage(Operation op, IndexSearcher s, QuerySpecification qs,
+    private String createNextPage(Operation op, IndexSearcherWithMeta s, QuerySpecification qs,
             Query tq,
             Sort sort,
             ScoreDoc after,
@@ -2389,7 +2382,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private ScoreDoc processQueryResults(QuerySpecification qs, EnumSet<QueryOption> options,
-            int resultLimit, IndexSearcher s, ServiceDocumentQueryResult rsp, ScoreDoc[] hits,
+            int resultLimit, IndexSearcherWithMeta s, ServiceDocumentQueryResult rsp, ScoreDoc[] hits,
             long queryStartTimeMicros) throws Exception {
 
         ScoreDoc lastDocVisited = null;
@@ -2596,14 +2589,14 @@ public class LuceneDocumentIndexService extends StatelessService {
         return (JsonObject) GsonSerializers.getJsonMapperFor(state.getClass()).toJsonElement(state);
     }
 
-    private void loadDoc(IndexSearcher s, DocumentStoredFieldVisitor visitor, int docId, Set<String> fields) throws IOException {
+    private void loadDoc(IndexSearcherWithMeta s, DocumentStoredFieldVisitor visitor, int docId, Set<String> fields) throws IOException {
         visitor.reset(fields);
-        s.doc(docId, visitor);
+        s.docWithAffinity(docId, visitor);
     }
 
-    private void augmentDoc(IndexSearcher s, DocumentStoredFieldVisitor visitor, int docId, String field) throws IOException {
+    private void augmentDoc(IndexSearcherWithMeta s, DocumentStoredFieldVisitor visitor, int docId, String field) throws IOException {
         visitor.reset(field);
-        s.doc(docId, visitor);
+        s.docWithAffinity(docId, visitor);
     }
 
     private boolean processQueryResultsForOwnerSelection(String json, ServiceDocument state) {
@@ -2620,7 +2613,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         return true;
     }
 
-    private ServiceDocument processQueryResultsForSelectLinks(IndexSearcher s,
+    private ServiceDocument processQueryResultsForSelectLinks(IndexSearcherWithMeta s,
             QuerySpecification qs, ServiceDocumentQueryResult rsp, DocumentStoredFieldVisitor d, int docId,
             String link,
             ServiceDocument state) throws Exception {
@@ -2702,14 +2695,14 @@ public class LuceneDocumentIndexService extends StatelessService {
         return state;
     }
 
-    private long getSearcherUpdateTime(IndexSearcher s, long queryStartTimeMicros) {
+    private long getSearcherUpdateTime(IndexSearcherWithMeta s, long queryStartTimeMicros) {
         if (s == null) {
             return 0L;
         }
         return this.searcherUpdateTimesMicros.getOrDefault(s.hashCode(), queryStartTimeMicros);
     }
 
-    private long getLatestVersion(IndexSearcher s,
+    private long getLatestVersion(IndexSearcherWithMeta s,
             long searcherUpdateTime,
             String link, long version, long documentsUpdatedBeforeInMicros) throws IOException {
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
@@ -3218,10 +3211,10 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     /**
-     * Returns an updated {@link IndexSearcher} to query {@code selfLink}.
+     * Returns an updated {@link IndexSearcherWithMeta} to query {@code selfLink}.
      *
-     * If the index has been updated since the last {@link IndexSearcher} was created, those
-     * changes will not be reflected by that {@link IndexSearcher}. However, for performance
+     * If the index has been updated since the last {@link IndexSearcherWithMeta} was created, those
+     * changes will not be reflected by that {@link IndexSearcherWithMeta}. However, for performance
      * reasons, we do not want to create a new one for every query either.
      *
      * We create one in one of following conditions:
@@ -3235,15 +3228,15 @@ public class LuceneDocumentIndexService extends StatelessService {
      * @param selfLink
      * @param resultLimit
      * @param w
-     * @return an {@link IndexSearcher} that is fresh enough to execute the specified query
+     * @return an {@link IndexSearcherWithMeta} that is fresh enough to execute the specified query
      * @throws IOException
      */
-    private IndexSearcher createOrRefreshSearcher(String selfLink, Set<String> kindScope,
+    private IndexSearcherWithMeta createOrRefreshSearcher(String selfLink, Set<String> kindScope,
             int resultLimit, IndexWriter w,
             boolean doNotRefresh)
             throws IOException {
 
-        IndexSearcher s;
+        IndexSearcherWithMeta s;
         boolean needNewSearcher = false;
         long threadId = Thread.currentThread().getId();
         long now = Utils.getNowMicrosUtc();
@@ -3272,12 +3265,11 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             oldReader.close();
             this.searcherUpdateTimesMicros.remove(s.hashCode());
-            s = new IndexSearcher(newReader);
+            s = new IndexSearcherWithMeta(newReader, this.privateQueryExecutor);
         } else {
-            s = new IndexSearcher(DirectoryReader.open(w, true, true));
+            DirectoryReader reader = DirectoryReader.open(w, true, true);
+            s = new IndexSearcherWithMeta(reader, this.privateQueryExecutor);
         }
-
-        s.setSimilarity(s.getSimilarity(false));
 
         adjustTimeSeriesStat(STAT_NAME_SEARCHER_UPDATE_COUNT, AGGREGATION_TYPE_SUM, 1);
         synchronized (this.searchSync) {
@@ -3382,7 +3374,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
 
             long startNanos = System.nanoTime();
-            IndexSearcher s = createOrRefreshSearcher(null, null, Integer.MAX_VALUE, w, false);
+            IndexSearcherWithMeta s = createOrRefreshSearcher(null, null, Integer.MAX_VALUE, w, false);
             long endNanos = System.nanoTime();
             setTimeSeriesHistogramStat(STAT_NAME_MAINTENANCE_SEARCHER_REFRESH_DURATION_MICROS,
                     AGGREGATION_TYPE_AVG_MAX,
@@ -3469,7 +3461,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    private void applyMetadataIndexingUpdates(IndexSearcher searcher, long searcherCreationTime,
+    private void applyMetadataIndexingUpdates(IndexSearcherWithMeta searcher, long searcherCreationTime,
             long deadline) throws IOException {
         Map<String, MetadataUpdateInfo> entries = new HashMap<>();
         synchronized (this.metadataUpdates) {
@@ -3528,7 +3520,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    private long applyMetadataIndexingUpdate(IndexSearcher searcher, IndexWriter wr,
+    private long applyMetadataIndexingUpdate(IndexSearcherWithMeta searcher, IndexWriter wr,
             MetadataUpdateInfo info) throws IOException {
 
         Query selfLinkClause = new TermQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK,
@@ -3561,7 +3553,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         // version because of how synchronization works
         Map<Long, List<DocumentStoredFieldVisitor>> versionToDocsMap = new HashMap<>();
         while (true) {
-            TopDocs results = searcher.searchAfter(after, booleanQuery, pageSize);
+            TopDocs results = searcher.searchAfterWithAffinity(after, booleanQuery, pageSize);
             if (results == null || results.scoreDocs == null || results.scoreDocs.length == 0) {
                 break;
             }
@@ -3596,7 +3588,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                     .add(selfLinkClause, Occur.MUST)
                     .add(versionClause, Occur.MUST)
                     .build();
-            TopDocs missingVersionResult = searcher.searchAfter(after, missingVersionQuery, pageSize);
+            TopDocs missingVersionResult = searcher.searchAfterWithAffinity(after, missingVersionQuery, pageSize);
             if (missingVersionResult != null && missingVersionResult.scoreDocs != null
                     && missingVersionResult.scoreDocs.length != 0) {
                 for (ScoreDoc scoreDoc : missingVersionResult.scoreDocs) {
@@ -3696,7 +3688,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             logInfo("(%s) closing all %d searchers, document count: %d, file count: %d",
                     this.writerSync, this.searchers.size(), w.maxDoc(), count);
 
-            for (IndexSearcher s : this.searchers.values()) {
+            for (IndexSearcherWithMeta s : this.searchers.values()) {
                 s.getIndexReader().close();
                 this.searcherUpdateTimesMicros.remove(s.hashCode());
             }
@@ -3709,7 +3701,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             logInfo("Closing all paginated searchers (%d)", this.paginatedSearcherManager.getSearcherSize());
 
-            for (IndexSearcher searcher : this.paginatedSearcherManager.getAllSearchers()) {
+            for (IndexSearcherWithMeta searcher : this.paginatedSearcherManager.getAllSearchers()) {
                 try {
                     searcher.getIndexReader().close();
                 } catch (Exception ignored) {
@@ -3791,11 +3783,11 @@ public class LuceneDocumentIndexService extends StatelessService {
         applyMemoryLimitToDocumentUpdateInfo();
 
         long activePaginatedQueries;
-        Map<IndexSearcher, Long> entriesToClose;
+        Map<IndexSearcherWithMeta, Long> entriesToClose;
 
         synchronized (this.searchSync) {
             entriesToClose = this.paginatedSearcherManager.removeExpiredSearchers(now);
-            for (IndexSearcher searcher : entriesToClose.keySet()) {
+            for (IndexSearcherWithMeta searcher : entriesToClose.keySet()) {
                 this.searcherUpdateTimesMicros.remove(searcher.hashCode());
             }
             activePaginatedQueries = this.paginatedSearcherManager.getSearcherSize();
@@ -3803,7 +3795,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         setTimeSeriesStat(STAT_NAME_ACTIVE_PAGINATED_QUERIES, AGGREGATION_TYPE_AVG_MAX, activePaginatedQueries);
 
-        for (Entry<IndexSearcher, Long> entry : entriesToClose.entrySet()) {
+        for (Entry<IndexSearcherWithMeta, Long> entry : entriesToClose.entrySet()) {
             logFine("Closing paginated query searcher, expired at %d", entry.getValue());
             try {
                 entry.getKey().getIndexReader().close();
@@ -3854,7 +3846,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         logInfo("Cleared %d document update entries", count);
     }
 
-    private void applyDocumentExpirationPolicy(IndexSearcher s, long deadline) throws Exception {
+    private void applyDocumentExpirationPolicy(IndexSearcherWithMeta s, long deadline) throws Exception {
 
         Query versionQuery = LongPoint.newRangeQuery(
                 ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS, 1L, Utils.getNowMicrosUtc());
@@ -3865,7 +3857,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         Map<String, Long> latestVersions = new HashMap<>();
 
         do {
-            TopDocs results = s.searchAfter(after, versionQuery, expiredDocumentSearchThreshold,
+            TopDocs results = s.searchAfterWithAffinity(after, versionQuery, expiredDocumentSearchThreshold,
                     this.versionSort, false, false);
             if (results.scoreDocs == null || results.scoreDocs.length == 0) {
                 return;
