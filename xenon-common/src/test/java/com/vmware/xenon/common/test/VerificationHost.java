@@ -60,7 +60,7 @@ import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
+// import java.util.stream.Collectors;
 import javax.net.ssl.SSLContext;
 import javax.xml.bind.DatatypeConverter;
 
@@ -2514,7 +2514,7 @@ public class VerificationHost extends ExampleServiceHost {
                                 Utils.toJsonHtml(stateOnNode));
                         break;
                     }
-
+                    /*
                     List<String> nodeIds = this.getInProcessHostMap().values().stream().map(
                             host -> host.getId()).collect(Collectors.toList());
 
@@ -2523,7 +2523,7 @@ public class VerificationHost extends ExampleServiceHost {
                                 stateOnNode.documentOwner, String.join(",", nodeIds), Utils.toJsonHtml(stateOnNode));
                         break;
                     }
-
+                    */
                     if (linkToNodeId.containsKey(stateOnNode.documentSelfLink)) {
                         if (!linkToNodeId.get(stateOnNode.documentSelfLink).equals(stateOnNode.documentOwner)) {
                             this.log("Owner mismatch on peers, Actual Id:%s Expected Id:%s state: %s",
