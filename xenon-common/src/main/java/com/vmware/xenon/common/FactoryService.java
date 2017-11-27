@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.CompletionHandler;
@@ -128,6 +129,7 @@ public abstract class FactoryService extends StatelessService {
     private int selfQueryResultLimit = SELF_QUERY_RESULT_LIMIT;
     private ServiceDocument childTemplate;
     private URI uri;
+    private AtomicBoolean isOwner = new AtomicBoolean();
 
     /**
      * Creates a default instance of a factory service that can create and start instances
@@ -186,7 +188,7 @@ public abstract class FactoryService extends StatelessService {
     }
 
     @Override
-    public final void handleStart(Operation startPost) {
+    public void handleStart(Operation startPost) {
         try {
             setAvailable(false);
             // Eagerly create a child service class instance to ensure it is possible
@@ -260,6 +262,7 @@ public abstract class FactoryService extends StatelessService {
 
         SynchronizationTaskService service = SynchronizationTaskService
                 .create(() -> createChildServiceSafe());
+        service.setParentService(this);
         this.getHost().startService(post, service);
     }
 
@@ -965,6 +968,7 @@ public abstract class FactoryService extends StatelessService {
     public void handleNodeGroupMaintenance(Operation maintOp) {
         // Reset query result limit for new synchronization cycle.
         this.selfQueryResultLimit = SELF_QUERY_RESULT_LIMIT;
+        this.isOwner.set(false);
         synchronizeChildServicesIfOwner(maintOp);
     }
 
@@ -1004,6 +1008,7 @@ public abstract class FactoryService extends StatelessService {
     }
 
     private void synchronizeChildServicesAsOwner(Operation maintOp, long membershipUpdateTimeMicros) {
+        this.isOwner.set(true);
         maintOp.nestCompletion((o, e) -> {
             if (e != null) {
                 logWarning("Synchronization failed: %s", e.toString());
@@ -1174,6 +1179,10 @@ public abstract class FactoryService extends StatelessService {
                 });
 
         getHost().broadcastRequest(this.nodeSelectorLink, this.getSelfLink(), true, broadcastSelectOp);
+    }
+
+    public boolean isOwner() {
+        return this.isOwner.get();
     }
 
     public abstract Service createServiceInstance() throws Throwable;
