@@ -50,8 +50,6 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -139,7 +137,7 @@ class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexServic
         long searcherCount = 0;
 
         synchronized (this.searchSync) {
-            for (Entry<Long, List<IndexSearcher>> entry :
+            for (Entry<Long, List<IndexSearcherWithMeta>> entry :
                     this.paginatedSearcherManager.searchersByExpirationTime.entrySet()) {
                 List<PaginatedSearcherInfo> infoList = new ArrayList<>();
                 for (IndexSearcher searcher : entry.getValue()) {
@@ -189,13 +187,6 @@ class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexServic
         } catch (Throwable e) {
         }
     }
-
-    public ExecutorService setQueryExecutorService(ExecutorService es) {
-        ExecutorService existing = this.privateQueryExecutor;
-        this.privateQueryExecutor = es;
-        return existing;
-    }
-
 }
 
 public class TestLuceneDocumentIndexService {
@@ -488,11 +479,9 @@ public class TestLuceneDocumentIndexService {
                     o.setBody(initialState);
                 }, factoryService.getUri());
 
-        // Create an executor service which rejects all attempts to create new threads.
-        ExecutorService blockingExecutor = Executors.newSingleThreadExecutor((r) -> null);
-        ExecutorService queryExecutor = this.indexService.setQueryExecutorService(blockingExecutor);
-        queryExecutor.shutdown();
-        queryExecutor.awaitTermination(this.host.getTimeoutSeconds(), TimeUnit.SECONDS);
+        // Suspend query processing
+        this.indexService.privateQueryExecutor.setSuspended(true);
+
 
         // Now submit a query and wait for the queue depth stat to be set.
         QueryTask queryTask = QueryTask.Builder.create()
