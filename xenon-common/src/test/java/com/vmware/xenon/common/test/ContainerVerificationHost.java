@@ -322,13 +322,14 @@ public class ContainerVerificationHost extends VerificationHost {
     public ContainerVerificationHost(DockerClientConfig dockerClientConfig) {
         if (this.dockerClient == null) {
             CommandLineArgumentParser.parseFromProperties(this);
-            if (this.containerImage == null) {
-                throw new IllegalArgumentException("null containerImage");
-            }
             DockerClientConfig config = dockerClientConfig != null ?
                     dockerClientConfig : DefaultDockerClientConfig.createDefaultConfigBuilder().build();
             this.dockerClient = DockerClientBuilder.getInstance(config).build();
         }
+    }
+
+    public boolean isContainerImageAvailable() {
+        return this.containerImage != null;
     }
 
     @Override
