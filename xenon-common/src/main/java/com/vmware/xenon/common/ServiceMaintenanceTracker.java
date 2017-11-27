@@ -202,9 +202,11 @@ class ServiceMaintenanceTracker {
                 Service.STAT_NAME_MAINTENANCE_DURATION);
         s.setStat(durationStat, actual);
         if (limit * 2 < actual) {
+            /*
             this.host.log(Level.WARNING,
                     "Service %s exceeded maintenance interval %d. Actual: %d",
                     servicePath, limit, actual);
+                    */
             s.adjustStat(
                     Service.STAT_NAME_MAINTENANCE_COMPLETION_DELAYED_COUNT, 1);
         }
