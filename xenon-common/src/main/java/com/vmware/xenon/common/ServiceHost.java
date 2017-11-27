@@ -1681,7 +1681,7 @@ public class ServiceHost implements ServiceRequestSender {
                         new LocalQueryTaskFactoryService(),
                         TaskFactoryService.create(GraphQueryTaskService.class),
                         TaskFactoryService.create(SynchronizationTaskService.class),
-                        new QueryPageForwardingService(defaultNodeSelectorService) };
+                        new QueryPageForwardingService(defaultNodeSelectorService)};
                 startCoreServicesSynchronously(queryServiceArray);
 
                 // register auto-backup consumer to the document index service
