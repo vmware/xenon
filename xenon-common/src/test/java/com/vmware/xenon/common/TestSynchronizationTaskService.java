@@ -125,13 +125,15 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         this.host.startServiceAndWait(InMemoryLuceneDocumentIndexService.class,
                 InMemoryLuceneDocumentIndexService.SELF_LINK);
 
-        this.host.startFactory(InMemoryExampleService.class, InMemoryExampleService::createFactory);
-        this.host.startFactory(ExampleODLService.class, ExampleODLService::createFactory);
+        // this.host.startFactory(InMemoryExampleService.class, InMemoryExampleService::createFactory);
+        // this.host.startFactory(ExampleODLService.class, ExampleODLService::createFactory);
     }
 
     @Before
     public void setUp() {
         CommandLineArgumentParser.parseFromProperties(this);
+        this.host.startFactory(InMemoryExampleService.class, InMemoryExampleService::createFactory);
+        this.host.startFactory(ExampleODLService.class, ExampleODLService::createFactory);
         URI exampleFactoryUri = UriUtils.buildUri(
                 this.host.getUri(), ExampleService.FACTORY_LINK);
         URI exampleODLFactoryUri = UriUtils.buildUri(
