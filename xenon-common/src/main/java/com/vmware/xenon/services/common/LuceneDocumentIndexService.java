@@ -1792,7 +1792,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             after = processQueryResults(querySpec, queryOptions, resultLimit, searcher,
                     response,
-                    results.scoreDocs, start);
+                    results.scoreDocs, start, false);
 
             long now = Utils.getNowMicrosUtc();
             setTimeSeriesHistogramStat(STAT_NAME_RESULT_PROCESSING_DURATION_MICROS,
@@ -1917,7 +1917,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             if (shouldProcessResults) {
                 start = end;
                 bottom = processQueryResults(qs, options, count, s, rsp, hits,
-                        queryStartTimeMicros);
+                        queryStartTimeMicros, true);
                 end = Utils.getNowMicrosUtc();
 
                 // remove docs for offset
@@ -2043,7 +2043,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             ServiceDocumentQueryResult rspForNextPage = new ServiceDocumentQueryResult();
             rspForNextPage.documents = new HashMap<>();
             after = processQueryResults(qs, options, count, s, rspForNextPage, hits,
-                    queryStartTimeMicros);
+                    queryStartTimeMicros, false);
 
             if (rspForNextPage.documentCount > 0) {
                 hasValidNextPageEntry = true;
@@ -2141,18 +2141,19 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private ScoreDoc processQueryResults(QuerySpecification qs, EnumSet<QueryOption> options,
             int resultLimit, IndexSearcher s, ServiceDocumentQueryResult rsp, ScoreDoc[] hits,
-            long queryStartTimeMicros) throws Exception {
+            long queryStartTimeMicros,
+            boolean populateResponse) throws Exception {
 
         ScoreDoc lastDocVisited = null;
         Set<String> fieldsToLoad = this.fieldsToLoadNoExpand;
-        if (options.contains(QueryOption.EXPAND_CONTENT)
+        if (populateResponse && (options.contains(QueryOption.EXPAND_CONTENT)
                 || options.contains(QueryOption.OWNER_SELECTION)
                 || options.contains(QueryOption.EXPAND_BINARY_CONTENT)
-                || options.contains(QueryOption.EXPAND_SELECTED_FIELDS)) {
+                || options.contains(QueryOption.EXPAND_SELECTED_FIELDS))) {
             fieldsToLoad = this.fieldsToLoadWithExpand;
         }
 
-        if (options.contains(QueryOption.SELECT_LINKS)) {
+        if (populateResponse && options.contains(QueryOption.SELECT_LINKS)) {
             fieldsToLoad = new HashSet<>(fieldsToLoad);
             for (QueryTask.QueryTerm link : qs.linkTerms) {
                 fieldsToLoad.add(link.propertyName);
@@ -2256,9 +2257,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             String json = null;
             ServiceDocument state = null;
 
-            if (options.contains(QueryOption.EXPAND_CONTENT)
+            if (populateResponse && (options.contains(QueryOption.EXPAND_CONTENT)
                     || options.contains(QueryOption.OWNER_SELECTION)
-                    || options.contains(QueryOption.EXPAND_SELECTED_FIELDS)) {
+                    || options.contains(QueryOption.EXPAND_SELECTED_FIELDS))) {
                 state = getStateFromLuceneDocument(visitor, originalLink);
                 if (state == null) {
                     // support reading JSON serialized state for backwards compatibility
@@ -2276,61 +2277,58 @@ public class LuceneDocumentIndexService extends StatelessService {
                 }
             }
 
-            if (options.contains(QueryOption.EXPAND_BINARY_CONTENT) && !rsp.documents.containsKey(link)) {
-                byte[] binaryData = visitor.binarySerializedState;
-                if (binaryData != null) {
-                    ByteBuffer buffer = ByteBuffer.wrap(binaryData, 0, binaryData.length);
-                    rsp.documents.put(link, buffer);
-                } else {
-                    logWarning("Binary State not found for %s", link);
-                }
-            } else if (options.contains(QueryOption.EXPAND_CONTENT) && !rsp.documents.containsKey(link)) {
-                if (options.contains(QueryOption.EXPAND_BUILTIN_CONTENT_ONLY)) {
-                    ServiceDocument stateClone = new ServiceDocument();
-                    state.copyTo(stateClone);
-                    rsp.documents.put(link, stateClone);
-                } else if (state == null) {
-                    rsp.documents.put(link, Utils.fromJson(json, JsonElement.class));
-                } else {
-                    JsonObject jo = toJsonElement(state);
+            // only peek into the index if populating the response
+            if (populateResponse) {
+                if (options.contains(QueryOption.EXPAND_BINARY_CONTENT) && !rsp.documents.containsKey(link)) {
+                    byte[] binaryData = visitor.binarySerializedState;
+                    if (binaryData != null) {
+                        ByteBuffer buffer = ByteBuffer.wrap(binaryData, 0, binaryData.length);
+                        rsp.documents.put(link, buffer);
+                    } else {
+                        logWarning("Binary State not found for %s", link);
+                    }
+                } else if (options.contains(QueryOption.EXPAND_CONTENT) && !rsp.documents.containsKey(link)) {
+                    if (options.contains(QueryOption.EXPAND_BUILTIN_CONTENT_ONLY)) {
+                        ServiceDocument stateClone = new ServiceDocument();
+                        state.copyTo(stateClone);
+                        rsp.documents.put(link, stateClone);
+                    } else if (state == null) {
+                        rsp.documents.put(link, Utils.fromJson(json, JsonElement.class));
+                    } else {
+                        JsonObject jo = toJsonElement(state);
+                        rsp.documents.put(link, jo);
+                    }
+                } else if (options.contains(QueryOption.EXPAND_SELECTED_FIELDS) && !rsp.documents.containsKey(link)) {
+                    // filter out only the selected fields
+                    Set<String> selectFields = new TreeSet<>();
+                    if (qs != null) {
+                        qs.selectTerms.forEach(qt -> selectFields.add(qt.propertyName));
+                    }
+
+                    // create an uninitialized copy
+                    ServiceDocument copy = state.getClass().newInstance();
+                    for (String selectField : selectFields) {
+                        // transfer only needed fields
+                        Field field = ReflectionUtils.getField(state.getClass(), selectField);
+                        if (field != null) {
+                            Object value = field.get(state);
+                            if (value != null) {
+                                field.set(copy, value);
+                            }
+                        } else {
+                            logFine("Unknown field '%s' passed for EXPAND_SELECTED_FIELDS", selectField);
+                        }
+                    }
+
+                    JsonObject jo = toJsonElement(copy);
+                    // this is called only for primitive-typed fields, the rest are nullified already
+                    jo.entrySet().removeIf(entry -> !selectFields.contains(entry.getKey()));
+
                     rsp.documents.put(link, jo);
                 }
-            } else if (options.contains(QueryOption.EXPAND_SELECTED_FIELDS) && !rsp.documents.containsKey(link)) {
-                // filter out only the selected fields
-                Set<String> selectFields = new TreeSet<>();
-                if (qs != null) {
-                    qs.selectTerms.forEach(qt -> selectFields.add(qt.propertyName));
-                }
-
-                // create an uninitialized copy
-                ServiceDocument copy = state.getClass().newInstance();
-                for (String selectField : selectFields) {
-                    // transfer only needed fields
-                    Field field = ReflectionUtils.getField(state.getClass(), selectField);
-                    if (field != null) {
-                        Object value = field.get(state);
-                        if (value != null) {
-                            field.set(copy, value);
-                        }
-                    } else {
-                        logFine("Unknown field '%s' passed for EXPAND_SELECTED_FIELDS", selectField);
-                    }
-                }
-
-                JsonObject jo = toJsonElement(copy);
-                Iterator<Entry<String, JsonElement>> it = jo.entrySet().iterator();
-                while (it.hasNext()) {
-                    Entry<String, JsonElement> entry = it.next();
-                    if (!selectFields.contains(entry.getKey())) {
-                        // this is called only for primitive-typed fields, the rest are nullified already
-                        it.remove();
-                    }
-                }
-
-                rsp.documents.put(link, jo);
             }
 
-            if (options.contains(QueryOption.SELECT_LINKS)) {
+            if (populateResponse && options.contains(QueryOption.SELECT_LINKS)) {
                 processQueryResultsForSelectLinks(s, qs, rsp, visitor, sd.doc, link, state);
             }
 
