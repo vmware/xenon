@@ -230,6 +230,7 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
 
         // I/O exception this code recommends retry since it never made it to the remote end
         request.setStatusCode(Operation.STATUS_CODE_BAD_REQUEST);
+        request.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
         request.setBody(ServiceErrorResponse.create(cause, request.getStatusCode(),
                 EnumSet.of(ErrorDetail.SHOULD_RETRY)));
         request.fail(cause);
@@ -282,6 +283,10 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
             }
         }
 
+        // when service didn't specify content-type, set application/json as default
+        if (op.getContentType() == null) {
+            op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
+        }
         op.fail(new ProtocolException(errorMsg));
         return true;
     }

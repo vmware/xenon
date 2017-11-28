@@ -351,8 +351,10 @@ public class SynchronizationTaskService
             // as the task reached the FINISHED stage.
             if (TaskState.isFinished(currentTask.taskInfo)) {
                 setFactoryAvailability(currentTask, true,
-                        (o) -> put.fail(Operation.STATUS_CODE_BAD_REQUEST, e, rsp), null);
+                        (o) -> put.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON)
+                                .fail(Operation.STATUS_CODE_BAD_REQUEST, e, rsp), null);
             } else {
+                put.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
                 put.fail(Operation.STATUS_CODE_BAD_REQUEST, e, rsp);
             }
             return null;
