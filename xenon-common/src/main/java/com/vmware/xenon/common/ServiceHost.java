@@ -3726,6 +3726,8 @@ public class ServiceHost implements ServiceRequestSender {
         } else if (this.logger.isLoggable(Level.FINE)) {
             log(Level.FINE, "Validation Error in service %s: %s", s.getUri(), Utils.toString(e));
         }
+        // force set application/json for error response
+        op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
         op.fail(e);
     }
 

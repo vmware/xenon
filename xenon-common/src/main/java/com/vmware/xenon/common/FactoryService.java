@@ -666,6 +666,7 @@ public abstract class FactoryService extends StatelessService {
                 UriUtils.URI_PARAM_ODATA_TENANTLINKS);
         e = new IllegalAccessException(error);
         ServiceErrorResponse rsp = ServiceErrorResponse.create(e, o.getStatusCode());
+        originalOp.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
         originalOp.fail(o.getStatusCode(), e, rsp);
     }
 
