@@ -113,6 +113,8 @@ public class NettyHttpToHttp2Handler extends HttpToHttp2ConnectionHandler {
         socketContext.setOperation(null);
         socketContext.removeOperationForStream(currentStreamId);
         socketContext.close();
+        oldOperation.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
+        operation.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
         oldOperation.setBodyNoCloning(rsp).fail(e, rsp.statusCode);
         operation.setBodyNoCloning(rsp).fail(e, rsp.statusCode);
     }

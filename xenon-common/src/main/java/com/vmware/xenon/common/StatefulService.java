@@ -1202,6 +1202,7 @@ public class StatefulService implements Service {
             // Request client side retries on state or consensus conflict
             ServiceErrorResponse rsp = ServiceErrorResponse.create(e, op.getStatusCode(),
                     EnumSet.of(ErrorDetail.SHOULD_RETRY));
+            op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
             op.setBodyNoCloning(rsp);
         }
 

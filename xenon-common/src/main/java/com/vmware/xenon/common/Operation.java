@@ -397,6 +397,7 @@ public class Operation implements Cloneable {
         ServiceErrorResponse rsp = ServiceErrorResponse.create(e, op.getStatusCode(),
                 EnumSet.of(ErrorDetail.SHOULD_RETRY));
         rsp.setInternalErrorCode(ServiceErrorResponse.ERROR_CODE_OWNER_MISMATCH);
+        op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
         op.fail(e, rsp);
     }
 

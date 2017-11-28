@@ -309,6 +309,7 @@ public class NettyChannelContext extends SocketContext {
             // channel closed even though keep alive was set to true
             setOperation(null);
             op.setStatusCode(body.statusCode);
+            op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
             op.fail(e, body);
         }
 
@@ -321,6 +322,7 @@ public class NettyChannelContext extends SocketContext {
             }
             for (Operation o : ops) {
                 o.setStatusCode(body.statusCode);
+                o.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
                 o.fail(e, body);
             }
         }

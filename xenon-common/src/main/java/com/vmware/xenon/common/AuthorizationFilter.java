@@ -272,6 +272,7 @@ public class AuthorizationFilter implements Filter {
                                         context.resumeProcessingRequest(parentOp,
                                                 FilterReturnCode.FAILED_STOP_PROCESSING, ex);
                                         parentOp.transferResponseHeadersFrom(resultOp);
+                                        parentOp.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
                                         parentOp.fail(resultOp.getStatusCode(),
                                                 new RuntimeException(err.message),
                                                 resultOp.getBodyRaw());

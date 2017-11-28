@@ -699,6 +699,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         }
 
         if (this.scheduledExecutor.isShutdown()) {
+            op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
             op.fail(new CancellationException("Host is stopping"));
             return;
         }
@@ -722,6 +723,10 @@ public class NettyHttpServiceClient implements ServiceClient {
         if (!isRetryRequested) {
             LOGGER.fine(() -> String.format("Send of %d, from %s to %s failed with %s",
                     op.getId(), op.getRefererAsString(), op.getUri(), e));
+            // when service didn't specify content-type, set application/json as default
+            if (op.getContentType() == null) {
+                op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
+            }
             op.fail(e);
             return;
         }
