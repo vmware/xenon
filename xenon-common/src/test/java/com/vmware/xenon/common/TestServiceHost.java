@@ -2161,7 +2161,7 @@ public class TestServiceHost {
         // create another set of services
         Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(
                 null,
-                this.serviceCount,
+                this.serviceCount*50,
                 ExampleServiceState.class,
                 bodySetter,
                 UriUtils.buildUri(this.host, factoryLink));
