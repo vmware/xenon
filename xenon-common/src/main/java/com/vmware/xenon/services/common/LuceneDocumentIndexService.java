@@ -2036,7 +2036,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             after = processQueryResults(querySpec, queryOptions, resultLimit, searcher,
                     response,
-                    results.scoreDocs, start);
+                    results.scoreDocs, start, false);
 
             long now = Utils.getNowMicrosUtc();
             setTimeSeriesHistogramStat(STAT_NAME_RESULT_PROCESSING_DURATION_MICROS,
@@ -2161,7 +2161,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             if (shouldProcessResults) {
                 start = end;
                 bottom = processQueryResults(qs, options, count, s, rsp, hits,
-                        queryStartTimeMicros);
+                        queryStartTimeMicros, true);
                 end = Utils.getNowMicrosUtc();
 
                 // remove docs for offset
@@ -2287,7 +2287,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             ServiceDocumentQueryResult rspForNextPage = new ServiceDocumentQueryResult();
             rspForNextPage.documents = new HashMap<>();
             after = processQueryResults(qs, options, count, s, rspForNextPage, hits,
-                    queryStartTimeMicros);
+                    queryStartTimeMicros, false);
 
             if (rspForNextPage.documentCount > 0) {
                 hasValidNextPageEntry = true;
@@ -2390,18 +2390,19 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private ScoreDoc processQueryResults(QuerySpecification qs, EnumSet<QueryOption> options,
             int resultLimit, IndexSearcher s, ServiceDocumentQueryResult rsp, ScoreDoc[] hits,
-            long queryStartTimeMicros) throws Exception {
+            long queryStartTimeMicros,
+            boolean populateResponse) throws Exception {
 
         ScoreDoc lastDocVisited = null;
         Set<String> fieldsToLoad = this.fieldsToLoadNoExpand;
-        if (options.contains(QueryOption.EXPAND_CONTENT)
+        if (populateResponse && (options.contains(QueryOption.EXPAND_CONTENT)
                 || options.contains(QueryOption.OWNER_SELECTION)
                 || options.contains(QueryOption.EXPAND_BINARY_CONTENT)
-                || options.contains(QueryOption.EXPAND_SELECTED_FIELDS)) {
+                || options.contains(QueryOption.EXPAND_SELECTED_FIELDS))) {
             fieldsToLoad = this.fieldsToLoadWithExpand;
         }
 
-        if (options.contains(QueryOption.SELECT_LINKS)) {
+        if (populateResponse && options.contains(QueryOption.SELECT_LINKS)) {
             fieldsToLoad = new HashSet<>(fieldsToLoad);
             for (QueryTask.QueryTerm link : qs.linkTerms) {
                 fieldsToLoad.add(link.propertyName);
@@ -2496,7 +2497,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 }
             }
 
-            if (hasCountOption) {
+            if (hasCountOption || !populateResponse) {
                 // count unique instances of this link
                 uniques.add(link);
                 continue;
@@ -2524,6 +2525,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                     continue;
                 }
             }
+
 
             if (options.contains(QueryOption.EXPAND_BINARY_CONTENT) && !rsp.documents.containsKey(link)) {
                 byte[] binaryData = visitor.binarySerializedState;
@@ -2567,14 +2569,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                 }
 
                 JsonObject jo = toJsonElement(copy);
-                Iterator<Entry<String, JsonElement>> it = jo.entrySet().iterator();
-                while (it.hasNext()) {
-                    Entry<String, JsonElement> entry = it.next();
-                    if (!selectFields.contains(entry.getKey())) {
-                        // this is called only for primitive-typed fields, the rest are nullified already
-                        it.remove();
-                    }
-                }
+                // this is called only for primitive-typed fields, the rest are nullified already
+                jo.entrySet().removeIf(entry -> !selectFields.contains(entry.getKey()));
 
                 rsp.documents.put(link, jo);
             }
