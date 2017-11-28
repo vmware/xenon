@@ -491,8 +491,12 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         // remove optional HTTP/2 stream weight header, all our streams are equal
         request.getAndRemoveResponseHeaderAsIs(Operation.STREAM_WEIGHT_HEADER);
 
-        response.headers().set(HttpHeaderNames.CONTENT_TYPE,
-                request.getContentType());
+        response.headers().set(HttpHeaderNames.CONTENT_TYPE, request.getContentType());
+
+        // force set application/json if response is error response
+        if (response.status().code() >= Operation.STATUS_CODE_FAILURE_THRESHOLD) {
+            response.headers().set(HttpHeaderNames.CONTENT_TYPE, Operation.MEDIA_TYPE_APPLICATION_JSON);
+        }
 
         if (request.hasResponseHeaders()) {
             // add any other custom headers associated with operation

@@ -57,6 +57,7 @@ import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceClient.ConnectionPoolMetrics;
 import com.vmware.xenon.common.ServiceDocument;
+import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.StatelessService;
@@ -708,8 +709,7 @@ public class NettyHttpServiceClientTest {
 
     private void verifyErrorResponseBodyHandling(List<Service> services) throws Throwable {
         // send a body with instructions to the test service to fail the
-        // request, but set the error body as plain text. This verifies the runtime
-        // preserves the plain text error response
+        // request.
         CompletionHandler ch = (o, e) -> {
             if (e == null) {
                 this.host.failIteration(new IllegalStateException("expected failure"));
@@ -717,10 +717,10 @@ public class NettyHttpServiceClientTest {
             }
 
             Object rsp = o.getBodyRaw();
-            if (!o.getContentType().equals(Operation.MEDIA_TYPE_TEXT_PLAIN)
-                    || !(rsp instanceof String)) {
+            if (o.isRemote() && (!o.getContentType().equals(Operation.MEDIA_TYPE_APPLICATION_JSON)
+                    || !(rsp instanceof ServiceErrorResponse))) {
                 this.host.failIteration(new IllegalStateException(
-                        "expected text plain content type and response"));
+                        "expected application/json content type and response"));
                 return;
             }
             this.host.completeIteration();
@@ -741,8 +741,6 @@ public class NettyHttpServiceClientTest {
                 .setCompletion(ch));
         this.host.testWait();
 
-        // now verify we leave binary or custom content type error responses alone
-        // in process response will stay as string
         ch = (o, e) -> {
             if (e == null) {
                 this.host.failIteration(new IllegalStateException("expected failure"));
@@ -767,7 +765,6 @@ public class NettyHttpServiceClientTest {
                 .setCompletion(ch));
         this.host.testWait();
 
-        // cross node response will stay as binary
         ch = (o, e) -> {
             if (e == null) {
                 this.host.failIteration(new IllegalStateException("expected failure"));
@@ -775,10 +772,10 @@ public class NettyHttpServiceClientTest {
             }
 
             Object rsp = o.getBodyRaw();
-            if (!o.getContentType().equals(MinimalTestService.CUSTOM_CONTENT_TYPE)
-                    || !(rsp instanceof byte[])) {
+            if (!o.getContentType().equals(Operation.MEDIA_TYPE_APPLICATION_JSON)
+                    || !(rsp instanceof ServiceErrorResponse)) {
                 this.host.failIteration(new IllegalStateException(
-                        "expected custom content type and binary response"));
+                        "expected application/json content type"));
                 return;
             }
             this.host.completeIteration();
@@ -1318,9 +1315,11 @@ public class NettyHttpServiceClientTest {
         StatelessService failureService = new StatelessService() {
             @Override
             public void handleGet(Operation get) {
+                ServiceErrorResponse body = new ServiceErrorResponse();
+                body.message = "hello";
                 get.setStatusCode(Operation.STATUS_CODE_CONFLICT);
                 get.setContentType("text/xml");
-                get.setBody("<error>hello</error>");
+                get.setBody(body);
                 get.setKeepAlive(keepAlive);
                 get.complete();
             }
@@ -1334,6 +1333,9 @@ public class NettyHttpServiceClientTest {
         FailureResponse resp = sender.sendAndWaitFailure(put);
 
         assertEquals(Operation.STATUS_CODE_CONFLICT, resp.op.getStatusCode());
-        assertEquals("<error>hello</error>", resp.op.getBodyRaw());
+        assertEquals("content-type should be overridden to application/json",
+                Operation.MEDIA_TYPE_APPLICATION_JSON, resp.op.getContentType());
+        ServiceErrorResponse error = resp.op.getBody(ServiceErrorResponse.class);
+        assertEquals("hello", error.message);
     }
 }
