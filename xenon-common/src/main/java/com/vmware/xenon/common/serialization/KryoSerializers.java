@@ -227,7 +227,7 @@ public final class KryoSerializers {
     }
 
     /**
-     * See {@link #serializeDocument(ServiceDocument, byte[], int)}
+     * See {@link #serializeDocument(ServiceDocument, int)}
      */
     public static Output serializeAsDocument(Object o, int maxSize) {
         Kryo k = getKryoThreadLocalForDocuments();
@@ -315,7 +315,7 @@ public final class KryoSerializers {
 
     /**
      * Deserializes into a native ServiceDocument derived type, using the document serializer.
-     * Must be paired with {@link #serializeDocument(ServiceDocument, byte[], int)}
+     * Must be paired with {@link #serializeDocument(ServiceDocument, int)}
      */
     public static Object deserializeDocument(byte[] bytes, int position, int length) {
         Kryo k = getKryoThreadLocalForDocuments();

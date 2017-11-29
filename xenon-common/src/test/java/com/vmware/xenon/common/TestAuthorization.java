@@ -66,6 +66,10 @@ import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.RoleService;
 import com.vmware.xenon.services.common.RoleService.Policy;
 import com.vmware.xenon.services.common.RoleService.RoleState;
+import com.vmware.xenon.services.common.ServiceHostManagementService;
+import com.vmware.xenon.services.common.ServiceUriPaths;
+import com.vmware.xenon.services.common.SystemUserService;
+import com.vmware.xenon.services.common.TransactionService.TransactionServiceState;
 import com.vmware.xenon.services.common.UserGroupService;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
 import com.vmware.xenon.services.common.UserService.UserState;
@@ -290,6 +294,20 @@ public class TestAuthorization extends BasicTestCase {
         this.host.send(get);
         ctx.await();
 
+        TestContext kryoCtx = this.host.testCreate(1);
+        Operation patchOp = Operation.createPatch(this.host, ExampleService.FACTORY_LINK + "/foo")
+                .setBody(new ServiceDocument())
+                .setContentType(Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM)
+                .setCompletion((o, e) -> {
+                    if (e != null && o.getStatusCode() == Operation.STATUS_CODE_UNAUTHORIZED) {
+                        kryoCtx.completeIteration();
+                        return;
+                    }
+                    kryoCtx.failIteration(new IllegalStateException("expected a failure"));
+                });
+        this.host.send(patchOp);
+        kryoCtx.await();
+
         int requestCount = this.serviceCount;
         TestContext notifyCtx = this.testCreate(requestCount);
 
@@ -335,6 +353,38 @@ public class TestAuthorization extends BasicTestCase {
     }
 
     @Test
+    public void validateKryoOctetStreamRequests() throws Throwable {
+        Consumer<Boolean> validate = (expectUnauthorizedResponse) -> {
+            TestContext kryoCtx = this.host.testCreate(1);
+            Operation patchOp = Operation.createPatch(this.host, ExampleService.FACTORY_LINK + "/foo")
+                    .setBody(new ServiceDocument())
+                    .setContentType(Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM)
+                    .setCompletion((o, e) -> {
+                        boolean isUnauthorizedResponse = o.getStatusCode() == Operation.STATUS_CODE_UNAUTHORIZED;
+                        if (expectUnauthorizedResponse == isUnauthorizedResponse) {
+                            kryoCtx.completeIteration();
+                            return;
+                        }
+                        kryoCtx.failIteration(new IllegalStateException("Response did not match expectation"));
+                    });
+            this.host.send(patchOp);
+            kryoCtx.await();
+        };
+
+        // Validate GUEST users are not authorized for sending kryo-octet-stream requests.
+        this.host.resetAuthorizationContext();
+        validate.accept(true);
+
+        // Validate non-Guest, non-System users are also not authorized.
+        this.host.assumeIdentity(this.userServicePath);
+        validate.accept(true);
+
+        // Validate System users are allowed.
+        this.host.assumeIdentity(SystemUserService.SELF_LINK);
+        validate.accept(false);
+    }
+
+    @Test
     public void contextPropagationOnScheduleAndRunContext() throws Throwable {
         this.host.assumeIdentity(this.userServicePath);
 
@@ -367,6 +417,7 @@ public class TestAuthorization extends BasicTestCase {
                                 ServiceDocument.FIELD_NAME_SELF_LINK,
                                 GuestUserService.SELF_LINK)
                         .build());
+
         // Create resource group for example service state
         String exampleServiceResourceGroupLink =
                 this.authHelper.createResourceGroup(this.host, "guest-resource-group", Builder.create()
@@ -380,7 +431,7 @@ public class TestAuthorization extends BasicTestCase {
 
         // Create roles tying these together
         this.authHelper.createRole(this.host, userGroupLink, exampleServiceResourceGroupLink,
-                new HashSet<>(Arrays.asList(Action.GET, Action.POST)));
+                new HashSet<>(Arrays.asList(Action.GET, Action.POST, Action.PATCH)));
 
         // Create some example services; some accessible, some not
         Map<URI, ExampleServiceState> exampleServices = new HashMap<>();
@@ -389,26 +440,27 @@ public class TestAuthorization extends BasicTestCase {
 
         OperationContext.setAuthorizationContext(null);
 
-        // Execute get on factory trying to get all example services
-        final ServiceDocumentQueryResult[] factoryGetResult = new ServiceDocumentQueryResult[1];
-        Operation getFactory = Operation.createGet(
-                UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK))
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.failIteration(e);
-                        return;
-                    }
-
-                    factoryGetResult[0] = o.getBody(ServiceDocumentQueryResult.class);
-                    this.host.completeIteration();
-                });
-
-        this.host.testStart(1);
-        this.host.send(getFactory);
-        this.host.testWait();
+        TestRequestSender sender = this.host.getTestRequestSender();
+        Operation responseOp = sender.sendAndWait(Operation.createGet(this.host, ExampleService.FACTORY_LINK));
 
         // Make sure only the authorized services were returned
-        assertAuthorizedServicesInResult("guest", exampleServices, factoryGetResult[0]);
+        ServiceDocumentQueryResult getResult = responseOp.getBody(ServiceDocumentQueryResult.class);
+        assertAuthorizedServicesInResult("guest", exampleServices, getResult);
+        String guestLink = getResult.documentLinks.iterator().next();
+
+        // Make sure we are able to PATCH the example service.
+        ExampleServiceState state = new ExampleServiceState();
+        state.counter = 2L;
+        responseOp = sender.sendAndWait(Operation.createPatch(this.host, guestLink).setBody(state));
+        assertEquals(Operation.STATUS_CODE_OK, responseOp.getStatusCode());
+
+        // Let's try to do another PATCH using kryo-octet-stream
+        state.counter = 3L;
+        FailureResponse failureResponse = sender.sendAndWaitFailure(
+                Operation.createPatch(this.host, guestLink)
+                        .setContentType(Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM)
+                        .setBody(state));
+        assertEquals(Operation.STATUS_CODE_UNAUTHORIZED, failureResponse.op.getStatusCode());
 
     }
 

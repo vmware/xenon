@@ -923,20 +923,6 @@ public final class Utils {
         }
 
         String contentType = op.getContentType();
-        boolean isKryoBinary = isContentTypeKryoBinary(contentType);
-
-        if (isKryoBinary) {
-            byte[] data = new byte[(int) op.getContentLength()];
-            buffer.get(data);
-            Object body = KryoSerializers.deserializeDocument(data, 0, data.length);
-            if (op.isFromReplication()) {
-                // optimization to avoid having to serialize state again, during indexing
-                op.linkSerializedState(data);
-            }
-            op.setBodyNoCloning(body);
-            return;
-        }
-
         Object body = decodeIfText(buffer, contentType);
         if (body != null) {
             op.setBodyNoCloning(body);
@@ -947,6 +933,12 @@ public final class Utils {
         byte[] data = new byte[(int) op.getContentLength()];
         buffer.get(data);
         op.setBodyNoCloning(data);
+
+        boolean isKryoBinary = isContentTypeKryoBinary(contentType);
+        if (isKryoBinary && op.isFromReplication()) {
+            // optimization to avoid having to serialize state again, during indexing
+            op.linkSerializedState(data);
+        }
     }
 
     public static String decodeIfText(ByteBuffer buffer, String contentType)
