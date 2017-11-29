@@ -4642,7 +4642,13 @@ public class TestLuceneDocumentIndexService {
         hostById.remove(getResult.documentOwner);
         VerificationHost nonOwnerHost = hostById.values().stream().findFirst().get();
 
-        Operation result = sender.sendAndWait(Operation.createDelete(nonOwnerHost, fooPath).forceRemote());
+        ExampleServiceState state = new ExampleServiceState();
+        state.counter = 2L;
+        Operation result = sender.sendAndWait(Operation
+                .createPatch(nonOwnerHost, fooPath).setBody(state).forceRemote());
+        assertEquals(Operation.STATUS_CODE_OK, result.getStatusCode());
+
+        result = sender.sendAndWait(Operation.createDelete(nonOwnerHost, fooPath).forceRemote());
         assertEquals(Operation.STATUS_CODE_OK, result.getStatusCode());
 
         FailureResponse failure = sender.sendAndWaitFailure(Operation.createGet(nonOwnerHost, fooPath).forceRemote());

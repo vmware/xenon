@@ -118,6 +118,7 @@ import com.vmware.xenon.services.common.LuceneDocumentIndexService;
 import com.vmware.xenon.services.common.NodeGroupFactoryService;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
 import com.vmware.xenon.services.common.NodeGroupUtils;
+import com.vmware.xenon.services.common.NodeSelectorReplicationService;
 import com.vmware.xenon.services.common.ODataQueryService;
 import com.vmware.xenon.services.common.OperationIndexService;
 import com.vmware.xenon.services.common.QueryFilter;
@@ -1634,6 +1635,7 @@ public class ServiceHost implements ServiceRequestSender {
         addPrivilegedService(this.managementService.getClass());
         addPrivilegedService(OperationIndexService.class);
         addPrivilegedService(BasicAuthenticationService.class);
+        addPrivilegedService(NodeSelectorReplicationService.class);
 
         // Capture authorization context; this function executes as the system user
         AuthorizationContext ctx = OperationContext.getAuthorizationContext();

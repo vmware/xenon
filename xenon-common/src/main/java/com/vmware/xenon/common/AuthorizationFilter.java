@@ -133,6 +133,20 @@ public class AuthorizationFilter implements Filter {
     private void checkAndPopulateAuthzContext(Operation op, OperationProcessingContext context) {
         Service authzService = context.getHost().getAuthorizationService();
 
+        // We only authorize kryo requests for System users.
+        if (Utils.isContentTypeKryoBinary(op.getContentType()) && !op.getAuthorizationContext().isSystemUser()) {
+            String msg = String.format(
+                    "%s requests are only authorized for System Users", op.getContentType());
+            IllegalAccessException ex = new IllegalAccessException(msg);
+            context.resumeProcessingRequest(op,
+                    OperationProcessingChain.FilterReturnCode.FAILED_STOP_PROCESSING, ex);
+            ServiceErrorResponse response = new ServiceErrorResponse();
+            response.message = msg;
+            response.statusCode = Operation.STATUS_CODE_UNAUTHORIZED;
+            op.fail(Operation.STATUS_CODE_UNAUTHORIZED, ex, response);
+            return;
+        }
+
         long dispatchTime = System.nanoTime();
         op.nestCompletion(o -> {
             if (authzService.hasOption(ServiceOption.INSTRUMENTATION)) {
