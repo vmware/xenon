@@ -2088,10 +2088,10 @@ public class LuceneDocumentIndexService extends StatelessService {
             hitCount = queryResultLimit;
         } else if (!options.contains(QueryOption.INCLUDE_ALL_VERSIONS)) {
             // The query has an explicit result limit set, but the value is specified in terms of
-            // the number of desired results in the QueryTask, not the expected number of Lucene
-            // documents which must be processed in order to generate these results. Adjust the
-            // Lucene query page size to account for this discrepancy.
-            hitCount = Math.max(resultLimit, queryPageResultLimit);
+            // the number of desired results in the QueryTask.
+            // Assume twice as much data fill be fetched to account for the discrepancy.
+            // The do/while loop below will correct this estimate at every iteration
+            hitCount = Math.min(2 * resultLimit, queryPageResultLimit);
         } else {
             hitCount = resultLimit;
         }
@@ -2228,6 +2228,10 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             after = bottom;
             resultLimit = count - rsp.documentLinks.size();
+
+            // on the next iteration get twice as much data as in this iteration
+            // but never get more than queryResultLimit at once.
+            hitCount = Math.min(queryResultLimit, 2 * hitCount);
         } while (resultLimit > 0);
 
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
