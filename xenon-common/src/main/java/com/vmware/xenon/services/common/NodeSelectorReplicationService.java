@@ -188,6 +188,7 @@ public class NodeSelectorReplicationService extends StatelessService {
 
     private void replicateUpdateToNodes(NodeSelectorReplicationContext context) {
         Operation update = createReplicationRequest(context.parentOp, null);
+        update.setAuthorizationContext(getSystemAuthorizationContext());
         update.setCompletion((o, e) -> handleReplicationCompletion(context, o, e));
 
         // trigger completion once, for self node, since its part of our accounting

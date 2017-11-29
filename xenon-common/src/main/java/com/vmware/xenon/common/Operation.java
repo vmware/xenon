@@ -35,6 +35,8 @@ import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceDocumentDescription.Builder;
 import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
 import com.vmware.xenon.common.ServiceHost.ServiceNotFoundException;
+import com.vmware.xenon.common.serialization.KryoSerializers;
+import com.vmware.xenon.services.common.GuestUserService;
 import com.vmware.xenon.services.common.QueryFilter;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.SystemUserService;
@@ -186,18 +188,25 @@ public class Operation implements Cloneable {
         }
 
         public boolean isSystemUser() {
+            return isUserSubject(SystemUserService.SELF_LINK);
+        }
+
+        public boolean isGuestUser() {
+            return isUserSubject(GuestUserService.SELF_LINK);
+        }
+
+        private boolean isUserSubject(String userLink) {
             Claims claims = getClaims();
             if (claims == null) {
                 return false;
             }
-
             String subject = claims.getSubject();
             if (subject == null) {
                 return false;
             }
-
-            return subject.equals(SystemUserService.SELF_LINK);
+            return subject.equals(userLink);
         }
+
 
         public static class Builder {
             private AuthorizationContext authorizationContext;
@@ -1009,6 +1018,14 @@ public class Operation implements Cloneable {
         }
 
         if (this.body != null && !(this.body instanceof String)) {
+            if (this.contentType != null && Utils.isContentTypeKryoBinary(this.contentType)
+                    && this.body instanceof byte[]) {
+                byte[] bytes = (byte[])this.body;
+                this.body = KryoSerializers.deserializeDocument(bytes, 0, bytes.length);
+                this.serializedBody = Utils.toJson(this.body);
+                return (T) this.body;
+            }
+
             if (this.contentType == null
                     || !this.contentType.contains(MEDIA_TYPE_APPLICATION_JSON)) {
                 throw new IllegalStateException("content type is not JSON: " + this.contentType);
