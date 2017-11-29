@@ -3888,26 +3888,20 @@ public class TestLuceneDocumentIndexService {
         int pageSize = LuceneDocumentIndexService.getImplicitQueryProcessingPageSize();
         try {
             // Without an implicit processing limit, we should see n passes per query
-            verifyImplicitQueryPageSize(querySpec, 1, (1 + this.updateCount));
+            verifyImplicitQueryPageSize(querySpec, 1);
             // With an implicit processing limit, we should see one pass per query
             int size = (int) (1 + this.serviceCount) * this.updateCount;
-            verifyImplicitQueryPageSize(querySpec, size, 1.0);
+            verifyImplicitQueryPageSize(querySpec, size);
         } finally {
             LuceneDocumentIndexService.setImplicitQueryProcessingPageSize(pageSize);
         }
     }
 
-    private void verifyImplicitQueryPageSize(QueryTask.QuerySpecification querySpec, int pageSize,
-            double expectedIterationCount) {
-
+    private void verifyImplicitQueryPageSize(QueryTask.QuerySpecification querySpec, int pageSize) {
         LuceneDocumentIndexService.setImplicitQueryProcessingPageSize(pageSize);
-
         QueryTask qt = QueryTask.create(querySpec).setDirect(true);
         this.host.createQueryTaskService(qt, false, true, qt, null);
-        assertEquals(qt.results.documentLinks.size(), this.serviceCount);
-
-        ServiceStat st = getLuceneStat(LuceneDocumentIndexService.STAT_NAME_ITERATIONS_PER_QUERY);
-        assertEquals(st.latestValue, expectedIterationCount, 0.01);
+        assertEquals(this.serviceCount, qt.results.documentLinks.size());
     }
 
     /**

@@ -162,6 +162,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final int DEFAULT_INDEX_SEARCHER_COUNT_THRESHOLD = 200;
 
+    public static final int MIN_QUERY_RESULT_LIMIT = 1000;
+
     public static final int DEFAULT_QUERY_RESULT_LIMIT = 10000;
 
     public static final int DEFAULT_QUERY_PAGE_RESULT_LIMIT = 10000;
@@ -2006,26 +2008,16 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         response.queryTimeMicros = 0L;
-        TopDocs results = null;
+        TopDocs results;
         ScoreDoc after = null;
         long start = queryStartTimeMicros;
-        int resultLimit = queryResultLimit;
-        if (querySpec.resultLimit != null && querySpec.resultLimit != Integer.MAX_VALUE) {
-            resultLimit = querySpec.resultLimit;
-            if (querySpec.resultLimit < DEFAULT_QUERY_RESULT_LIMIT) {
-                logWarning("\n*****\n"
-                        + "resultLimit value is too low, query will take much longer on large result sets."
-                        + "Do not set this value for COUNT queries, or set it above default of "
-                        + DEFAULT_QUERY_RESULT_LIMIT
-                        + "\n*****\n");
-            }
-        }
+        int resultLimit = MIN_QUERY_RESULT_LIMIT;
+
         do {
             results = searcher.searchAfter(after, termQuery, resultLimit);
             long queryEndTimeMicros = Utils.getNowMicrosUtc();
             long luceneQueryDurationMicros = queryEndTimeMicros - start;
-            long queryDurationMicros = queryEndTimeMicros - queryStartTimeMicros;
-            response.queryTimeMicros = queryDurationMicros;
+            response.queryTimeMicros = queryEndTimeMicros - queryStartTimeMicros;
 
             if (results == null || results.scoreDocs == null || results.scoreDocs.length == 0) {
                 break;
@@ -2043,6 +2035,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                     AGGREGATION_TYPE_AVG_MAX, now - queryEndTimeMicros);
 
             start = now;
+            // grow the result limit
+            resultLimit = Math.min(resultLimit * 2, queryResultLimit);
         } while (true);
 
         response.documentLinks.clear();
@@ -2088,10 +2082,10 @@ public class LuceneDocumentIndexService extends StatelessService {
             hitCount = queryResultLimit;
         } else if (!options.contains(QueryOption.INCLUDE_ALL_VERSIONS)) {
             // The query has an explicit result limit set, but the value is specified in terms of
-            // the number of desired results in the QueryTask, not the expected number of Lucene
-            // documents which must be processed in order to generate these results. Adjust the
-            // Lucene query page size to account for this discrepancy.
-            hitCount = Math.max(resultLimit, queryPageResultLimit);
+            // the number of desired results in the QueryTask.
+            // Assume twice as much data fill be fetched to account for the discrepancy.
+            // The do/while loop below will correct this estimate at every iteration
+            hitCount = Math.min(2 * resultLimit, queryPageResultLimit);
         } else {
             hitCount = resultLimit;
         }
@@ -2228,6 +2222,10 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             after = bottom;
             resultLimit = count - rsp.documentLinks.size();
+
+            // on the next iteration get twice as much data as in this iteration
+            // but never get more than queryResultLimit at once.
+            hitCount = Math.min(queryPageResultLimit, 2 * hitCount);
         } while (resultLimit > 0);
 
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
