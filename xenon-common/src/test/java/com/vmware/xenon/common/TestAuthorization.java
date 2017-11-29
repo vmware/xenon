@@ -248,6 +248,16 @@ public class TestAuthorization extends BasicTestCase {
         this.host.testWait();
         this.host.setOperationTracingLevel(Level.ALL);
 
+        // Verify PATCH for Kryo-octet-stream
+        patch = Operation.createPatch(UriUtils.buildUri(this.host, serviceLink));
+        patch.setContentType(Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM);
+        patch.setBody(new ServiceDocument());
+        this.host.testStart(1);
+        patch.setCompletion(this.host.getCompletion());
+        this.host.send(patch);
+        this.host.testWait();
+        this.host.setOperationTracingLevel(Level.ALL);
+
         // Verify DENY PATCH
         this.host.resetAuthorizationContext();
         patch = Operation.createPatch(UriUtils.buildUri(this.host, serviceLink));
@@ -256,6 +266,23 @@ public class TestAuthorization extends BasicTestCase {
         patch.setCompletion(ch);
         this.host.send(patch);
         this.host.testWait();
+
+        // Verify PATCH for kryo-octet-stream for guest user. This should fail with UNAUTHORIZED error
+        patch = Operation.createPatch(UriUtils.buildUri(this.host, serviceLink));
+        patch.setContentType(Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM);
+        patch.setBody(new ServiceDocument());
+        this.host.testStart(1);
+        patch.setCompletion((o, e) -> {
+            if (e != null && o.getStatusCode() == Operation.STATUS_CODE_UNAUTHORIZED) {
+                this.host.completeIteration();
+                return;
+            }
+            this.host.failIteration(
+                    new IllegalStateException("expected test to fail with UNAUTHORIZED error"));
+        });
+        this.host.send(patch);
+        this.host.testWait();
+        this.host.setOperationTracingLevel(Level.ALL);
     }
 
     @Test
@@ -373,6 +400,7 @@ public class TestAuthorization extends BasicTestCase {
                                 ServiceDocument.FIELD_NAME_SELF_LINK,
                                 GuestUserService.SELF_LINK)
                         .build());
+
         // Create resource group for example service state
         String exampleServiceResourceGroupLink =
                 this.authHelper.createResourceGroup(this.host, "guest-resource-group", Builder.create()
@@ -386,7 +414,7 @@ public class TestAuthorization extends BasicTestCase {
 
         // Create roles tying these together
         this.authHelper.createRole(this.host, userGroupLink, exampleServiceResourceGroupLink,
-                new HashSet<>(Arrays.asList(Action.GET, Action.POST)));
+                new HashSet<>(Arrays.asList(Action.GET, Action.POST, Action.PATCH)));
 
         // Create some example services; some accessible, some not
         Map<URI, ExampleServiceState> exampleServices = new HashMap<>();
@@ -398,14 +426,29 @@ public class TestAuthorization extends BasicTestCase {
         TestRequestSender sender = this.host.getTestRequestSender();
         Operation responseOp = sender.sendAndWait(Operation.createGet(this.host, ExampleService.FACTORY_LINK));
 
+        // Make sure only the authorized services were returned
+        ServiceDocumentQueryResult getResult = responseOp.getBody(ServiceDocumentQueryResult.class);
+        assertAuthorizedServicesInResult("guest", exampleServices, getResult);
+        String guestLink = getResult.documentLinks.iterator().next();
+
+        // Make sure we are able to PATCH the example service.
+        ExampleServiceState state = new ExampleServiceState();
+        state.counter = 2L;
+        responseOp = sender.sendAndWait(Operation.createPatch(this.host, guestLink).setBody(state));
+        assertEquals(Operation.STATUS_CODE_OK, responseOp.getStatusCode());
+
+        // Let's try to do another PATCH using kryo-octet-stream
+        state.counter = 3L;
+        FailureResponse failureResponse = sender.sendAndWaitFailure(
+                Operation.createPatch(this.host, guestLink)
+                        .setContentType(Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM)
+                        .setBody(state));
+        assertEquals(Operation.STATUS_CODE_UNAUTHORIZED, failureResponse.op.getStatusCode());
+
         Map<String, ServiceStats.ServiceStat> stat = this.host.getServiceStats(
                 UriUtils.buildUri(this.host, ServiceUriPaths.CORE_MANAGEMENT));
         double currentInsertCount = stat.get(
                 ServiceHostManagementService.STAT_NAME_AUTHORIZATION_CACHE_INSERT_COUNT).latestValue;
-
-        // Make sure only the authorized services were returned
-        ServiceDocumentQueryResult getResult = responseOp.getBody(ServiceDocumentQueryResult.class);
-        assertAuthorizedServicesInResult("guest", exampleServices, getResult);
 
         // Make a second request and verify that the cache did not get updated, instead Xenon re-used
         // the cached Guest authorization context.
@@ -416,7 +459,7 @@ public class TestAuthorization extends BasicTestCase {
                 ServiceHostManagementService.STAT_NAME_AUTHORIZATION_CACHE_INSERT_COUNT).latestValue;
         assertTrue(currentInsertCount == newInsertCount);
 
-        // Make sure that Authorization Context cache in Xenon has atleast one cached token.
+        // Make sure that Authorization Context cache in Xenon has at least one cached token.
         double currentCacheSize = stat.get(
                 ServiceHostManagementService.STAT_NAME_AUTHORIZATION_CACHE_SIZE).latestValue;
         assertTrue(currentCacheSize == newInsertCount);
