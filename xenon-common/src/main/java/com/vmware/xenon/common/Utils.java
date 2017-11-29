@@ -865,16 +865,15 @@ public class Utils {
             // unrecognized or binary body, use the raw bytes
             byte[] data = new byte[(int) op.getContentLength()];
             buffer.get(data);
-            if (Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.equals(contentType)) {
-                body = KryoSerializers.deserializeDocument(data, 0, data.length);
-                if (op.isFromReplication()) {
-                    // optimization to avoid having to serialize state again, during indexing
-                    op.linkSerializedState(data);
-                }
-            } else {
-                body = data;
+            op.setBodyNoCloning(data);
+
+            boolean isKryoBinary = isContentTypeKryoBinary(contentType);
+            if (isKryoBinary && op.isFromReplication()) {
+                // optimization to avoid having to serialize state again, during indexing
+                op.linkSerializedState(data);
             }
-            op.setBodyNoCloning(body).complete();
+
+            op.complete();
         } catch (Throwable e) {
             op.fail(e);
         }
@@ -916,6 +915,14 @@ public class Utils {
             out.close();
         }
         return ByteBuffer.wrap(out.toByteArray());
+    }
+
+    public static boolean isContentTypeKryoBinary(String contentType) {
+        return contentType.length() == Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.length()
+                && contentType.charAt(12) == 'k'
+                && contentType.charAt(13) == 'r'
+                && contentType.charAt(14) == 'y'
+                && contentType.charAt(15) == 'o';
     }
 
     private static boolean isContentTypeText(String contentType) {

@@ -100,6 +100,7 @@ import com.vmware.xenon.services.common.LuceneDocumentIndexService;
 import com.vmware.xenon.services.common.NodeGroupFactoryService;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
 import com.vmware.xenon.services.common.NodeGroupUtils;
+import com.vmware.xenon.services.common.NodeSelectorReplicationService;
 import com.vmware.xenon.services.common.ODataQueryService;
 import com.vmware.xenon.services.common.OperationIndexService;
 import com.vmware.xenon.services.common.ProcessFactoryService;
@@ -1295,6 +1296,7 @@ public class ServiceHost implements ServiceRequestSender {
         addPrivilegedService(OperationIndexService.class);
         addPrivilegedService(LuceneBlobIndexService.class);
         addPrivilegedService(BasicAuthenticationService.class);
+        addPrivilegedService(NodeSelectorReplicationService.class);
 
         // Capture authorization context; this function executes as the system user
         AuthorizationContext ctx = OperationContext.getAuthorizationContext();
@@ -3104,6 +3106,18 @@ public class ServiceHost implements ServiceRequestSender {
         if (this.isAuthorizationEnabled()) {
             if (inboundOp.getAuthorizationContext() == null) {
                 populateAuthorizationContext(inboundOp);
+            }
+
+            // We only authorize kryo requests for System users.
+            if (Utils.isContentTypeKryoBinary(inboundOp.getContentType()) && !inboundOp.getAuthorizationContext().isSystemUser()) {
+                String msg = String.format(
+                        "%s requests are only authorized for System Users", inboundOp.getContentType());
+                IllegalAccessException ex = new IllegalAccessException(msg);
+                ServiceErrorResponse response = new ServiceErrorResponse();
+                response.message = msg;
+                response.statusCode = Operation.STATUS_CODE_UNAUTHORIZED;
+                inboundOp.fail(Operation.STATUS_CODE_UNAUTHORIZED, ex, response);
+                return true;
             }
 
             if (this.authorizationService != null) {
