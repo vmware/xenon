@@ -502,7 +502,6 @@ public class SynchronizationTaskService
         QueryTask queryTask = new QueryTask();
         queryTask.querySpec = new QueryTask.QuerySpecification();
         queryTask.indexLink = task.childDocumentIndexLink;
-        queryTask.taskInfo.isDirect = true;
 
         // Add clause for documentSelfLink = <FactorySelfLink>/*
         QueryTask.Query uriPrefixClause = new QueryTask.Query()

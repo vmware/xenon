@@ -1113,7 +1113,6 @@ public abstract class FactoryService extends StatelessService {
         task.nodeSelectorLink = this.nodeSelectorLink;
         task.queryResultLimit = SELF_QUERY_RESULT_LIMIT;
         task.taskInfo = TaskState.create();
-        task.taskInfo.isDirect = true;
         return task;
     }
 
