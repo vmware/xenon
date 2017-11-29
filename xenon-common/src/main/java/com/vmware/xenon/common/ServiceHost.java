@@ -4874,7 +4874,7 @@ public class ServiceHost implements ServiceRequestSender {
         // retrieve the description through the cached template so its the thread safe,
         // immutable version
         body.description = buildDocumentDescription(s);
-        body.serializedDocument = op.getLinkedSerializedState();
+        //body.serializedDocument = KryoSerializers.serializeDocument();
         op.linkSerializedState(null);
 
         ServiceDocument previousState = this.serviceResourceTracker.getCachedServiceState(s, op);

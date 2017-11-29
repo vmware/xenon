@@ -220,12 +220,22 @@ public final class KryoSerializers {
     }
 
     /**
-     * See {@link #serializeDocument(ServiceDocument, byte[], int)}
+     * See {@link #serializeDocument(ServiceDocument, int)}
      */
     public static Output serializeAsDocument(Object o, int maxSize) {
         Kryo k = getKryoThreadLocalForDocuments();
         Output out = new Output(getBuffer(DEFAULT_BUFFER_SIZE_BYTES), maxSize);
         k.writeClassAndObject(out, o);
+        return out;
+    }
+
+    /**
+     * See {@link #serializeDocument(ServiceDocument, int)}
+     */
+    public static Output serializeAsDocumentWithoutClassMetadata(Object o, int maxSize) {
+        Kryo k = getKryoThreadLocalForDocuments();
+        Output out = new Output(getBuffer(DEFAULT_BUFFER_SIZE_BYTES), maxSize);
+        k.writeObject(out, o);
         return out;
     }
 
@@ -308,12 +318,18 @@ public final class KryoSerializers {
 
     /**
      * Deserializes into a native ServiceDocument derived type, using the document serializer.
-     * Must be paired with {@link #serializeDocument(ServiceDocument, byte[], int)}
+     * Must be paired with {@link #serializeDocument(ServiceDocument, int)}
      */
     public static Object deserializeDocument(byte[] bytes, int position, int length) {
         Kryo k = getKryoThreadLocalForDocuments();
         Input in = new Input(bytes, position, length);
         return k.readClassAndObject(in);
+    }
+
+    public static <T> T deserializeDocument(byte[] bytes, int position, int length, Class<T> type) {
+        Kryo k = getKryoThreadLocalForDocuments();
+        Input in = new Input(bytes, position, length);
+        return k.readObject(in, type);
     }
 
     /**

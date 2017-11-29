@@ -775,7 +775,7 @@ public final class Utils {
                 op.setContentLength(data.length);
             }
         } else if (Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.equals(contentType)) {
-            Output o = KryoSerializers.serializeAsDocument(
+            Output o = KryoSerializers.serializeAsDocumentWithoutClassMetadata(
                     body,
                     ServiceClient.MAX_BINARY_SERIALIZED_BODY_LIMIT);
             // incur a memory copy since the byte array can be used across many threads in the
@@ -884,20 +884,6 @@ public final class Utils {
         }
 
         String contentType = op.getContentType();
-        boolean isKryoBinary = isContentTypeKryoBinary(contentType);
-
-        if (isKryoBinary) {
-            byte[] data = new byte[(int) op.getContentLength()];
-            buffer.get(data);
-            Object body = KryoSerializers.deserializeDocument(data, 0, data.length);
-            if (op.isFromReplication()) {
-                // optimization to avoid having to serialize state again, during indexing
-                op.linkSerializedState(data);
-            }
-            op.setBodyNoCloning(body);
-            return;
-        }
-
         Object body = decodeIfText(buffer, contentType);
         if (body != null) {
             op.setBodyNoCloning(body);
@@ -908,6 +894,12 @@ public final class Utils {
         byte[] data = new byte[(int) op.getContentLength()];
         buffer.get(data);
         op.setBodyNoCloning(data);
+
+        boolean isKryoBinary = isContentTypeKryoBinary(contentType);
+        if (isKryoBinary && op.isFromReplication()) {
+            // optimization to avoid having to serialize state again, during indexing
+            op.linkSerializedState(data);
+        }
     }
 
     public static String decodeIfText(ByteBuffer buffer, String contentType)
