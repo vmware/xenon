@@ -101,6 +101,8 @@ public final class KryoSerializers {
 
         k.addDefaultSerializer(ByteBuffer.class, ByteBufferSerializer.INSTANCE);
 
+        NonSerializingSerializer.apply(k);
+
         if (KRYO_HANDLE_BUILTIN_COLLECTIONS) {
             configureJdkCollections(k);
         }
