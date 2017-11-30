@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.common;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletionException;
@@ -163,22 +164,24 @@ public class TestSendWithDeferredResult extends BasicReusableHostTestCase {
 
     @Test
     public void testRecover() throws Throwable {
-        AtomicInteger invocationCounter = new AtomicInteger();
-        this.host.testStart(1);
+        TestContext ctx = new TestContext(1, Duration.ofSeconds(10));
         Operation get = Operation
                 .createGet(host, UriUtils.buildUriPath(ExampleService.FACTORY_LINK, "unknown"));
         DeferredResult<ExampleServiceState> deferredResult =
-                this.host
-                .sendWithDeferredResult(get, ExampleServiceState.class)
-                .exceptionally(ex -> {
-                    invocationCounter.incrementAndGet();
-                    ExampleServiceState doc = new ExampleServiceState();
-                    doc.name = "?";
-                    return doc;
-                })
-                .whenComplete(this.host.getCompletionDeferred());
-        this.host.testWait();
-        Assert.assertEquals(1, invocationCounter.get());
+                this.host.sendWithDeferredResult(get, ExampleServiceState.class)
+                        .exceptionally(ex -> {
+                            ExampleServiceState doc = new ExampleServiceState();
+                            doc.name = "?";
+                            return doc;
+                        })
+                        .whenComplete(ctx.getCompletionDeferred());
+
+        ctx.await(() -> {
+            if (deferredResult.isDone()) {
+                ctx.completeIteration();
+            }
+        });
+
         ExampleServiceState doc = deferredResult.getNow(() -> null);
         Assert.assertEquals("?", doc.name);
     }
