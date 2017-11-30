@@ -13,20 +13,18 @@
 
 package com.vmware.xenon.services.common;
 
+import static com.vmware.xenon.services.common.LuceneDocumentIndexService.DEFAULT_PAGINATED_SEARCHER_EXPIRATION_DELAY;
+import static com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption.SINGLE_USE;
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
 import static javax.xml.bind.DatatypeConverter.printBase64Binary;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
-
-import static com.vmware.xenon.services.common.LuceneDocumentIndexService.DEFAULT_PAGINATED_SEARCHER_EXPIRATION_DELAY;
-import static com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption.SINGLE_USE;
 
 import java.io.File;
 import java.io.IOException;
@@ -60,6 +58,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.logging.Level;
+
 import javax.xml.bind.DatatypeConverter;
 
 import org.apache.lucene.search.IndexSearcher;
@@ -3188,12 +3187,9 @@ public class TestLuceneDocumentIndexService {
         patchOrDeleteWithExpiration(factoryUri, services, expTime, expectedCount);
         this.host.log("All example services expired");
 
-        // In the long-running test case, sleep for a couple of maintenance intervals in order to
-        // avoid generating unnecessary log spam.
-        if (this.host.isLongDurationTest()) {
-            Thread.sleep(2 * TimeUnit.MICROSECONDS.toMillis(
-                    this.host.getMaintenanceIntervalMicros()));
-        }
+        // sleep 1 maint cycle of the index service
+        Thread.sleep(5 * TimeUnit.MICROSECONDS.toMillis(
+                this.host.getMaintenanceIntervalMicros()));
 
         ServiceStat deletedCountBaseline = expiredCountBeforeExpiration;
         ServiceStat forcedMaintenanceCountBaseline = forcedMaintenanceCountBeforeExpiration;
@@ -3324,7 +3320,7 @@ public class TestLuceneDocumentIndexService {
         }
 
         // do not do anything on the services, rely on the maintenance interval to expire them
-        this.host.waitFor("Lucene service maintenanance never expired services", () -> {
+        this.host.waitFor("Lucene service maintenance never expired services", () -> {
             Map<String, ServiceStat> statMap = this.host.getServiceStats(
                     this.host.getDocumentIndexServiceUri());
             ServiceStat maintExpiredCount = statMap
