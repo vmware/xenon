@@ -17,6 +17,7 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -38,6 +39,7 @@ import java.util.logging.Logger;
 
 import com.esotericsoftware.kryo.io.Output;
 import org.junit.Test;
+import org.objenesis.strategy.StdInstantiatorStrategy;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.ServiceDocument;
@@ -51,6 +53,21 @@ import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 public class TestKryoSerializers {
 
     public int iterationCount = 1;
+
+    @Test
+    public void dontSerializeBindingEnumeration() throws Exception {
+        Map<String, Object> map = new HashMap<>();
+        Class<?> cl = Class.forName("com.sun.jndi.rmi.registry.BindingEnumeration");
+        Object enu = new StdInstantiatorStrategy().newInstantiatorOf(cl).newInstance();
+        map.put("k", enu);
+
+        try {
+            Output out = KryoSerializers.serializeAsDocument(map, 100000);
+            KryoSerializers.deserializeDocument(out.getBuffer(), 0, out.position());
+            fail("BindingEnumeration cannot be deserialized");
+        } catch (IllegalStateException e) {
+        }
+    }
 
     @Test
     public void serializeDocumentForIndexing() {
