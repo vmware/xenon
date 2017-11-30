@@ -3564,12 +3564,10 @@ public class LuceneDocumentIndexService extends StatelessService {
             for (ScoreDoc scoreDoc : results.scoreDocs) {
                 DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor();
                 loadDoc(searcher, visitor, scoreDoc.doc, this.fieldsToLoadIndexingIdLookup);
-                List<DocumentStoredFieldVisitor> versionDocList = versionToDocsMap.get(visitor.documentVersion);
-                if (versionDocList == null) {
-                    versionDocList = new ArrayList<>();
-                    versionToDocsMap.put(visitor.documentVersion, versionDocList);
-                }
+                List<DocumentStoredFieldVisitor> versionDocList = versionToDocsMap
+                        .computeIfAbsent(visitor.documentVersion, k -> new ArrayList<>());
                 versionDocList.add(visitor);
+
                 if (visitor.documentVersion > highestVersion) {
                     highestVersion = visitor.documentVersion;
                     lastUpdateAction = visitor.documentUpdateAction;
@@ -3597,11 +3595,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                 for (ScoreDoc scoreDoc : missingVersionResult.scoreDocs) {
                     DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor();
                     loadDoc(searcher, visitor, scoreDoc.doc, this.fieldsToLoadIndexingIdLookup);
-                    List<DocumentStoredFieldVisitor> versionDocList = versionToDocsMap.get(visitor.documentVersion);
-                    if (versionDocList == null) {
-                        versionDocList = new ArrayList<>();
-                        versionToDocsMap.put(visitor.documentVersion, versionDocList);
-                    }
+                    List<DocumentStoredFieldVisitor> versionDocList = versionToDocsMap
+                            .computeIfAbsent(visitor.documentVersion, k -> new ArrayList<>());
                     versionDocList.add(visitor);
                 }
             }
@@ -3616,9 +3611,13 @@ public class LuceneDocumentIndexService extends StatelessService {
                     Long nextVersionCreationTime = null;
                     if (visitor.documentVersion == highestVersion) {
                         // pick the update time on the first entry. They should be the same for all docs of the same version
-                        nextVersionCreationTime = versionToDocsMap.get(visitor.documentVersion).get(0).documentUpdateTimeMicros;
+                        DocumentStoredFieldVisitor firstDoc = versionToDocsMap.get(visitor.documentVersion).get(0);
+                        nextVersionCreationTime = firstDoc.documentUpdateTimeMicros;
                     } else {
-                        nextVersionCreationTime = versionToDocsMap.get(visitor.documentVersion + 1).get(0).documentUpdateTimeMicros;
+                        List<DocumentStoredFieldVisitor> list = versionToDocsMap.get(visitor.documentVersion + 1);
+                        if (list != null) {
+                            nextVersionCreationTime = list.get(0).documentUpdateTimeMicros;
+                        }
                     }
                     if (nextVersionCreationTime != null) {
                         updateTombstoneTime(wr, visitor.documentIndexingId, nextVersionCreationTime);
