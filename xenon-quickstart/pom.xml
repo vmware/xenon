@@ -6,7 +6,7 @@
     <parent>
         <groupId>com.vmware.xenon</groupId>
         <artifactId>xenon-parent</artifactId>
-        <version>1.5.7_6-SNAPSHOT</version>
+        <version>1.5.7_6</version>
     </parent>
 
     <artifactId>xenon-quickstart</artifactId>
