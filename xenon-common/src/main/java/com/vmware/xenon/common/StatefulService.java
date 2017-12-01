@@ -526,8 +526,8 @@ public class StatefulService implements Service {
 
             if (hasOption(ServiceOption.OWNER_SELECTION)) {
                 if (!hasOption(ServiceOption.DOCUMENT_OWNER)) {
-                    synchronizeWithPeers(request, new IllegalStateException(
-                            "not marked as owner"));
+                    // most likely we have just become the owner - synch and re-process request
+                    synchWithPeersAndReProcess(request);
                     return true;
                 } else {
                     return false;
@@ -592,6 +592,32 @@ public class StatefulService implements Service {
         }
 
         return false;
+    }
+
+    private void synchWithPeersAndReProcess(Operation op) {
+        // create a synchOwner request and synch with peers to get the latest state
+        ServiceDocument d = new ServiceDocument();
+        d.documentSelfLink = UriUtils.getLastPathSegment(getSelfLink());
+        Operation synchOwnerRequest = Operation.createPost(getUri())
+                .setBody(d)
+                .setReferer(getUri())
+                .setConnectionSharing(true)
+                .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
+                .setRetryCount(0)
+                .setExpiration(op.getExpirationMicrosUtc())
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        op.fail(e);
+                        return;
+                    }
+
+                    // now that we have the latest state, and are marked as owner,
+                    // we can re-process the request
+                    handleRequest(op);
+                });
+
+        synchronizeWithPeers(synchOwnerRequest, null);
     }
 
     /**
