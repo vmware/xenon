@@ -357,6 +357,7 @@ public class TestQueryTaskService {
                 .setCompletion(subscriptionCtx.getCompletion());
         this.host.startSubscriptionService(post, notificationConsumer);
         subscriptionCtx.await();
+        waitForContiniousQueryActivation(this.host, 1.0);
 
         // Start some services which match the continuous query filter; This should not result in notifications.
         QueryValidationServiceState newState = new QueryValidationServiceState();
@@ -385,6 +386,8 @@ public class TestQueryTaskService {
         this.host.startSubscriptionService(post, notificationConsumer);
         subscriptionCtx.await();
 
+        waitForContiniousQueryActivation(this.host, 2.0);
+
         // update the text value to be a match resulting in notifications
         queryCtx = this.host.testCreate(this.serviceCount);
         ctxRef.set(queryCtx);
@@ -398,6 +401,20 @@ public class TestQueryTaskService {
         newState.textValue = updatedTextValue;
         putSimpleStateOnQueryTargetServices(initialServices, newState);
         queryCtx.await();
+    }
+
+    private void waitForContiniousQueryActivation(VerificationHost host, double numberActiveQueries) {
+        // Since the continuous query is not direct, it becomes active in the index asynchronously
+        // with respect to the completion of the initial POST operation. Poll the index stats until
+        // they indicate that the continuous query filter is active.
+        host.waitFor("task never activated", () -> {
+            ServiceStats indexStats = host.getServiceState(null, ServiceStats.class,
+                    UriUtils.buildStatsUri(host.getDocumentIndexServiceUri()));
+            ServiceStat activeQueryStat = indexStats.entries.get(
+                    LuceneDocumentIndexService.STAT_NAME_ACTIVE_QUERY_FILTERS
+                            + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR);
+            return activeQueryStat != null && activeQueryStat.latestValue >= numberActiveQueries;
+        });
     }
 
     @Test
@@ -451,17 +468,7 @@ public class TestQueryTaskService {
         this.host.startSubscriptionService(post, notificationConsumer);
         this.host.testWait(subscriptionCtx);
 
-        // Since the continuous query is not direct, it becomes active in the index asynchronously
-        // with respect to the completion of the initial POST operation. Poll the index stats until
-        // they indicate that the continuous query filter is active.
-        this.host.waitFor("task never activated", () -> {
-            ServiceStats indexStats = this.host.getServiceState(null, ServiceStats.class,
-                    UriUtils.buildStatsUri(this.host.getDocumentIndexServiceUri()));
-            ServiceStat activeQueryStat = indexStats.entries.get(
-                    LuceneDocumentIndexService.STAT_NAME_ACTIVE_QUERY_FILTERS
-                            + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR);
-            return activeQueryStat != null && activeQueryStat.latestValue >= 1.0;
-        });
+        waitForContiniousQueryActivation(this.host, 1.0);
 
         // Start some services which match the continuous query filter and wait for notifications.
         QueryValidationServiceState newState = new QueryValidationServiceState();
