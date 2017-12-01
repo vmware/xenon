@@ -793,8 +793,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
             ExampleServiceState ns = newExampleStatesMap.get(s.documentSelfLink);
             if (ns.documentEpoch > s.documentEpoch) {
                 // owner change
-                ServiceHost newOwner =
-                        this.host.getInProcessHostMap().values().stream().filter(h -> h.getId().equals(ns.documentOwner)).iterator().next();
+                ServiceHost newOwner = this.host.getOwnerPeer(s.documentSelfLink, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
 
                 QueryTask.Query query = QueryTask.Query.Builder.create()
                         .addKindFieldClause(ExampleServiceState.class)
@@ -816,6 +815,76 @@ public class TestSynchronizationTaskService extends BasicTestCase {
                 // service owner should cache latest version
                 // version in cache should be no less than index at owner node
                 assertFalse(ns.documentVersion < nsFromIndex.documentVersion);
+            }
+        }
+    }
+
+    @Test
+    public void updateAfterOnDemandSynchronization() throws Throwable {
+        setUpMultiNode();
+        for (VerificationHost host : this.host.getInProcessHostMap().values()) {
+            // avoid cache clear
+            host.setServiceCacheClearDelayMicros(TimeUnit.MINUTES.toMicros(3));
+            host.setPeerSynchronizationEnabled(false);
+        }
+        this.host.setNodeGroupQuorum(this.nodeCount - 1);
+        this.host.waitForNodeGroupConvergence();
+
+        List<ExampleServiceState> exampleStates = this.host.createExampleServices(
+                this.host.getPeerHost(), this.serviceCount, null, ExampleService.FACTORY_LINK);
+
+        VerificationHost hostToStop = this.host.getPeerHost();
+        this.host.stopHost(hostToStop);
+        this.host.waitForNodeUnavailable(ServiceUriPaths.DEFAULT_NODE_GROUP, this.host.getInProcessHostMap().values(), hostToStop);
+        this.host.waitForNodeGroupConvergence(this.host.getPeerCount());
+
+        VerificationHost peer = this.host.getPeerHost();
+        // update trigger on demand sync
+        List<Operation> ops = new ArrayList<>();
+        for (ExampleServiceState s : exampleStates) {
+            ExampleServiceState ns = new ExampleServiceState();
+            ns.name = s.name;
+            ns.counter = ++s.counter;
+            Operation op = Operation.createPut(peer, s.documentSelfLink)
+                    .setBody(ns);
+            ops.add(op);
+        }
+        this.host.getTestRequestSender().sendAndWait(ops);
+        // get cached state
+        ops.clear();
+        for (ExampleServiceState s : exampleStates) {
+            Operation op = Operation.createGet(peer, s.documentSelfLink);
+            ops.add(op);
+        }
+        List<ExampleServiceState> newExampleStates = this.host.getTestRequestSender().sendAndWait(ops, ExampleServiceState.class);
+        Map<String, ExampleServiceState> newExampleStatesMap =
+                newExampleStates.stream().collect(Collectors.toMap(s -> s.documentSelfLink, s -> s));
+        for (ExampleServiceState s : exampleStates) {
+            ExampleServiceState ns = newExampleStatesMap.get(s.documentSelfLink);
+            assertEquals(s.counter, ns.counter);
+            if (ns.documentEpoch > s.documentEpoch) {
+                // owner change
+                ServiceHost newOwner = this.host.getOwnerPeer(s.documentSelfLink, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+                QueryTask.Query query = QueryTask.Query.Builder.create()
+                        .addKindFieldClause(ExampleServiceState.class)
+                        .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, s.documentSelfLink)
+                        .build();
+                QueryTask task = QueryTask.Builder.createDirectTask()
+                        .setQuery(query)
+                        .addOption(QueryTask.QuerySpecification.QueryOption.EXPAND_CONTENT)
+                        .build();
+                // query latest version in index after synchronization
+                Operation op = Operation.createPost(newOwner, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS)
+                        .setBody(task);
+                // check latest state between cache and index match if ownership changed
+                task = this.host.getTestRequestSender().sendAndWait(op, QueryTask.class);
+                ServiceDocumentQueryResult result = task.results;
+                assertEquals(1, result.documentCount.longValue());
+                ExampleServiceState nsFromIndex
+                        = Utils.fromJson(result.documents.values().iterator().next(), ExampleServiceState.class);
+                assertEquals(nsFromIndex.documentVersion, ns.documentVersion);
+                assertEquals(nsFromIndex.documentEpoch, ns.documentEpoch);
+                assertEquals(nsFromIndex.counter, ns.counter);
             }
         }
     }
