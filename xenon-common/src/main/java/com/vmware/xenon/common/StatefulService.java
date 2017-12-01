@@ -526,7 +526,16 @@ public class StatefulService implements Service {
 
             if (hasOption(ServiceOption.OWNER_SELECTION)) {
                 if (!hasOption(ServiceOption.DOCUMENT_OWNER)) {
-                    synchronizeWithPeers(request, new IllegalStateException(
+                    Operation synchRequest = request.clone().addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER);
+                    synchRequest.setCompletion((o, e) -> {
+                        if (e != null) {
+                            request.fail(e);
+                            return;
+                        }
+                        // resubmit the original update if on demand synch succeed
+                        getHost().handleRequest(request);
+                    });
+                    synchronizeWithPeers(synchRequest, new IllegalStateException(
                             "not marked as owner"));
                     return true;
                 } else {
