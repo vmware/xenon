@@ -3621,7 +3621,9 @@ public class LuceneDocumentIndexService extends StatelessService {
                         // pick the update time on the first entry. They should be the same for all docs of the same version
                         nextVersionCreationTime = versionToDocsMap.get(visitor.documentVersion).get(0).documentUpdateTimeMicros;
                     } else {
-                        nextVersionCreationTime = versionToDocsMap.get(visitor.documentVersion + 1).get(0).documentUpdateTimeMicros;
+                        if (versionToDocsMap.containsKey((visitor.documentVersion + 1))) {
+                            nextVersionCreationTime = versionToDocsMap.get(visitor.documentVersion + 1).get(0).documentUpdateTimeMicros;
+                        }
                     }
                     if (nextVersionCreationTime != null) {
                         updateTombstoneTime(wr, visitor.documentIndexingId, nextVersionCreationTime);
