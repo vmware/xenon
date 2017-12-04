@@ -141,7 +141,29 @@ public class UtilityService implements Service {
 
     @Override
     public void authorizeRequest(Operation op) {
-        op.complete();
+
+        String suffix = UriUtils.buildUriPath(UriUtils.URI_PATH_CHAR, UriUtils.getLastPathSegment(op.getUri()));
+
+        // allow access to ui endpoint
+        if (ServiceHost.SERVICE_URI_SUFFIX_UI.equals(suffix)) {
+            op.complete();
+            return;
+        }
+
+        ServiceDocument doc = new ServiceDocument();
+        if (this.parent.getOptions().contains(ServiceOption.FACTORY_ITEM)) {
+            doc.documentSelfLink = UriUtils.buildUriPath(UriUtils.getParentPath(this.parent.getSelfLink()), suffix);
+        } else {
+            doc.documentSelfLink = UriUtils.buildUriPath(this.parent.getSelfLink(), suffix);
+        }
+
+        doc.documentKind = Utils.buildKind(this.parent.getStateType());
+        if (getHost().isAuthorized(this.parent, doc, op)) {
+            op.complete();
+            return;
+        }
+
+        op.fail(Operation.STATUS_CODE_FORBIDDEN);
     }
 
     @Override
