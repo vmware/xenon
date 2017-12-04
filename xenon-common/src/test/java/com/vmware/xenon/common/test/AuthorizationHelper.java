@@ -30,6 +30,7 @@ import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
@@ -269,6 +270,22 @@ public class AuthorizationHelper {
                                 UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USERS, email))
                         .build());
 
+        // Create resource group to allow access on utility paths
+        String statsResourceGroupLink = createResourceGroup(target, "stats-resource-group",
+                Builder.create()
+                        .addFieldClause(
+                                ServiceDocument.FIELD_NAME_SELF_LINK,
+                                ExampleService.FACTORY_LINK + ServiceHost.SERVICE_URI_SUFFIX_STATS)
+                        .build());
+
+        String subscriptionsResourceGroupLink = createResourceGroup(target, "subs-resource-group",
+                Builder.create()
+                        .addFieldClause(
+                                ServiceDocument.FIELD_NAME_SELF_LINK,
+                                ServiceUriPaths.CORE_LOCAL_QUERY_TASKS
+                                        + ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS)
+                        .build());
+
         Collection<String> paths = new HashSet<>();
 
         // Create roles tying these together
@@ -283,6 +300,16 @@ public class AuthorizationHelper {
         // Create role authorizing access to the user's own query tasks
         paths.add(createRole(target, userGroupLink, queryTaskResourceGroupLink,
                 new HashSet<>(Arrays.asList(Action.GET, Action.POST, Action.PATCH, Action.DELETE))));
+
+        // Create role authorizing access to /stats
+        paths.add(createRole(target, userGroupLink, statsResourceGroupLink,
+                new HashSet<>(
+                        Arrays.asList(Action.GET, Action.POST, Action.PATCH, Action.DELETE))));
+
+        // Create role authorizing access to /subscriptions of query tasks
+        paths.add(createRole(target, userGroupLink, subscriptionsResourceGroupLink,
+                new HashSet<>(
+                        Arrays.asList(Action.GET, Action.POST, Action.PATCH, Action.DELETE))));
         return paths;
     }
 

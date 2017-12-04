@@ -299,11 +299,14 @@ public class TestSubscriptions extends BasicTestCase {
 
                 }
             };
+
+            hostWithAuth.setSystemAuthorizationContext();
             Operation subscribe = Operation.createPost(UriUtils.buildUri(hostWithAuth, minimalServiceUUID));
             subscribe.setReferer(hostWithAuth.getReferer());
             ServiceSubscriber subscriber = new ServiceSubscriber();
             subscriber.replayState = true;
             hostWithAuth.startSubscriptionService(subscribe, notifyC, subscriber);
+            hostWithAuth.resetAuthorizationContext();
             hostWithAuth.testWait(notifyContext);
         } finally {
             if (hostWithAuth != null) {
