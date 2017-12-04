@@ -14,7 +14,12 @@
 package com.vmware.xenon.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
+
+import static com.vmware.xenon.common.ServiceHost.SERVICE_URI_SUFFIX_SYNCHRONIZATION;
+import static com.vmware.xenon.common.ServiceHost.SERVICE_URI_SUFFIX_TEMPLATE;
+import static com.vmware.xenon.common.ServiceHost.SERVICE_URI_SUFFIX_UI;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -34,10 +39,16 @@ import com.vmware.xenon.common.ServiceStats.ServiceStatLogHistogram;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.TimeBin;
+import com.vmware.xenon.common.test.AuthTestUtils;
 import com.vmware.xenon.common.test.TestContext;
+import com.vmware.xenon.common.test.TestRequestSender;
+import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
+import com.vmware.xenon.common.test.VerificationHost;
+import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.MinimalTestService;
+import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 public class TestUtilityService extends BasicReusableHostTestCase {
@@ -823,6 +834,101 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         assertEquals("stat index 0", "keyAAA", statList.get(0));
         assertEquals("stat index 1", "keyBBB", statList.get(1));
         assertEquals("stat index 2", "keyCCC", statList.get(2));
+    }
+
+    @Test
+    public void endpointAuthorization() throws Throwable {
+        VerificationHost host = VerificationHost.create(0);
+        host.setAuthorizationService(new AuthorizationContextService());
+        host.setAuthorizationEnabled(true);
+        host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
+        host.start();
+
+        TestRequestSender sender = host.getTestRequestSender();
+
+        host.setSystemAuthorizationContext();
+
+        String exampleUser = "example@vmware.com";
+        String examplePass = "password";
+        TestContext authCtx = host.testCreate(1);
+        AuthorizationSetupHelper.create()
+                .setHost(host)
+                .setUserEmail(exampleUser)
+                .setUserPassword(examplePass)
+                .setResourceQuery(Query.Builder.create()
+                        .addFieldClause(ServiceDocument.FIELD_NAME_KIND, Utils.buildKind(ExampleServiceState.class))
+                        .build())
+                .setCompletion(authCtx.getCompletion())
+                .start();
+        authCtx.await();
+
+        // create a sample service
+        ExampleServiceState doc = new ExampleServiceState();
+        doc.name = "foo";
+        doc.documentSelfLink = "foo";
+
+        Operation post = Operation.createPost(host, ExampleService.FACTORY_LINK).setBody(doc);
+        ExampleServiceState postResult = sender.sendAndWait(post, ExampleServiceState.class);
+
+        host.resetAuthorizationContext();
+
+        // access utility endpoints without authentication
+        URI availableUri = UriUtils.buildAvailableUri(host, postResult.documentSelfLink);
+        URI statsUri = UriUtils.buildStatsUri(host, postResult.documentSelfLink);
+        URI configUri = UriUtils.buildConfigUri(host, postResult.documentSelfLink);
+        URI subscriptionUri = UriUtils.buildSubscriptionUri(host, postResult.documentSelfLink);
+        URI templateUri = UriUtils.buildUri(host, UriUtils.buildUriPath(postResult.documentSelfLink, SERVICE_URI_SUFFIX_TEMPLATE));
+        URI synchUri = UriUtils.buildUri(host, UriUtils.buildUriPath(postResult.documentSelfLink, SERVICE_URI_SUFFIX_SYNCHRONIZATION));
+        URI uiUri = UriUtils.buildUri(host, UriUtils.buildUriPath(postResult.documentSelfLink, SERVICE_URI_SUFFIX_UI));
+
+
+        // check non authenticated user receives forbidden response
+        FailureResponse result;
+
+        result = sender.sendAndWaitFailure(Operation.createGet(availableUri));
+        assertEquals(Operation.STATUS_CODE_FORBIDDEN, result.op.getStatusCode());
+
+        result = sender.sendAndWaitFailure(Operation.createGet(statsUri));
+        assertEquals(Operation.STATUS_CODE_FORBIDDEN, result.op.getStatusCode());
+
+        result = sender.sendAndWaitFailure(Operation.createGet(configUri));
+        assertEquals(Operation.STATUS_CODE_FORBIDDEN, result.op.getStatusCode());
+
+        result = sender.sendAndWaitFailure(Operation.createGet(subscriptionUri));
+        assertEquals(Operation.STATUS_CODE_FORBIDDEN, result.op.getStatusCode());
+
+        result = sender.sendAndWaitFailure(Operation.createGet(templateUri));
+        assertEquals(Operation.STATUS_CODE_FORBIDDEN, result.op.getStatusCode());
+
+        result = sender.sendAndWaitFailure(Operation.createGet(synchUri));
+        assertEquals(Operation.STATUS_CODE_FORBIDDEN, result.op.getStatusCode());
+
+        Operation uiOpResult = sender.sendAndWait(Operation.createGet(uiUri));
+        assertNotEquals(Operation.STATUS_CODE_FORBIDDEN, uiOpResult.getStatusCode());
+
+        // check for authenticated user does NOT receive forbidden
+        AuthTestUtils.login(host, exampleUser, examplePass);
+
+        Operation response = sender.sendAndWait(Operation.createGet(availableUri));
+        assertNotEquals(Operation.STATUS_CODE_FORBIDDEN, response.getStatusCode());
+
+        response = sender.sendAndWait(Operation.createGet(statsUri));
+        assertNotEquals(Operation.STATUS_CODE_FORBIDDEN, response.getStatusCode());
+
+        response = sender.sendAndWait(Operation.createGet(configUri));
+        assertNotEquals(Operation.STATUS_CODE_FORBIDDEN, response.getStatusCode());
+
+        response = sender.sendAndWait(Operation.createGet(subscriptionUri));
+        assertNotEquals(Operation.STATUS_CODE_FORBIDDEN, response.getStatusCode());
+
+        response = sender.sendAndWait(Operation.createGet(templateUri));
+        assertNotEquals(Operation.STATUS_CODE_FORBIDDEN, response.getStatusCode());
+
+        result = sender.sendAndWaitFailure(Operation.createGet(synchUri));
+        assertNotEquals(Operation.STATUS_CODE_FORBIDDEN, result.op.getStatusCode());
+
+        response = sender.sendAndWait(Operation.createGet(uiUri));
+        assertNotEquals(Operation.STATUS_CODE_FORBIDDEN, response.getStatusCode());
     }
 
 }
