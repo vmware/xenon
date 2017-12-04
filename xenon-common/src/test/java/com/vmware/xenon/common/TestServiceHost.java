@@ -67,6 +67,7 @@ import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.common.jwt.Rfc7519Claims;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.common.jwt.Verifier;
+import com.vmware.xenon.common.test.AuthTestUtils;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
@@ -418,9 +419,13 @@ public class TestServiceHost {
         ri.limit = limit;
         ri.options = EnumSet.of(RequestRateInfo.Option.PAUSE_PROCESSING);
         this.host.setRequestRateLimit(userPath, ri);
+
+        this.host.setSystemAuthorizationContext();
+        ServiceStat rateLimitStatBefore = getRateLimitOpCountStat();
+        this.host.resetSystemAuthorizationContext();
+
         this.host.assumeIdentity(userPath);
 
-        ServiceStat rateLimitStatBefore = getRateLimitOpCountStat();
         if (rateLimitStatBefore == null) {
             rateLimitStatBefore = new ServiceStat();
             rateLimitStatBefore.latestValue = 0.0;
@@ -439,7 +444,10 @@ public class TestServiceHost {
         }
         this.host.testWait(ctx2);
         ctx2.logAfter();
+
+        this.host.setSystemAuthorizationContext();
         ServiceStat rateLimitStatAfter = getRateLimitOpCountStat();
+        this.host.resetSystemAuthorizationContext();
         assertTrue(rateLimitStatAfter.latestValue > rateLimitStatBefore.latestValue);
 
         this.host.setMaintenanceIntervalMicros(
@@ -469,7 +477,9 @@ public class TestServiceHost {
         ctx3.logAfter();
 
         // verify rate limiting did not happen
+        this.host.setSystemAuthorizationContext();
         ServiceStat rateLimitStatExpectSame = getRateLimitOpCountStat();
+        this.host.resetSystemAuthorizationContext();
         assertTrue(rateLimitStatAfter.latestValue == rateLimitStatExpectSame.latestValue);
     }
 
@@ -2516,8 +2526,9 @@ public class TestServiceHost {
 
     private ServiceStat getRateLimitOpCountStat() throws Throwable {
         URI managementServiceUri = this.host.getManagementServiceUri();
-        return this.host.getServiceStats(managementServiceUri)
+        ServiceStat stats = this.host.getServiceStats(managementServiceUri)
                 .get(ServiceHostManagementService.STAT_NAME_RATE_LIMITED_OP_COUNT);
+        return stats;
     }
 
     @Test
