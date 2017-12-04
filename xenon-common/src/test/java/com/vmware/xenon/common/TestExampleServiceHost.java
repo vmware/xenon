@@ -85,7 +85,9 @@ public class TestExampleServiceHost extends BasicReusableHostTestCase {
     private String loginUser(URI hostUri) throws Throwable {
         URI usersLink = UriUtils.buildUri(hostUri, UserService.FACTORY_LINK);
         // wait for factory availability
+        this.host.setSystemAuthorizationContext();
         this.host.waitForReplicatedFactoryServiceAvailable(usersLink);
+        this.host.resetAuthorizationContext();
 
         String basicAuth = constructBasicAuth(adminUser, adminUser);
         URI loginUri = UriUtils.buildUri(hostUri, ServiceUriPaths.CORE_AUTHN_BASIC);
