@@ -141,7 +141,31 @@ public class UtilityService implements Service {
 
     @Override
     public void authorizeRequest(Operation op) {
-        op.complete();
+        // retrieve helper suffix, including leading '/'
+        String suffix = op.getUri().getPath().substring(
+                op.getUri().getPath().lastIndexOf(UriUtils.URI_PATH_CHAR));
+        // allow all access to non critical helpers
+        if (!op.getUri().getPath().endsWith(ServiceHost.SERVICE_URI_SUFFIX_STATS)
+                && !op.getUri().getPath().endsWith(ServiceHost.SERVICE_URI_SUFFIX_CONFIG)
+                && !op.getUri().getPath().endsWith(ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS)) {
+            op.complete();
+            return;
+        }
+
+        ServiceDocument doc = new ServiceDocument();
+        if (this.parent.getOptions().contains(ServiceOption.FACTORY_ITEM)) {
+            doc.documentSelfLink = UriUtils.getParentPath(this.parent.getSelfLink()) + suffix;
+        } else {
+            doc.documentSelfLink = this.parent.getSelfLink() + suffix;
+        }
+
+        doc.documentKind = Utils.buildKind(this.parent.getStateType());
+        if (getHost().isAuthorized(this.parent, doc, op)) {
+            op.complete();
+            return;
+        }
+
+        op.fail(Operation.STATUS_CODE_FORBIDDEN);
     }
 
     @Override
