@@ -465,16 +465,20 @@ public class TestAuthorization extends BasicTestCase {
                         .setBody(state));
         assertEquals(Operation.STATUS_CODE_UNAUTHORIZED, failureResponse.op.getStatusCode());
 
+        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
         Map<String, ServiceStats.ServiceStat> stat = this.host.getServiceStats(
                 UriUtils.buildUri(this.host, ServiceUriPaths.CORE_MANAGEMENT));
         double currentInsertCount = stat.get(
                 ServiceHostManagementService.STAT_NAME_AUTHORIZATION_CACHE_INSERT_COUNT).latestValue;
+        OperationContext.setAuthorizationContext(null);
 
         // Make a second request and verify that the cache did not get updated, instead Xenon re-used
         // the cached Guest authorization context.
         sender.sendAndWait(Operation.createGet(this.host, ExampleService.FACTORY_LINK));
+        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
         stat = this.host.getServiceStats(
                 UriUtils.buildUri(this.host, ServiceUriPaths.CORE_MANAGEMENT));
+        OperationContext.setAuthorizationContext(null);
         double newInsertCount = stat.get(
                 ServiceHostManagementService.STAT_NAME_AUTHORIZATION_CACHE_INSERT_COUNT).latestValue;
         assertTrue(currentInsertCount == newInsertCount);
@@ -757,6 +761,16 @@ public class TestAuthorization extends BasicTestCase {
                 }));
         this.host.testWait(ctx2);
 
+        // do GET on factory /stats, we should get 403
+        Operation statsGet = Operation.createGet(this.host,
+                ExampleService.FACTORY_LINK + ServiceHost.SERVICE_URI_SUFFIX_STATS);
+        this.host.sendAndWaitExpectFailure(statsGet, Operation.STATUS_CODE_FORBIDDEN);
+
+        // do GET on factory /config, we should get 403
+        Operation configGet = Operation.createGet(this.host,
+                ExampleService.FACTORY_LINK + ServiceHost.SERVICE_URI_SUFFIX_CONFIG);
+        this.host.sendAndWaitExpectFailure(configGet, Operation.STATUS_CODE_FORBIDDEN);
+
         // Assume Jane's identity
         this.host.assumeIdentity(this.userServicePath);
         // add docs accessible by jane
@@ -798,8 +812,26 @@ public class TestAuthorization extends BasicTestCase {
         // reset the auth context
         OperationContext.setAuthorizationContext(null);
 
+        // do GET on utility suffixes in example child services, we should get 403
+        for (URI childUri : exampleServices.keySet()) {
+            statsGet = Operation.createGet(this.host,
+                    childUri.getPath() + ServiceHost.SERVICE_URI_SUFFIX_STATS);
+            this.host.sendAndWaitExpectFailure(statsGet, Operation.STATUS_CODE_FORBIDDEN);
+            configGet = Operation.createGet(this.host,
+                    childUri.getPath() + ServiceHost.SERVICE_URI_SUFFIX_CONFIG);
+            this.host.sendAndWaitExpectFailure(configGet, Operation.STATUS_CODE_FORBIDDEN);
+        }
+
         // Assume Jane's identity through header auth token
         String authToken = generateAuthToken(this.userServicePath);
+
+        // do GET on utility suffixes in example child services, we should get 200
+        for (URI childUri : exampleServices.keySet()) {
+            statsGet = Operation.createGet(this.host,
+                    childUri.getPath() + ServiceHost.SERVICE_URI_SUFFIX_STATS);
+            statsGet.addRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER, authToken);
+            this.host.sendAndWaitExpectSuccess(statsGet);
+        }
 
         verifyJaneAccess(exampleServices, authToken);
 
