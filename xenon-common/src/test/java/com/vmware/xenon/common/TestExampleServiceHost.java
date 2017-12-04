@@ -81,10 +81,6 @@ public class TestExampleServiceHost extends BasicReusableHostTestCase {
      * isn't created immediately, so this polls.
      */
     private String loginUser(URI hostUri) throws Throwable {
-        URI usersLink = UriUtils.buildUri(hostUri, UserService.FACTORY_LINK);
-        // wait for factory availability
-        this.host.waitForReplicatedFactoryServiceAvailable(usersLink);
-
         String basicAuth = BasicAuthenticationUtils.constructBasicAuth(adminUser, adminUser);
         URI loginUri = UriUtils.buildUri(hostUri, ServiceUriPaths.CORE_AUTHN_BASIC);
         AuthenticationRequest login = new AuthenticationRequest();

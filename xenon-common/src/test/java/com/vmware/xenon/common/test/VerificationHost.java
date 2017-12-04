@@ -83,6 +83,7 @@ import com.vmware.xenon.common.NodeSelectorState;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.OperationContext;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ServiceOption;
@@ -1052,7 +1053,15 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public Map<String, ServiceStat> getServiceStats(URI serviceUri) {
+        AuthorizationContext ctx = null;
+        if (this.isAuthorizationEnabled()) {
+            ctx = OperationContext.getAuthorizationContext();
+            this.setSystemAuthorizationContext();
+        }
         ServiceStats stats = this.sender.sendStatsGetAndWait(serviceUri);
+        if (this.isAuthorizationEnabled()) {
+            this.setAuthorizationContext(ctx);
+        }
         return stats.entries;
     }
 
