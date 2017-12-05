@@ -94,6 +94,14 @@ public interface Service extends ServiceRequestSender {
         OWNER_SELECTION,
 
         /**
+         * Service synchronization task (per factory) will periodically scan child service across peers
+         * and find latest timestamp that peers synchronized
+         *
+         * Requires: PERSISTENT
+         */
+        CHECKPOINT,
+
+        /**
          * Document update operations are conditional: the client must provide the expected
          * signature and/or version.
          *
