@@ -109,6 +109,21 @@ public class TestSynchronizationTaskService extends BasicTestCase {
                 "PROPERTY_NAME_SYNCHRONIZATION_LOGGING",
                 "true"
         );
+        TestXenonConfiguration.override(
+                SynchronizationTaskService.class,
+                "isCheckPointEnabled",
+                "true"
+        );
+        TestXenonConfiguration.override(
+                SynchronizationTaskService.class,
+                "checkPointPeriod",
+                String.valueOf(TimeUnit.MILLISECONDS.toMicros(1000))
+        );
+        TestXenonConfiguration.override(
+                SynchronizationTaskService.class,
+                "checkPointLag",
+                String.valueOf(TimeUnit.SECONDS.toMicros(1))
+        );
     }
 
     @AfterClass
@@ -123,14 +138,13 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         this.host.addPrivilegedService(InMemoryLuceneDocumentIndexService.class);
         this.host.startServiceAndWait(InMemoryLuceneDocumentIndexService.class,
                 InMemoryLuceneDocumentIndexService.SELF_LINK);
-
-        this.host.startFactory(InMemoryExampleService.class, InMemoryExampleService::createFactory);
-        this.host.startFactory(ExampleODLService.class, ExampleODLService::createFactory);
     }
 
     @Before
     public void setUp() {
         CommandLineArgumentParser.parseFromProperties(this);
+        this.host.startFactory(InMemoryExampleService.class, InMemoryExampleService::createFactory);
+        this.host.startFactory(ExampleODLService.class, ExampleODLService::createFactory);
         URI exampleFactoryUri = UriUtils.buildUri(
                 this.host.getUri(), ExampleService.FACTORY_LINK);
         URI exampleODLFactoryUri = UriUtils.buildUri(
