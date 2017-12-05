@@ -109,6 +109,21 @@ public class TestSynchronizationTaskService extends BasicTestCase {
                 "PROPERTY_NAME_SYNCHRONIZATION_LOGGING",
                 "true"
         );
+        TestXenonConfiguration.override(
+                SynchronizationTaskService.class,
+                "isCheckPointEnabled",
+                "true"
+        );
+        TestXenonConfiguration.override(
+                SynchronizationTaskService.class,
+                "checkPointPeriod",
+                String.valueOf(TimeUnit.MILLISECONDS.toMicros(1000))
+        );
+        TestXenonConfiguration.override(
+                SynchronizationTaskService.class,
+                "checkPointLag",
+                String.valueOf(TimeUnit.SECONDS.toMicros(1))
+        );
     }
 
     @AfterClass
@@ -123,14 +138,13 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         this.host.addPrivilegedService(InMemoryLuceneDocumentIndexService.class);
         this.host.startServiceAndWait(InMemoryLuceneDocumentIndexService.class,
                 InMemoryLuceneDocumentIndexService.SELF_LINK);
-
-        this.host.startFactory(InMemoryExampleService.class, InMemoryExampleService::createFactory);
-        this.host.startFactory(ExampleODLService.class, ExampleODLService::createFactory);
     }
 
     @Before
     public void setUp() {
         CommandLineArgumentParser.parseFromProperties(this);
+        this.host.startFactory(InMemoryExampleService.class, InMemoryExampleService::createFactory);
+        this.host.startFactory(ExampleODLService.class, ExampleODLService::createFactory);
         URI exampleFactoryUri = UriUtils.buildUri(
                 this.host.getUri(), ExampleService.FACTORY_LINK);
         URI exampleODLFactoryUri = UriUtils.buildUri(
@@ -551,13 +565,13 @@ public class TestSynchronizationTaskService extends BasicTestCase {
                 exampleStatesMap.size(),
                 0, this.nodeCount - 1);
 
-        // Verify that synchronization was triggered only one time.
         ExampleServiceState newState = sender.sendAndWait(Operation.createGet(newPeer, state.documentSelfLink), ExampleServiceState.class);
-        VerificationHost newFactoryOwner = this.host.getOwnerPeer(factoryLink, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
-        this.host.waitFor("Synch count has not been updated", () -> {
+        // Verify that synchronization was triggered only one time.
+        this.host.waitFor("factory availability stat timeout", () -> {
+            VerificationHost newFactoryOwner = this.host.getOwnerPeer(factoryLink, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
             ServiceStats.ServiceStat newStat = getServiceAvailableStat(factoryLink, sender, newFactoryOwner);
             if (factoryOwner.equals(newFactoryOwner)) {
-                return newStat.accumulatedValue - stat.accumulatedValue == 1.0;
+                return (newStat.accumulatedValue - stat.accumulatedValue) == 1.0;
             } else {
                 return newStat.accumulatedValue == 1.0;
             }
