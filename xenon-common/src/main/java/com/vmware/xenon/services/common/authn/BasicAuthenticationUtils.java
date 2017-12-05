@@ -71,7 +71,7 @@ public final class BasicAuthenticationUtils {
             return;
         }
         String userLink = op.getAuthorizationContext().getClaims().getSubject();
-        if (!associateAuthorizationContext(service, op, userLink, 0)) {
+        if (!associateAuthorizationContext(service, op, userLink, 0, false)) {
             op.setStatusCode(Operation.STATUS_CODE_SERVER_FAILURE_THRESHOLD).complete();
             return;
         }
@@ -226,7 +226,7 @@ public final class BasicAuthenticationUtils {
             }
 
             // set token validity
-            if (!associateAuthorizationContext(service, parentOp, userLink, expirationTimeMicros)) {
+            if (!associateAuthorizationContext(service, parentOp, userLink, expirationTimeMicros, true)) {
                 parentOp.fail(Operation.STATUS_CODE_SERVER_FAILURE_THRESHOLD);
                 return;
             }
@@ -249,9 +249,11 @@ public final class BasicAuthenticationUtils {
      * @param op Operation context of the login request
      * @param userLink service link for the user
      * @param expirationTimeMicros expiration time for the auth token
+     * @param propagateToClient whether to propagate auth token to client
      * @return
      */
-    private static boolean associateAuthorizationContext(StatelessService service, Operation op, String userLink, long expirationTimeMicros) {
+    private static boolean associateAuthorizationContext(StatelessService service, Operation op, String userLink,
+            long expirationTimeMicros, boolean propagateToClient) {
         Claims.Builder builder = new Claims.Builder();
         builder.setIssuer(AuthenticationConstants.DEFAULT_ISSUER);
         builder.setSubject(userLink);
@@ -271,7 +273,7 @@ public final class BasicAuthenticationUtils {
         AuthorizationContext.Builder ab = AuthorizationContext.Builder.create();
         ab.setClaims(claims);
         ab.setToken(token);
-        ab.setPropagateToClient(true);
+        ab.setPropagateToClient(propagateToClient);
 
         // Associate resulting authorization context with operation.
         service.setAuthorizationContext(op, ab.getResult());
