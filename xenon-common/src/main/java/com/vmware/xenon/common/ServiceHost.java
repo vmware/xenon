@@ -108,6 +108,7 @@ import com.vmware.xenon.common.opentracing.TracingUtils;
 import com.vmware.xenon.services.common.AuthCredentialsService;
 import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.AuthorizationTokenCacheService;
+import com.vmware.xenon.services.common.CheckpointService;
 import com.vmware.xenon.services.common.ConsistentHashingNodeSelectorService;
 import com.vmware.xenon.services.common.DirectoryContentService;
 import com.vmware.xenon.services.common.GraphQueryTaskService;
@@ -1683,7 +1684,7 @@ public class ServiceHost implements ServiceRequestSender {
                         new LocalQueryTaskFactoryService(),
                         TaskFactoryService.create(GraphQueryTaskService.class),
                         TaskFactoryService.create(SynchronizationTaskService.class),
-                        new QueryPageForwardingService(defaultNodeSelectorService) };
+                        new QueryPageForwardingService(defaultNodeSelectorService)};
                 startCoreServicesSynchronously(queryServiceArray);
 
                 // register auto-backup consumer to the document index service
@@ -1698,7 +1699,9 @@ public class ServiceHost implements ServiceRequestSender {
 
             }
         }
-
+        // check point depends on index service
+        // synchronization task service may lookup check point
+        startCoreServicesSynchronously(CheckpointService.createFactory());
         List<Service> coreServices = new ArrayList<>();
         coreServices.add(this.managementService);
         coreServices.add(new ODataQueryService());
@@ -3425,6 +3428,17 @@ public class ServiceHost implements ServiceRequestSender {
 
         ServiceDocument stateFromStore = indexQueryOperation.hasBody() ?
                 indexQueryOperation.getBody(s.getStateType()) : null;
+
+        // If this is an on-demand service start triggered from
+        // ServiceAvailabilityFilter#startServiceOnDemand but we did not
+        // find any state in the index and the service is not REPLICATED,
+        // then we will simply fail the request with NOT_FOUND.
+        if (serviceStartPost.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK) &&
+                stateFromStore == null && !s.hasOption(ServiceOption.REPLICATION)) {
+            Operation.failServiceNotFound(serviceStartPost);
+            return;
+        }
+
         boolean isSynchronizePeer = serviceStartPost.isSynchronizePeer();
 
         ServiceDocument stateToLink = isSynchronizePeer ?
