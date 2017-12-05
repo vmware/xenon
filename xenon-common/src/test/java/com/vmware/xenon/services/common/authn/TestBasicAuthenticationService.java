@@ -16,6 +16,7 @@ package com.vmware.xenon.services.common.authn;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 import static com.vmware.xenon.services.common.authn.BasicAuthenticationUtils.constructBasicAuth;
 
@@ -133,7 +134,6 @@ public class TestBasicAuthenticationService extends BasicTestCase {
                     .setCompletion(this.host.getCompletion())
                     .setupRole();
             this.host.testWait();
-
         } catch (Throwable e) {
             throw new Exception(e);
         }
@@ -287,18 +287,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
                                                             "Invalid status code returned"));
                                                     return;
                                                 }
-                                                String cookieHeader = oo.getResponseHeader(SET_COOKIE_HEADER);
-                                                if (cookieHeader == null) {
-                                                    this.host.failIteration(new IllegalStateException(
-                                                            "Cookie is null"));
-                                                    return;
-                                                }
-                                                Cookie cookie = ClientCookieDecoder.LAX.decode(cookieHeader);
-                                                if (cookie.maxAge() != 0) {
-                                                    this.host.failIteration(new IllegalStateException(
-                                                            "Max-Age for cookie is not zero"));
-                                                    return;
-                                                }
+                                                assertTrue("expect no response headers", oo.getResponseHeaders().isEmpty());
                                                 this.host.resetAuthorizationContext();
                                                 this.host.completeIteration();
                                             });
@@ -460,18 +449,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
                                         "Invalid status code returned"));
                                 return;
                             }
-                            String cookieHeader = oo.getResponseHeader(SET_COOKIE_HEADER);
-                            if (cookieHeader == null) {
-                                this.host.failIteration(new IllegalStateException(
-                                        "Cookie is null"));
-                                return;
-                            }
-                            Cookie cookie = ClientCookieDecoder.LAX.decode(cookieHeader);
-                            if (cookie.maxAge() != 0) {
-                                this.host.failIteration(new IllegalStateException(
-                                        "Max-Age for cookie is not zero"));
-                                return;
-                            }
+                            assertTrue("expect no response headers", oo.getResponseHeaders().isEmpty());
 
                             this.host.completeIteration();
                         }));
@@ -617,7 +595,6 @@ public class TestBasicAuthenticationService extends BasicTestCase {
                     expirationInMicro);
             this.host.failIteration(new IllegalStateException(msg));
         }
-
     }
 
     @Test
@@ -762,23 +739,8 @@ public class TestBasicAuthenticationService extends BasicTestCase {
                                                             "Invalid status code returned"));
                                                     return;
                                                 }
-                                                String cookieHeader = oo.getResponseHeader(SET_COOKIE_HEADER);
-                                                if (cookieHeader == null) {
-                                                    this.host.failIteration(new IllegalStateException(
-                                                            "Cookie is null"));
-                                                    return;
-                                                }
-                                                Cookie cookie = ClientCookieDecoder.LAX.decode(cookieHeader);
-                                                if (cookie.maxAge() != 0) {
-                                                    this.host.failIteration(new IllegalStateException(
-                                                            "Max-Age for cookie is not zero"));
-                                                    return;
-                                                }
-                                                if (!cookie.isHttpOnly()) {
-                                                    this.host.failIteration(new IllegalStateException(
-                                                            "Cookie is not HTTP-only"));
-                                                    return;
-                                                }
+                                                assertTrue("expect no response headers", oo.getResponseHeaders().isEmpty());
+
                                                 this.host.resetAuthorizationContext();
                                                 this.host.completeIteration();
                                             });
