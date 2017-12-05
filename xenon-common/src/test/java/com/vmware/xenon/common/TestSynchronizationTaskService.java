@@ -123,7 +123,6 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         this.host.addPrivilegedService(InMemoryLuceneDocumentIndexService.class);
         this.host.startServiceAndWait(InMemoryLuceneDocumentIndexService.class,
                 InMemoryLuceneDocumentIndexService.SELF_LINK);
-
         this.host.startFactory(InMemoryExampleService.class, InMemoryExampleService::createFactory);
         this.host.startFactory(ExampleODLService.class, ExampleODLService::createFactory);
     }
