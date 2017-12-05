@@ -128,7 +128,18 @@ public abstract class FactoryService extends StatelessService {
     private int selfQueryResultLimit = SELF_QUERY_RESULT_LIMIT;
     private ServiceDocument childTemplate;
     private URI uri;
-
+    /**
+     * checkpoint scan period
+     */
+    private long checkpointPeriod = TimeUnit.MINUTES.toMicros(5);
+    /**
+     * epsilon to avoid clock skew within peers
+     */
+    private long checkpointComparisonEpsilonMicros = TimeUnit.SECONDS.toMicros(30);
+    /**
+     * checkpoint query limit in scan
+     */
+    private int checkpointQueryLimit = 1000;
     /**
      * Creates a default instance of a factory service that can create and start instances
      * of the supplied service type
@@ -186,7 +197,7 @@ public abstract class FactoryService extends StatelessService {
     }
 
     @Override
-    public final void handleStart(Operation startPost) {
+    public void handleStart(Operation startPost) {
         try {
             setAvailable(false);
             // Eagerly create a child service class instance to ensure it is possible
@@ -260,6 +271,8 @@ public abstract class FactoryService extends StatelessService {
 
         SynchronizationTaskService service = SynchronizationTaskService
                 .create(() -> createChildServiceSafe());
+
+        service.setParentService(this);
         this.getHost().startService(post, service);
     }
 
