@@ -42,6 +42,7 @@ import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -67,6 +68,7 @@ import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.common.jwt.Rfc7519Claims;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.common.jwt.Verifier;
+import com.vmware.xenon.common.test.AuthTestUtils;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
@@ -93,6 +95,29 @@ import com.vmware.xenon.services.common.UiFileContentService;
 import com.vmware.xenon.services.common.UserService;
 
 public class TestServiceHost {
+
+    public static class AuthCheckService extends ExampleService {
+        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/auth-check-services";
+
+        public static AtomicBoolean isAuthCalled = new AtomicBoolean();
+
+        public static FactoryService createFactory() {
+            return FactoryService.create(AuthCheckService.class);
+        }
+
+        public AuthCheckService() {
+            super();
+            // non persisted, owner service
+            toggleOption(ServiceOption.PERSISTENCE, false);
+            toggleOption(ServiceOption.INSTRUMENTATION, false);
+        }
+
+        @Override
+        public void authorizeRequest(Operation op) {
+            isAuthCalled.set(true);
+            op.complete();
+        }
+    }
 
     private static final int MAINTENANCE_INTERVAL_MILLIS = 100;
 
@@ -2935,6 +2960,59 @@ public class TestServiceHost {
 
         deletePausedFiles();
         this.host.tearDown();
+    }
+
+
+    @Test
+    public void authorizeRequestOnOwnerSelectionService() throws Throwable {
+        setUp(true);
+
+        this.host.setAuthorizationService(new AuthorizationContextService());
+        this.host.setAuthorizationEnabled(true);
+        this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
+        this.host.start();
+
+        AuthTestUtils.setSystemAuthorizationContext(this.host);
+
+        // Start Statefull with Non-Persisted service
+        this.host.startFactory(new AuthCheckService());
+        this.host.waitForServiceAvailable(AuthCheckService.FACTORY_LINK);
+
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+
+        this.host.setSystemAuthorizationContext();
+
+        String adminUser = "admin@vmware.com";
+        String adminPass = "password";
+        TestContext authCtx = this.host.testCreate(1);
+        AuthorizationSetupHelper.create()
+                .setHost(this.host)
+                .setUserEmail(adminUser)
+                .setUserPassword(adminPass)
+                .setIsAdmin(true)
+                .setCompletion(authCtx.getCompletion())
+                .start();
+        authCtx.await();
+
+        // create foo
+        ExampleServiceState exampleFoo = new ExampleServiceState();
+        exampleFoo.name = "foo";
+        exampleFoo.documentSelfLink = "foo";
+
+        Operation post = Operation.createPost(this.host, AuthCheckService.FACTORY_LINK).setBody(exampleFoo);
+        ExampleServiceState postResult = sender.sendAndWait(post, ExampleServiceState.class);
+
+        this.host.resetAuthorizationContext();
+
+
+        assertFalse(AuthCheckService.isAuthCalled.get());
+
+        TestRequestSender.FailureResponse failureResponse = sender.sendAndWaitFailure(Operation.createGet(this.host, postResult.documentSelfLink));
+        assertEquals(Operation.STATUS_CODE_FORBIDDEN, failureResponse.op.getStatusCode());
+
+        assertTrue(AuthCheckService.isAuthCalled.get());
+
     }
 
 }
