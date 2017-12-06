@@ -690,7 +690,9 @@ public abstract class FactoryService extends StatelessService {
     private void handleODataLimitRequest(Operation op, QueryTask task) {
         if (task.querySpec.options.contains(QueryOption.COUNT)) {
             task.querySpec.options.remove(QueryOption.COUNT);
-            task.querySpec.options.add(QueryOption.EXPAND_CONTENT);
+            if (!task.querySpec.options.contains(QueryOption.EXPAND_SELECTED_FIELDS)) {
+                task.querySpec.options.add(QueryOption.EXPAND_CONTENT);
+            }
 
             Operation query = Operation
                     .createPost(this, ServiceUriPaths.CORE_QUERY_TASKS)

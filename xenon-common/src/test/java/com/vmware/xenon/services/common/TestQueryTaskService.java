@@ -885,6 +885,63 @@ public class TestQueryTaskService {
         });
     }
 
+    @Test
+    public void testExpandSelectedFieldsAndCountAndLimit() throws Throwable {
+        testExpand(new ExpansionStrategy() {
+
+            private final List<String> fields = Arrays.asList(new String[]{"name", "tags"});
+
+            @Override
+            public ExampleServiceState createInitialDocumentState() {
+                ExampleServiceState initialState = new ExampleServiceState();
+                initialState.name = UUID.randomUUID().toString();
+                initialState.tags = Stream.of("a", "b").collect(toSet());
+                initialState.keyValues = new HashMap<>();
+                initialState.keyValues.put("key", "value");
+                return initialState;
+            }
+
+            @Override
+            public Builder adjustBuilder(Builder builder) {
+                builder.addOption(QueryOption.EXPAND_SELECTED_FIELDS);
+                fields.forEach((field) -> {
+                    builder.addSelectTerm(field);
+                });
+                return builder;
+            }
+
+            @Override
+            public URI adjustURI(URI uri) {
+                uri = UriUtils.extendUriWithQuery(uri,
+                        UriUtils.URI_PARAM_ODATA_COUNT,
+                        Boolean.TRUE.toString(),
+                        UriUtils.URI_PARAM_ODATA_LIMIT,
+                        String.valueOf(TestQueryTaskService.this.serviceCount));
+                return UriUtils.buildSelectFieldsQueryUri(uri, fields);
+            }
+
+            @Override
+            public void validateDocumentResults(ServiceDocumentQueryResult taskResult, int expectedCount,
+                    int expectedVersion,
+                    Action expectedLastAction) {
+
+                assertEquals(expectedCount, taskResult.documentLinks.size());
+                assertEquals(taskResult.documentLinks.size(), taskResult.documents.size());
+                for (Entry<String, Object> e : taskResult.documents.entrySet()) {
+                    ExampleServiceState st = Utils.fromJson(e.getValue(), ExampleServiceState.class);
+                    // select fields - validate only the requested fields were populated
+                    assertTrue(st.name != null);
+                    assertEquals(0, st.keyValues.size());
+                    assertEquals(2, st.tags.size());
+                    assertNull(st.documentSelfLink);
+                    assertEquals(0, st.documentVersion);
+                    assertNull(st.documentKind);
+                    assertNull(st.documentUpdateAction);
+                }
+            }
+        });
+    }
+
     /**
      * Internal interface permitting multiple implementations of expansion
      * modifiers and validators
