@@ -3452,6 +3452,15 @@ public class ServiceHost implements ServiceRequestSender {
                     queueOrFailRequestForServiceNotFoundOnOwner(servicePath, op);
                     return;
                 }
+
+                if (isAuthorizationEnabled()) {
+                    forwardOp.nestCompletion((oo) -> {
+                        queueOrScheduleRequest(s, forwardOp);
+                    });
+                    s.authorizeRequest(forwardOp);
+                    return;
+                }
+
                 queueOrScheduleRequest(s, forwardOp);
                 return;
             }
