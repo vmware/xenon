@@ -228,12 +228,22 @@ public class ExampleTaskService
         ExampleTaskServiceState currentTask = getState(patch);
         ExampleTaskServiceState patchBody = getBody(patch);
 
+        logInfo(String.format("PATCH STARTED for %s: %s -> %s", currentTask.documentSelfLink, Utils.toJson(currentTask), Utils.toJson(patchBody)));
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            sendSelfFailurePatch(currentTask, e.toString());
+            return;
+        }
+        
         if (!validateTransition(patch, currentTask, patchBody)) {
             return;
         }
         updateState(currentTask, patchBody);
         patch.complete();
 
+        logInfo(String.format("PATCH COMPLETE for %s: %s -> %s", currentTask.documentSelfLink, Utils.toJson(currentTask), Utils.toJson(patchBody)));
+        
         switch (patchBody.taskInfo.stage) {
         case CREATED:
             // Won't happen: validateTransition reports error
