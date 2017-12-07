@@ -108,6 +108,7 @@ import com.vmware.xenon.common.opentracing.TracingUtils;
 import com.vmware.xenon.services.common.AuthCredentialsService;
 import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.AuthorizationTokenCacheService;
+import com.vmware.xenon.services.common.CheckpointFactoryService;
 import com.vmware.xenon.services.common.ConsistentHashingNodeSelectorService;
 import com.vmware.xenon.services.common.DirectoryContentService;
 import com.vmware.xenon.services.common.GraphQueryTaskService;
@@ -1683,7 +1684,7 @@ public class ServiceHost implements ServiceRequestSender {
                         new LocalQueryTaskFactoryService(),
                         TaskFactoryService.create(GraphQueryTaskService.class),
                         TaskFactoryService.create(SynchronizationTaskService.class),
-                        new QueryPageForwardingService(defaultNodeSelectorService) };
+                        new QueryPageForwardingService(defaultNodeSelectorService)};
                 startCoreServicesSynchronously(queryServiceArray);
 
                 // register auto-backup consumer to the document index service
@@ -1698,6 +1699,12 @@ public class ServiceHost implements ServiceRequestSender {
 
             }
         }
+
+        // check point depends on index service
+        // synchronization task service may lookup check point
+        CheckpointFactoryService service = new CheckpointFactoryService();
+        service.setUseBodyForSelfLink(true);
+        startCoreServicesSynchronously(service);
 
         List<Service> coreServices = new ArrayList<>();
         coreServices.add(this.managementService);
