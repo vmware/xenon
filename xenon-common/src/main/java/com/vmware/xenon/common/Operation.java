@@ -970,6 +970,8 @@ public class Operation implements Cloneable {
         } else {
             this.body = null;
         }
+
+        this.serializedBody = null;
         return this;
     }
 
@@ -986,6 +988,7 @@ public class Operation implements Cloneable {
      */
     public Operation setBodyNoCloning(Object body) {
         this.body = body;
+        this.serializedBody = null;
         return this;
     }
 
