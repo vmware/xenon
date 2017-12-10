@@ -58,6 +58,8 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
+import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
@@ -657,6 +659,27 @@ public final class Utils {
             host.setMaintenanceCheckIntervalMicros(service.getMaintenanceIntervalMicros());
         }
         return true;
+    }
+
+    static void checkAndCacheDocumentOwnership(ServiceHost host, Service service,
+            long expirationTimeMicrosUtc, CompletionHandler ch) {
+        boolean serviceAlreadyMarkedAsDocumentOwner = service.hasOption(ServiceOption.DOCUMENT_OWNER);
+        Operation selectOwnerOp = Operation.createPost(null)
+                .setExpiration(expirationTimeMicrosUtc);
+        CompletionHandler c = (o, e) -> {
+            if (e != null) {
+                ch.handle(selectOwnerOp, e);
+                return;
+            }
+
+            SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
+            if (rsp.isLocalHostOwner != serviceAlreadyMarkedAsDocumentOwner) {
+                service.toggleOption(ServiceOption.DOCUMENT_OWNER, rsp.isLocalHostOwner);
+            }
+            ch.handle(selectOwnerOp, null);
+        };
+        selectOwnerOp.setCompletion(c);
+        host.selectOwner(service.getPeerNodeSelectorPath(), service.getSelfLink(), selectOwnerOp);
     }
 
     /**

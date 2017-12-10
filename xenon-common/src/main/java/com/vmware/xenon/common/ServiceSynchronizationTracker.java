@@ -423,6 +423,49 @@ class ServiceSynchronizationTracker {
         scheduleNodeGroupChangeMaintenance(nodeSelectorPath, null);
     }
 
+    public void setFactoriesAvailabilityIfOwner(boolean isAvailable) {
+        for (String factoryLink : this.synchronizationRequiredServices.keySet()) {
+            setFactoryAvailabilityIfOwner(factoryLink, isAvailable);
+        }
+    }
+
+    private void setFactoryAvailabilityIfOwner(String factoryLink, boolean isAvailable) {
+        Service factoryService = this.host.findService(factoryLink, true);
+        if (factoryService == null) {
+            this.host.log(Level.WARNING, "Factory %s does not exist on host. Cannot set availability",
+                    factoryLink);
+            return;
+        }
+
+        Operation selectOwnerOp = Operation.createPost(null)
+                .setExpiration(Utils.fromNowMicrosUtc(this.host.getOperationTimeoutMicros()))
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.log(Level.WARNING,
+                                "Owner selection for %s failed: %s; cannot set factory availability",
+                                factoryLink, e.getMessage());
+                        return;
+                    }
+
+                    SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
+                    if (rsp.isLocalHostOwner) {
+                        ServiceStats.ServiceStat body = new ServiceStats.ServiceStat();
+                        body.name = Service.STAT_NAME_AVAILABLE;
+                        body.latestValue = isAvailable ? Service.STAT_VALUE_TRUE : Service.STAT_VALUE_FALSE;
+
+                        Operation op = Operation.createPost(
+                                UriUtils.buildAvailableUri(this.host, factoryLink))
+                                .setBody(body)
+                                .setReferer(this.host.getUri())
+                                .setConnectionSharing(true)
+                                .setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION);
+                        this.host.sendRequest(op);
+                    }
+                });
+
+        this.host.selectOwner(factoryService.getPeerNodeSelectorPath(), factoryLink, selectOwnerOp);
+    }
+
     public void performNodeSelectorChangeMaintenance(Operation post, long now,
             MaintenanceStage nextStage, boolean isCheckRequired, long deadline) {
 
