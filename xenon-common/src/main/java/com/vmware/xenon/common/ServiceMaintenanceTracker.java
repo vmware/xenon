@@ -115,28 +115,44 @@ class ServiceMaintenanceTracker {
                 Service s = this.host.findService(servicePath);
 
                 boolean skipMaintenance =
-                        (s == null) ||
-                        (s.getProcessingStage() != ProcessingStage.AVAILABLE) ||
-                        (!s.hasOption(ServiceOption.PERIODIC_MAINTENANCE)) ||
-                        (s.hasOption(ServiceOption.OWNER_SELECTION) &&
-                                !s.hasOption(ServiceOption.DOCUMENT_OWNER));
-
+                        s == null ||
+                        s.getProcessingStage() != ProcessingStage.AVAILABLE ||
+                        !s.hasOption(ServiceOption.PERIODIC_MAINTENANCE);
                 if (skipMaintenance) {
-                    synchronized (this) {
-                        // Another request scheduling this service's maintenance could
-                        // have occurred. So double check the expiration time, if it
-                        // matches the current expiration window, then remove it.
-                        Long serviceExpiration = this.trackedServices.get(servicePath);
-                        if (serviceExpiration.equals(expiration)) {
-                            this.trackedServices.remove(servicePath);
-                        }
-                    }
+                    checkAndRemoveFromMaintenance(servicePath, expiration);
                     continue;
                 }
 
-                performServiceMaintenance(servicePath, s);
+                if (!s.hasOption(ServiceOption.OWNER_SELECTION)) {
+                    performServiceMaintenance(servicePath, s);
+                    continue;
+                }
+
+                // service has OWNER_SELECTION - we need to verify ownership
+                Utils.checkAndUpdateDocumentOwnership(this.host, s, deadline, (o, ex) -> {
+                    if (ex != null) {
+                        this.host.log(Level.WARNING,
+                                "Failed to determine ownership for service %s: %s - skipping maintenance",
+                                servicePath, ex);
+                        return;
+                    }
+
+                    performServiceMaintenance(servicePath, s);
+                });
             }
         } while ((now = Utils.getSystemNowMicrosUtc()) < deadline);
+    }
+
+    private void checkAndRemoveFromMaintenance(String servicePath, Long expiration) {
+        synchronized (this) {
+            // Another request scheduling this service's maintenance could
+            // have occurred. So double check the expiration time, if it
+            // matches the current expiration window, then remove it.
+            Long serviceExpiration = this.trackedServices.get(servicePath);
+            if (serviceExpiration.equals(expiration)) {
+                this.trackedServices.remove(servicePath);
+            }
+        }
     }
 
     private void performServiceMaintenance(String servicePath, Service s) {

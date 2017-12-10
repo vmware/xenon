@@ -3219,6 +3219,15 @@ public class ServiceHost implements ServiceRequestSender {
         this.serviceSynchTracker.scheduleNodeGroupChangeMaintenance(nodeSelectorPath);
     }
 
+    /**
+     * Infrastructure use only.
+     *
+     * Called on demand or due to node group changes to set factories availability
+     */
+    public void setFactoriesAvailabilityIfOwner(boolean isAvailable) {
+        this.serviceSynchTracker.setFactoriesAvailabilityIfOwner(isAvailable);
+    }
+
     void loadServiceState(Service s, Operation op) {
         ServiceDocument state = this.serviceResourceTracker.getCachedServiceState(s, op);
 
