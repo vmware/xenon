@@ -1624,6 +1624,13 @@ public class TestNodeGroupService {
         Map<URI, ServiceStats> prevStats = verifyMaintStatsAfterSynchronization(targetServices,
                 null);
 
+        // capture services whose current owner is the remaining host -
+        // these are the services whose owner is not going to change after we stop
+        // the rest of the hosts
+        Set<URI> targetServicesWithRaminingHostAsOwner = targetServices.stream()
+                .filter(uri -> remainingHost.isOwner(uri.getPath(), ServiceUriPaths.DEFAULT_NODE_SELECTOR))
+                .collect(Collectors.toSet());
+
         stopHostsAndVerifyQueuing(hostsToStop, remainingHost, targetServices);
 
         // GET the state of example service and validate they represent correct state
@@ -1631,18 +1638,14 @@ public class TestNodeGroupService {
                 null, ExampleServiceState.class, targetUris).values();
         serviceStates.forEach(s -> assertEquals("patched-name", s.name));
 
-        // its important to verify document ownership before we do any updates on the services.
-        // This is because we verify, that even without any on demand synchronization,
-        // the factory driven synchronization set the services in the proper state
-        Set<String> ownerIds = this.host.getNodeStateMap().keySet();
-        List<URI> remainingHosts = new ArrayList<>(this.host.getNodeGroupMap().keySet());
-        verifyDocumentOwnerAndEpoch(exampleStatesPerSelfLink,
-                this.host.getInProcessHostMap().values().iterator().next(),
-                remainingHosts, 0, 1,
-                ownerIds.size() - 1);
+        // previous stats basline is only relevant for services that have the same owner
+        Map<URI, ServiceStats> prevStatsOfSameOwner = new HashMap<>();
+        targetServices.stream()
+                      .filter(uri -> targetServicesWithRaminingHostAsOwner.contains(uri))
+                      .forEach(uri -> prevStatsOfSameOwner.put(uri, prevStats.get(uri)));
 
         // confirm maintenance is back up and running on all services
-        verifyMaintStatsAfterSynchronization(targetServices, prevStats);
+        verifyMaintStatsAfterSynchronization(targetServices, prevStatsOfSameOwner);
 
         // nodes are stopped, do updates again, quorum is relaxed, they should work
         doExampleServicePatch(exampleStatesPerSelfLink, remainingHost.getUri());

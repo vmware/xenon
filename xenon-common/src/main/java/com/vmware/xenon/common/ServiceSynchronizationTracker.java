@@ -423,6 +423,21 @@ class ServiceSynchronizationTracker {
         scheduleNodeGroupChangeMaintenance(nodeSelectorPath, null);
     }
 
+    public void setFactoriesAvailabilityIfOwner(boolean isAvailable) {
+        for (String serviceLink : this.synchronizationRequiredServices.keySet()) {
+            Service factoryService = this.host.findService(serviceLink, true);
+            if (factoryService == null || !factoryService.hasOption(ServiceOption.FACTORY)) {
+                this.host.log(Level.WARNING,
+                        "%s does not exist on host or is not a factory - cannot set availability",
+                        serviceLink);
+                continue;
+            }
+
+            Utils.setFactoryAvailabilityIfOwner(this.host, serviceLink,
+                    factoryService.getPeerNodeSelectorPath(), isAvailable);
+        }
+    }
+
     public void performNodeSelectorChangeMaintenance(Operation post, long now,
             MaintenanceStage nextStage, boolean isCheckRequired, long deadline) {
 
