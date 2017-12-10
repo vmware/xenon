@@ -62,12 +62,10 @@ import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
-import com.vmware.xenon.common.TestSynchronizationTaskService.SynchRetryExampleService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
-import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
@@ -358,36 +356,26 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         // this test dirties destination host, requires clean up
         clearSourceAndDestInProcessPeers = true;
 
-        // Start SynchRetryExampleService on each host which cannot be synchronized.
-        this.host.setNodeGroupQuorum(1);
-        Iterator<VerificationHost> peerIt = this.host.getInProcessHostMap().values().iterator();
-        VerificationHost peerNode = null;
-        while (peerIt.hasNext()) {
-            peerNode = peerIt.next();
-            peerNode.startFactory(new SynchRetryExampleService());
-            peerNode.waitForServiceAvailable(SynchRetryExampleService.FACTORY_LINK);
+        URI factoryUri = UriUtils.buildUri(getSourceHost(), ExampleService.FACTORY_LINK);
+        this.host.waitForReplicatedFactoryServiceAvailable(factoryUri);
+
+        // set factory availability on factory owner to false
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            Utils.setFactoryAvailabilityIfOwner(h, ExampleService.FACTORY_LINK,
+                    ServiceUriPaths.DEFAULT_NODE_SELECTOR, false);
         }
 
-        URI factoryUri = UriUtils.buildUri(
-                getSourceHost(), SynchRetryExampleService.FACTORY_LINK);
-        this.host.waitForReplicatedFactoryServiceAvailable(factoryUri);
-        createExampleServices(
-                this.sender, getSourceHost(), this.serviceCount, "fail", SynchRetryExampleService.FACTORY_LINK);
-
-        // Stop the last peerNode to kick synchronization
-        this.host.stopHost(peerNode);
-        this.host.joinNodesAndVerifyConvergence(this.nodeCount - 1, true);
-
-        // Wait for factory to be not available because synchronization would fail.
-        waitForReplicatedFactoryServiceNotAvailable(getSourceHost(), factoryUri, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+        // Wait for factory to be not available
+        waitForReplicatedFactoryServiceNotAvailable(getSourceHost(), factoryUri,
+                ServiceUriPaths.DEFAULT_NODE_SELECTOR);
 
         // Kick-off migration
-        MigrationTaskService.State migrationState = validMigrationState(
-                SynchRetryExampleService.FACTORY_LINK);
+        MigrationTaskService.State migrationState = validMigrationState(ExampleService.FACTORY_LINK);
         Operation op = Operation.createPost(this.destinationFactoryUri)
                 .setBody(migrationState)
                 .setReferer(this.host.getUri());
-        String selfLink = getDestinationHost().getTestRequestSender().sendAndWait(op).getBody(State.class).documentSelfLink;
+        String selfLink = getDestinationHost().getTestRequestSender().sendAndWait(op)
+                .getBody(State.class).documentSelfLink;
 
         // Wait for the migration task to fail
         State waitForServiceCompletion = waitForServiceCompletion(selfLink, getDestinationHost());
@@ -397,21 +385,6 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         assertTrue("Invalid message received: " + waitForServiceCompletion.taskInfo.failure.message,
                 waitForServiceCompletion.taskInfo.failure.message.contains(
                 "Failed to verify availability of factory service"));
-    }
-
-    private void createExampleServices(
-            TestRequestSender sender, VerificationHost h, long serviceCount, String selfLinkPostfix, String factoryLink) {
-        // create example services
-        List<Operation> ops = new ArrayList<>();
-        for (int i = 0; i < serviceCount; i++) {
-            ServiceDocument initState = new ServiceDocument();
-            initState.documentSelfLink = i + selfLinkPostfix;
-
-            Operation post = Operation.createPost(
-                    UriUtils.buildUri(h, factoryLink)).setBody(initState);
-            ops.add(post);
-        }
-        sender.sendAndWait(ops, ServiceDocument.class);
     }
 
     public void waitForReplicatedFactoryServiceNotAvailable(VerificationHost host, URI u, String nodeSelectorPath) {

@@ -1593,56 +1593,51 @@ public class TestNodeGroupService {
         Iterator<VerificationHost> peersIt = this.host.getInProcessHostMap().values().iterator();
         VerificationHost remainingHost = peersIt.next();
 
-        // Create a few example services
-        List<URI> exampleUris = this.host.createExampleServices(remainingHost, this.serviceCount,
+        // Create a few additional example services
+        List<URI> additionalExampleUris = this.host.createExampleServices(remainingHost, this.serviceCount,
                 null);
 
-        // create targetUris using the peer (remainingHost)
-        List<URI> targetUris = new ArrayList<>();
-        exampleUris.forEach(s -> targetUris.add(UriUtils.buildUri(remainingHost, s.getPath())));
+        // create additionalTargetUris using the peer (remainingHost)
+        List<URI> additionalTargetUris = new ArrayList<>();
+        additionalExampleUris.forEach(s -> additionalTargetUris.add(
+                UriUtils.buildUri(remainingHost, s.getPath())));
 
         // Patch these services
         ExampleServiceState state = new ExampleServiceState();
         state.name = "patched-name";
-        this.host.doServiceUpdates(targetUris, Action.PATCH, state);
+        this.host.doServiceUpdates(additionalTargetUris, Action.PATCH, state);
 
         List<VerificationHost> hostsToStop = new ArrayList<>();
         peersIt.forEachRemaining(h -> hostsToStop.add(h));
 
         List<URI> targetServices = new ArrayList<>();
+        List<URI> targetServicesWithRaminingHostAsOwner = new ArrayList<>();
         for (String link : exampleStatesPerSelfLink.keySet()) {
             // build the URIs using the host we plan to keep, so the maps we use below to lookup
             // stats from URIs, work before and after node stop
             targetServices.add(UriUtils.buildUri(remainingHost, link));
+            if (remainingHost.isOwner(link, ServiceUriPaths.DEFAULT_NODE_SELECTOR)) {
+                targetServicesWithRaminingHostAsOwner.add(UriUtils.buildUri(remainingHost, link));
+            }
         }
 
+        // capture current maint stats of services owned by the remaining host
+        Map<URI, Double> prevMaintStatsOfSameOwner = getMaintStats(targetServicesWithRaminingHostAsOwner);
+
+        // reduce peer synchronization and stop the hosts (except for the remainingHost)
         for (VerificationHost h : this.host.getInProcessHostMap().values()) {
             h.setPeerSynchronizationTimeLimitSeconds(this.host.getTimeoutSeconds() / 3);
         }
-
-        // capture current stats from each service
-        Map<URI, ServiceStats> prevStats = verifyMaintStatsAfterSynchronization(targetServices,
-                null);
-
         stopHostsAndVerifyQueuing(hostsToStop, remainingHost, targetServices);
 
-        // GET the state of example service and validate they represent correct state
+        // GET the state of the additional example services and validate they represent correct state
         Collection<ExampleServiceState> serviceStates = this.host.getServiceState(
-                null, ExampleServiceState.class, targetUris).values();
+                null, ExampleServiceState.class, additionalTargetUris).values();
         serviceStates.forEach(s -> assertEquals("patched-name", s.name));
 
-        // its important to verify document ownership before we do any updates on the services.
-        // This is because we verify, that even without any on demand synchronization,
-        // the factory driven synchronization set the services in the proper state
-        Set<String> ownerIds = this.host.getNodeStateMap().keySet();
-        List<URI> remainingHosts = new ArrayList<>(this.host.getNodeGroupMap().keySet());
-        verifyDocumentOwnerAndEpoch(exampleStatesPerSelfLink,
-                this.host.getInProcessHostMap().values().iterator().next(),
-                remainingHosts, 0, 1,
-                ownerIds.size() - 1);
-
-        // confirm maintenance is back up and running on all services
-        verifyMaintStatsAfterSynchronization(targetServices, prevStats);
+        // confirm maintenance is back up and running on all services, with the previous
+        // stats of services owned by the remaining host as baseline
+        verifyMaintStats(targetServices, prevMaintStatsOfSameOwner);
 
         // nodes are stopped, do updates again, quorum is relaxed, they should work
         doExampleServicePatch(exampleStatesPerSelfLink, remainingHost.getUri());
@@ -1674,47 +1669,42 @@ public class TestNodeGroupService {
                     null);
         }
 
-        verifyMaintStatsAfterSynchronization(targetServices, null);
+        verifyMaintStats(targetServices, null);
     }
 
-    private Map<URI, ServiceStats> verifyMaintStatsAfterSynchronization(List<URI> targetServices,
-            Map<URI, ServiceStats> statsPerService) {
+    private Map<URI, Double> getMaintStats(List<URI> targetServices) {
+        Map<URI, Double> results = new HashMap<>();
 
-        List<URI> targetServiceStats = new ArrayList<>();
-        List<URI> targetServiceConfig = new ArrayList<>();
-        for (URI child : targetServices) {
-            targetServiceStats.add(UriUtils.buildStatsUri(child));
-            targetServiceConfig.add(UriUtils.buildConfigUri(child));
+        for (URI targetService : targetServices) {
+            URI statsUri = UriUtils.buildStatsUri(targetService);
+            ServiceStats stats = this.host.getServiceState(null, ServiceStats.class, statsUri);
+            ServiceStat maintStat = stats == null ? null
+                    : stats.entries.get(Service.STAT_NAME_MAINTENANCE_COUNT);
+            Double maintStatValue = maintStat == null ? 0.0 : maintStat.latestValue;
+            results.put(targetService, maintStatValue);
         }
 
-        if (statsPerService == null) {
-            statsPerService = new HashMap<>();
-        }
-        final Map<URI, ServiceStats> previousStatsPerService = statsPerService;
+        return results;
+    }
+
+    private void verifyMaintStats(List<URI> targetServices, Map<URI, Double> prevMaintStats) {
         this.host.waitFor(
                 "maintenance not enabled",
                 () -> {
-                    Map<URI, ServiceStats> stats = this.host.getServiceState(null,
-                            ServiceStats.class, targetServiceStats);
-                    for (Entry<URI, ServiceStats> currentEntry : stats.entrySet()) {
-                        ServiceStats previousStats = previousStatsPerService.get(currentEntry
-                                .getKey());
-                        ServiceStats currentStats = currentEntry.getValue();
-                        ServiceStat previousMaintStat = previousStats == null ? new ServiceStat()
-                                : previousStats.entries
-                                .get(Service.STAT_NAME_MAINTENANCE_COUNT);
-                        double previousValue = previousMaintStat == null ? 0L
-                                : previousMaintStat.latestValue;
-                        ServiceStat maintStat = currentStats.entries
-                                .get(Service.STAT_NAME_MAINTENANCE_COUNT);
-                        if (maintStat == null || maintStat.latestValue <= previousValue) {
+                    Map<URI, Double> currentMaintStats = getMaintStats(targetServices);
+                    for (Entry<URI, Double> currentEntry : currentMaintStats.entrySet()) {
+                        URI tagretService = currentEntry.getKey();
+                        Double prevMaintValueDouble = prevMaintStats == null ? null
+                                : prevMaintStats.get(tagretService);
+                        double prevMaintValue = prevMaintValueDouble == null ? 0.0
+                                : prevMaintValueDouble.doubleValue();
+                        double currentMaintValue = currentEntry.getValue();
+                        if (currentMaintValue <= prevMaintValue) {
                             return false;
                         }
                     }
-                    previousStatsPerService.putAll(stats);
                     return true;
                 });
-        return statsPerService;
     }
 
     private Map<String, ExampleServiceState> createExampleServices(URI hostUri) throws Throwable {
