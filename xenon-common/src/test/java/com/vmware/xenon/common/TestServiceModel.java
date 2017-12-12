@@ -42,6 +42,7 @@ import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
+import com.vmware.xenon.services.common.ExampleService.ExampleNonReplicatedService;
 import com.vmware.xenon.services.common.MinimalFactoryTestService;
 import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
@@ -120,6 +121,18 @@ public class TestServiceModel extends BasicReusableHostTestCase {
         for (int i = 0; i < t.stringArrayField.length; i++) {
             assertEquals(t.stringArrayField[i], splitStringArrayValue[i]);
         }
+    }
+
+    @Test
+    public void onDemandLoadNonExistingService() {
+        // We send a GET to a Stateful, persistent, non-replicated service.
+        // On-demand load should kick-in, but fail to find the service.
+        // We verify that on-demand load does not create the service that does not exist.
+        URI uri = UriUtils.buildUri(this.host, ExampleNonReplicatedService.FACTORY_LINK, "does-not-exist");
+        this.host.getTestRequestSender().sendAndWaitFailure(Operation.createGet(uri));
+
+        // verify again, to make sure that the service was not created during the first attempt
+        this.host.getTestRequestSender().sendAndWaitFailure(Operation.createGet(uri));
     }
 
     @Test
