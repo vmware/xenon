@@ -2602,17 +2602,16 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private boolean processQueryResultsForOwnerSelection(String json, ServiceDocument state) {
-        String documentOwner;
+        String documentSelfLink;
         if (state == null) {
-            documentOwner = Utils.fromJson(json, ServiceDocument.class).documentOwner;
+            documentSelfLink = Utils.fromJson(json, ServiceDocument.class).documentSelfLink;
         } else {
-            documentOwner = state.documentOwner;
+            documentSelfLink = state.documentSelfLink;
         }
+        String documentOwnerId = getHost().findOwnerId(getPeerNodeSelectorPath(), documentSelfLink);
+
         // omit the result if the documentOwner is not the same as the local owner
-        if (documentOwner != null && !documentOwner.equals(getHost().getId())) {
-            return false;
-        }
-        return true;
+        return documentOwnerId != null && documentOwnerId.equals(getHost().getId());
     }
 
     private ServiceDocument processQueryResultsForSelectLinks(IndexSearcher s,

@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.common;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -34,9 +35,11 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -2597,6 +2600,48 @@ public class TestServiceHost {
                 h.stop();
             }
         }
+    }
+
+    @Test
+    public void findOwnerId() throws Throwable {
+        setUp(false);
+
+        int nodeCount = 3;
+        int numOfDocs = 30;
+
+        this.host.setUpPeerHosts(nodeCount);
+        this.host.joinNodesAndVerifyConvergence(nodeCount, true);
+        this.host.setNodeGroupQuorum(nodeCount);
+
+        VerificationHost peer = this.host.getPeerHost();
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+        List<Operation> ops = new ArrayList<>();
+        for (int i = 0; i < numOfDocs; i++) {
+            ExampleServiceState state = new ExampleService.ExampleServiceState();
+            state.name = "foo-" + i;
+            state.documentSelfLink = state.name;
+
+            ops.add(Operation.createPost(peer, ExampleService.FACTORY_LINK).setBody(state));
+        }
+        List<ExampleServiceState> postResults = sender.sendAndWait(ops, ExampleServiceState.class);
+
+        // each host should say same owner for the document
+        for (ExampleServiceState postResult : postResults) {
+            String path = postResult.documentSelfLink;
+
+            Map<String, String> map = new HashMap<>();
+            Set<String> ownerIds = new HashSet<>();
+            for (VerificationHost p : this.host.getInProcessHostMap().values()) {
+                String ownerId = p.findOwnerId(null, path);
+                map.put(p.getId(), ownerId);
+                ownerIds.add(ownerId);
+            }
+            assertThat(ownerIds).as("all peers say same owner for %s. %s", path, map).hasSize(1);
+        }
+
+
+
     }
 
     @Test

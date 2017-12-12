@@ -179,6 +179,8 @@ public interface NodeSelectorService extends Service {
      */
     void selectAndForward(Operation op, SelectAndForwardRequest body);
 
+    String findOwnerId(String path);
+
     /**
      * Set replication quorum, which decides the success and failure threshold of a service update
      */
