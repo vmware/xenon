@@ -2167,12 +2167,15 @@ public class TestServiceHost {
                 UriUtils.buildUri(this.host, factoryLink));
 
         // set aggressive cache clear again so ODL services stop
+        // temporarily disabled - https://jira-hzn.eng.vmware.com/browse/VRXEN-21
+        /*
         double nowCount = getHostMaintenanceCount();
         this.host.setServiceCacheClearDelayMicros(this.host.getMaintenanceIntervalMicros() / 2);
         this.host.waitFor("wait for main.", () -> {
             double latestCount = getHostMaintenanceCount();
             return latestCount > nowCount + 1;
         });
+        */
 
         // now patch these services, while we issue deletes. The PATCHs can fail, but not
         // the DELETEs
