@@ -63,7 +63,6 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
@@ -5023,8 +5022,7 @@ public class ServiceHost implements ServiceRequestSender {
         this.serviceSynchTracker.selectServiceOwnerAndSynchState(s, op);
     }
 
-    NodeSelectorService findNodeSelectorService(String path,
-            Operation request) {
+    NodeSelectorService findNodeSelectorService(String path, Operation request) {
         if (path == null) {
             path = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
         }
@@ -5097,6 +5095,24 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         nss.selectAndForward(op, body);
+    }
+
+    /**
+     * Infrastructure use only
+     *
+     * This method uses cached node group state; therefore, caller needs to make sure that the node group state is
+     * in available before calling this method. Otherwise, this may return non available owner node id.
+     */
+    public String findOwnerId(String selectorPath, String path) {
+
+        Operation dummyOp = Operation.createGet(null);
+        NodeSelectorService nss = findNodeSelectorService(selectorPath, dummyOp);
+        if (nss == null) {
+            // nss is null if it failed to find a node selector
+            return null;
+        }
+
+        return nss.findOwnerId(path);
     }
 
     /**
