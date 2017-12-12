@@ -123,6 +123,54 @@ public class TestServiceModel extends BasicReusableHostTestCase {
     }
 
     @Test
+    public void onDemandStartNonExistingService() throws Throwable {
+        // This test verifies that on-demand start, triggered by an operation targeting
+        // a non-existent Stateful persistent no-replicated service, does not inadvertently
+        // create the service or a memory footprint of it.
+
+        String factorySelfLink = "/some-factory";
+        String servicePath = UriUtils.buildUriPath(factorySelfLink, "does-not-exist");
+
+        // First verification: explicit service start:
+        // Simulate an on-demand start of a non-existing service (typically being
+        // triggered by an operation targeting a service that is not attached)
+        TestContext ctx = this.host.testCreate(1);
+        Operation onDemandPost = Operation.createPost(host, servicePath)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK)
+                .setReplicationDisabled(true)
+                .setAuthorizationContext(host.getSystemAuthorizationContext())
+                .setCompletion((o, e) -> {
+                    if (e == null) {
+                        ctx.failIteration(new IllegalStateException("expected start to fail"));
+                    } else {
+                        ctx.completeIteration();
+                    }
+                });
+        Service childService = new MinimalTestService();
+        childService.toggleOption(ServiceOption.FACTORY_ITEM, true);
+        childService.toggleOption(ServiceOption.PERSISTENCE, true);
+        this.host.startService(onDemandPost, childService);
+        ctx.await();
+
+        // Second verification: on-demand GET:
+        // We send a GET to a Stateful, persistent, non-replicated service.
+        // On-demand load should kick-in, but fail to find the service.
+        // We verify that on-demand load does not create the service that does not exist.
+        MinimalFactoryTestService factoryService = new MinimalFactoryTestService();
+        EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE, ServiceOption.FACTORY_ITEM);
+        factoryService.setChildServiceCaps(caps);
+
+        this.host.startServiceAndWait(factoryService, factorySelfLink, null);
+        URI uri = UriUtils.buildUri(this.host, servicePath);
+        this.host.getTestRequestSender().sendAndWaitFailure(Operation.createGet(uri));
+
+        // Third verification:
+        // Verify that the service was not created during the previous GET attempt
+        this.host.getTestRequestSender().sendAndWaitFailure(Operation.createGet(uri));
+    }
+
+    @Test
     public void serviceStop() throws Throwable {
         MinimalTestService serviceToBeDeleted = new MinimalTestService();
         MinimalTestService serviceToBeStopped = new MinimalTestService();

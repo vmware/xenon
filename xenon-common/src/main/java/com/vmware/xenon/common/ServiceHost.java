@@ -2943,6 +2943,15 @@ public class ServiceHost implements ServiceRequestSender {
                         ? ProcessingStage.EXECUTING_CREATE_HANDLER
                         : ProcessingStage.EXECUTING_START_HANDLER;
                 if (s.hasOption(ServiceOption.FACTORY) || !s.hasOption(ServiceOption.REPLICATION)) {
+                    if (!ServiceHost.isServiceCreate(post) &&
+                            post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK) &&
+                            post.getLinkedState() == null) {
+                        // typically synchronization fails with NotFound in this case, but
+                        // we skip synchronization so we fail here
+                        Operation.failServiceNotFound(post);
+                        return;
+                    }
+
                     processServiceStart(nxt, s, post, hasClientSuppliedInitialState);
                     break;
                 }

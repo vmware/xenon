@@ -54,7 +54,7 @@ public class ExampleService extends StatefulService {
 
         public ExampleODLService() {
             super();
-            super.toggleOption(ServiceOption.INSTRUMENTATION, false);
+            toggleOption(ServiceOption.INSTRUMENTATION, false);
         }
     }
 
@@ -67,8 +67,8 @@ public class ExampleService extends StatefulService {
 
         public ExampleImmutableService() {
             super();
-            super.toggleOption(ServiceOption.IMMUTABLE, true);
-            super.toggleOption(ServiceOption.INSTRUMENTATION, false);
+            toggleOption(ServiceOption.IMMUTABLE, true);
+            toggleOption(ServiceOption.INSTRUMENTATION, false);
         }
     }
 
@@ -82,7 +82,22 @@ public class ExampleService extends StatefulService {
         public ExampleNonPersistedService() {
             super();
             toggleOption(ServiceOption.PERSISTENCE, false);
-            super.toggleOption(ServiceOption.INSTRUMENTATION, false);
+            toggleOption(ServiceOption.INSTRUMENTATION, false);
+        }
+    }
+
+    public static class ExampleNonReplicatedService extends ExampleService {
+        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/nonreplicated-examples";
+
+        public static FactoryService createFactory() {
+            return FactoryService.create(ExampleNonReplicatedService.class);
+        }
+
+        public ExampleNonReplicatedService() {
+            super();
+            toggleOption(ServiceOption.OWNER_SELECTION, false);
+            toggleOption(ServiceOption.REPLICATION, false);
+            toggleOption(ServiceOption.INSTRUMENTATION, false);
         }
     }
 
