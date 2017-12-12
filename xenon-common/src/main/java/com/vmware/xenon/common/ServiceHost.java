@@ -63,7 +63,6 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
@@ -79,6 +78,7 @@ import io.opentracing.tag.Tags;
 import com.vmware.xenon.common.FileUtils.ResourceEntry;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest.ForwardingOption;
+import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Operation.OperationOption;
@@ -5023,14 +5023,20 @@ public class ServiceHost implements ServiceRequestSender {
         this.serviceSynchTracker.selectServiceOwnerAndSynchState(s, op);
     }
 
-    NodeSelectorService findNodeSelectorService(String path,
-            Operation request) {
+    /**
+     * Find {@link NodeSelectorService} from given or default path.
+     *
+     * @param path    path to the NodeSelectorService. default path is used when it is null. Nullable.
+     * @param request passed operation is failed if no service is found on the path. Nullable.
+     * @return a node selector service
+     */
+    NodeSelectorService findNodeSelectorService(String path, Operation request) {
         if (path == null) {
             path = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
         }
 
         Service s = this.findService(path);
-        if (s == null) {
+        if (s == null && request != null) {
             request.fail(new ServiceNotFoundException());
             return null;
         }
@@ -5097,6 +5103,24 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         nss.selectAndForward(op, body);
+    }
+
+    /**
+     * Infrastructure use only
+     *
+     * This method uses cached node group state; therefore, caller needs to make sure that the
+     * node group state is in available before calling this method. Otherwise, this may return
+     * non available owner node id.
+     */
+    public SelectOwnerResponse findOwnerNode(String selectorPath, String path) {
+
+        NodeSelectorService nss = findNodeSelectorService(selectorPath, null);
+        if (nss == null) {
+            // nss is null if it failed to find a node selector
+            return null;
+        }
+
+        return nss.findOwnerNode(path);
     }
 
     /**

@@ -70,8 +70,7 @@ class ServiceSynchronizationTracker {
             throw new IllegalArgumentException("nodeGroupPath is required");
         }
 
-        NodeSelectorService nss = this.host.findNodeSelectorService(nodeSelectorPath,
-                Operation.createGet(null));
+        NodeSelectorService nss = this.host.findNodeSelectorService(nodeSelectorPath, null);
         if (nss == null) {
             throw new IllegalArgumentException("Node selector not found: " + nodeSelectorPath);
         }

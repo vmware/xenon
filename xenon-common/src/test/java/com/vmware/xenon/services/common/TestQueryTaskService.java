@@ -2166,16 +2166,14 @@ public class TestQueryTaskService {
         this.host.testWait(ctx);
     }
 
-    private void createExampleServices(URI exampleFactoryURI, List<URI> exampleServices)
-            throws Throwable {
-        createExampleServices(exampleFactoryURI, exampleServices, false);
+    private List<ExampleServiceState> createExampleServices(URI exampleFactoryURI, List<URI> exampleServices) {
+        return createExampleServices(exampleFactoryURI, exampleServices, false);
     }
 
-    private void createExampleServices(URI exampleFactoryURI, List<URI> exampleServices,
-            boolean randomLink)
-            throws Throwable {
+    private List<ExampleServiceState> createExampleServices(URI exampleFactoryURI, List<URI> exampleServices,
+            boolean randomLink) {
 
-        TestContext ctx = this.host.testCreate(this.serviceCount);
+        List<Operation> posts = new ArrayList<>();
         for (int i = 0; i < this.serviceCount; i++) {
             ExampleServiceState s = new ExampleServiceState();
             s.name = "document" + i;
@@ -2186,11 +2184,10 @@ public class TestQueryTaskService {
             }
             exampleServices.add(UriUtils.buildUri(this.host.getUri(),
                     ExampleService.FACTORY_LINK, s.documentSelfLink));
-            this.host.send(Operation.createPost(exampleFactoryURI)
-                    .setBody(s)
-                    .setCompletion(ctx.getCompletion()));
+            posts.add(Operation.createPost(exampleFactoryURI).setBody(s));
         }
-        this.host.testWait(ctx);
+
+        return this.host.getTestRequestSender().sendAndWait(posts, ExampleServiceState.class);
     }
 
     private void validateGroupByResults(VerificationHost targetHost, List<String> groups,
@@ -5497,4 +5494,68 @@ public class TestQueryTaskService {
         List<String> links = dummy.getBody(ServiceDocumentQueryResult.class).documentLinks;
         return links.size();
     }
+
+    @Test
+    public void ownerSelectionQuery() throws Throwable {
+        final int nodeCount = 3;
+
+        setUpHost();
+        this.host.setPeerSynchronizationEnabled(true);
+        this.host.setUpPeerHosts(nodeCount);
+        this.host.joinNodesAndVerifyConvergence(nodeCount, true);
+
+        URI exampleFactoryUri = UriUtils.buildUri(this.host.getPeerServiceUri(ExampleService.FACTORY_LINK));
+        this.host.waitForReplicatedFactoryServiceAvailable(exampleFactoryUri);
+
+        TestRequestSender sender = this.host.getTestRequestSender();
+        VerificationHost peer = this.host.getPeerHost();
+
+        // create example services
+        List<ExampleServiceState> states = createExampleServices(UriUtils.buildUri(peer, ExampleService.FACTORY_LINK), new ArrayList<>());
+
+        // get ExampleServices that this peer has owned
+        String peerId = peer.getId();
+        List<String> peerOwnedDocLinks = states.stream()
+                .filter(state -> peerId.equals(peer.findOwnerNode(null, state.documentSelfLink).ownerNodeId))
+                .map(state -> state.documentSelfLink)
+                .collect(toList());
+
+        // links for all of created document
+        List<String> allDocLinks = states.stream()
+                .map(state -> state.documentSelfLink)
+                .collect(toList());
+
+
+        // OWNER_SELECTION only query
+        QueryTask task = QueryTask.Builder.createDirectTask()
+                .setQuery(Query.Builder.create().addKindFieldClause(ExampleServiceState.class).build())
+                .addOptions(EnumSet.of(QueryOption.OWNER_SELECTION))
+                .build();
+
+        Operation post = Operation.createPost(peer, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS).setBody(task);
+        QueryTask queryTaskResult = sender.sendAndWait(post, QueryTask.class);
+
+        List<String> taskResultDocumentLinks = queryTaskResult.results.documentLinks;
+
+        // verify it returns links that "peer" has owned
+        assertThat(taskResultDocumentLinks).hasSameElementsAs(peerOwnedDocLinks);
+
+        // BROADCAST + OWNER_SELECTION
+        task = QueryTask.Builder.createDirectTask()
+                .setQuery(Query.Builder.create().addKindFieldClause(ExampleServiceState.class).build())
+                .addOptions(EnumSet.of(QueryOption.BROADCAST, QueryOption.OWNER_SELECTION))
+                .build();
+
+        post = Operation.createPost(peer, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS).setBody(task);
+        queryTaskResult = sender.sendAndWait(post, QueryTask.class);
+
+        taskResultDocumentLinks = queryTaskResult.results.documentLinks;
+
+        // verify it returns all links
+        assertThat(taskResultDocumentLinks)
+                .doesNotHaveDuplicates()
+                .hasSameElementsAs(allDocLinks);
+
+    }
+
 }
