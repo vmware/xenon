@@ -56,6 +56,8 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -79,6 +81,7 @@ import io.opentracing.tag.Tags;
 import com.vmware.xenon.common.FileUtils.ResourceEntry;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest.ForwardingOption;
+import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Operation.OperationOption;
@@ -5023,8 +5026,7 @@ public class ServiceHost implements ServiceRequestSender {
         this.serviceSynchTracker.selectServiceOwnerAndSynchState(s, op);
     }
 
-    NodeSelectorService findNodeSelectorService(String path,
-            Operation request) {
+    NodeSelectorService findNodeSelectorService(String path, Operation request) {
         if (path == null) {
             path = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
         }
@@ -5097,6 +5099,67 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         nss.selectAndForward(op, body);
+    }
+
+    /**
+     * NOTE: before calling this method, NodeGroup needs to be in available state.
+     */
+    public URI selectOwner(String selectorPath, String path) {
+
+        // create a request but do not assign any option and targetPath to avoid forwarding
+        SelectAndForwardRequest forwardRequest = this.selectOwnerRequests.get();
+        forwardRequest.key = path;
+
+        Operation dummyOp;
+        AtomicBoolean failed = new AtomicBoolean(false);
+        dummyOp = Operation.createGet(null)
+                .setCompletion((op, ex) -> {
+                    if (ex != null) {
+                        failed.set(true);
+                    }
+                });
+        NodeSelectorService nss = findNodeSelectorService(selectorPath, dummyOp);
+        if (nss == null || failed.get()) {
+            return null;
+        }
+
+        // with no option and no targetPath will not forward the request
+        AtomicReference<URI> ownerUri = new AtomicReference<>();
+        dummyOp = Operation.createGet(null)
+                .setExpiration(Utils.fromNowMicrosUtc(getOperationTimeoutMicros()))
+                .setCompletion((op, ex) -> {
+                    if (ex != null) {
+                        failed.set(true);
+                        return;
+                    }
+                    SelectOwnerResponse response = op.getBody(SelectOwnerResponse.class);
+                    ownerUri.set(response.ownerNodeGroupReference);
+                });
+        nss.selectAndForward(dummyOp, forwardRequest);
+
+        return ownerUri.get();
+    }
+
+    /**
+     * NOTE: before calling this method, NodeGroup needs to be in available state.
+     */
+    public String findOwnerId(String selectorPath, String path) {
+
+        AtomicBoolean failed = new AtomicBoolean(false);
+
+        Operation dummyOp = Operation.createGet(null)
+                .setCompletion((op, ex) -> {
+                    if (ex != null) {
+                        failed.set(true);
+                    }
+                });
+
+        NodeSelectorService nss = findNodeSelectorService(selectorPath, dummyOp);
+        if (nss == null || failed.get()) {
+            return null;
+        }
+
+        return nss.findOwnerId(path);
     }
 
     /**
