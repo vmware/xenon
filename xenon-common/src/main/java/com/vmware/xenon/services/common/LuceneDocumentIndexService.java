@@ -96,6 +96,7 @@ import org.apache.lucene.util.Version;
 
 import com.vmware.xenon.common.FileUtils;
 import com.vmware.xenon.common.NamedThreadFactory;
+import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
@@ -2602,17 +2603,16 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private boolean processQueryResultsForOwnerSelection(String json, ServiceDocument state) {
-        String documentOwner;
+        String documentSelfLink;
         if (state == null) {
-            documentOwner = Utils.fromJson(json, ServiceDocument.class).documentOwner;
+            documentSelfLink = Utils.fromJson(json, ServiceDocument.class).documentSelfLink;
         } else {
-            documentOwner = state.documentOwner;
+            documentSelfLink = state.documentSelfLink;
         }
+        SelectOwnerResponse ownerResponse = getHost().findOwnerNode(getPeerNodeSelectorPath(), documentSelfLink);
+
         // omit the result if the documentOwner is not the same as the local owner
-        if (documentOwner != null && !documentOwner.equals(getHost().getId())) {
-            return false;
-        }
-        return true;
+        return ownerResponse != null && ownerResponse.isLocalHostOwner;
     }
 
     private ServiceDocument processQueryResultsForSelectLinks(IndexSearcher s,

@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.common;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -34,9 +35,11 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -2597,6 +2600,32 @@ public class TestServiceHost {
                 h.stop();
             }
         }
+    }
+
+    @Test
+    public void findOwnerNode() throws Throwable {
+        setUp(false);
+
+        int nodeCount = 3;
+        int pathVerificationCount = 3;
+        this.host.setUpPeerHosts(nodeCount);
+        this.host.joinNodesAndVerifyConvergence(nodeCount, true);
+        this.host.setNodeGroupQuorum(nodeCount);
+
+        // each host should say same owner for the path
+        for (int i = 0; i < pathVerificationCount; i++) {
+            String path = UUID.randomUUID().toString();
+
+            Map<String, String> map = new HashMap<>();
+            Set<String> ownerIds = new HashSet<>();
+            for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+                String ownerId = h.findOwnerNode(null, path).ownerNodeId;
+                map.put(h.getId(), ownerId);
+                ownerIds.add(ownerId);
+            }
+            assertThat(ownerIds).as("all peers say same owner for %s. %s", path, map).hasSize(1);
+        }
+
     }
 
     @Test

@@ -180,6 +180,14 @@ public interface NodeSelectorService extends Service {
     void selectAndForward(Operation op, SelectAndForwardRequest body);
 
     /**
+     * Find owner node ID for the given service path.
+     *
+     * This method uses cached nodegroup state to calculate the owner; therefore, caller needs to
+     * make sure the nodegroup state is stable before calling this method.
+     */
+    SelectOwnerResponse findOwnerNode(String path);
+
+    /**
      * Set replication quorum, which decides the success and failure threshold of a service update
      */
     void updateReplicationQuorum(Operation op, UpdateReplicationQuorumRequest r);
