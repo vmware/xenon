@@ -347,8 +347,19 @@ public class TestEventStreams extends BasicReusableHostTestCase {
 
         // Let's try to send another event to the client.
         // This time the server should fail because the client is disconnected
-        Operation patch = Operation.createPatch(this.host, EventStreamService.SELF_LINK)
-                .setBody("{ \"key\": \"value\" }");
-        this.sender.sendAndWaitFailure(patch);
+        this.host.waitFor("Expected failure for disconnected client", () -> {
+            Operation patch = Operation.createPatch(this.host, EventStreamService.SELF_LINK)
+                    .setBody("{ \"key\": \"value\" }");
+            try {
+                this.sender.sendAndWaitFailure(patch);
+            } catch (RuntimeException ex) {
+                // Even though pushing data to a disconnected client is expected to fail,
+                // we have observed it works intermittently.
+                // Tracking the issue in netty: https://github.com/netty/netty/issues/7516
+                this.host.log("sendAndWaitFailure thre exception: %s", ex.getMessage());
+                return false;
+            }
+            return true;
+        });
     }
 }
