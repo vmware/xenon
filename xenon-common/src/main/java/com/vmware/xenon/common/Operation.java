@@ -717,7 +717,9 @@ public class Operation implements Cloneable {
     private short retryCount;
     private short retriesRemaining;
 
-    private EnumSet<OperationOption> options = EnumSet.of(OperationOption.KEEP_ALIVE);
+    // TODO: Setting REPLICATION_DISABLED by default as a temporary hack to disable replication of
+    // state between nodes
+    private EnumSet<OperationOption> options = EnumSet.of(OperationOption.KEEP_ALIVE, OperationOption.REPLICATION_DISABLED);
 
     private volatile Consumer<ServerSentEvent> serverSentEventHandler;
 

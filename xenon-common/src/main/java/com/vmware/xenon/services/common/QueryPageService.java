@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.services.common;
 
+import java.sql.ResultSet;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.lucene.search.ScoreDoc;
@@ -59,6 +60,26 @@ public class QueryPageService extends StatelessService {
         }
 
         public LuceneQueryPage(String link, ScoreDoc after) {
+            this.previousPageLink = link;
+            this.after = after;
+        }
+
+        public boolean isFirstPage() {
+            return this.previousPageLink == null;
+        }
+    }
+
+    public static class PostgresQueryPage {
+        public String previousPageLink;
+        public ResultSet after;
+        public Integer groupOffset;
+
+        public PostgresQueryPage(String link, int groupOffset) {
+            this.previousPageLink = link;
+            this.groupOffset = groupOffset;
+        }
+
+        public PostgresQueryPage(String link, ResultSet after) {
             this.previousPageLink = link;
             this.after = after;
         }
@@ -120,7 +141,7 @@ public class QueryPageService extends StatelessService {
     }
 
     @Override
-    public void handleMaintenance(Operation op) {
+    public void handlePeriodicMaintenance(Operation op) {
         op.complete();
         // This service only lives as long as its parent QueryTask
         getHost().stopService(this);
@@ -146,7 +167,7 @@ public class QueryPageService extends StatelessService {
 
     private void handleQueryCompletion(QueryTask task, Throwable e, Operation get) {
         if (e != null) {
-            LuceneQueryPage ctx = (LuceneQueryPage) task.querySpec.context.nativePage;
+            PostgresQueryPage ctx = (PostgresQueryPage) task.querySpec.context.nativePage;
             // When forward only is specified, previous page link is always empty, and currently
             // no way of knowing whether it is on the first page or not.
             // Thus, when it is forward only, do not attempt to retry query.

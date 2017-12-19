@@ -361,6 +361,9 @@ public class SynchronizationTaskService
                 task.subStage = SubStage.QUERY;
                 task.checkpoint = 0L;
             }
+
+            // TODO: Disable sync
+            task.subStage = SubStage.CHECK_NG_AVAILABILITY;
         }
 
         if (this.isDetailedLoggingEnabled) {
@@ -478,6 +481,10 @@ public class SynchronizationTaskService
                 task.subStage = SubStage.QUERY;
                 task.checkpoint = 0L;
             }
+
+            // TODO: Disable sync
+            task.subStage = SubStage.CHECK_NG_AVAILABILITY;
+
             task.synchCompletionCount = 0;
             setStat(STAT_NAME_CHILD_SYNCH_RETRY_COUNT, 0);
             setStat(STAT_NAME_CHILD_SYNCH_FAILURE_COUNT, 0);

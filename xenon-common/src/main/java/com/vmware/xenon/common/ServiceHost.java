@@ -122,6 +122,7 @@ import com.vmware.xenon.services.common.NodeGroupUtils;
 import com.vmware.xenon.services.common.NodeSelectorReplicationService;
 import com.vmware.xenon.services.common.ODataQueryService;
 import com.vmware.xenon.services.common.OperationIndexService;
+import com.vmware.xenon.services.common.PostgresDocumentIndexService;
 import com.vmware.xenon.services.common.QueryFilter;
 import com.vmware.xenon.services.common.QueryPageForwardingService;
 import com.vmware.xenon.services.common.QueryTaskFactoryService;
@@ -757,7 +758,15 @@ public class ServiceHost implements ServiceRequestSender {
         // apply command line arguments, potentially overriding file configuration
         initializeStateFromArguments(s, args);
 
-        LuceneDocumentIndexService documentIndexService = new LuceneDocumentIndexService();
+        //LuceneDocumentIndexService documentIndexService = new LuceneDocumentIndexService();
+
+        String dbUrl = "jdbc:postgresql://localhost/test";
+        Properties dbProps = new Properties();
+        dbProps.setProperty("user","postgres");
+        dbProps.setProperty("password","password");
+        dbProps.setProperty("ssl","false");
+
+        PostgresDocumentIndexService documentIndexService = new PostgresDocumentIndexService(dbUrl, dbProps);
         setDocumentIndexingService(documentIndexService);
 
         ServiceHostManagementService managementService = new ServiceHostManagementService();
@@ -1693,8 +1702,9 @@ public class ServiceHost implements ServiceRequestSender {
         // since factories with persisted services use queries to enumerate their children.
         if (this.documentIndexService != null) {
             addPrivilegedService(this.documentIndexService.getClass());
-            if (this.documentIndexService instanceof LuceneDocumentIndexService) {
-                LuceneDocumentIndexService luceneDocumentIndexService = (LuceneDocumentIndexService) this.documentIndexService;
+            if (this.documentIndexService instanceof LuceneDocumentIndexService
+                    || this.documentIndexService instanceof PostgresDocumentIndexService) {
+                Service luceneDocumentIndexService = this.documentIndexService;
                 Service[] queryServiceArray = new Service[] {
                         luceneDocumentIndexService,
                         new LuceneDocumentIndexBackupService(),

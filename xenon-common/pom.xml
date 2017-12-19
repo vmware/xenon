@@ -25,6 +25,7 @@
     <jmh.version>1.19</jmh.version>
     <assertj.version>3.8.0</assertj.version>
     <docker.java.version>3.0.14</docker.java.version>
+    <postgresql.version>42.1.4</postgresql.version>
   </properties>
 
   <profiles>
@@ -230,6 +231,11 @@
       <version>${findbugs.version}</version>
       <scope>provided</scope>
     </dependency>
+      <dependency>
+          <groupId>org.postgresql</groupId>
+          <artifactId>postgresql</artifactId>
+          <version>${postgresql.version}</version>
+      </dependency>
   </dependencies>
   <build>
     <plugins>
