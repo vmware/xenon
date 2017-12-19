@@ -799,7 +799,10 @@ public class TestServiceModel extends BasicReusableHostTestCase {
             uris.add(UriUtils.extendUri(nsOwner.getUri(), "/1/replication"));
             uris.add(UriUtils.extendUri(nsOwner.getUri(), "/1/subscriptions"));
 
+            // try all actions and expect no failure.
+            // DELETE should be the last action tested, because it deletes the documents
             EnumSet<Action> actions = EnumSet.allOf(Action.class);
+            actions.remove(Action.DELETE);
             verifyAllActions(uris, actions, false);
 
             // these should all fail, utility service suffix
@@ -818,7 +821,12 @@ public class TestServiceModel extends BasicReusableHostTestCase {
             uris.add(UriUtils.extendUri(this.host.getUri(), "/1/2/3/?k=v&k1=v1"));
             uris.add(UriUtils.extendUri(this.host.getUri(), "/1/2/3/?k=v&k1=v1"));
             actions = EnumSet.allOf(Action.class);
+            actions.remove(Action.DELETE);
             verifyAllActions(uris, actions, true);
+
+            // now test DELETE, which should pass for both existing and non-existing services
+            actions = EnumSet.of(Action.DELETE);
+            verifyAllActions(uris, actions, false);
         }
 
         verifyDeleteOnNamespaceOwner(s);

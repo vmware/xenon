@@ -86,6 +86,7 @@ public class ServiceAvailabilityFilter implements Filter {
                     // we will retry, which will most likely trigger an on-demand start
                     // (unless the client has explicitly requested to wait for service availability,
                     // in that case we wait until the service becomes available or the operation expires)
+                    context.setService(null);
                     context.resumeProcessingRequest(op, FilterReturnCode.RESUME_PROCESSING, null);
                     return;
                 }
@@ -131,6 +132,13 @@ public class ServiceAvailabilityFilter implements Filter {
                 });
                 return FilterReturnCode.SUSPEND_PROCESSING;
             }
+        }
+
+        if (op.getAction() == Action.DELETE) {
+            // this is a DELETE on a non-on-demand service that does not exist -
+            // we return success for consistency
+            op.complete();
+            return FilterReturnCode.SUCCESS_STOP_PROCESSING;
         }
 
         Operation.failServiceNotFound(op);
@@ -179,6 +187,14 @@ public class ServiceAvailabilityFilter implements Filter {
 
                     if (!o.hasBody()) {
                         // the index will return success, but no body if service is not found
+
+                        if (op.getAction() == Action.DELETE) {
+                            // this is a DELETE - we return success for consistency
+                            context.resumeProcessingRequest(op, FilterReturnCode.SUCCESS_STOP_PROCESSING, null);
+                            op.complete();
+                            return;
+                        }
+
                         context.resumeProcessingRequest(op, FilterReturnCode.FAILED_STOP_PROCESSING,
                                 new ServiceNotFoundException(op.getUri().getPath()));
                         Operation.failServiceNotFound(op);
