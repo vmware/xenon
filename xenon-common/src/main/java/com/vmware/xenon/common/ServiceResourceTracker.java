@@ -16,7 +16,6 @@ package com.vmware.xenon.common;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
 import java.util.EnumSet;
-import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -27,6 +26,7 @@ import java.util.logging.Level;
 
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceClient.ConnectionPoolMetrics;
+import com.vmware.xenon.common.ServiceHost.AttachedServiceInfo;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
@@ -88,23 +88,7 @@ public class ServiceResourceTracker {
     /**
      * For performance reasons, this map is owned and directly operated by the host
      */
-    private final Map<String, Service> attachedServices;
-
-    /**
-     * Tracks cached service state. Cleared periodically during maintenance
-     */
-    private final ConcurrentMap<String, ServiceDocument> cachedServiceStates = new ConcurrentHashMap<>();
-
-    /**
-     * Tracks last access time for PERSISTENT services. The access time is used for a few things:
-     * 1. Deciding if the cache state of the service needs to be cleared based
-     *    on {@link ServiceHost#getServiceCacheClearDelayMicros()}.
-     * 2. Deciding if the service needs to be stopped when memory pressure is high.
-     *
-     * We don't bother tracking access time for StatefulServices that are non-persistent.
-     * This is because the cached state for non-persistent stateful services is never cleared.
-     */
-    private final ConcurrentMap<String, Long> persistedServiceLastAccessTimes = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, AttachedServiceInfo> attachedServices;
 
     /**
      * Tracks cached service state. Cleared periodically during maintenance
@@ -121,12 +105,12 @@ public class ServiceResourceTracker {
 
     private Service mgmtService;
 
-    public static ServiceResourceTracker create(ServiceHost host, Map<String, Service> services) {
+    public static ServiceResourceTracker create(ServiceHost host, ConcurrentMap<String, AttachedServiceInfo> services) {
         ServiceResourceTracker srt = new ServiceResourceTracker(host, services);
         return srt;
     }
 
-    public ServiceResourceTracker(ServiceHost host, Map<String, Service> services) {
+    public ServiceResourceTracker(ServiceHost host, ConcurrentMap<String, AttachedServiceInfo> services) {
         this.attachedServices = services;
         this.host = host;
     }
@@ -307,8 +291,10 @@ public class ServiceResourceTracker {
     }
 
     private void updateCachedServiceState(Service s, ServiceDocument st, Operation op, boolean checkVersion) {
-        if (ServiceHost.isServiceIndexed(s) && !isTransactional(op)) {
-            this.persistedServiceLastAccessTimes.put(s.getSelfLink(), Utils.getNowMicrosUtc());
+        AttachedServiceInfo serviceInfo = this.attachedServices.get(s.getSelfLink());
+        if (serviceInfo == null) {
+            // the service has just been detached (unlikely, but possible) - we'll forego caching
+            return;
         }
 
         // we cache the state only if:
@@ -319,17 +305,28 @@ public class ServiceResourceTracker {
         cacheState |= (!op.isFromReplication() || op.isSynchronizeOwner()) && this.isServiceStateCaching;
 
         if (!cacheState) {
+            if (ServiceHost.isServiceIndexed(s)) {
+                synchronized (serviceInfo) {
+                    serviceInfo.lastAccessTime = Utils.getNowMicrosUtc();
+                }
+            }
             return;
         }
 
         if (!isTransactional(op)) {
-            synchronized (s.getSelfLink()) {
-                ServiceDocument cachedState = this.cachedServiceStates.put(s.getSelfLink(), st);
+            synchronized (serviceInfo) {
+                ServiceDocument cachedState = serviceInfo.cachedState;
                 if (checkVersion && cachedState != null && cachedState.documentVersion > st.documentVersion) {
-                    // restore cached state, discarding update, if the existing version is higher
-                    this.cachedServiceStates.put(s.getSelfLink(), cachedState);
+                    // discarding update, if the existing version is higher
+                    return;
+                }
+
+                serviceInfo.cachedState = st;
+                if (ServiceHost.isServiceIndexed(s)) {
+                    serviceInfo.lastAccessTime = Utils.getNowMicrosUtc();
                 }
             }
+
             return;
         }
 
@@ -351,6 +348,7 @@ public class ServiceResourceTracker {
      */
     public ServiceDocument getCachedServiceState(Service s, Operation op) {
         String servicePath = s.getSelfLink();
+        AttachedServiceInfo serviceInfo = null;
         ServiceDocument state = null;
 
         if (isTransactional(op)) {
@@ -362,7 +360,12 @@ public class ServiceResourceTracker {
         if (state == null) {
             // either the operation is not transactional or no transactional state found -
             // look for the state in the non-transactional map
-            state = this.cachedServiceStates.get(servicePath);
+            serviceInfo = this.attachedServices.get(servicePath);
+            if (serviceInfo != null) {
+                synchronized (serviceInfo) {
+                    state = serviceInfo.cachedState;
+                }
+            }
         }
 
         if (state == null) {
@@ -380,8 +383,9 @@ public class ServiceResourceTracker {
         }
 
         if (ServiceHost.isServiceIndexed(s) && !isTransactional(op)) {
-            this.persistedServiceLastAccessTimes.put(servicePath,
-                    Utils.getNowMicrosUtc());
+            synchronized (serviceInfo) {
+                serviceInfo.lastAccessTime = Utils.getNowMicrosUtc();
+            }
         }
 
         updateCacheHitStats();
@@ -404,12 +408,16 @@ public class ServiceResourceTracker {
         String servicePath = s.getSelfLink();
 
         if (!isTransactional(op)) {
-            this.persistedServiceLastAccessTimes.remove(servicePath);
-
-            ServiceDocument doc = this.cachedServiceStates.remove(servicePath);
-            if (doc != null) {
-                updateCacheClearStats();
+            AttachedServiceInfo serviceInfo = this.attachedServices.get(servicePath);
+            if (serviceInfo != null) {
+                synchronized (serviceInfo) {
+                    serviceInfo.cachedState = null;
+                    serviceInfo.lastAccessTime = 0;
+                }
             }
+
+            updateCacheClearStats();
+
             return;
         }
 
@@ -453,8 +461,12 @@ public class ServiceResourceTracker {
         ServiceHostState hostState = this.host.getStateNoCloning();
         int stopServiceCount = 0;
 
-        for (Service service : this.attachedServices.values()) {
-            ServiceDocument state = this.cachedServiceStates.get(service.getSelfLink());
+        for (AttachedServiceInfo serviceInfo : this.attachedServices.values()) {
+            Service service = serviceInfo.service;
+            ServiceDocument state;
+            synchronized (serviceInfo) {
+                state = serviceInfo.cachedState;
+            }
 
             if (!ServiceHost.isServiceIndexed(service)) {
                 // service is not persistent - just check if it's expired, and
@@ -473,8 +485,7 @@ public class ServiceResourceTracker {
                 continue;
             }
 
-            Long lastAccessTime = this.persistedServiceLastAccessTimes.get(service.getSelfLink());
-            if (serviceActive(lastAccessTime, service, now)) {
+            if (serviceActive(serviceInfo.lastAccessTime, service, now)) {
                 // Skip stop for services that have been recently active
                 continue;
             }
@@ -502,10 +513,8 @@ public class ServiceResourceTracker {
         }
 
         this.host.log(Level.FINE,
-                "Attempt stop on %d services, attached: %d, cached: %d, persistedServiceLastAccessTimes: %d",
-                stopServiceCount, hostState.serviceCount,
-                this.cachedServiceStates.size(),
-                this.persistedServiceLastAccessTimes.size());
+                "Attempt stop on %d services, attached: %d",
+                stopServiceCount, hostState.serviceCount);
     }
 
     private boolean serviceExemptFromCacheEviction(Service service) {
@@ -551,11 +560,7 @@ public class ServiceResourceTracker {
         return false;
     }
 
-    private boolean serviceActive(Long lastAccessTime, Service s, long now) {
-        if (lastAccessTime == null) {
-            return false;
-        }
-
+    private boolean serviceActive(long lastAccessTime, Service s, long now) {
         long cacheClearDelayMicros = s.getCacheClearDelayMicros();
         if (ServiceHost.isServiceImmutable(s)) {
             cacheClearDelayMicros = 0;
@@ -595,8 +600,7 @@ public class ServiceResourceTracker {
     }
 
     public void close() {
-        this.cachedServiceStates.clear();
-        this.persistedServiceLastAccessTimes.clear();
+        // no clean-up is needed, maybe in the future
     }
 
     private boolean isTransactional(Operation op) {

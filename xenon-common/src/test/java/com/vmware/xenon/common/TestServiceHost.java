@@ -1958,7 +1958,7 @@ public class TestServiceHost {
         long maintenanceIntervalMicros = TimeUnit.MILLISECONDS
                 .toMicros(maintenanceIntervalMillis);
 
-        // induce host to clear service state cache by setting mem limit low
+        // induce host to clear service state cache
         this.host.setMaintenanceIntervalMicros(maintenanceIntervalMicros);
         this.host.setServiceCacheClearDelayMicros(maintenanceIntervalMicros / 2);
         this.host.start();

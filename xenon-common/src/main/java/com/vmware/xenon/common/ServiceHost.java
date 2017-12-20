@@ -443,6 +443,23 @@ public class ServiceHost implements ServiceRequestSender {
         public Boolean skipForwardingRequests = true;
     }
 
+    public static class AttachedServiceInfo {
+        /**
+         * The attached service instance. Cannot be null.
+         */
+        public Service service;
+
+        /**
+         * Cached service state. Null on replicas.
+         */
+        public ServiceDocument cachedState;
+
+        /**
+         * Last access time. Tracked only for persistent services.
+         */
+        public long lastAccessTime;
+    }
+
     public static class ServiceHostState extends ServiceDocument {
         public enum MemoryLimitType {
             LOW_WATERMARK, HIGH_WATERMARK, EXACT
@@ -594,7 +611,7 @@ public class ServiceHost implements ServiceRequestSender {
     private ScheduledExecutorService scheduledExecutor;
     private ScheduledThreadPoolExecutor scheduledExecutorPool; // For service resource tracking
 
-    private final ConcurrentHashMap<String, Service> attachedServices = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, AttachedServiceInfo> attachedServices = new ConcurrentHashMap<>();
     private final ConcurrentSkipListMap<String, Service> attachedNamespaceServices = new ConcurrentSkipListMap<>();
 
     private final ConcurrentSkipListSet<String> coreServices = new ConcurrentSkipListSet<>();
@@ -1244,7 +1261,8 @@ public class ServiceHost implements ServiceRequestSender {
 
         long minInterval = micros;
         // verify that attached services have intervals greater or equal to suggested value
-        for (Service s : this.attachedServices.values()) {
+        for (AttachedServiceInfo serviceInfo : this.attachedServices.values()) {
+            Service s = serviceInfo.service;
             if (s.getProcessingStage() == ProcessingStage.STOPPED) {
                 continue;
             }
@@ -2743,14 +2761,15 @@ public class ServiceHost implements ServiceRequestSender {
 
     private boolean checkIfServiceExistsAndAttach(Service service, String servicePath,
             Operation post, Operation onDemandTriggeringOp) {
+        AttachedServiceInfo serviceInfo = null;
+        Service existing = null;
         boolean isCreateOrSynchRequest = post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED)
                 || post.isSynchronize();
-        Service existing = null;
         boolean synchPendingDelete = false;
         boolean isOnDemandStart = onDemandTriggeringOp != null;
 
         synchronized (this.state) {
-            existing = this.attachedServices.get(servicePath);
+            serviceInfo = this.attachedServices.get(servicePath);
             if (this.pendingServiceDeletions.contains(servicePath) &&
                     post.isSynchronizeOwner()) {
                 // We may receive a synch request while a delete is being processed.
@@ -2758,7 +2777,8 @@ public class ServiceHost implements ServiceRequestSender {
                 // a service that is in the deletion phase.
                 synchPendingDelete = true;
             } else {
-                if (existing != null) {
+                if (serviceInfo != null) {
+                    existing = serviceInfo.service;
                     if ((isCreateOrSynchRequest || isOnDemandStart)
                             && existing.getProcessingStage() == ProcessingStage.STOPPED) {
                         // service was just stopped and about to be removed. We are creating a new instance, so
@@ -2768,7 +2788,9 @@ public class ServiceHost implements ServiceRequestSender {
                 }
 
                 if (existing == null) {
-                    this.attachedServices.put(servicePath, service);
+                    serviceInfo = new AttachedServiceInfo();
+                    serviceInfo.service = service;
+                    this.attachedServices.put(servicePath, serviceInfo);
                     if (service.hasOption(ServiceOption.URI_NAMESPACE_OWNER)) {
                         this.attachedNamespaceServices.put(servicePath, service);
                     }
@@ -3580,15 +3602,15 @@ public class ServiceHost implements ServiceRequestSender {
 
         String path = service.getSelfLink();
         synchronized (this.state) {
-            Service existing = this.attachedServices.remove(path);
-            if (existing == null) {
+            AttachedServiceInfo serviceInfo = this.attachedServices.remove(path);
+            if (serviceInfo == null) {
                 path = UriUtils.normalizeUriPath(path);
-                existing = this.attachedServices.remove(path);
+                serviceInfo = this.attachedServices.remove(path);
             }
 
-            if (existing != null) {
-                existing.setProcessingStage(ProcessingStage.STOPPED);
-                if (existing.hasOption(ServiceOption.URI_NAMESPACE_OWNER)) {
+            if (serviceInfo != null) {
+                serviceInfo.service.setProcessingStage(ProcessingStage.STOPPED);
+                if (serviceInfo.service.hasOption(ServiceOption.URI_NAMESPACE_OWNER)) {
                     this.attachedNamespaceServices.remove(path);
                 }
             }
@@ -3605,20 +3627,21 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     protected Service findService(String uriPath, boolean doExactMatch) {
-        Service s = this.attachedServices.get(uriPath);
-        if (s != null) {
-            return s;
+        AttachedServiceInfo serviceInfo = this.attachedServices.get(uriPath);
+        if (serviceInfo != null) {
+            return serviceInfo.service;
         }
 
         String normalizedUriPath = UriUtils.normalizeUriPath(uriPath);
         // Check if we got a new normalized uri path
         if (!normalizedUriPath.equals(uriPath)) {
-            s = this.attachedServices.get(normalizedUriPath);
-            if (s != null) {
-                return s;
+            serviceInfo = this.attachedServices.get(normalizedUriPath);
+            if (serviceInfo != null) {
+                return serviceInfo.service;
             }
         }
 
+        Service s = null;
         if (isHelperServicePath(uriPath)) {
             s = findHelperService(uriPath);
             if (s != null) {
@@ -3666,12 +3689,12 @@ public class ServiceHost implements ServiceRequestSender {
             subPath = uriPath.substring(0, uriPath.lastIndexOf(UriUtils.URI_PATH_CHAR));
         }
         // use the prefix to find the actual service
-        Service s = this.attachedServices.get(subPath);
-        if (s == null) {
+        AttachedServiceInfo serviceInfo = this.attachedServices.get(subPath);
+        if (serviceInfo == null) {
             return null;
         }
         // now find the helper, given the suffix
-        return s.getUtilityService(uriPath);
+        return serviceInfo.service.getUtilityService(uriPath);
     }
 
     /**
@@ -3994,7 +4017,9 @@ public class ServiceHost implements ServiceRequestSender {
                 return;
             }
             this.state.isStopping = true;
-            servicesToClose = new HashSet<>(this.attachedServices.values());
+            servicesToClose = new HashSet<>();
+            this.attachedServices.values().stream().forEach(
+                    serviceInfo -> servicesToClose.add(serviceInfo.service));
         }
 
         this.serviceResourceTracker.close();
@@ -4120,7 +4145,8 @@ public class ServiceHost implements ServiceRequestSender {
 
         // now do core service shutdown in parallel
         for (String coreServiceLink : this.coreServices) {
-            Service coreService = this.attachedServices.get(coreServiceLink);
+            AttachedServiceInfo coreServiceInfo = this.attachedServices.get(coreServiceLink);
+            Service coreService = coreServiceInfo != null ? coreServiceInfo.service : null;
             if (coreService == null || coreService instanceof ServiceHostManagementService) {
                 // a DELETE to the management service will cause a recursive stop()
                 c.handle(null, null);
@@ -5184,7 +5210,8 @@ public class ServiceHost implements ServiceRequestSender {
         boolean doPrefixMatch = servicePath.endsWith(UriUtils.URI_WILDCARD_CHAR);
         servicePath = servicePath.replace(UriUtils.URI_WILDCARD_CHAR, "");
 
-        for (Service s : this.attachedServices.values()) {
+        for (AttachedServiceInfo serviceInfo : this.attachedServices.values()) {
+            Service s = serviceInfo.service;
             if (s.getProcessingStage() != ProcessingStage.AVAILABLE) {
                 continue;
             }
@@ -5243,7 +5270,8 @@ public class ServiceHost implements ServiceRequestSender {
             Operation get, EnumSet<ServiceOption> exclusionOptions) {
         ServiceDocumentQueryResult r = new ServiceDocumentQueryResult();
 
-        loop: for (Service s : this.attachedServices.values()) {
+        loop: for (AttachedServiceInfo serviceInfo : this.attachedServices.values()) {
+            Service s = serviceInfo.service;
             if (s.getProcessingStage() != ProcessingStage.AVAILABLE) {
                 continue;
             }
