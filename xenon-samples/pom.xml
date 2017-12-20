@@ -5,7 +5,7 @@
   <parent>
     <groupId>com.vmware.xenon</groupId>
     <artifactId>xenon-parent</artifactId>
-    <version>1.4.2-CR4</version>
+    <version>1.4.2-CR4_1</version>
   </parent>
 
   <artifactId>xenon-samples</artifactId>
