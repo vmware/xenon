@@ -67,24 +67,33 @@ public class OperationTracker {
     }
 
     public void trackServiceStartCompletion(String link, Operation op) {
-        SortedSet<Operation> pendingOps = this.pendingServiceStartCompletions
-                .computeIfAbsent(link, (k) -> {
-                    return createOperationSet();
+        // Using map.compute() to make sure the function is performed atomically
+        this.pendingServiceStartCompletions
+                .compute(link, (k, pendingOps) -> {
+                    if (pendingOps == null) {
+                        pendingOps = createOperationSet();
+                    }
+                    pendingOps.add(op);
+                    return pendingOps;
                 });
-        pendingOps.add(op);
     }
 
-    public SortedSet<Operation>  removeServiceStartCompletions(String link) {
+    public SortedSet<Operation> removeServiceStartCompletions(String link) {
         return this.pendingServiceStartCompletions.remove(link);
     }
 
     public void trackServiceAvailableCompletion(String link,
             Operation opTemplate, boolean doOpClone) {
-        SortedSet<Operation> pendingOps = this.pendingServiceAvailableCompletions
-                .computeIfAbsent(link, (k) -> {
-                    return createOperationSet();
+        // Using map.compute() to make sure the function is performed atomically
+        Operation op = doOpClone ? opTemplate.clone() : opTemplate;
+        this.pendingServiceAvailableCompletions
+                .compute(link, (k, pendingOps) -> {
+                    if (pendingOps == null) {
+                        pendingOps = createOperationSet();
+                    }
+                    pendingOps.add(op);
+                    return pendingOps;
                 });
-        pendingOps.add(doOpClone ? opTemplate.clone() : opTemplate);
     }
 
     public boolean hasPendingServiceAvailableCompletions(String link) {
