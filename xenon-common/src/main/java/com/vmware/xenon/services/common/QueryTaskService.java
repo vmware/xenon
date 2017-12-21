@@ -17,7 +17,6 @@ import static com.vmware.xenon.common.ServiceDocumentQueryResult.ContinuousResul
 
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -371,8 +370,8 @@ public class QueryTaskService extends StatefulService {
         if (queryResults.size() > 0) {
             long timeElapsed = System.nanoTime() - startTimeNanos;
             timeElapsed /= 1000;
-            queryTask.taskInfo.durationMicros = timeElapsed + Collections.max(queryResults.stream().map(r -> r
-                    .queryTimeMicros).collect(Collectors.toList()));
+            queryTask.taskInfo.durationMicros = timeElapsed +
+                    queryResults.stream().map(r -> r.queryTimeMicros).max(Long::compare).orElse(0L);
         }
 
         boolean isPaginatedQuery = queryTask.querySpec.resultLimit != null
@@ -383,6 +382,7 @@ public class QueryTaskService extends StatefulService {
             boolean isAscOrder = queryTask.querySpec.sortOrder == null
                     || queryTask.querySpec.sortOrder == QuerySpecification.SortOrder.ASC;
             ServiceDocumentQueryResult result = new ServiceDocumentQueryResult();
+            result.queryTimeMicros = queryTask.taskInfo.durationMicros;
             QueryTaskUtils.processQueryResults(getHost(), queryResults, isAscOrder,
                     queryTask.querySpec.options, nodeGroupResponse, result, onCompletion);
         } else {

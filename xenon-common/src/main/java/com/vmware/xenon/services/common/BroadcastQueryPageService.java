@@ -135,6 +135,12 @@ public class BroadcastQueryPageService extends StatelessService {
 
         ServiceDocumentQueryResult mergeResults = new ServiceDocumentQueryResult();
 
+        // pick max child query time as broadcast query time
+        mergeResults.queryTimeMicros = queryResults.stream()
+                .map(r -> r.queryTimeMicros)
+                .max(Long::compareTo)
+                .orElse(null);
+
         // start new BroadcastQueryPageService only when link exists and previously not created
 
         if (!nextPageLinks.isEmpty()) {
