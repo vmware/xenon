@@ -20,7 +20,6 @@ import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import java.lang.reflect.Field;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.TreeMap;
@@ -60,7 +59,7 @@ public class TestFieldInfoCache {
         FieldInfoCache cache = new FieldInfoCache();
         FieldInfos fixedFieldInfo = cache.dedupFieldInfos(infosArray);
         values = extractValues(fixedFieldInfo);
-        assertSame(Collections.unmodifiableList(new ArrayList<>()).getClass(), values.getClass());
+        assertSame(Collections.unmodifiableCollection(Collections.emptyList()).getClass(), values.getClass());
     }
 
     @Test

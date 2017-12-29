@@ -18,6 +18,10 @@
 
 * Resource cost of using `SINGLE_USE` query becomes same as regular query.
 
+* Upgrade to Lucene 7.2 which includes fix for LUCENE-8018 among other improvements.
+  The temporary fix made is now removed from FieldInfoCache. Also, We benefit from LUCENE-7868
+  when using INDEXED_METADATA, DocValues update is alteast 40% faster in standalone tests.
+
 
 ## 1.6.1
 
