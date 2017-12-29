@@ -18,6 +18,9 @@
 
 * Resource cost of using `SINGLE_USE` query becomes same as regular query.
 
+* Upgrade to Lucene 7.2 which includes fix for LUCENE-8018 among other improvements.
+  The temporary fix made is now removed from FieldInfoCache. We benefit from LUCENE-7868
+  when using INDEXED_METADATA.
 
 ## 1.6.1
 
