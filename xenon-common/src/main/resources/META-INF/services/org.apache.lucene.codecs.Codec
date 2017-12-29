@@ -1,2 +1,3 @@
 org.apache.lucene.codecs.lucene60.Lucene60Codec
 org.apache.lucene.codecs.lucene62.Lucene62Codec
+org.apache.lucene.codecs.lucene70.Lucene70Codec
