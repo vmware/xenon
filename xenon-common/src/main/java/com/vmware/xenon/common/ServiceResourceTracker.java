@@ -15,7 +15,9 @@ package com.vmware.xenon.common;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -30,6 +32,8 @@ import com.vmware.xenon.common.ServiceHost.AttachedServiceInfo;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
+import com.vmware.xenon.common.config.XenonConfiguration;
+import com.vmware.xenon.services.common.CheckpointService;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
@@ -86,6 +90,40 @@ public class ServiceResourceTracker {
     }
 
     /**
+     * This class is used for keeping update counts and timestamps per kind
+     */
+    public static final class KindUpdateInfo {
+
+        /**
+         * timestamps of k most recent updates in descending order
+         */
+        public List<Long> timestamps;
+
+        /**
+         * number of update per kind
+         */
+        public long updateCount;
+    }
+
+    /**
+     * size of cached timestamps to avoid out of order commit and clock skew
+     */
+    private final long timestampCacheCapacityPerKind = XenonConfiguration.number(
+            ServiceResourceTracker.class,
+            "timestampCacheCapacityPerKind",
+            10
+    );
+
+    /**
+     * threshold for checkpoint update per kind
+     */
+    private final long updateThresholdPerKind = XenonConfiguration.number(
+            ServiceResourceTracker.class,
+            "updateThresholdPerKind",
+            100
+    );
+
+    /**
      * For performance reasons, this map is owned and directly operated by the host
      */
     private final ConcurrentMap<String, AttachedServiceInfo> attachedServices;
@@ -94,6 +132,11 @@ public class ServiceResourceTracker {
      * Tracks cached service state. Cleared periodically during maintenance
      */
     private final ConcurrentMap<CachedServiceStateKey, ServiceDocument> cachedTransactionalServiceStates = new ConcurrentHashMap<>();
+
+    /**
+     * update info per kind
+     */
+    private final ConcurrentMap<String, KindUpdateInfo> updateInfoPerKind = new ConcurrentHashMap<>();
 
     private final ServiceHost host;
 
@@ -450,6 +493,59 @@ public class ServiceResourceTracker {
     private void updateCacheHitStats() {
         this.host.getManagementService().adjustStat(
                 ServiceHostManagementService.STAT_NAME_SERVICE_CACHE_HIT_COUNT, 1);
+    }
+
+    public void updateInfoPerKind(String kind, long timestamp) {
+        this.updateInfoPerKind.compute(kind, (k, v) -> {
+            this.host.log(Level.INFO, "update info for kind(%s) with timestamp(%d)", kind, timestamp);
+            if (v == null) {
+                v = new KindUpdateInfo();
+                v.timestamps = new ArrayList<>();
+            }
+            // full capacity, remove the min timestamp from tail
+            if (v.timestamps.size() == this.timestampCacheCapacityPerKind) {
+                v.timestamps.remove(this.timestampCacheCapacityPerKind - 1);
+            }
+            // find insert position
+            int i = 0;
+            while (i < v.timestamps.size()) {
+                if (timestamp > v.timestamps.get(i)) {
+                    break;
+                }
+                i++;
+            }
+            if (i == v.timestamps.size()) {
+                // end
+                v.timestamps.add(timestamp);
+            } else {
+                // middle
+                v.timestamps.add(i, timestamp);
+            }
+            v.updateCount += 1;
+            if (v.updateCount == this.updateThresholdPerKind) {
+                long nextCheckpoint = v.timestamps.remove(v.timestamps.size() - 1);
+                updateCheckpointPerKind(kind, nextCheckpoint);
+                // clean
+                v.updateCount = 0;
+            }
+            return v;
+        });
+    }
+
+    /**
+     * update local checkpoint given kind
+     * @param kind
+     * @param timestamp
+     */
+    private void updateCheckpointPerKind(String kind, long timestamp) {
+        CheckpointService.CheckpointState s = new CheckpointService.CheckpointState();
+        s.timestamp = timestamp;
+        s.factoryLink = kind;
+        this.host.log(Level.INFO, "create next checkpoint for factory %s using timestamp %d", kind, timestamp);
+        Operation.createPost(UriUtils.buildUri(this.host, CheckpointService.FACTORY_LINK))
+                .setBody(s)
+                .setReferer(this.host.getUri())
+                .sendWith(this.host);
     }
 
     /**

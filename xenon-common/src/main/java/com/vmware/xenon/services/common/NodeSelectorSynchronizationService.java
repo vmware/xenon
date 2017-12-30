@@ -465,6 +465,8 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                             o.getUri().getHost(), o.getUri().getPort(),
                             bestPeerRsp.documentSelfLink,
                             e.toString(), r);
+                    post.fail(e);
+                    return;
                 }
                 if (r != 0) {
                     return;
