@@ -28,6 +28,8 @@ public class CheckpointService extends StatefulService {
 
         public static final long VERSION_RETENTION_LIMIT = 10;
         public static final long VERSION_RETENTION_FLOOR = 3;
+
+        public static final String FIELD_NAME_FACTORY_LINK = "factoryLink";
         /**
          * checkpoint timestamp
          */

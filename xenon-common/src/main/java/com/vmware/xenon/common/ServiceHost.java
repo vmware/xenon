@@ -5042,8 +5042,19 @@ public class ServiceHost implements ServiceRequestSender {
                         op.fail(e);
                         return;
                     }
-
                     op.complete();
+
+                    // update timestamps per kind if checkpoint enabled
+                    boolean isCheckpointEnabled = XenonConfiguration.bool(
+                            SynchronizationTaskService.class,
+                            "isCheckpointEnabled",
+                            false
+                    );
+                    if (isCheckpointEnabled && s.hasOption(ServiceOption.PERSISTENCE) && s.hasOption(ServiceOption.REPLICATION)) {
+                        String kind = UriUtils.getParentPath(state.documentSelfLink);
+                        long timestamp = state.documentUpdateTimeMicros;
+                        this.serviceResourceTracker.updateInfoPerKind(kind, timestamp);
+                    }
                 });
 
         if (op.getAction() == Action.POST
