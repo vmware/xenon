@@ -15,11 +15,14 @@ package com.vmware.xenon.services.common;
 
 import java.net.URI;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 import com.vmware.xenon.common.FNVHash;
@@ -41,6 +44,10 @@ import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupChange;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeGroupService.UpdateQuorumRequest;
+import com.vmware.xenon.services.common.ShardsManagementService.CreateOrGetShardInfoRequest;
+import com.vmware.xenon.services.common.ShardsManagementService.ShardInfo;
+import com.vmware.xenon.services.common.ShardsManagementService.ShardInfoResponse;
+import com.vmware.xenon.services.common.ShardsManagementService.ShardsManagementServiceState;
 
 /**
  * Uses consistent hashing to assign a client specified key to one
@@ -48,25 +55,6 @@ import com.vmware.xenon.services.common.NodeGroupService.UpdateQuorumRequest;
  */
 public class ConsistentHashingNodeSelectorService extends StatelessService implements
         NodeSelectorService {
-
-    private long operationQueueLimit = Service.OPERATION_QUEUE_DEFAULT_LIMIT;
-    private AtomicLong pendingOperationCount = new AtomicLong();
-    private ConcurrentLinkedQueue<SelectAndForwardRequest> pendingRequestQueue = new ConcurrentLinkedQueue<>();
-
-    // Cached node group state. Refreshed during maintenance
-    private NodeGroupState cachedGroupState;
-
-    // Cached initial state. This service has "soft" state: Its configured on start and then its state is immutable.
-    // If the service host restarts, all state is lost, by design.
-    // Note: This is not a recommended pattern! Regular services must not use instanced fields
-    private NodeSelectorState cachedState;
-
-    private NodeSelectorReplicationService replicationUtility;
-
-    private volatile boolean isSynchronizationRequired;
-    private volatile boolean isSetFactoriesAvailabilityRequired;
-    private boolean isNodeGroupConverged;
-    private int synchQuorumWarningCount;
 
     private static final class ClosestNNeighbours extends TreeMap<Long, NodeState> {
         private static final long serialVersionUID = 0L;
@@ -98,6 +86,32 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             }
         }
     }
+
+    private long operationQueueLimit = Service.OPERATION_QUEUE_DEFAULT_LIMIT;
+    private AtomicLong pendingOperationCount = new AtomicLong();
+    private ConcurrentLinkedQueue<SelectAndForwardRequest> pendingRequestQueue = new ConcurrentLinkedQueue<>();
+
+    // Cached node group state. Refreshed during maintenance
+    private NodeGroupState cachedGroupState;
+
+    // Cached initial state. This service has "soft" state: Its configured on start and then its state is immutable.
+    // If the service host restarts, all state is lost, by design.
+    // Note: This is not a recommended pattern! Regular services must not use instanced fields
+    private NodeSelectorState cachedState;
+
+    // Sharding-related data structures and properties are cached here for quick access.
+    // The authorotative state is kept in ShardsManagementService.
+    private Map<String, ShardInfo> cachedShardIdToInfoMap = new HashMap<>();
+    private int maxShards;
+    private boolean allowShardsSharing;
+    private Object cachedShardsMapLock = new Object();
+
+    private NodeSelectorReplicationService replicationUtility;
+
+    private volatile boolean isSynchronizationRequired;
+    private volatile boolean isSetFactoriesAvailabilityRequired;
+    private boolean isNodeGroupConverged;
+    private int synchQuorumWarningCount;
 
     public ConsistentHashingNodeSelectorService() {
         super(NodeSelectorState.class);
@@ -139,7 +153,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
     private void startHelperServices(Operation op) {
         allocateUtilityService();
 
-        AtomicInteger remaining = new AtomicInteger(4);
+        int remainingInitalCount = isShardingEnabled() ? 5 : 4;
+        AtomicInteger remaining = new AtomicInteger(remainingInitalCount);
         CompletionHandler h = (o, e) -> {
             if (e != null) {
                 op.fail(e);
@@ -179,6 +194,13 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
         getHost().startService(startSynchPost, new NodeSelectorSynchronizationService(this));
         getHost().startService(startForwardingPost, new NodeSelectorForwardingService(this));
+
+        if (isShardingEnabled()) {
+            Operation startShardsManagementFactoryPost = Operation.createPost(
+                    UriUtils.extendUri(getUri(), ShardsManagementService.FACTORY_LINK_SUFFIX))
+                    .setCompletion(h);
+            getHost().startService(startShardsManagementFactoryPost, ShardsManagementService.createFactory());
+        }
     }
 
     private Consumer<Operation> handleNodeGroupNotification() {
@@ -327,13 +349,9 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
      */
     @Override
     public SelectOwnerResponse findOwnerNode(String path) {
-        return selectNodes(path, this.cachedGroupState);
+        return selectNodes(path, this.cachedGroupState, isShardingEnabled(), null);
     }
 
-    /**
-     * Uses the squared difference between the key and the server id of each member node to select a
-     * node. Both the key and the nodes are hashed
-     */
     private void selectAndForward(SelectAndForwardRequest forwardRequest, Operation op, NodeGroupState localState) {
 
         String keyValue = forwardRequest.key != null ? forwardRequest.key : forwardRequest.targetPath;
@@ -343,22 +361,51 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return;
         }
 
-        if (this.cachedState.replicationFactor == null && forwardRequest.options != null
-                && forwardRequest.options.contains(ForwardingOption.BROADCAST)) {
-            SelectOwnerResponse response = new SelectOwnerResponse();
-            response.key = keyValue;
-            response.selectedNodes = localState.nodes.values();
-            if (forwardRequest.options.contains(ForwardingOption.REPLICATE)) {
-                replicateRequest(op, forwardRequest, response);
+        boolean isShardingEnabled = isShardingEnabled();
+        boolean replicateOrBroadcast = forwardRequest.options != null
+                && forwardRequest.options.contains(ForwardingOption.BROADCAST);
+
+        if (isShardingEnabled && !isExemptFromSharding(keyValue)) {
+            String shardKeyValue = getShardKeyValue(op, keyValue);
+            if (shardKeyValue == null) {
+                op.fail(new IllegalStateException("could not find sharding key"));
                 return;
             }
-            broadcast(op, forwardRequest, response);
+
+            getShardInfo(shardKeyValue, (shardInfo,  e) -> {
+                if (e != null) {
+                    op.fail(e);
+                    return;
+                }
+
+                SelectOwnerResponse response = selectNodes(keyValue, localState, true, shardInfo.shardNodes);
+                selectAndforward(forwardRequest, op, localState, replicateOrBroadcast, response);
+            }, op.getExpirationMicrosUtc());
+
             return;
         }
 
-        // select nodes and update response
-        SelectOwnerResponse response = selectNodes(keyValue, localState);
+        if (isCustomNodeSelector()) {
+            // TODO: remove this block once custom node selectors are deprecated
+            SelectOwnerResponse response = selectNodes(keyValue, localState, false, null);
+            selectAndforward(forwardRequest, op, localState, replicateOrBroadcast, response);
+            return;
+        }
 
+        if (replicateOrBroadcast) {
+            SelectOwnerResponse response = new SelectOwnerResponse();
+            response.key = keyValue;
+            response.selectedNodes = localState.nodes.values();
+            replicateOrBroadcast(forwardRequest, op, localState, response);
+            return;
+        }
+
+        SelectOwnerResponse response = selectNodes(keyValue, localState, false, null);
+        selectAndforward(forwardRequest, op, localState, replicateOrBroadcast, response);
+    }
+
+    private void selectAndforward(SelectAndForwardRequest forwardRequest, Operation op,
+            NodeGroupState localState, boolean replicateOrBroadcast, SelectOwnerResponse response) {
         int quorum = this.cachedState.membershipQuorum;
         int availableNodeCount = response.availableNodeCount;
         if (availableNodeCount < quorum) {
@@ -366,25 +413,34 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return;
         }
 
-
         if (forwardRequest.targetPath == null) {
+            // this is a request for ownership selection only
             op.setBodyNoCloning(response).complete();
             return;
         }
 
-        if (forwardRequest.options != null && forwardRequest.options.contains(ForwardingOption.BROADCAST)) {
-            if (forwardRequest.options.contains(ForwardingOption.REPLICATE)) {
-                if (op.getAction() == Action.DELETE) {
-                    response.selectedNodes = localState.nodes.values();
-                }
-                replicateRequest(op, forwardRequest, response);
-            } else {
-                broadcast(op, forwardRequest, response);
-            }
+        if (replicateOrBroadcast) {
+            replicateOrBroadcast(forwardRequest, op, localState, response);
             return;
         }
 
-        // If targetPath != null, we need to forward the operation.
+        forward(forwardRequest, op, response);
+    }
+
+    private void replicateOrBroadcast(SelectAndForwardRequest forwardRequest, Operation op,
+            NodeGroupState localState, SelectOwnerResponse response) {
+        if (forwardRequest.options.contains(ForwardingOption.REPLICATE)) {
+            if (this.cachedState.replicationFactor != null && op.getAction() == Action.DELETE) {
+                response.selectedNodes = localState.nodes.values();
+            }
+            replicateRequest(op, forwardRequest, response);
+        } else {
+            broadcast(op, forwardRequest, response);
+        }
+    }
+
+    private void forward(SelectAndForwardRequest forwardRequest, Operation op,
+            SelectOwnerResponse response) {
         URI remoteService = UriUtils.buildServiceUri(response.ownerNodeGroupReference.getScheme(),
                 response.ownerNodeGroupReference.getHost(),
                 response.ownerNodeGroupReference.getPort(),
@@ -404,13 +460,13 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         getHost().getClient().send(fwdOp.setUri(remoteService));
     }
 
-    private SelectOwnerResponse selectNodes(String key, NodeGroupState localState) {
+    private SelectOwnerResponse selectNodes(String keyValue, NodeGroupState localState,
+            boolean isShardingEnabled, Collection<String> candidateNodes) {
         NodeState self = localState.nodes.get(getHost().getId());
-        int availableNodes = localState.nodes.size();
         SelectOwnerResponse response = new SelectOwnerResponse();
-        response.key = key;
+        response.key = keyValue;
 
-        if (availableNodes == 1) {
+        if (localState.nodes.size() == 1) {
             response.ownerNodeId = self.id;
             response.isLocalHostOwner = true;
             response.ownerNodeGroupReference = self.groupReference;
@@ -428,9 +484,10 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         ClosestNNeighbours closestNodes = new ClosestNNeighbours(neighbourCount);
 
         long keyHash = FNVHash.compute(response.key);
-        for (NodeState m : localState.nodes.values()) {
+        Collection<String> nodeIds = isShardingEnabled ? candidateNodes : localState.nodes.keySet();
+        for (String nodeId : nodeIds) {
+            NodeState m = localState.nodes.get(nodeId);
             if (NodeState.isUnAvailable(m)) {
-                availableNodes--;
                 continue;
             }
 
@@ -530,6 +587,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             SelectOwnerResponse response) {
         if (this.cachedGroupState == null) {
             op.fail(null);
+            return;
         }
         this.replicationUtility.replicateUpdate(this.cachedGroupState, op, body, response, this.cachedState.replicationQuorum);
     }
@@ -819,7 +877,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return;
         }
         // broadcast
-        logInfo("replicationQuorum update from %d to %d", this.cachedState.replicationQuorum, replicationQuorum);
+        logInfo("replicationQuorum update from %s to %d", this.cachedState.replicationQuorum,
+                replicationQuorum);
         this.cachedState.replicationQuorum = replicationQuorum;
         if (!r.isGroupUpdate) {
             op.complete();
@@ -864,5 +923,128 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         } else {
             return super.getUtilityService(uriPath);
         }
+    }
+
+    private boolean isShardingEnabled() {
+        // we limit sharding to the default node selector configured with a
+        // non-null replication factor, for now
+        return this.cachedState.replicationFactor != null &&
+                !isCustomNodeSelector();
+    }
+
+    private boolean isCustomNodeSelector() {
+        return getSelfLink().equals(ServiceUriPaths.DEFAULT_1X_NODE_SELECTOR) ||
+                getSelfLink().equals(ServiceUriPaths.DEFAULT_3X_NODE_SELECTOR);
+    }
+
+    private boolean isExemptFromSharding(String keyValue) {
+        return keyValue.startsWith(ServiceUriPaths.CORE) &&
+                !keyValue.startsWith(ExampleService.FACTORY_LINK);
+    }
+
+    private String getShardKeyValue(Operation op, String defaultKeyValue) {
+        URI uri = op.getUri();
+
+        // look for shard key-value in the URI query first
+        String query = uri != null ? uri.getQuery() : null;
+        if (query != null) {
+            Map<String, String> params = UriUtils.parseUriQueryParams(query);
+            String keyValue = params.get(Operation.SHARDING_KEY_QUERY_PARAM);
+            if (keyValue != null && !keyValue.isEmpty()) {
+                return keyValue;
+            }
+        }
+
+        // TODO: look for shard key-value in a body field with PropertyUsageOption.SHARDING_KEY
+
+        // If shard key-value was not found, fall back to default
+        return defaultKeyValue;
+    }
+
+    private void getShardInfo(String shardKeyValue, BiConsumer<ShardInfo, Throwable> handler, long expiration) {
+        Map<String, ShardInfo> shardIdToInfoMap;
+        synchronized (this.cachedShardsMapLock) {
+            shardIdToInfoMap = this.cachedShardIdToInfoMap;
+        }
+
+        if (shardIdToInfoMap == null) {
+            // no local sharding info - initializing
+            initShardingInfo(e -> {
+                if (e != null) {
+                    handler.accept(null, e);
+                    return;
+                }
+
+                // now that local sharding info exists, we can safely invoke ourselves
+                // recursively
+                getShardInfo(shardKeyValue, handler, expiration);
+            }, expiration);
+            return;
+        }
+
+        String shardId = ShardsManagementService.getShardIdFromKeyValue(shardKeyValue,
+                this.allowShardsSharing, this.maxShards);
+        ShardInfo shardInfo = shardIdToInfoMap.get(shardId);
+        if (shardInfo == null) {
+            // shard info is missing from our cached map -
+            // we will request the shard manager for the info, potentially creating
+            // a new shard if it doesn't exist
+            URI shardsManagementFactoryUri = UriUtils.extendUri(getUri(),
+                    ShardsManagementService.FACTORY_LINK_SUFFIX);
+            URI shardsManagerUri = UriUtils.extendUri(shardsManagementFactoryUri,
+                    ShardsManagementService.CHILD_SELFLINK_SUFFIX);
+            CreateOrGetShardInfoRequest createOrGetShardRequest = new CreateOrGetShardInfoRequest();
+            createOrGetShardRequest.kind = CreateOrGetShardInfoRequest.KIND;
+            createOrGetShardRequest.shardKeyValue = shardKeyValue;
+            Operation patch = Operation.createPatch(shardsManagerUri)
+                    .setExpiration(expiration)
+                    .setBody(createOrGetShardRequest)
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            handler.accept(null, e);
+                            return;
+                        }
+
+                        ShardInfoResponse res = o.getBody(ShardInfoResponse.class);
+                        handler.accept(res.shardInfo, null);
+                    });
+            // TODO: add and use majority quorum here
+            //patch.addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
+            //        Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL);
+            sendRequest(patch);
+            return;
+        }
+
+        handler.accept(shardInfo, null);
+    }
+
+    private void initShardingInfo(Consumer<Throwable> h, long expiration) {
+        URI shardsManagementFactoryUri = UriUtils.extendUri(getUri(),
+                ShardsManagementService.FACTORY_LINK_SUFFIX);
+
+        ShardsManagementServiceState state = new ShardsManagementServiceState();
+        state.documentSelfLink = ShardsManagementService.CHILD_SELFLINK_SUFFIX;
+        state.nodeGroupLink = this.cachedState.nodeGroupLink;
+        state.replicationFactor = this.cachedState.replicationFactor;
+        Operation post = Operation.createPost(shardsManagementFactoryUri)
+                .setExpiration(expiration)
+                .setBody(state)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        h.accept(e);
+                        return;
+                    }
+
+                    ShardsManagementServiceState res = o.getBody(ShardsManagementServiceState.class);
+                    synchronized (this.cachedShardsMapLock) {
+                        this.maxShards = res.maxShards;
+                        this.allowShardsSharing = res.allowShardsSharing;
+                        this.cachedShardIdToInfoMap = new HashMap<>();
+                    }
+                    h.accept(null);
+                });
+        // it's OK if multiple POST requests arrive at target service concurrently -
+        // it has ServiceOption.IDEMPOTENT_POST and will initialize once
+        sendRequest(post);
     }
 }

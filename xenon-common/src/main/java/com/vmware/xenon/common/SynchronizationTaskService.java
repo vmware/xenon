@@ -36,6 +36,7 @@ import com.vmware.xenon.services.common.NodeGroupBroadcastResponse;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.ServiceUriPaths;
+import com.vmware.xenon.services.common.ShardsManagementService;
 import com.vmware.xenon.services.common.TaskService;
 
 /**
@@ -523,6 +524,11 @@ public class SynchronizationTaskService
             handleCheckpointStage(task);
             break;
         case QUERY:
+            if (task.factorySelfLink.contains(ShardsManagementService.FACTORY_LINK_SUFFIX)) {
+                // for some reason synch of shard manager fails - bypass for now
+                handleCheckNodeGroupAvailabilityStage(task);
+                return;
+            }
             handleQueryStage(task);
             break;
         case SYNCHRONIZE:
