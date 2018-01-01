@@ -111,6 +111,7 @@ import com.vmware.xenon.services.common.ReplicationTestService.ReplicationTestSe
 import com.vmware.xenon.services.common.ResourceGroupService.PatchQueryRequest;
 import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
 import com.vmware.xenon.services.common.RoleService.RoleState;
+import com.vmware.xenon.services.common.ShardsManagementService.ShardsManagementServiceState;
 import com.vmware.xenon.services.common.UserService.UserState;
 
 public class TestNodeGroupService {
@@ -267,7 +268,7 @@ public class TestNodeGroupService {
     private List<URI> expectedFailedHosts = new ArrayList<>();
     private String replicationTargetFactoryLink = ExampleService.FACTORY_LINK;
     private String replicationNodeSelector = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
-    private long replicationFactor;
+    private int replicationFactor;
     private int replicationQuorum = 1;
 
     private Map<String, URI> replicationTargetLinks;
@@ -441,6 +442,9 @@ public class TestNodeGroupService {
                 Utils.toDocumentKind(ExampleServiceState.class));
         LuceneDocumentIndexService
                 .setImplicitQueryResultLimit(LuceneDocumentIndexService.DEFAULT_QUERY_RESULT_LIMIT);
+        this.replicationFactor = 0;
+        TestXenonConfiguration.restore();
+
         if (this.host == null) {
             return;
         }
@@ -464,10 +468,6 @@ public class TestNodeGroupService {
         this.host.toggleNegativeTestMode(false);
         this.host.tearDown();
         this.host = null;
-        TestXenonConfiguration.override(SynchronizationTaskService.class,
-                "SYNCH_ALL_VERSIONS",
-                "false"
-        );
     }
 
     @Test
@@ -2798,7 +2798,7 @@ public class TestNodeGroupService {
 
     @Test
     public void replication1x() throws Throwable {
-        this.replicationFactor = 1L;
+        this.replicationFactor = 1;
         this.replicationNodeSelector = ServiceUriPaths.DEFAULT_1X_NODE_SELECTOR;
         this.replicationTargetFactoryLink = Replication1xExampleFactoryService.SELF_LINK;
         doReplication();
@@ -2806,11 +2806,40 @@ public class TestNodeGroupService {
 
     @Test
     public void replication3x() throws Throwable {
-        this.replicationFactor = 3L;
+        this.replicationFactor = 3;
         this.replicationNodeSelector = ServiceUriPaths.DEFAULT_3X_NODE_SELECTOR;
         this.replicationTargetFactoryLink = Replication3xExampleFactoryService.SELF_LINK;
         this.nodeCount = Math.max(5, this.nodeCount);
         doReplication();
+    }
+
+    @Test
+    public void replicationWithSharding() throws Throwable {
+        this.replicationFactor = 3;
+        TestXenonConfiguration.override(
+                ServiceHost.class,
+                "REPLICATION_FACTOR",
+                String.valueOf(this.replicationFactor)
+        );
+
+        this.replicationNodeSelector = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
+        this.replicationTargetFactoryLink = ExampleService.FACTORY_LINK;
+        this.nodeCount = Math.max(3, this.nodeCount);
+
+        doReplicationWithSharding();
+    }
+
+    private void initShardsManager() {
+        ShardsManagementServiceState state = new ShardsManagementServiceState();
+        state.documentSelfLink = ShardsManagementService.CHILD_SELFLINK_SUFFIX;
+        state.nodeGroupLink = ServiceUriPaths.DEFAULT_NODE_GROUP;
+        state.replicationFactor = this.replicationFactor;
+
+        String shardsManagementFactoryLink = UriUtils.buildUriPath(ServiceUriPaths.DEFAULT_NODE_SELECTOR,
+                ShardsManagementService.FACTORY_LINK_SUFFIX);
+        URI shardsManagementFactoryUri = UriUtils.buildUri(this.host.getPeerHost(), shardsManagementFactoryLink);
+        Operation post = Operation.createPost(shardsManagementFactoryUri).setBody(state);
+        this.host.getTestRequestSender().sendAndWait(post, ShardsManagementServiceState.class);
     }
 
     @Test
@@ -2992,6 +3021,118 @@ public class TestNodeGroupService {
         this.host.doNodeGroupStatsVerification(this.host.getNodeGroupMap());
     }
 
+    private void doReplicationWithSharding() throws Throwable {
+        this.isPeerSynchronizationEnabled = false;
+        CommandLineArgumentParser.parseFromProperties(this);
+        Date expiration = new Date();
+        if (this.testDurationSeconds > 0) {
+            expiration = new Date(expiration.getTime()
+                    + TimeUnit.SECONDS.toMillis(this.testDurationSeconds));
+        }
+
+        Map<Action, Long> elapsedTimePerAction = new HashMap<>();
+        Map<Action, Long> countPerAction = new HashMap<>();
+
+        long totalOperations = 0;
+        int ic = 0;
+        do {
+            if (this.host == null) {
+                setUp(this.nodeCount);
+                this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+
+                initShardsManager();
+
+                // since we have disabled peer synch, trigger it explicitly so factories become available
+                this.host.scheduleSynchronizationIfAutoSyncDisabled(this.replicationNodeSelector);
+
+                waitForReplicatedFactoryServiceAvailable(
+                        this.host.getPeerServiceUri(this.replicationTargetFactoryLink),
+                        this.replicationNodeSelector);
+
+                waitForReplicationFactoryConvergence();
+
+                prepareForReplicationWithShardingProfiling();
+            }
+
+            Map<String, ExampleServiceState> childStates = doExampleFactoryPostReplicationTest(
+                    this.serviceCount, countPerAction, elapsedTimePerAction);
+            totalOperations += this.serviceCount;
+
+            int expectedVersion = this.updateCount;
+
+            if (!this.host.isStressTest()
+                    && (this.host.getPeerCount() > 16
+                    || this.serviceCount * this.updateCount > 100)) {
+                this.host.setStressTest(true);
+            }
+
+            long opCount = this.serviceCount * this.updateCount;
+            childStates = doStateUpdateReplicationTest(Action.PATCH, this.serviceCount,
+                    this.updateCount,
+                    expectedVersion,
+                    this.exampleStateUpdateBodySetter,
+                    this.exampleStateConvergenceChecker,
+                    childStates,
+                    countPerAction,
+                    elapsedTimePerAction);
+            expectedVersion += this.updateCount;
+
+            totalOperations += opCount;
+
+            childStates = doStateUpdateReplicationTest(Action.PUT, this.serviceCount,
+                    this.updateCount,
+                    expectedVersion,
+                    this.exampleStateUpdateBodySetter,
+                    this.exampleStateConvergenceChecker,
+                    childStates,
+                    countPerAction,
+                    elapsedTimePerAction);
+
+            totalOperations += opCount;
+            expectedVersion += 1;
+
+            doStateUpdateReplicationTest(Action.DELETE, this.serviceCount, 1,
+                    expectedVersion,
+                    this.exampleStateUpdateBodySetter,
+                    this.exampleStateConvergenceChecker,
+                    childStates,
+                    countPerAction,
+                    elapsedTimePerAction);
+
+            totalOperations += this.serviceCount;
+
+            // compute the binary serialized payload, and the JSON payload size
+            ExampleServiceState st = childStates.values().iterator().next();
+            String json = Utils.toJson(st);
+            int byteCount = KryoSerializers.serializeDocument(st, 4096).position();
+            int jsonByteCount = json.getBytes(Utils.CHARSET).length;
+            // estimate total bytes transferred between nodes. The owner receives JSON from the client
+            // but then uses binary serialization to the N-1 replicas
+            long totalBytes = jsonByteCount * totalOperations
+                    + (this.nodeCount - 1) * byteCount * totalOperations;
+
+            this.host.log(
+                    "(%d)(%d)Bytes per json:%d, per binary: %d, Total operations: %d, Total bytes:%d",
+                    ic,
+                    this.iterationCount - ic,
+                    jsonByteCount,
+                    byteCount,
+                    totalOperations,
+                    totalBytes);
+
+            if (++ic <= this.warmUpIterationCount && this.testDurationSeconds > 0) {
+                // ignore data during JVM warm-up
+                countPerAction.clear();
+                elapsedTimePerAction.clear();
+                this.host.log("Warm-up iteration, results will be ignored");
+            }
+
+        } while (new Date().before(expiration) && ic < this.iterationCount);
+
+        logPerActionThroughput(elapsedTimePerAction, countPerAction);
+        this.host.doNodeGroupStatsVerification(this.host.getNodeGroupMap());
+    }
+
     private void prepareForReplicationProfiling() {
         if (this.waitDurationBeforeStartSeconds == 0 && this.testDurationSeconds == 0) {
             return;
@@ -3039,6 +3180,36 @@ public class TestNodeGroupService {
         testContext.await();
         testContext.logAfter();
         this.replicationTargetLinksOriginal = new HashMap<>(this.replicationTargetLinks);
+    }
+
+    private void prepareForReplicationWithShardingProfiling() {
+        prepareForReplicationProfiling();
+
+        if (this.waitDurationBeforeStartSeconds == 0 && this.testDurationSeconds == 0) {
+            return;
+        }
+
+        this.host.log("Sharding warm-up: populating each host local shard map through ownership calculation");
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            URI nodeSelectorURI = UriUtils.buildUri(h, this.replicationNodeSelector);
+            TestContext ctx = this.host.testCreate(this.replicationTargetLinks.size());
+            ctx.setTestName(String.format("Sharding warm-up: host %s %s", h.getId(), h.getUri())).logBefore();
+            for (String link : this.replicationTargetLinks.keySet()) {
+                SelectAndForwardRequest body = new SelectAndForwardRequest();
+                body.key = link;
+                Operation ownerSelectionOp = Operation
+                        .createPost(nodeSelectorURI)
+                        .setBody(body)
+                        .setCompletion(ctx.getCompletion());
+                // we're not interested in the result - the ownership calculation has the
+                // side effect of populating the host shard cache map, which is what we
+                // want
+                this.host.send(ownerSelectionOp);
+            }
+            ctx.await();
+            ctx.logAfter();
+        }
+        this.host.log("Sharding warm-up: done");
     }
 
     private void verifyReplicatedServiceCountWithBroadcastQuery(Date expiration)

@@ -55,10 +55,35 @@ public class NodeSelectorState extends ServiceDocument {
         return AVAILABLE.contains(calculateStatus(host, groupState));
     }
 
+    /**
+     * Path of this node selector's nodegroup
+     */
     public String nodeGroupLink;
-    public Long replicationFactor;
-    public int replicationQuorum;
+
+    /**
+     * Determines how many node need to receive a copy of a change.
+     * Null means all nodes are replication targets.
+     */
+    public Integer replicationFactor;
+
+    /**
+     * Determines how many nodes need to approve a change for the change to succeed.
+     * Null means: fallback to membershipQuorum
+     */
+    public Integer replicationQuorum;
+
+    /**
+     * Determine how many nodes need to be alive for node group to be considered 'available'
+     */
     public int membershipQuorum;
+
+    /**
+     * Nodegroup membership update time
+     */
     public long membershipUpdateTimeMicros;
+
+    /**
+     * Nodegroup status
+     */
     public Status status;
 }

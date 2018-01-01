@@ -145,6 +145,12 @@ public class ServiceDocumentDescription {
         ID,
 
         /**
+         * Property is a sharding key. The property value must be non-null, as
+         * it will be used for calculating a target shard(s).
+         */
+        SHARDING_KEY,
+
+        /**
          * Property is a link (relative URI path) to another indexed document. Implicitly added
          * for fields which name ends with "{@code Link}"
          */

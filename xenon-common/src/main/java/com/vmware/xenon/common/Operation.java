@@ -457,6 +457,9 @@ public class Operation implements Cloneable {
                         + documentSelfLink));
     }
 
+    // Query params
+    public static final String SHARDING_KEY_QUERY_PARAM = "sharding-key";
+
     // HTTP Header definitions
     public static final String REFERER_HEADER = "referer";
     public static final String CONNECTION_HEADER = "connection";
