@@ -2304,7 +2304,7 @@ public class VerificationHost extends ExampleServiceHost {
             Map<URI, URI> factories,
             Map<String, T> serviceStates,
             BiPredicate<T, T> stateChecker,
-            int expectedChildCount, long expectedVersion, long replicationFactor)
+            int expectedChildCount, long expectedVersion, int replicationFactor)
             throws Throwable, TimeoutException {
         // now poll all hosts until they converge: They all have a child service
         // with the expected URI and it has the same state
@@ -2348,6 +2348,7 @@ public class VerificationHost extends ExampleServiceHost {
             TestContext testContext = this.testCreate(factories.size());
             Map<URI, ServiceDocumentQueryResult> childServicesPerNode = new HashMap<>();
             for (URI remoteFactory : factories.values()) {
+                /*
                 URI factoryUriWithExpand = UriUtils.extendUriWithQuery(remoteFactory,
                         UriUtils.URI_PARAM_ODATA_EXPAND,
                         ServiceDocumentQueryResult.FIELD_NAME_DOCUMENT_LINKS);
@@ -2380,6 +2381,30 @@ public class VerificationHost extends ExampleServiceHost {
                                     }
                                     testContext.complete();
                                 });
+                                */
+                // query for factory children through the remote index
+                URI hostUri = UriUtils.buildUri(remoteFactory.getScheme(), remoteFactory.getHost(),
+                        remoteFactory.getPort(), null, null);
+                String childPath = UriUtils.buildUriPath(remoteFactory.getPath(), UriUtils.URI_WILDCARD_CHAR);
+                URI u = UriUtils.buildDefaultDocumentQueryUri(hostUri, childPath, true, false, ServiceOption.PERSISTENCE);
+
+                Operation get = Operation.createGet(u)
+                        .setCompletion((o, e) -> {
+                            if (e != null) {
+                                testContext.complete();
+                                return;
+                            }
+                            if (!o.hasBody()) {
+                                testContext.complete();
+                                return;
+                            }
+                            ServiceDocumentQueryResult r = o
+                                    .getBody(ServiceDocumentQueryResult.class);
+                            synchronized (childServicesPerNode) {
+                                childServicesPerNode.put(o.getUri(), r);
+                            }
+                            testContext.complete();
+                        });
                 this.send(get);
             }
             this.testWait(testContext);
@@ -2750,7 +2775,7 @@ public class VerificationHost extends ExampleServiceHost {
             for (ServiceHost host : this.getInProcessHostMap().values()) {
                 Operation get = Operation.createGet(UriUtils.buildUri(host, nodeSelectorPath));
                 NodeSelectorState nss = this.sender.sendAndWait(get, NodeSelectorState.class);
-                if (nss.replicationQuorum != quorum) {
+                if (nss.replicationQuorum.intValue() != quorum) {
                     return false;
                 }
             }

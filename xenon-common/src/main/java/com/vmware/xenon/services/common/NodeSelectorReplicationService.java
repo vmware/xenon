@@ -63,7 +63,7 @@ public class NodeSelectorReplicationService extends StatelessService {
      * Issues updates to peer nodes, after a local update has been accepted
      */
     void replicateUpdate(NodeGroupState localState,
-            Operation outboundOp, SelectAndForwardRequest req, SelectOwnerResponse rsp, int replicationQuorum) {
+            Operation outboundOp, SelectAndForwardRequest req, SelectOwnerResponse rsp, Integer replicationQuorum) {
 
         int memberCount = localState.nodes.size();
         NodeState selfNode = localState.nodes.get(getHost().getId());
@@ -128,7 +128,7 @@ public class NodeSelectorReplicationService extends StatelessService {
                 // membership quorum used if
                 // 1. no valid replication quorum provided, for previous compatibility
                 // 2. it is a DELETE operation which requires propagation to peers
-                context.successThreshold = replicationQuorum > 0 && outboundOp.getAction() != Action.DELETE ?
+                context.successThreshold = replicationQuorum != null && outboundOp.getAction() != Action.DELETE ?
                         replicationQuorum : Math.min(eligibleMemberCount, selfNode.membershipQuorum);
                 context.failureThreshold = (eligibleMemberCount - context.successThreshold) + 1;
             } else {
