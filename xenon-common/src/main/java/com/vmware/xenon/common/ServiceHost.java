@@ -1969,24 +1969,41 @@ public class ServiceHost implements ServiceRequestSender {
 
         List<Operation> startNodeSelectorPosts = new ArrayList<>();
         List<Service> nodeSelectorServices = new ArrayList<>();
-        // start a default node selector that replicates to all available nodes
-        Operation startPost = Operation.createPost(UriUtils.buildUri(this,
-                ServiceUriPaths.DEFAULT_NODE_SELECTOR));
-        startNodeSelectorPosts.add(startPost);
-        NodeSelectorService defaultNodeSelectorService = new ConsistentHashingNodeSelectorService();
-        nodeSelectorServices.add(defaultNodeSelectorService);
 
-        // we start second node selector that does 1X replication (owner only)
-        createCustomNodeSelectorService(startNodeSelectorPosts,
+        // Start a default node selector. Some of its properties are controlled by configuration.
+        // The default replication factor is null, which means: all nodes in the node group are
+        // target for replication. However, one can override it using config properties.
+        int replicationFactorInt = XenonConfiguration.integer(
+                ServiceHost.class,
+                "REPLICATION_FACTOR",
+                0
+        );
+        Integer replicationFactor = replicationFactorInt == 0 ? null : Integer.valueOf(replicationFactorInt);
+        int replicationQuorumInt = XenonConfiguration.integer(
+                ServiceHost.class,
+                "REPLICATION_QUORUM",
+                0
+        );
+        Integer replicationQuorum = replicationQuorumInt == 0 ? null : Integer.valueOf(replicationQuorumInt);
+        NodeSelectorService defaultNodeSelectorService = createNodeSelectorService(startNodeSelectorPosts,
+                nodeSelectorServices,
+                ServiceUriPaths.DEFAULT_NODE_SELECTOR,
+                replicationFactor,
+                replicationQuorum);
+
+        // Start legacy custom node selectors, for backwards compatibility:
+        //   1X replication (owner only)
+        //   3X replication (owner plus 2 peers)
+        createNodeSelectorService(startNodeSelectorPosts,
                 nodeSelectorServices,
                 ServiceUriPaths.DEFAULT_1X_NODE_SELECTOR,
-                1);
-
-        // we start a third node selector that does 3X replication (owner plus 2 peers)
-        createCustomNodeSelectorService(startNodeSelectorPosts,
+                1,
+                null);
+        createNodeSelectorService(startNodeSelectorPosts,
                 nodeSelectorServices,
                 ServiceUriPaths.DEFAULT_3X_NODE_SELECTOR,
-                3);
+                3,
+                null);
 
         // start node selectors before any other core service since the host APIs of forward
         // and broadcast must be ready before any I/O
@@ -1995,15 +2012,20 @@ public class ServiceHost implements ServiceRequestSender {
         return defaultNodeSelectorService;
     }
 
-    void createCustomNodeSelectorService(List<Operation> startNodeSelectorPosts,
-            List<Service> nodeSelectorServices, String link, long factor) {
-        Operation startPost = Operation.createPost(UriUtils.buildUri(this, link));
+    NodeSelectorService createNodeSelectorService(List<Operation> startNodeSelectorPosts,
+            List<Service> nodeSelectorServices, String nodeSelectorPath,
+            Integer replicationFactor, Integer replicationQuorum) {
+        Operation startPost = Operation.createPost(UriUtils.buildUri(this, nodeSelectorPath));
         NodeSelectorState initialState = new NodeSelectorState();
         initialState.nodeGroupLink = ServiceUriPaths.DEFAULT_NODE_GROUP;
-        initialState.replicationFactor = factor;
+        initialState.replicationFactor = replicationFactor;
+        initialState.replicationQuorum = replicationQuorum;
         startPost.setBodyNoCloning(initialState);
         startNodeSelectorPosts.add(startPost);
-        nodeSelectorServices.add(new ConsistentHashingNodeSelectorService());
+        NodeSelectorService nodeSelectorService = new ConsistentHashingNodeSelectorService();
+        nodeSelectorServices.add(nodeSelectorService);
+
+        return nodeSelectorService;
     }
 
     public void joinPeers(List<URI> peers, String nodeGroupUriPath) {

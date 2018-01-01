@@ -267,7 +267,7 @@ public class TestNodeGroupService {
     private List<URI> expectedFailedHosts = new ArrayList<>();
     private String replicationTargetFactoryLink = ExampleService.FACTORY_LINK;
     private String replicationNodeSelector = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
-    private long replicationFactor;
+    private int replicationFactor;
     private int replicationQuorum = 1;
 
     private Map<String, URI> replicationTargetLinks;
@@ -2798,7 +2798,7 @@ public class TestNodeGroupService {
 
     @Test
     public void replication1x() throws Throwable {
-        this.replicationFactor = 1L;
+        this.replicationFactor = 1;
         this.replicationNodeSelector = ServiceUriPaths.DEFAULT_1X_NODE_SELECTOR;
         this.replicationTargetFactoryLink = Replication1xExampleFactoryService.SELF_LINK;
         doReplication();
@@ -2806,7 +2806,7 @@ public class TestNodeGroupService {
 
     @Test
     public void replication3x() throws Throwable {
-        this.replicationFactor = 3L;
+        this.replicationFactor = 3;
         this.replicationNodeSelector = ServiceUriPaths.DEFAULT_3X_NODE_SELECTOR;
         this.replicationTargetFactoryLink = Replication3xExampleFactoryService.SELF_LINK;
         this.nodeCount = Math.max(5, this.nodeCount);
