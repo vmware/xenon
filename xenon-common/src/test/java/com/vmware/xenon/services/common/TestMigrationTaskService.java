@@ -14,7 +14,6 @@
 package com.vmware.xenon.services.common;
 
 import static java.util.function.Function.identity;
-import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Collectors.toSet;
@@ -25,8 +24,6 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
-import java.util.AbstractMap;
-import java.util.AbstractMap.SimpleEntry;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -55,7 +52,6 @@ import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
-import com.vmware.xenon.common.ServiceHost.Arguments;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
@@ -453,12 +449,8 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
             assertFalse("source doc should have isFromMigration=false", state.isFromMigration);
         }
 
-        // "latest source update time" uses "documentUpdateTimeMicros" of last processed document's (max) in each host
-        // and pick the smallest(min) among the hosts(documentOwner).
-        Map<String, List<ExampleServiceState>> docsPerOwner = states.stream().collect(groupingBy((s) -> s.documentOwner));
-        Long expectedLastSourceUpdateTime = docsPerOwner.values().stream().map(list ->
-                list.stream().map(s -> s.documentUpdateTimeMicros).max(Long::compare).orElse(0L)
-        ).min(Long::compare).orElse(0L);
+        // max of documentUpdateTime
+        Long expectedLastSourceUpdateTime = states.stream().map(d -> d.documentUpdateTimeMicros).max(Long::compare).orElse(0L);
 
         // start migration
         MigrationTaskService.State migrationState = validMigrationState(ExampleService.FACTORY_LINK);
@@ -477,27 +469,16 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         long processedDocuments = (long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue;
         long estimatedTotalServiceCount = (long) stats.entries.get(MigrationTaskService.STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT).latestValue;
         long fetchedCount = (long) stats.entries.get(MigrationTaskService.STAT_NAME_FETCHED_DOCUMENT_COUNT).latestValue;
-        long ownerMismatchCount = (long) stats.entries.get(MigrationTaskService.STAT_NAME_OWNER_MISMATCH_COUNT).latestValue;
 
-        long expectedFetchedCount = this.nodeCount * this.serviceCount;
-        long expectedOwnerMismatchCount = expectedFetchedCount - this.serviceCount;
         assertEquals("processed docs count", this.serviceCount, processedDocuments);
         assertEquals("estimated total count is default disabled and expect -1", -1, estimatedTotalServiceCount);
-        assertEquals("fetched docs count", expectedFetchedCount, fetchedCount);
-        assertEquals("owner mismatch count", expectedOwnerMismatchCount, ownerMismatchCount);
+        assertEquals("fetched docs count", this.serviceCount, fetchedCount);
         assertEquals("latest source update time", expectedLastSourceUpdateTime, finalServiceState.latestSourceUpdateTimeMicros);
 
         ServiceStat countQueryDurationStat = stats.entries.get(MigrationTaskService.STAT_NAME_COUNT_QUERY_TIME_DURATION_MICRO);
         ServiceStat retrievalOpDurationStat = stats.entries.get(MigrationTaskService.STAT_NAME_RETRIEVAL_OPERATIONS_DURATION_MICRO);
         assertNotNull("count query duration stat", countQueryDurationStat);
         assertNotNull("retrieval operation duration stat", retrievalOpDurationStat);
-
-        for (VerificationHost sourceHost : this.host.getInProcessHostMap().values()) {
-            String sourceHostAuthority = sourceHost.getUri().getAuthority();
-            String statKey = String.format(MigrationTaskService.STAT_NAME_RETRIEVAL_QUERY_TIME_DURATION_MICRO_FORMAT, sourceHostAuthority);
-            ServiceStat stat = stats.entries.get(statKey);
-            assertNotNull("query time duration stat for " + sourceHostAuthority, stat);
-        }
 
         // check if object is in new host
         List<URI> uris = getFullUri(getDestinationHost(), states);
@@ -926,68 +907,6 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     }
 
     @Test
-    public void failMigrationWithDocumentOwnerMismatch() throws Throwable {
-        // this test dirties destination host, requires clean up
-        clearSourceAndDestInProcessPeers = true;
-
-        // create example services in the source node-group and make sure that each peer
-        // is owner of at-least one example service.
-        int peersWithDocs;
-        do {
-            createExampleDocuments(this.exampleSourceFactory, getSourceHost(), this.serviceCount, false);
-            ServiceDocumentQueryResult results = this.host.getExpandedFactoryState(this.exampleSourceFactory);
-            peersWithDocs = results.documents.values().stream()
-                    .map(doc -> (Utils.fromJson(doc, ServiceDocument.class)).documentOwner)
-                    .distinct()
-                    .collect(Collectors.toList())
-                    .size();
-        } while (peersWithDocs != this.nodeCount);
-
-        // disable peer synchronization on each source host.
-        Iterator<VerificationHost> peerIt = this.host.getInProcessHostMap().values().iterator();
-        VerificationHost peerNode = null;
-        while (peerIt.hasNext()) {
-            VerificationHost h = peerIt.next();
-            // ensure owner node of the factory still alive
-            if (!h.isOwner(ExampleService.FACTORY_LINK, ServiceUriPaths.DEFAULT_NODE_SELECTOR)) {
-                peerNode = h;
-            }
-            h.setPeerSynchronizationEnabled(false);
-        }
-        assertNotNull(peerNode);
-
-        // Stop the last peerNode and add a new node with the same id to the group, factory owner stay the same
-        this.host.stopHost(peerNode);
-        Arguments arg = VerificationHost.buildDefaultServiceHostArguments(0);
-        arg.id = peerNode.getId();
-        VerificationHost newHost = VerificationHost.create(arg);
-        newHost.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(
-                VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
-        newHost.setPeerSynchronizationEnabled(false);
-        newHost.start();
-        newHost.waitForServiceAvailable(ExampleService.FACTORY_LINK);
-        this.host.addPeerNode(newHost);
-        this.host.joinNodesAndVerifyConvergence(this.nodeCount, true);
-
-        // Kick-off migration
-        MigrationTaskService.State migrationState = validMigrationState(
-                ExampleService.FACTORY_LINK);
-        String[] out = new String[1];
-        Operation op = Operation.createPost(this.destinationFactoryUri)
-                .setBody(migrationState)
-                .setReferer(this.host.getUri());
-        out[0] = getDestinationHost().getTestRequestSender().sendAndWait(op).getBody(State.class).documentSelfLink;
-
-        // Wait for the migration task to fail
-        State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
-        assertEquals(waitForServiceCompletion.taskInfo.stage, TaskStage.FAILED);
-
-        ServiceStats stats = getStats(out[0], getDestinationHost());
-        long ownerMismatchedDocuments = (long)stats.entries.get(MigrationTaskService.STAT_NAME_OWNER_MISMATCH_COUNT).latestValue;
-        assertTrue(ownerMismatchedDocuments > 0);
-    }
-
-    @Test
     public void migrationWithDocumentOwnerMismatch() throws Throwable {
         // this test dirties destination host, requires clean up
         clearSourceAndDestInProcessPeers = true;
@@ -1028,7 +947,6 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         // Kick-off migration
         MigrationTaskService.State migrationState = validMigrationState(
                 ExampleService.FACTORY_LINK);
-        migrationState.migrateMismatchedOwnerDocuments = true;
         String[] out = new String[1];
         Operation op = Operation.createPost(this.destinationFactoryUri)
                 .setBody(migrationState)
@@ -1248,19 +1166,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         // create object in host
         List<ExampleServiceState> states = createExampleDocuments(this.exampleSourceFactory, getSourceHost(),
                 this.serviceCount);
-        List<URI> uris = getFullUri(getSourceHost(), states);
-
-        List<SimpleEntry<String, Long>> timePerNode = getSourceHost()
-                .getServiceState(EnumSet.noneOf(TestProperty.class), ExampleServiceState.class, uris)
-                .values()
-                .stream()
-                .map(d -> new AbstractMap.SimpleEntry<>(d.documentOwner, d.documentUpdateTimeMicros))
-                .collect(toList());
-        Map<String, Long> times = new HashMap<>();
-        for (SimpleEntry<String, Long> entry : timePerNode) {
-            times.put(entry.getKey(), Math.max(times.getOrDefault(entry.getKey(), 0L), entry.getValue()));
-        }
-        long time = times.values().stream().mapToLong(i -> i).min().orElse(0);
+        long expectedUpdateTime = states.stream().map(state -> state.documentUpdateTimeMicros).max(Long::compareTo).get();
 
         // start migration
         MigrationTaskService.State migrationState = validMigrationState(ExampleService.FACTORY_LINK);
@@ -1284,10 +1190,10 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
         boolean processed = this.serviceCount <= processedDocuments;
         assertTrue(String.format("%d <= %d", this.serviceCount, processedDocuments), processed);
-        assertEquals(Long.valueOf(time), finalServiceState.latestSourceUpdateTimeMicros);
+        assertEquals(Long.valueOf(expectedUpdateTime), finalServiceState.latestSourceUpdateTimeMicros);
 
         // check if object is in new host
-        uris = getFullUri(getDestinationHost(), states);
+        List<URI> uris = getFullUri(getDestinationHost(), states);
 
         getDestinationHost().getServiceState(EnumSet.noneOf(TestProperty.class),
                 ExampleServiceState.class, uris);

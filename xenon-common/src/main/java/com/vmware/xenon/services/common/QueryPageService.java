@@ -38,12 +38,14 @@ public class QueryPageService extends StatelessService {
     private QuerySpecification spec;
     private String documentSelfLink;
     private String indexLink;
+    private String nodeSelectorPath;
     private long documentExpirationTimeMicros;
 
-    public QueryPageService(QuerySpecification spec, String indexLink) {
+    public QueryPageService(QuerySpecification spec, String indexLink, String nodeSelectorPath) {
         super(QueryTask.class);
         this.spec = spec;
         this.indexLink = indexLink;
+        this.nodeSelectorPath = nodeSelectorPath;
     }
 
     public static class LuceneQueryPage {
@@ -103,6 +105,7 @@ public class QueryPageService extends StatelessService {
         task.taskInfo.stage = TaskStage.CREATED;
         task.taskInfo.isDirect = true;
         task.indexLink = this.indexLink;
+        task.nodeSelectorLink = this.nodeSelectorPath;
 
         // the client can supply a URI parameter to modify the result limit. This
         // only affects the current GET operation and not the page service itself and any
