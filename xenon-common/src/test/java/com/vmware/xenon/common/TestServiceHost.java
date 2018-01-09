@@ -602,7 +602,7 @@ public class TestServiceHost {
             s = new File(s, ServiceHost.SERVICE_HOST_STATE_FILE);
 
             this.host.testStart(1);
-            ServiceHostState [] state = new ServiceHostState[1];
+            ServiceHostState[] state = new ServiceHostState[1];
             Operation get = Operation.createGet(h.getUri()).setCompletion((o, e) -> {
                 if (e != null) {
                     this.host.failIteration(e);
@@ -627,7 +627,7 @@ public class TestServiceHost {
             bindAddress = "localhost";
             hostId = UUID.randomUUID().toString();
 
-            String [] args2 = {
+            String[] args2 = {
                     "--port=" + 0,
                     "--bindAddress=" + bindAddress,
                     "--sandbox=" + this.tmpFolder.getRoot().toURI(),
@@ -823,7 +823,7 @@ public class TestServiceHost {
         }
 
         // with wrong password
-        args = new String[] {
+        args = new String[]{
                 "--sandbox=" + tmpFolderPath,
                 "--port=0",
                 "--securePort=0",
@@ -872,7 +872,7 @@ public class TestServiceHost {
         }
 
         // with wrong password
-        args = new String[] {
+        args = new String[]{
                 "--sandbox=" + tmpFolderPath,
                 "--port=0",
                 "--securePort=0",
@@ -891,7 +891,7 @@ public class TestServiceHost {
         }
 
         // with no password
-        args = new String[] {
+        args = new String[]{
                 "--sandbox=" + tmpFolderPath,
                 "--port=0",
                 "--securePort=0",
@@ -1567,7 +1567,7 @@ public class TestServiceHost {
         }
 
         public static class SomeExampleServiceState extends ServiceDocument {
-            public String name ;
+            public String name;
         }
     }
 
@@ -1600,12 +1600,12 @@ public class TestServiceHost {
         setUp(true);
         this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
 
-        String[] links = new String[] {
+        String[] links = new String[]{
                 ExampleService.FACTORY_LINK,
                 ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS,
                 ServiceUriPaths.CORE_AUTHZ_USERS,
                 ServiceUriPaths.CORE_AUTHZ_ROLES,
-                ServiceUriPaths.CORE_AUTHZ_USER_GROUPS };
+                ServiceUriPaths.CORE_AUTHZ_USER_GROUPS};
 
         // register multiple factories, before host start
         TestContext ctx = this.host.testCreate(links.length * 10);
@@ -2646,6 +2646,25 @@ public class TestServiceHost {
         // verify management service is accessible.
         get = Operation.createGet(this.host, ServiceUriPaths.CORE_MANAGEMENT);
         this.host.getTestRequestSender().sendAndWait(get);
+    }
+
+    @Test
+    public void findLocalRootNamespaceServiceViaURI() throws Throwable {
+        setUp(false);
+
+        // full URI for the localhost (ex: http://127.0.0.1:50000)
+        URI rootUri = this.host.getUri();
+
+        // ex: http://127.0.0.1:50000/
+        URI rootUriWithPath = UriUtils.buildUri(this.host.getUri(), UriUtils.URI_PATH_CHAR);
+
+
+        // Accessing localhost with URI will short-circuit the call to direct method invocation. (No netty layer)
+        // This should resolve the RootNamespaceService
+        this.host.getTestRequestSender().sendAndWait(Operation.createGet(rootUri));
+
+        // same for the URI with path-character
+        this.host.getTestRequestSender().sendAndWait(Operation.createGet(rootUriWithPath));
     }
 
     @After

@@ -45,6 +45,14 @@ public class ServiceAvailabilityFilter implements Filter {
             return FilterReturnCode.FAILED_STOP_PROCESSING;
         }
 
+        // when operation comes from localhost specified by URI and accessing root url
+        // (e.g.: Operation.createGet(getHost().getUri()) ), the specified URI may not have ended with '/'.
+        // In this case, op.getUri().getPath() returns empty string.
+        // Since this request is equivalent to accessing root('/'), update the servicePath String to '/'.
+        if ("".equals(servicePath)) {
+            servicePath = UriUtils.URI_PATH_CHAR;
+        }
+
         // re-use already looked-up service, if exists; otherwise, look it up
         Service service = context.getService();
         if (service == null) {

@@ -444,9 +444,11 @@ public class Operation implements Cloneable {
     }
 
     public static void failServiceNotFound(Operation inboundOp, int errorCode) {
+        URI uri = inboundOp.getUri();
+        String servicePath = uri != null ? uri.getPath() : null;
         fail(inboundOp, Operation.STATUS_CODE_NOT_FOUND,
                 errorCode,
-                new ServiceNotFoundException(inboundOp.getUri().toString()));
+                new ServiceNotFoundException(format("uri=%s, servicePath=%s", uri, servicePath)));
     }
 
     static void failServiceMarkedDeleted(String documentSelfLink,
