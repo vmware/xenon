@@ -1,5 +1,7 @@
 # CHANGELOG
 
+## 1.6.2-SNAPSHOT
+
 ## 1.6.1
 
 * Fix RootNamespaceService isn't found with local URI GET
