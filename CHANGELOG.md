@@ -31,6 +31,10 @@
     - `migrateMismatchedOwnerDocuments` option in migration request
     - `ownerMismatchDocumentCount` migration stat entry
 
+* Upgrade to Lucene 7.2 which includes fix for LUCENE-8018 among other improvements.
+  The temporary fix made is now removed from FieldInfoCache. Also, We benefit from LUCENE-7868
+  when using INDEXED_METADATA.
+
 
 ## 1.6.1
 
