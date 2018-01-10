@@ -13,10 +13,6 @@
 
 package com.vmware.xenon.services.common;
 
-import java.lang.reflect.Field;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -33,23 +29,6 @@ final class FieldInfoCache {
     private static final int MAX_FIELD_INFO_COUNT = 1500;
 
     private static final int MAX_INFOS_COUNT = 500;
-
-    private static final Field fiValues;
-
-    private static final Field fiByNumberTable;
-
-    static {
-        // remove this when upgraded to lucene 7.5/8.0
-        try {
-            fiValues = FieldInfos.class.getDeclaredField("values");
-            fiValues.setAccessible(true);
-
-            fiByNumberTable = FieldInfos.class.getDeclaredField("byNumberTable");
-            fiByNumberTable.setAccessible(true);
-        } catch (NoSuchFieldException e) {
-            throw new ExceptionInInitializerError(e);
-        }
-    }
 
     private static final class FieldInfoKey {
         String name;
@@ -187,38 +166,7 @@ final class FieldInfoCache {
      */
     public FieldInfos dedupFieldInfos(FieldInfo[] infos) {
         FieldInfosKey key = new FieldInfosKey(infos);
-        return this.infosCache.computeIfAbsent(key, k -> {
-            FieldInfos res = new FieldInfos(k.infos);
-            trimFieldInfos(res);
-            return res;
-        });
-    }
-
-    /**
-     * A bug in lucene keeps a treemap for every non-sparse FieldInfos unnecessary so.
-     * This method does a copy of the field * {@link FieldInfos#values} allowing the underlying Map to be gc'ed.
-     *
-     * @see FieldInfos
-     * @param fieldInfos
-     */
-    @SuppressWarnings("unchecked")
-    void trimFieldInfos(FieldInfos fieldInfos) {
-        try {
-            Object obj = fiByNumberTable.get(fieldInfos);
-            if (obj == null) {
-                // it is sparse, nothing to clean-up
-                return;
-            }
-
-            // value is a TreeMap view
-            Collection<FieldInfo> values = (Collection<FieldInfo>) fiValues.get(fieldInfos);
-
-            // instead, copy the view
-            values = Collections.unmodifiableList(new ArrayList<>(values));
-            fiValues.set(fieldInfos, values);
-        } catch (ReflectiveOperationException ignore) {
-
-        }
+        return this.infosCache.computeIfAbsent(key, (FieldInfosKey k) -> new FieldInfos(k.infos));
     }
 
     public FieldInfo dedupFieldInfo(String name, int fieldNumber, boolean storeTermVector, boolean omitNorms,
