@@ -555,7 +555,6 @@ public final class Utils {
                     ServiceOption.STRICT_UPDATE_CHECKING);
             break;
         case OWNER_SELECTION:
-            reqs = EnumSet.of(ServiceOption.REPLICATION);
             antiReqs = EnumSet.of(ServiceOption.CONCURRENT_UPDATE_HANDLING);
             break;
         case STRICT_UPDATE_CHECKING:
@@ -601,7 +600,7 @@ public final class Utils {
             break;
         case STATELESS:
             antiReqs = EnumSet.of(ServiceOption.PERSISTENCE, ServiceOption.REPLICATION,
-                    ServiceOption.OWNER_SELECTION, ServiceOption.STRICT_UPDATE_CHECKING);
+                    ServiceOption.STRICT_UPDATE_CHECKING);
             break;
         default:
             break;

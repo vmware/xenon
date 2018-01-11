@@ -100,12 +100,6 @@ public class ForwardRequestFilter implements Filter {
             return FilterReturnCode.CONTINUE_PROCESSING;
         }
 
-        if (service == null && (!options.contains(ServiceOption.FACTORY) ||
-                !options.contains(ServiceOption.REPLICATION))) {
-            // service is unknown and its parent is not a factory with REPLICATION - do not forward
-            return FilterReturnCode.CONTINUE_PROCESSING;
-        }
-
         // request needs to be forwarded to owner
         final String finalServicePath = servicePath;
         final Service finalParent = parent;
@@ -148,6 +142,7 @@ public class ForwardRequestFilter implements Filter {
 
     private void forwardRequestToOwner(Operation op,
             SelectOwnerResponse rsp, OperationProcessingContext context) {
+
         CompletionHandler fc = (fo, fe) -> {
             if (fe != null) {
                 retryOrFailRequest(op, fo, fe, context);

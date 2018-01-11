@@ -34,6 +34,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import com.vmware.xenon.services.common.*;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -44,13 +45,8 @@ import com.vmware.xenon.common.config.TestXenonConfiguration;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
-import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleODLService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
-import com.vmware.xenon.services.common.InMemoryLuceneDocumentIndexService;
-import com.vmware.xenon.services.common.NodeGroupService;
-import com.vmware.xenon.services.common.QueryTask;
-import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.TestLuceneDocumentIndexService.InMemoryExampleService;
 
 
@@ -159,6 +155,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
             h.startCoreServicesSynchronously(new InMemoryLuceneDocumentIndexService());
             h.startFactory(new InMemoryExampleService());
             h.startFactory(new ExampleODLService());
+            h.startService(new Replication1xExampleFactoryService());
         }
 
         URI inMemoryExampleFactoryUri = UriUtils.buildUri(
@@ -167,6 +164,9 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         URI ODLExampleFactoryUri = UriUtils.buildUri(
                 this.host.getPeerServiceUri(ExampleODLService.FACTORY_LINK));
         this.host.waitForReplicatedFactoryServiceAvailable(ODLExampleFactoryUri);
+        URI f = UriUtils.buildUri(
+                this.host.getPeerServiceUri(Replication1xExampleFactoryService.SELF_LINK));
+        this.host.waitForReplicatedFactoryServiceAvailable(f);
     }
 
     @After
@@ -666,7 +666,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         this.host.waitForNodeGroupConvergence();
 
         List<ExampleServiceState> exampleStates = this.host.createExampleServices(
-                this.host.getPeerHost(), this.serviceCount, null, ExampleService.FACTORY_LINK);
+                this.host.getPeerHost(), this.serviceCount, null, Replication1xExampleFactoryService.SELF_LINK);
         Map<String, ExampleServiceState> exampleStatesMap =
                 exampleStates.stream().collect(Collectors.toMap(s -> s.documentSelfLink, s -> s));
 
@@ -677,7 +677,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
 
         VerificationHost peer = this.host.getPeerHost();
         this.host.waitForReplicatedFactoryChildServiceConvergence(
-                this.host.getNodeGroupToFactoryMap(ExampleService.FACTORY_LINK),
+                this.host.getNodeGroupToFactoryMap(Replication1xExampleFactoryService.SELF_LINK),
                 exampleStatesMap,
                 this.exampleStateConvergenceChecker,
                 exampleStatesMap.size(),

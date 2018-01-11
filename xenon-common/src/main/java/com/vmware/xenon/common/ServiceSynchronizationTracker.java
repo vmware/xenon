@@ -274,6 +274,11 @@ class ServiceSynchronizationTracker {
                 return;
             }
 
+            if (ServiceHost.isServiceStateless(s)) {
+                op.complete();
+                return;
+            }
+
             // we are on owner node, proceed with synchronization logic that will discover
             // and push, latest, best state, to all peers
             synchronizeWithPeers(s, op);

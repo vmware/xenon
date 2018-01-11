@@ -14,6 +14,7 @@
 package com.vmware.xenon.services.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -47,42 +48,23 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
+import com.vmware.xenon.common.*;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-import com.vmware.xenon.common.AuthorizationSetupHelper;
-import com.vmware.xenon.common.CommandLineArgumentParser;
-import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
-import com.vmware.xenon.common.NodeSelectorState;
-import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
-import com.vmware.xenon.common.OperationJoin;
-import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
-import com.vmware.xenon.common.ServiceConfigUpdateRequest;
-import com.vmware.xenon.common.ServiceConfiguration;
-import com.vmware.xenon.common.ServiceDocument;
-import com.vmware.xenon.common.ServiceDocumentDescription;
-import com.vmware.xenon.common.ServiceDocumentQueryResult;
-import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceHost.HttpScheme;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
-import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
-import com.vmware.xenon.common.StatefulService;
-import com.vmware.xenon.common.SynchronizationTaskService;
-import com.vmware.xenon.common.TaskState;
-import com.vmware.xenon.common.TestResults;
-import com.vmware.xenon.common.UriUtils;
-import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.config.TestXenonConfiguration;
 import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.common.test.AuthorizationHelper;
@@ -206,6 +188,19 @@ public class TestNodeGroupService {
                         }
                     })
                     .sendWith(this);
+        }
+    }
+
+    public static class OwnerSelectionWithoutReplicationService extends ExampleService {
+        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/tests/withoutreplication";
+
+        public static FactoryService createFactory() {
+            return FactoryService.create(OwnerSelectionWithoutReplicationService.class);
+        }
+
+        public OwnerSelectionWithoutReplicationService() {
+            super();
+            toggleOption(ServiceOption.REPLICATION, false);
         }
     }
 
@@ -468,6 +463,142 @@ public class TestNodeGroupService {
                 "SYNCH_ALL_VERSIONS",
                 "false"
         );
+    }
+
+    @Test
+    public void statefulWithOwnerSelectionWithoutReplication() throws Throwable {
+        setUp(this.nodeCount);
+        this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount() - 1);
+        NodeGroupService.NodeGroupConfig cfg = new NodeGroupService.NodeGroupConfig();
+        cfg.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(1);
+        this.host.setNodeGroupConfig(cfg);
+
+        TestRequestSender sender = new TestRequestSender(this.host);
+        for (VerificationHost h1 : this.host.getInProcessHostMap().values()) {
+            h1.startServiceAndWait(OwnerSelectionWithoutReplicationService.createFactory(),
+                    OwnerSelectionWithoutReplicationService.FACTORY_LINK, null);
+        }
+
+        this.replicationTargetFactoryLink = OwnerSelectionWithoutReplicationService.FACTORY_LINK;
+        Map<String, ExampleServiceState> exampleServices = createExampleServices(this.host.getPeerHostUri());
+        ExampleServiceState state = exampleServices.values().iterator().next();
+        VerificationHost owner = this.host.getOwnerPeer(state.documentSelfLink, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+
+        // Verify that test service not replicated on other nodes.
+        int replicationCount = 0;
+        for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
+            URI indexUri = UriUtils.buildUri(peer, ServiceUriPaths.CORE_DOCUMENT_INDEX);
+            indexUri = UriUtils.extendUriWithQuery(indexUri,
+                    ServiceDocument.FIELD_NAME_SELF_LINK, state.documentSelfLink);
+            Operation op = sender.sendAndWait(Operation.createGet(indexUri));
+            if (op.getBodyRaw() != null) {
+                replicationCount++;
+            }
+        }
+        assertEquals(replicationCount, 1);
+
+        // Create new nodes until we find a new owner for our test service.
+        owner = this.host.getOwnerPeer(state.documentSelfLink, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+        String newOwnerId = owner.getId();
+        while (owner.getId().equals(newOwnerId)) {
+            VerificationHost newHost = this.host.setUpLocalPeerHost(0, VerificationHost.FAST_MAINT_INTERVAL_MILLIS, null, null);
+            newHost.startServiceAndWait(OwnerSelectionWithoutReplicationService.createFactory(),
+                    OwnerSelectionWithoutReplicationService.FACTORY_LINK, null);
+            this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+            newOwnerId = this.host.getOwnerPeer(state.documentSelfLink, ServiceUriPaths.DEFAULT_NODE_SELECTOR).getId();
+        }
+
+        this.replicationFactor = 1;
+        this.host.waitForReplicatedFactoryChildServiceConvergence(
+                getFactoriesPerNodeGroup(OwnerSelectionWithoutReplicationService.FACTORY_LINK),
+                exampleServices,
+                this.exampleStateConvergenceChecker,
+                exampleServices.size(),
+                0,
+                this.replicationFactor);
+
+        Operation op = Operation.createGet(this.host.getPeerHost(), state.documentSelfLink);
+        ServiceDocument doc2 = sender.sendAndWait(op, ServiceDocument.class);
+        assertNotEquals(state.documentOwner, doc2.documentOwner);
+        assertEquals(newOwnerId, doc2.documentOwner);
+
+        // Stop the owner of one service, and verify that service is not available anymore.
+        // No synchronization will happen for non-replicated service.
+        this.host.stopHost(owner);
+        op = Operation.createGet(this.host.getPeerHost(), state.documentSelfLink);
+        sender.sendAndWaitFailure(op);
+
+        // Create a service with same selflink.
+        Operation post = Operation.createPost(this.host.getPeerHost(), OwnerSelectionWithoutReplicationService.FACTORY_LINK)
+                .setBody(state);
+        sender.sendAndWait(post, ServiceDocument.class);
+
+    }
+
+
+    @Test
+    public void synch1XReplicationService() throws Throwable {
+        setUp(this.nodeCount);
+        this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount() - 1);
+        NodeGroupService.NodeGroupConfig cfg = new NodeGroupService.NodeGroupConfig();
+        cfg.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(1);
+        this.host.setNodeGroupConfig(cfg);
+
+        TestRequestSender sender = new TestRequestSender(this.host);
+        for (VerificationHost h1 : this.host.getInProcessHostMap().values()) {
+            h1.startService(new Replication1xExampleFactoryService());
+        }
+
+        this.replicationTargetFactoryLink = Replication1xExampleFactoryService.SELF_LINK;
+        Map<String, ExampleServiceState> exampleServices = createExampleServices(this.host.getPeerHostUri());
+        ExampleServiceState state = exampleServices.values().iterator().next();
+        VerificationHost owner = this.host.getOwnerPeer(state.documentSelfLink, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+
+        // Verify that test service not replicated on other nodes.
+        int replicationCount = 0;
+        for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
+            URI indexUri = UriUtils.buildUri(peer, ServiceUriPaths.CORE_DOCUMENT_INDEX);
+            indexUri = UriUtils.extendUriWithQuery(indexUri,
+                    ServiceDocument.FIELD_NAME_SELF_LINK, state.documentSelfLink);
+            Operation op = sender.sendAndWait(Operation.createGet(indexUri));
+            int a = 0;
+
+            if (op.getBodyRaw() != null) {
+                replicationCount++;
+            }
+        }
+        assertEquals(replicationCount, 1);
+
+        this.replicationFactor = 1;
+        this.host.waitForReplicatedFactoryChildServiceConvergence(
+                getFactoriesPerNodeGroup(Replication1xExampleFactoryService.SELF_LINK),
+                exampleServices,
+                this.exampleStateConvergenceChecker,
+                exampleServices.size(),
+                0,
+                this.replicationFactor);
+
+        // Create new nodes until we find a new owner for our test service.
+        owner = this.host.getOwnerPeer(state.documentSelfLink, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+        String newOwnerId = owner.getId();
+        while (owner.getId().equals(newOwnerId)) {
+            VerificationHost newHost = this.host.setUpLocalPeerHost(0, VerificationHost.FAST_MAINT_INTERVAL_MILLIS, null, null);
+            newHost.startServiceAndWait(Replication1xExampleFactoryService.class,
+                    Replication1xExampleFactoryService.SELF_LINK);
+            this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+            int a = 0;
+            newOwnerId = this.host.getOwnerPeer(state.documentSelfLink, ServiceUriPaths.DEFAULT_NODE_SELECTOR).getId();
+        }
+
+        this.replicationFactor = 1;
+        this.host.waitForReplicatedFactoryChildServiceConvergence(
+                getFactoriesPerNodeGroup(Replication1xExampleFactoryService.SELF_LINK),
+                exampleServices,
+                this.exampleStateConvergenceChecker,
+                exampleServices.size(),
+                0,
+                this.replicationFactor);
+
     }
 
     @Test
