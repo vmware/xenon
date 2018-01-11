@@ -2895,6 +2895,10 @@ public class ServiceHost implements ServiceRequestSender {
         return s.hasOption(ServiceOption.PERSISTENCE);
     }
 
+    public static boolean isServiceOwnerSelected(Service s) {
+        return s.hasOption(ServiceOption.OWNER_SELECTION);
+    }
+
     public static boolean isServiceImmutable(Service s) {
         return s.hasOption(ServiceOption.IMMUTABLE);
     }
@@ -2922,7 +2926,7 @@ public class ServiceHost implements ServiceRequestSender {
 
             switch (next) {
             case INITIALIZING:
-                final ProcessingStage nextStage = isServiceIndexed(s)
+                final ProcessingStage nextStage = isServiceIndexed(s) || isServiceOwnerSelected(s)
                         ? ProcessingStage.LOADING_INITIAL_STATE : ProcessingStage.SYNCHRONIZING;
 
                 buildDocumentDescription(s);
@@ -2971,7 +2975,8 @@ public class ServiceHost implements ServiceRequestSender {
                 ProcessingStage nxt = isServiceCreate(post)
                         ? ProcessingStage.EXECUTING_CREATE_HANDLER
                         : ProcessingStage.EXECUTING_START_HANDLER;
-                if (s.hasOption(ServiceOption.FACTORY) || !s.hasOption(ServiceOption.REPLICATION)) {
+                if (s.hasOption(ServiceOption.FACTORY) ||
+                        !(s.hasOption(ServiceOption.REPLICATION) || s.hasOption(ServiceOption.OWNER_SELECTION))) {
                     if (!ServiceHost.isServiceCreate(post) &&
                             post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK) &&
                             post.getLinkedState() == null) {
