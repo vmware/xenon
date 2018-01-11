@@ -13,8 +13,11 @@
 
 package com.vmware.xenon.common;
 
+import static org.junit.Assert.assertNotEquals;
+
 import java.net.URI;
 import java.time.Duration;
+import java.util.stream.Collectors;
 
 import org.junit.Before;
 import org.junit.Rule;
@@ -22,6 +25,9 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.StatelessTestService.ComputeSquare;
 import com.vmware.xenon.common.test.TestContext;
+import com.vmware.xenon.common.test.TestRequestSender;
+import com.vmware.xenon.common.test.VerificationHost;
+
 
 class StatelessTestService extends StatelessService {
 
@@ -35,11 +41,29 @@ class StatelessTestService extends StatelessService {
     }
 
     @Override
+    public void handleGet(Operation get) {
+        ServiceDocument doc = new ServiceDocument();
+        doc.documentOwner = this.getHost().getId();
+        get.setBody(doc);
+        get.complete();
+    }
+
+    @Override
     public void handlePost(Operation post) {
         ComputeSquare instructions = post.getBody(ComputeSquare.class);
         instructions.result = instructions.a * instructions.a + instructions.b * instructions.b;
         post.setBodyNoCloning(instructions);
         post.complete();
+    }
+}
+
+class StatelessOwnerSelectedTestService extends StatelessTestService {
+
+    public static final String SELF_LINK = "/stateless/service";
+
+    public StatelessOwnerSelectedTestService() {
+        super();
+        super.toggleOption(ServiceOption.OWNER_SELECTION, true);
     }
 }
 
@@ -49,12 +73,41 @@ public class TestStatelessService extends BasicReusableHostTestCase {
 
     public int iterationCount = 3;
 
+    public int nodeCount = 3;
+
     @Rule
     public TestResults testResults = new TestResults();
 
     @Before
     public void setUp() {
         CommandLineArgumentParser.parseFromProperties(this);
+    }
+
+    private void setUpMultiNode() throws Throwable {
+        this.host.setUpPeerHosts(this.nodeCount);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount - 1);
+
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            h.startServiceAndWait(new StatelessOwnerSelectedTestService(),
+                    StatelessOwnerSelectedTestService.SELF_LINK, null);
+        }
+    }
+
+    @Test
+    public void statelessWithOwnerSelectionWithoutReplication() throws Throwable {
+        setUpMultiNode();
+        TestRequestSender sender = new TestRequestSender(this.host);
+
+        Operation op = Operation.createGet(this.host.getPeerHost(), StatelessOwnerSelectedTestService.SELF_LINK);
+        ServiceDocument doc = sender.sendAndWait(op, ServiceDocument.class);
+        VerificationHost owner = this.host.getInProcessHostMap().values().stream().filter(peer -> peer.getId().equals(doc.documentOwner))
+                .collect(Collectors.toList()).iterator().next();
+
+        // Verify a new owner is selected after original owner stopped.
+        this.host.stopHost(owner);
+        op = Operation.createGet(this.host.getPeerHost(), StatelessOwnerSelectedTestService.SELF_LINK);
+        ServiceDocument newDoc = sender.sendAndWait(op, ServiceDocument.class);
+        assertNotEquals(doc.documentOwner, newDoc.documentOwner);
     }
 
     @Test (expected = IllegalArgumentException.class)
