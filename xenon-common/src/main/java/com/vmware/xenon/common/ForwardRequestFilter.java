@@ -85,6 +85,18 @@ public class ForwardRequestFilter implements Filter {
                 parent = context.getHost().findService(factoryPath, true);
                 if (parent != null) {
                     options = parent.getOptions();
+                    if (parent instanceof FactoryService) {
+                        FactoryService factory = (FactoryService) parent;
+                        if (factory.hasChildOption(ServiceOption.OWNER_SELECTION)) {
+                            options.add(ServiceOption.OWNER_SELECTION);
+                        }
+                        if (factory.hasChildOption(ServiceOption.REPLICATION)) {
+                            options.add(ServiceOption.REPLICATION);
+                        }
+                        if (factory.hasChildOption(ServiceOption.PERSISTENCE)) {
+                            options.add(ServiceOption.PERSISTENCE);
+                        }
+                    }
                 }
             }
         }
@@ -101,8 +113,9 @@ public class ForwardRequestFilter implements Filter {
         }
 
         if (service == null && (!options.contains(ServiceOption.FACTORY) ||
-                !options.contains(ServiceOption.REPLICATION))) {
-            // service is unknown and its parent is not a factory with REPLICATION - do not forward
+                !(options.contains(ServiceOption.REPLICATION) ||
+                        options.contains(ServiceOption.OWNER_SELECTION)))) {
+            // service is unknown and its parent is not a factory with REPLICATION or OWNER_SELECTION - do not forward
             return FilterReturnCode.CONTINUE_PROCESSING;
         }
 

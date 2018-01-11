@@ -87,8 +87,6 @@ public interface Service extends ServiceRequestSender {
          * or multiple peers have failed, this option makes the service unavailable, since no updates
          * will be accepted.
          *
-         * Requires: REPLICATION
-         *
          * Not compatible with: CONCURRENT_UPDATE_HANDLING
          */
         OWNER_SELECTION,
