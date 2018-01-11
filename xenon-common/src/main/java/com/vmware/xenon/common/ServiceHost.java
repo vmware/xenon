@@ -2895,6 +2895,10 @@ public class ServiceHost implements ServiceRequestSender {
         return s.hasOption(ServiceOption.PERSISTENCE);
     }
 
+    public static boolean isServiceReplicated(Service s) {
+        return s.hasOption(ServiceOption.REPLICATION);
+    }
+
     public static boolean isServiceImmutable(Service s) {
         return s.hasOption(ServiceOption.IMMUTABLE);
     }
