@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.services.common;
 
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -113,6 +114,7 @@ import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
 import com.vmware.xenon.services.common.RoleService.RoleState;
 import com.vmware.xenon.services.common.UserService.UserState;
 
+
 public class TestNodeGroupService {
 
     public static class NonPersistedExampleFactoryService extends FactoryService {
@@ -206,6 +208,14 @@ public class TestNodeGroupService {
                         }
                     })
                     .sendWith(this);
+        }
+    }
+
+    class OwnerSelectionWithoutReplicationService extends ExampleService {
+        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/tests/withoutreplication";
+        public OwnerSelectionWithoutReplicationService() {
+            super();
+            toggleOption(ServiceOption.REPLICATION, false);
         }
     }
 
@@ -468,6 +478,36 @@ public class TestNodeGroupService {
                 "SYNCH_ALL_VERSIONS",
                 "false"
         );
+    }
+
+    @Test
+    public void ownerSelectionWithoutReplication() throws Throwable {
+        setUp(this.serviceCount);
+        TestRequestSender sender = new TestRequestSender(this.host);
+        for (VerificationHost h1 : this.host.getInProcessHostMap().values()) {
+            h1.startServiceAndWait(OwnerSelectionWithoutReplicationService.createFactory(),
+                    OwnerSelectionWithoutReplicationService.FACTORY_LINK,
+                    null);
+        }
+
+        this.replicationTargetFactoryLink = OwnerSelectionWithoutReplicationService.FACTORY_LINK;
+        Map<String, ExampleServiceState> exampleServices = createExampleServices(this.host.getPeerHostUri());
+
+        ExampleServiceState state = exampleServices.values().iterator().next();
+        VerificationHost owner = this.host.getInProcessHostMap().values().stream().filter(peer -> peer.getId().equals(state.documentOwner))
+                .collect(Collectors.toList()).iterator().next();
+
+        // Stop the owner of one service, and verify that service is not available anymore.
+        this.host.stopHost(owner);
+        Operation op = Operation.createGet(this.host.getPeerHost(), state.documentSelfLink);
+        sender.sendAndWaitFailure(op);
+
+        // Create a service with same selflink and verify the documentOwner and documentSelfLink
+        Operation post = Operation.createPost(this.host.getPeerHost(), OwnerSelectionWithoutReplicationService.FACTORY_LINK)
+                .setBody(state);
+        ServiceDocument state2 = sender.sendAndWait(post, ServiceDocument.class);
+        assertEquals(state.documentSelfLink, state2.documentSelfLink);
+        assertNotEquals(state.documentOwner, state2.documentOwner);
     }
 
     @Test
