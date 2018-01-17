@@ -16,11 +16,8 @@ package com.vmware.xenon.common;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -174,24 +171,6 @@ public class SynchronizationTaskService
             SynchronizationTaskService.class,
             "checkpointPeriod",
             TimeUnit.MINUTES.toMicros(3)
-    );
-
-    /**
-     * avoid clock skew in peers
-     */
-    private final long checkpointComparisonEpsilonMicros = XenonConfiguration.number(
-            SynchronizationTaskService.class,
-            "checkpointComparisonEpsilonMicros",
-            TimeUnit.SECONDS.toMicros(10)
-    );
-
-    /**
-     * scanning query count limit
-     */
-    private final long checkpointQueryLimit = XenonConfiguration.number(
-            SynchronizationTaskService.class,
-            "checkpointQueryLimit",
-            1000
     );
 
     public SynchronizationTaskService() {
@@ -1008,276 +987,25 @@ public class SynchronizationTaskService
             }
             log(Level.INFO, "%s as owner to update checkpoint for %s",
                     getHost().getId(), this.parent.getSelfLink());
-            getCheckpoints(maintOp);
+            updateCheckpoints(Utils.getNowMicrosUtc(), maintOp);
         });
     }
 
-    private void getCheckpoints(Operation maintOp) {
-        String checkPointServiceLink = UriUtils.buildUriPath(
-                CheckpointService.FACTORY_LINK, UriUtils.convertPathCharsFromLink(this.parent.getSelfLink()));
-        Operation get = Operation.createGet(UriUtils.buildUri(this.getHost(), checkPointServiceLink))
-                .setReferer(this.getUri())
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        log(Level.INFO, "broadcast get checkpoints failed %s", e.toString());
-                        maintOp.fail(e);
-                        return;
-                    }
-                    NodeGroupBroadcastResponse rsp = o.getBody(NodeGroupBroadcastResponse.class);
-                    if (rsp.availableNodeCount < rsp.membershipQuorum) {
-                        log(Level.INFO, "availableNodeCount(%d) < membershipQuorum(%d)", rsp.availableNodeCount, rsp.membershipQuorum);
-                        maintOp.fail(new IllegalStateException(String.format("availableNodeCount(%d) < membershipQuorum(%d)",
-                                rsp.availableNodeCount, rsp.membershipQuorum)));
-                        return;
-                    }
-                    if (!rsp.failures.isEmpty()) {
-                        for (Map.Entry<URI, ServiceErrorResponse> failure : rsp.failures.entrySet()) {
-                            if (failure.getValue().statusCode != Operation.STATUS_CODE_NOT_FOUND) {
-                                log(Level.INFO, "get checkpoint failed with status %d from %s", failure.getValue().statusCode, failure.getKey());
-                                maintOp.fail(new IllegalStateException(String.format("get checkpoint failed with status %d from %s", failure.getValue().statusCode, failure.getKey())));
-                                return;
-                            }
-                        }
-                        scanCheckpoint(0L, rsp.selectedNodes, rsp.receivers, maintOp);
-                        return;
-                    }
-                    List<Long> checkpoints =
-                            rsp.jsonResponses.values().stream().map(s -> {
-                                CheckpointService.CheckpointState checkpointState =
-                                        Utils.fromJson(s, CheckpointService.CheckpointState.class);
-                                return checkpointState.timestamp;
-                            }).collect(Collectors.toList());
-                    long lastMinCheckpoint = findMinimumCheckpoint(checkpoints);
-                    log(Level.INFO, "last min checkpoint(%d)", lastMinCheckpoint);
-                    scanCheckpoint(lastMinCheckpoint, rsp.selectedNodes, rsp.receivers, maintOp);
-                });
-        this.getHost().broadcastRequest(this.parent.getPeerNodeSelectorPath(), checkPointServiceLink, false, get);
-    }
+    private void updateCheckpoints(long nextCheckpoint, Operation maintOp) {
 
-    private void scanCheckpoint(long lastMinCheckpoint, Map<String, URI> selectedNodes, Set<URI> receivers, Operation maintOp) {
-        QueryTask queryTask = buildScanQueryTask(lastMinCheckpoint);
-        queryTask.nodeSelectorLink = this.parent.getPeerNodeSelectorPath();
-        queryTask.indexLink = this.childServiceInstantiator.get().getDocumentIndexPath();
-        URI localQueryTaskFactoryUri = UriUtils.buildUri(getHost(),
-                ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
-        URI forwardingService = UriUtils.buildBroadcastRequestUri(localQueryTaskFactoryUri,
-                this.parent.getPeerNodeSelectorPath());
-        Operation.createPost(forwardingService)
-                .setBody(queryTask)
-                .setReferer(getHost().getUri())
-                .setConnectionSharing(true)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        maintOp.fail(e);
-                        return;
-                    }
-                    NodeGroupBroadcastResponse rsp = o.getBody((NodeGroupBroadcastResponse.class));
-                    if (rsp.availableNodeCount < rsp.membershipQuorum) {
-                        log(Level.INFO, "availableNodeCount(%d) < membershipQuorum(%d)", rsp.availableNodeCount, rsp.membershipQuorum);
-                        maintOp.fail(new IllegalStateException(String.format("availableNodeCount(%d) < membershipQuorum(%d)",
-                                rsp.availableNodeCount, rsp.membershipQuorum)));
-                        return;
-                    }
-                    if (!rsp.failures.isEmpty()) {
-                        for (Map.Entry<URI, ServiceErrorResponse> failure : rsp.failures.entrySet()) {
-                            log(Level.INFO, "Query checkpoint failed with status %d from %s", failure.getValue().statusCode, failure.getKey());
-                        }
-                        maintOp.fail(new IllegalStateException(String.format("Query checkpoints failed: %s", rsp.failures)));
-                        return;
-                    }
-                    if (!validateSelectedNodes(selectedNodes, rsp.selectedNodes)) {
-                        log(Level.INFO, "selectedNodes miss match, expected %s, actual %s", Utils.toJsonHtml(selectedNodes), Utils.toJsonHtml(rsp.selectedNodes));
-                        maintOp.fail(new IllegalArgumentException(String.format("selectedNodes miss match, expected %s, actual %s",
-                                Utils.toJsonHtml(selectedNodes), Utils.toJsonHtml(rsp.selectedNodes))));
-                        return;
-                    }
-                    Map<URI, Map<String, ServiceDocument>> results = new HashMap<>();
-                    // convert object to ServiceDocument
-                    for (URI uri : rsp.jsonResponses.keySet()) {
-                        QueryTask qt = Utils.fromJson(rsp.jsonResponses.get(uri), QueryTask.class);
-                        if (qt.results.documentCount > 0L) {
-                            results.put(uri, qt.results.documents.entrySet().stream()
-                                    .collect(Collectors.toMap(entry -> entry.getKey(), entry -> Utils.fromJson(entry.getValue(), ServiceDocument.class))));
-                        } else {
-                            results.put(uri, new HashMap<>());
-                        }
-                    }
-                    Long nextCheckpoint = findNextCheckpoint(results);
-                    if (nextCheckpoint != null) {
-                        updateCheckpoints(nextCheckpoint, receivers, maintOp);
-                        return;
-                    }
-                    maintOp.complete();
-                })
-                .sendWith(getHost());
-    }
-
-    private void updateCheckpoints(long nextCheckpoint, Set<URI> receivers, Operation maintOp) {
         CheckpointService.CheckpointState s = new CheckpointService.CheckpointState();
         s.timestamp = nextCheckpoint;
         s.factoryLink = this.parent.getSelfLink();
 
         log(Level.INFO, "create next checkpoint for factory %s using timestamp %d", this.parent.getSelfLink(), nextCheckpoint);
 
-        AtomicInteger pending = new AtomicInteger(receivers.size());
-        Operation.CompletionHandler ch = (o, e) -> {
-            if (e != null) {
-                maintOp.fail(e);
-                return;
-            }
-
-            int r = pending.decrementAndGet();
-
-            if (r != 0) {
-                return;
-            }
-            maintOp.complete();
-        };
-
-        for (URI peerCheckpointServiceUri : receivers) {
-            String peerCheckpointFactoryLink = UriUtils.getParentPath(peerCheckpointServiceUri.toString());
-            Operation post = Operation.createPost(UriUtils.buildUri(peerCheckpointFactoryLink))
-                    .setBody(s)
-                    .setCompletion(ch)
-                    .setReferer(this.getUri());
-            try {
-                sendRequest(post);
-            } catch (Exception e) {
-                logSevere(e);
-                post.fail(e);
-            }
-        }
-    }
-
-    private boolean validateSelectedNodes(Map<String, URI> expected, Map<String, URI> actual) {
-        if (expected.size() != actual.size()) {
-            return false;
-        }
-        for (Map.Entry<String, URI> expectedEntry : expected.entrySet()) {
-            String nodeId = expectedEntry.getKey();
-            if (!actual.containsKey(nodeId)) {
-                return false;
-            }
-            URI expectedUri = expectedEntry.getValue();
-            URI actualUri = actual.get(nodeId);
-            if (!expectedUri.equals(actualUri)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private Long findNextCheckpoint(Map<URI, Map<String, ServiceDocument>> results) {
-        if (results.isEmpty()) {
-            return null;
-        }
-        Long maxHitTime = null;
-        Long minMissTime = null;
-        // choose one peer response with least docs to compare with
-        Map.Entry<URI, Map<String, ServiceDocument>> selectedResult = null;
-        for (Map.Entry<URI, Map<String, ServiceDocument>> result : results.entrySet()) {
-            if (selectedResult == null) {
-                selectedResult = result;
-                continue;
-            }
-            if (selectedResult.getValue().size() < result.getValue().size()) {
-                continue;
-            }
-            selectedResult = result;
-        }
-        URI selectedUri = selectedResult.getKey();
-        Set<String> hitLinkSet = new HashSet<>();
-        Map<String, ServiceDocument> missDocs = new HashMap<>();
-        // filter out hit link
-        for (Map.Entry<String, ServiceDocument> selectedEntry : selectedResult.getValue().entrySet()) {
-            String selectedLink = selectedEntry.getKey();
-            boolean hit = true;
-            for (Map.Entry<URI, Map<String, ServiceDocument>> entry : results.entrySet()) {
-                URI u = entry.getKey();
-                if (u == selectedUri) {
-                    // skip selected
-                    continue;
-                }
-                Map<String, ServiceDocument> result = entry.getValue();
-                ServiceDocument doc = result.get(selectedLink);
-                if (doc == null) {
-                    hit = false;
-                    break;
-                }
-                ServiceDocument selectedDoc = selectedEntry.getValue();
-                if (selectedDoc.documentVersion != doc.documentVersion) {
-                    hit = false;
-                    break;
-                }
-            }
-            if (hit) {
-                ServiceDocument hitDoc = selectedEntry.getValue();
-                // update hit time
-                long hitTime = hitDoc.documentUpdateTimeMicros;
-                maxHitTime = maxHitTime == null ? hitTime : Long.max(maxHitTime, hitTime);
-                // for hit links filtering
-                hitLinkSet.add(selectedLink);
-            }
-        }
-        // collect miss
-        for (Map<String, ServiceDocument> result : results.values()) {
-            for (Map.Entry<String, ServiceDocument> entry : result.entrySet()) {
-                String link = entry.getKey();
-                if (hitLinkSet.contains(link)) {
-                    continue;
-                }
-                ServiceDocument missDoc = entry.getValue();
-                // filter out old version, otherwise, check point won't
-                // make any progress since old version is not synced by default
-                missDocs.compute(link, (k, v) -> {
-                    if (v == null || missDoc.documentVersion > v.documentVersion) {
-                        return missDoc;
-                    }
-                    return v;
+        Operation post = Operation.createPost(UriUtils.buildUri(this.getHost(), CheckpointService.FACTORY_LINK))
+                .setBody(s)
+                .setReferer(this.getUri())
+                .setCompletion((o, e) -> {
+                    maintOp.complete();
                 });
-            }
-        }
-        hitLinkSet.clear();
-        // relies on synchronizationTask to synch missing docs when node group event happen
-        for (ServiceDocument d : missDocs.values()) {
-            minMissTime = minMissTime == null ?
-                    d.documentUpdateTimeMicros : Long.min(minMissTime, d.documentUpdateTimeMicros);
-        }
-        if (maxHitTime == null && minMissTime == null) {
-            return null;
-        }
-        if (maxHitTime == null) {
-            return minMissTime - 1;
-        }
-        if (minMissTime == null) {
-            return maxHitTime;
-        }
-        if (maxHitTime < minMissTime) {
-            return maxHitTime;
-        }
-        return minMissTime - 1;
-    }
-
-    private QueryTask buildScanQueryTask(long lastMinCheckpoint) {
-        QueryTask.NumericRange<Long> r =
-                QueryTask.NumericRange.createLongRange(lastMinCheckpoint, Utils.getNowMicrosUtc() - this.checkpointComparisonEpsilonMicros,
-                        false, true);
-
-        QueryTask.Query q = QueryTask.Query.Builder.create()
-                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK,
-                        this.parent.getSelfLink() + UriUtils.URI_PATH_CHAR + UriUtils.URI_WILDCARD_CHAR, QueryTask.QueryTerm.MatchType.WILDCARD)
-                .addKindFieldClause(this.parent.getStateType())
-                .addRangeClause(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS, r).build();
-        // query with selected fields (documentUpdateTime, documentVersion), which are meta data for documents
-        return QueryTask.Builder.createDirectTask()
-                .setQuery(q)
-                .setResultLimit((int) this.checkpointQueryLimit)
-                .orderAscending(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS, ServiceDocumentDescription.TypeName.LONG)
-                .addSelectTerm(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS)
-                .addSelectTerm(ServiceDocument.FIELD_NAME_VERSION)
-                .addOption(QueryTask.QuerySpecification.QueryOption.EXPAND_SELECTED_FIELDS)
-                .addOption(QueryTask.QuerySpecification.QueryOption.TOP_RESULTS)
-                .build();
+        this.getHost().broadcastRequest(this.parent.getPeerNodeSelectorPath(), CheckpointService.FACTORY_LINK, false, post);
     }
 
     private void setFactoryAvailability(
