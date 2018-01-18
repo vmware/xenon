@@ -16,6 +16,7 @@ package com.vmware.xenon.common;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import static com.vmware.xenon.common.Operation.PRAGMA_DIRECTIVE_NO_FORWARDING;
@@ -1121,6 +1122,81 @@ public class TestStatefulService extends BasicReusableHostTestCase {
             ExampleServiceState state = sender.sendAndWait(Operation.createGet(queryUri), ExampleServiceState.class);
             assertEquals("Counter in persisted state should be updated", Long.valueOf(1), state.counter);
         }
+    }
+
+    @Test
+    public void forwardWithNullBodyResponse() throws Throwable {
+
+        int nodeCount = 2;
+
+        this.host.setPeerSynchronizationEnabled(true);
+        this.host.setUpPeerHosts(nodeCount);
+        this.host.joinNodesAndVerifyConvergence(nodeCount, true);
+        this.host.setNodeGroupQuorum(nodeCount);
+
+        VerificationHost targetHost = this.host.getPeerHost();
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+        for (VerificationHost host : this.host.getInProcessHostMap().values()) {
+            host.startFactory(new NoBodyExampleService());
+        }
+        URI serviceUri = UriUtils.buildUri(targetHost.getUri(), NoBodyExampleService.FACTORY_LINK);
+        host.waitForReplicatedFactoryServiceAvailable(serviceUri);
+
+
+        String documentSelfLink = UriUtils.buildUriPath(NoBodyExampleService.FACTORY_LINK, "foo");
+
+        // create a doc
+        ExampleServiceState initState = new ExampleServiceState();
+        initState.name = "foo";
+        initState.counter = 0L;
+        initState.documentSelfLink = documentSelfLink;
+
+        Operation post = Operation.createPost(targetHost, NoBodyExampleService.FACTORY_LINK).setBody(initState);
+        ExampleServiceState postResponse = sender.sendAndWait(post, ExampleServiceState.class);
+        String ownerId = postResponse.documentOwner;
+
+
+        VerificationHost ownerNode = this.host.getInProcessHostMap().values().stream()
+                .filter(node -> ownerId.equals(node.getId()))
+                .findFirst().orElseThrow(() -> new RuntimeException("Failed to find owner node"));
+
+        VerificationHost nonOwnerNode = this.host.getInProcessHostMap().values().stream()
+                .filter(node -> !ownerId.equals(node.getId()))
+                .findFirst().orElseThrow(() -> new RuntimeException("Failed to find non-owner node"));
+
+        ExampleServiceState updateState;
+        Operation patch;
+        Operation response;
+
+        // update on owner node
+        updateState = new ExampleServiceState();
+        updateState.counter = 1L;
+        patch = Operation.createPatch(ownerNode, documentSelfLink).setBody(updateState);
+        response = ownerNode.getTestRequestSender().sendAndWait(patch);
+        assertNull(response.getBodyRaw());
+
+        // update on owner node with remote call
+        updateState = new ExampleServiceState();
+        updateState.counter = 2L;
+        patch = Operation.createPatch(ownerNode, documentSelfLink).setBody(updateState).forceRemote();
+        response = ownerNode.getTestRequestSender().sendAndWait(patch);
+        assertNull(response.getBodyRaw());
+
+        // update on non-owner node
+        updateState = new ExampleServiceState();
+        updateState.counter = 3L;
+        patch = Operation.createPatch(nonOwnerNode, documentSelfLink).setBody(updateState);
+        response = nonOwnerNode.getTestRequestSender().sendAndWait(patch);
+        assertNull(response.getBodyRaw());
+
+        // update on non-owner node with remote call
+        updateState = new ExampleServiceState();
+        updateState.counter = 4L;
+        patch = Operation.createPatch(nonOwnerNode, documentSelfLink).setBody(updateState).forceRemote();
+        response = nonOwnerNode.getTestRequestSender().sendAndWait(patch);
+        assertNull(response.getBodyRaw());
+
     }
 
 }

@@ -155,9 +155,7 @@ public class ForwardRequestFilter implements Filter {
             }
 
             op.setStatusCode(fo.getStatusCode());
-            if (fo.hasBody()) {
-                op.setBodyNoCloning(fo.getBodyRaw());
-            }
+            op.setBodyNoCloning(fo.getBodyRaw());
 
             op.setContentType(fo.getContentType());
             op.setContentLength(fo.getContentLength());
