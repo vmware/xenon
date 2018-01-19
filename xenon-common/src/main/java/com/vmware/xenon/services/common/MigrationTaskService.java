@@ -124,8 +124,8 @@ public class MigrationTaskService extends StatefulService {
     public static final String STAT_NAME_RETRIEVAL_QUERY_TIME_DURATION_MICRO_FORMAT = "retrievalQueryTimeDurationMicros-%s";
     public static final String FACTORY_LINK = ServiceUriPaths.MIGRATION_TASKS;
 
+    public static final Long DEFAULT_MAINTENANCE_INTERVAL_MILLIS = TimeUnit.MINUTES.toMicros(1);
     private static final Integer DEFAULT_PAGE_SIZE = 10_000;
-    private static final Long DEFAULT_MAINTENANCE_INTERVAL_MILLIS = TimeUnit.MINUTES.toMicros(1);
     private static final Integer DEFAULT_MAXIMUM_CONVERGENCE_CHECKS = 10;
 
     // used for the result value of DeferredResult in order to workaround findbug warning for passing null by "defered.complete(null)".
