@@ -31,6 +31,9 @@
     - `migrateMismatchedOwnerDocuments` option in migration request
     - `ownerMismatchDocumentCount` migration stat entry
 
+* Add `NodeGroupMigrationTaskService` which migrates services in one node-group
+  to another by orchestrating migration tasks.
+
 
 ## 1.6.1
 
