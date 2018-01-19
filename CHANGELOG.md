@@ -45,6 +45,10 @@
   to JsonMapper which disables adapters for types map, list, set.
   This is to ensure backward compatibility.
 
+* Add `NodeGroupMigrationTaskService` which migrates services in one node-group
+  to another by orchestrating migration tasks.
+
+
 ## 1.6.2-SNAPSHOT  (In 1.6.x branch)
 
 * Add CORS support.
