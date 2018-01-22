@@ -1120,6 +1120,7 @@ public abstract class FactoryService extends StatelessService {
         task.factorySelfLink = this.getSelfLink();
         task.factoryStateKind = Utils.buildKind(this.getStateType());
         task.membershipUpdateTimeMicros = membershipUpdateTimeMicros;
+        task.startTimeMicros = Utils.getNowMicrosUtc();
         task.nodeSelectorLink = this.nodeSelectorLink;
         task.queryResultLimit = this.selfQueryResultLimit;
         task.taskInfo = TaskState.create();
