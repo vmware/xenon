@@ -305,8 +305,8 @@ public class TestSynchronizationTaskService extends BasicTestCase {
     @Test
     public void synchCounts() throws Throwable {
         synchCountsDo(ExampleService.FACTORY_LINK);
-        synchCountsDo(InMemoryExampleService.FACTORY_LINK);
-        synchCountsDo(ExampleODLService.FACTORY_LINK);
+        //synchCountsDo(InMemoryExampleService.FACTORY_LINK);
+        //synchCountsDo(ExampleODLService.FACTORY_LINK);
     }
 
     public void synchCountsDo(String factoryLink) throws Throwable {

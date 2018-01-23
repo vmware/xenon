@@ -457,8 +457,9 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 return;
             }
 
-            AtomicInteger remaining = new AtomicInteger(peerStates.size() + nonRespondingPeers.size());
+            AtomicInteger remaining = new AtomicInteger(1);
             CompletionHandler c = (o, e) -> {
+                logInfo("Handler called....................................................................");
                 int r = remaining.decrementAndGet();
                 if (e != null) {
                     logWarning("Peer update to %s:%d for %s failed with %s, remaining %d",
@@ -480,34 +481,10 @@ public class NodeSelectorSynchronizationService extends StatelessService {
 
             ServiceDocument clonedState = Utils.clone(bestPeerRsp);
 
-            // send synchPost to peers with a different version
-            for (Entry<URI, ServiceDocument> entry : peerStates.entrySet()) {
-                URI peer = entry.getKey();
-                ServiceDocument peerState = entry.getValue();
+            Operation peerOp = prepareSynchPostRequest(post, request, bestPeerRsp,
+                    isServiceDeleted, c, clonedState, getHost().getUri(), version);
 
-                Operation peerOp = prepareSynchPostRequest(post, request, bestPeerRsp,
-                        isServiceDeleted, c, clonedState, peer, version);
-
-                boolean isVersionSame = ServiceDocument
-                        .compare(bestPeerRsp, peerState, request.stateDescription, Utils.getTimeComparisonEpsilonMicros())
-                        .contains(DocumentRelationship.EQUAL_VERSION);
-
-                if (isVersionSame
-                        && bestPeerRsp.getClass().equals(peerState.getClass())
-                        && ServiceDocument.equals(request.stateDescription, bestPeerRsp, peerState)) {
-                    peerOp.complete();
-                    continue;
-                }
-
-                sendSynchPost(peerOp, clonedState, remaining);
-            }
-
-            // send synchPost to non-responding peers
-            for (URI peer : nonRespondingPeers) {
-                Operation peerOp = prepareSynchPostRequest(post, request, bestPeerRsp,
-                        isServiceDeleted, c, clonedState, peer, version);
-                sendSynchPost(peerOp, clonedState, remaining);
-            }
+            getHost().forwardRequestSynch(this.parent.getSelfLink(), bestPeerRsp.documentSelfLink, peerOp, request.options);
         } catch (Exception e) {
             logSevere(e);
             post.fail(e);
@@ -541,6 +518,8 @@ public class NodeSelectorSynchronizationService extends StatelessService {
         peerOp.setConnectionTag(ServiceClient.CONNECTION_TAG_SYNCHRONIZATION);
 
         // Mark it as replicated so the remote factories do not try to replicate it again
+
+        // The owner will replicate it. What if there is no OWNER_SELECTION?
         peerOp.setFromReplication(true);
         peerOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED);
 

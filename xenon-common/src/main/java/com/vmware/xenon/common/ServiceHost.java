@@ -5199,6 +5199,31 @@ public class ServiceHost implements ServiceRequestSender {
         nss.selectAndForward(request, body);
     }
 
+    /**
+     * Convenience method that forwards the request to the node id that hashes closest to the key
+     */
+    public void forwardRequestSynch(String selectorPath, String key, Operation request, EnumSet<ServiceOption> options) {
+        if (isStopping()) {
+            request.fail(new CancellationException("Host is stopping"));
+            return;
+        }
+
+        NodeSelectorService nss = findNodeSelectorService(selectorPath, request);
+        if (nss == null) {
+            return;
+        }
+
+        prepareRequest(request);
+
+        SelectAndForwardRequest body = new SelectAndForwardRequest();
+        body.targetPath = request.getUri().getPath();
+        body.targetQuery = request.getUri().getQuery();
+        body.key = key;
+        body.options = SelectAndForwardRequest.REPLICATION_OPTIONS;
+        body.serviceOptions = options;
+        nss.selectAndForwardSynch(request, body);
+    }
+
     public void replicateRequest(EnumSet<ServiceOption> serviceOptions, ServiceDocument state,
             String selectorPath,
             String selectionKey,

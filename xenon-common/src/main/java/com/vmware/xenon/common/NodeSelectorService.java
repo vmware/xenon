@@ -72,6 +72,7 @@ public interface NodeSelectorService extends Service {
      */
     public static class SelectAndForwardRequest {
         public enum ForwardingOption {
+            SYNCHRONIZE,
             REPLICATE,
             BROADCAST,
             UNICAST,
@@ -90,6 +91,8 @@ public interface NodeSelectorService extends Service {
         public static final EnumSet<ForwardingOption> BROADCAST_OPTIONS_EXCLUDE_ENTRY_NODE = EnumSet
                 .of(ForwardingOption.BROADCAST, ForwardingOption.EXCLUDE_ENTRY_NODE);
 
+        public static final EnumSet<ForwardingOption> SYNCHRONIZATION_OPTIONS = EnumSet
+                .of(ForwardingOption.BROADCAST, ForwardingOption.SYNCHRONIZE);
         /**
          * Key used in the assignment scheme.
          */
@@ -178,6 +181,13 @@ public interface NodeSelectorService extends Service {
      * Note: The body should be cloned before queuing or using in a different thread context
      */
     void selectAndForward(Operation op, SelectAndForwardRequest body);
+
+    /**
+     * Selects an available node as the owner for the supplied key. The supplied operation
+     * is forwarded to the owner node if {@link SelectAndForwardRequest#targetPath} is set.
+     * Note: The body should be cloned before queuing or using in a different thread context
+     */
+    void selectAndForwardSynch(Operation op, SelectAndForwardRequest body);
 
     /**
      * Find owner node ID for the given service path.

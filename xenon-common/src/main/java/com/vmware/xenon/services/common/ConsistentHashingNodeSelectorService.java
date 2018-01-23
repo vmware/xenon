@@ -320,6 +320,14 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
     }
 
     /**
+     *  Infrastructure use only
+     */
+    @Override
+    public void selectAndForwardSynch(Operation op, SelectAndForwardRequest body) {
+        selectAndForwardSynch(body, op, this.cachedGroupState);
+    }
+
+    /**
      * Infrastructure use only
      *
      * This method uses cached {@link NodeGroupState}; therefore, caller needs to make sure the
@@ -402,6 +410,17 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                             op.complete();
                         });
         getHost().getClient().send(fwdOp.setUri(remoteService));
+    }
+
+    /**
+     * Uses the squared difference between the key and the server id of each member node to select a
+     * node. Both the key and the nodes are hashed
+     */
+    private void selectAndForwardSynch(SelectAndForwardRequest forwardRequest, Operation op, NodeGroupState localState) {
+        String keyValue = forwardRequest.key != null ? forwardRequest.key : forwardRequest.targetPath;
+        forwardRequest.associatedOp = op;
+        SelectOwnerResponse response = selectNodes(keyValue, localState);
+        replicateRequest(op, forwardRequest, response);
     }
 
     private SelectOwnerResponse selectNodes(String key, NodeGroupState localState) {
