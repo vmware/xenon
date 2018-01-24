@@ -339,6 +339,7 @@ public class MigrationTaskService extends StatefulService {
         super(MigrationTaskService.State.class);
         super.toggleOption(ServiceOption.CORE, true);
         super.toggleOption(ServiceOption.REPLICATION, true);
+        super.toggleOption(ServiceOption.PERSISTENCE, true);
         super.toggleOption(ServiceOption.OWNER_SELECTION, true);
         super.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
         super.toggleOption(ServiceOption.INSTRUMENTATION, true);
