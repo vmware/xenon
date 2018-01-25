@@ -510,6 +510,9 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
 
             hasRequestHeaders = op.hasRequestHeaders();
+
+            String connectionHeaderValue = op.getRequestHeader(Operation.CONNECTION_HEADER);
+
             boolean isXenonToXenon = op.isFromReplication() || op.isForwarded();
             if (hasRequestHeaders) {
                 // remove all headers that we will set explicitly
@@ -544,6 +547,9 @@ public class NettyHttpServiceClient implements ServiceClient {
 
             if (op.isKeepAlive()) {
                 httpHeaders.add(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
+            } else if (connectionHeaderValue != null) {
+                // If connection header is specified and keep-alive is not enabled, put back original value
+                httpHeaders.add(HttpHeaderNames.CONNECTION, connectionHeaderValue);
             }
 
             if (op.hasReferer() && !op.isFromReplication()) {
