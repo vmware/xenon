@@ -2306,6 +2306,8 @@ public class VerificationHost extends ExampleServiceHost {
             BiPredicate<T, T> stateChecker,
             int expectedChildCount, long expectedVersion, long replicationFactor)
             throws Throwable, TimeoutException {
+        this.log("DEBUG: Starting waitForReplicatedFactoryChildServiceConvergence, expectedChildCount: %d",
+                expectedChildCount);
         // now poll all hosts until they converge: They all have a child service
         // with the expected URI and it has the same state
 
@@ -2530,6 +2532,8 @@ public class VerificationHost extends ExampleServiceHost {
             }
 
             if (isConverged) {
+                this.log("DEBUG: Done waitForReplicatedFactoryChildServiceConvergence, expectedChildCount: %d",
+                        expectedChildCount);
                 return updatedStatesPerSelfLink;
             }
 
@@ -2839,6 +2843,7 @@ public class VerificationHost extends ExampleServiceHost {
      */
     public List<ExampleServiceState> createExampleServices(
             ServiceHost h, long serviceCount, Long expiration, String factoryLink) {
+        this.log("DEBUG: Starting POST %d example services", serviceCount);
         List<Operation> ops = new ArrayList<>();
         for (int i = 0; i < serviceCount; i++) {
             ExampleServiceState initState = new ExampleServiceState();
@@ -2850,7 +2855,10 @@ public class VerificationHost extends ExampleServiceHost {
             Operation post = Operation.createPost(UriUtils.buildUri(h, factoryLink)).setBody(initState);
             ops.add(post);
         }
-        return this.sender.sendAndWait(ops, ExampleServiceState.class);
+        List<ExampleServiceState> result = this.sender.sendAndWait(ops, ExampleServiceState.class);
+        this.log("DEBUG: Done with POST %d example services", serviceCount);
+
+        return result;
     }
 
     public Date getTestExpiration() {
