@@ -564,7 +564,7 @@ public class ServiceResourceTracker {
         boolean active = (cacheClearDelayMicros + lastAccessTime) > now;
         if (!active) {
             this.host.log(Level.FINE,
-                    "Considering stopping service %s, isOwner: %b, because it was inactive for %f seconds",
+                    "Considering stopping service %s, isOwner: %b, because it was inactive for %d seconds",
                     s.getSelfLink(), this.host.isDocumentOwner(s),
                     TimeUnit.MICROSECONDS.toSeconds(now - lastAccessTime));
         }

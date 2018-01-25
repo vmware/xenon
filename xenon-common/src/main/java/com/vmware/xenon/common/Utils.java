@@ -358,12 +358,16 @@ public final class Utils {
     }
 
     public static String toString(Throwable t) {
-        StringWriter writer = new StringWriter();
-        try (PrintWriter printer = new PrintWriter(writer)) {
-            t.printStackTrace(printer);
-        }
+        if (t == null) {
+            return null;
+        } else {
+            StringWriter writer = new StringWriter();
+            try (PrintWriter printer = new PrintWriter(writer)) {
+                t.printStackTrace(printer);
+            }
 
-        return writer.toString();
+            return writer.toString();
+        }
     }
 
     public static String toString(Map<?, Throwable> exceptions) {

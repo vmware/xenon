@@ -4657,7 +4657,7 @@ public class ServiceHost implements ServiceRequestSender {
             }
             performMaintenanceStage(post, stage, deadline);
         } catch (Exception e) {
-            log(Level.SEVERE, "Uncaught exception: %s", e.toString());
+            log(Level.SEVERE, "Uncaught exception: %s", Utils.toString(e));
             post.fail(e);
         }
     }
