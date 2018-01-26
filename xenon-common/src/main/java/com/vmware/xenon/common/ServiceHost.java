@@ -66,6 +66,7 @@ import java.util.logging.Logger;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
+import io.netty.handler.codec.http.cors.CorsConfig;
 import io.opentracing.ActiveSpan;
 import io.opentracing.ActiveSpan.Continuation;
 import io.opentracing.SpanContext;
@@ -1543,6 +1544,7 @@ public class ServiceHost implements ServiceRequestSender {
                 this.httpListener.setResponsePayloadSizeLimit(this.state.responsePayloadSizeLimit);
             }
 
+            this.httpListener.setCorsConfig(getCorsConfig());
             this.httpListener.start(getPort(), this.state.bindAddress);
         }
 
@@ -1566,6 +1568,7 @@ public class ServiceHost implements ServiceRequestSender {
                             .setResponsePayloadSizeLimit(this.state.responsePayloadSizeLimit);
                 }
 
+                this.httpsListener.setCorsConfig(getCorsConfig());
                 this.httpsListener.start(getSecurePort(), this.state.bindAddress);
             }
         }
@@ -5762,5 +5765,29 @@ public class ServiceHost implements ServiceRequestSender {
      */
     public Tracer getTracer() {
         return this.otTracer;
+    }
+
+    /**
+     * CORS configuration for netty pipeline.
+     *
+     * By default, CORS is disabled.
+     * To enable CORS support, override this method in subclass and populate {@link CorsConfig}.
+     *
+     * Example:
+     * {@code
+     *   // allow PUT for any origin
+     *   CorsConfigBuilder.forAnyOrigin().allowedRequestMethods(HttpMethod.PUT).build();
+     * }
+     *
+     * When {@code null} is returned, CORS support from nettty(by {@link io.netty.handler.codec.http.cors.CorsHandler})
+     * will be disabled.
+     *
+     * @return CORS configuration
+     * @see io.netty.handler.codec.http.cors.CorsConfigBuilder
+     * @see io.netty.handler.codec.http.cors.CorsConfig
+     */
+    public CorsConfig getCorsConfig() {
+        // CORS is disabled by default
+        return null;
     }
 }

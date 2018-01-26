@@ -49,6 +49,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 
+import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.cors.CorsConfig;
+import io.netty.handler.codec.http.cors.CorsConfigBuilder;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
 import org.junit.After;
 import org.junit.Rule;
@@ -2664,6 +2667,70 @@ public class TestServiceHost {
 
         // same for the URI with path-character
         this.host.getTestRequestSender().sendAndWait(Operation.createGet(rootUriWithPath));
+    }
+
+    @Test
+    public void cors() throws Throwable {
+        this.host = new VerificationHost() {
+            @Override
+            public CorsConfig getCorsConfig() {
+                // enable CORS for "http://example.com"
+                return CorsConfigBuilder.forOrigin("http://example.com")
+                        .allowedRequestMethods(HttpMethod.PUT)
+                        .allowedRequestHeaders("x-xenon")
+                        .build();
+            }
+        };
+
+        VerificationHost.initialize(this.host, VerificationHost.buildDefaultServiceHostArguments(0));
+        this.host.start();
+
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+        Operation get;
+        Operation preflight;
+        Operation response;
+
+        // Request from http://example.com
+        get = Operation.createGet(this.host, "/")
+                .addRequestHeader("origin", "http://example.com")
+                .forceRemote();
+
+        response = sender.sendAndWait(get);
+        assertEquals("http://example.com", response.getResponseHeader("access-control-allow-origin"));
+
+        // Request from http://not-example.com
+        get = Operation.createGet(this.host, "/")
+                .addRequestHeader("origin", "http://not-example.com")
+                .forceRemote();
+
+        response = sender.sendAndWait(get);
+        assertNull(response.getResponseHeader("access-control-allow-origin"));
+
+
+        // Preflight from http://example.com
+        preflight = Operation.createOptions(this.host, "/")
+                .addRequestHeader("origin", "http://example.com")
+                .addRequestHeader("Access-Control-Request-Method", "POST")
+                .forceRemote();
+
+        response = sender.sendAndWait(preflight);
+        assertEquals("http://example.com", response.getResponseHeader("access-control-allow-origin"));
+        assertEquals("PUT", response.getResponseHeader("access-control-allow-methods"));
+        assertEquals("x-xenon", response.getResponseHeader("access-control-allow-headers"));
+
+        // Preflight from http://not-example.com
+        preflight = Operation.createOptions(this.host, "/")
+                .addRequestHeader("origin", "http://not-example.com")
+                .addRequestHeader("Access-Control-Request-Method", "POST")
+                .addRequestHeader(Operation.CONNECTION_HEADER, "close")
+                .setKeepAlive(false)
+                .forceRemote();
+
+        response = sender.sendAndWait(preflight);
+        assertNull(response.getResponseHeader("access-control-allow-origin"));
+        assertNull(response.getResponseHeader("access-control-allow-methods"));
+        assertNull(response.getResponseHeader("access-control-allow-headers"));
     }
 
     @After

@@ -24,6 +24,8 @@ import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.HttpServerUpgradeHandler;
 import io.netty.handler.codec.http.HttpServerUpgradeHandler.UpgradeCodec;
 import io.netty.handler.codec.http.HttpServerUpgradeHandler.UpgradeCodecFactory;
+import io.netty.handler.codec.http.cors.CorsConfig;
+import io.netty.handler.codec.http.cors.CorsHandler;
 import io.netty.handler.codec.http2.DefaultHttp2Connection;
 import io.netty.handler.codec.http2.DelegatingDecompressorFrameListener;
 import io.netty.handler.codec.http2.Http2CodecUtil;
@@ -107,21 +109,25 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
     public static final String HTTP2_HANDLER = "http2-handler";
     public static final String HTTP2_UPGRADE_HANDLER = "http2-upgrade-handler";
     public static final String SSL_HANDLER = "ssl";
+    public static final String CORS_HANDLER = "cors-handler";
+
+    private static final boolean debugLogging = false;
 
     private final SslContext sslContext;
     private ServiceHost host;
     private NettyHttpListener listener;
     private int responsePayloadSizeLimit;
     private boolean secureAuthCookie;
-    private static final boolean debugLogging = false;
+    private CorsConfig corsConfig;
 
     public NettyHttpServerInitializer(NettyHttpListener listener, ServiceHost host,
-            SslContext sslContext, int responsePayloadSizeLimit, boolean secureAuthCookie) {
+            SslContext sslContext, int responsePayloadSizeLimit, boolean secureAuthCookie, CorsConfig corsConfig) {
         this.sslContext = sslContext;
         this.host = host;
         this.listener = listener;
         this.responsePayloadSizeLimit = responsePayloadSizeLimit;
         this.secureAuthCookie = secureAuthCookie;
+        this.corsConfig = corsConfig;
         NettyLoggingUtil.setupNettyLogging();
     }
 
@@ -204,6 +210,12 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
 
         p.addLast(AGGREGATOR_HANDLER,
                 new HttpObjectAggregator(this.responsePayloadSizeLimit));
+
+        // Add CORS handler if enabled
+        if (this.corsConfig != null) {
+            p.addLast(CORS_HANDLER, new CorsHandler(this.corsConfig));
+        }
+
         initializeCommon(p, sslHandler);
     }
 

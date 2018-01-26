@@ -30,6 +30,7 @@ import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.codec.http.cors.CorsConfig;
 import io.netty.handler.codec.http2.Http2SecurityUtil;
 import io.netty.handler.ssl.ApplicationProtocolConfig;
 import io.netty.handler.ssl.ApplicationProtocolNames;
@@ -80,6 +81,7 @@ public class NettyHttpListener implements ServiceRequestListener {
     private ChannelHandler childChannelHandler;
     private boolean isListening;
     private int responsePayloadSizeLimit = RESPONSE_PAYLOAD_SIZE_LIMIT;
+    private CorsConfig corsConfig;
 
     public NettyHttpListener(ServiceHost host) {
         this.host = host;
@@ -107,7 +109,7 @@ public class NettyHttpListener implements ServiceRequestListener {
         this.eventLoopGroup = new NioEventLoopGroup(EVENT_LOOP_THREAD_COUNT, this.nettyExecutorService);
         if (this.childChannelHandler == null) {
             this.childChannelHandler = new NettyHttpServerInitializer(this, this.host,
-                    this.sslContext, this.responsePayloadSizeLimit, this.secureAuthCookie);
+                    this.sslContext, this.responsePayloadSizeLimit, this.secureAuthCookie, this.corsConfig);
         }
 
         ServerBootstrap b = new ServerBootstrap();
@@ -273,4 +275,10 @@ public class NettyHttpListener implements ServiceRequestListener {
         }
         this.secureAuthCookie = secureAuthCookie;
     }
+
+    @Override
+    public void setCorsConfig(CorsConfig corsConfig) {
+        this.corsConfig = corsConfig;
+    }
+
 }
