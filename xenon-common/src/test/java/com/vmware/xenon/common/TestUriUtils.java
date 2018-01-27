@@ -76,6 +76,25 @@ public class TestUriUtils {
     }
 
     @Test
+    public void buildSafeUri() {
+        String input = "</script>";
+
+        // Builtin URI method's exception contains original input.
+        try {
+            new URI(input);
+        } catch (URISyntaxException e) {
+            assertTrue(e.getInput().contains("</script>"));
+        }
+
+        // Safe buildSafeUri method's exception has encoded the input.
+        try {
+            UriUtils.buildSafeUri(input);
+        } catch (URISyntaxException e) {
+            assertTrue(e.getInput().contains("%3C%2Fscript%3E"));
+        }
+    }
+
+    @Test
     public void normalizePath() throws Throwable {
         String nr = UriUtils.normalizeUriPath("/foo/");
         assertEquals("/foo", nr);
