@@ -14,10 +14,12 @@
 package com.vmware.xenon.common;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Field;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -633,6 +635,37 @@ public final class UriUtils {
             Utils.log(Utils.class, Utils.class.getSimpleName(), Level.SEVERE,
                     "Failure building uri %s, %s, %s: %s", baseUri, path, query,
                     Utils.toString(e));
+        }
+        return null;
+    }
+
+    public static URI buildSafeUri(String scheme,
+                                   String userInfo, String host, int port,
+                                   String path, String query, String fragment)
+            throws URISyntaxException {
+        try {
+            return new URI(scheme, userInfo, host, port, path, query, fragment);
+        } catch (URISyntaxException e) {
+            String encodedInput = URLEncode(e.getInput());
+            throw new URISyntaxException(encodedInput, e.getReason());
+        }
+    }
+
+    public static URI buildSafeUri(String uri)
+            throws URISyntaxException {
+        try {
+            return new URI(uri);
+        } catch (URISyntaxException e) {
+            String encodedInput = URLEncode(e.getInput());
+            throw new URISyntaxException(encodedInput, e.getReason());
+        }
+    }
+
+    private static String URLEncode(String input) {
+        try {
+            return URLEncoder.encode(input, Utils.CHARSET);
+        } catch (UnsupportedEncodingException ignored) {
+            // We cannot reach here because we are supplying supported encoding name in second parameter.
         }
         return null;
     }
