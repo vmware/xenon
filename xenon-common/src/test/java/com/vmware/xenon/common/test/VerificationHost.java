@@ -2691,12 +2691,6 @@ public class VerificationHost extends ExampleServiceHost {
         // everyone in the group
         setSystemAuthorizationContext();
         for (URI nodeGroup : getNodeGroupMap().values()) {
-            if (quorum != null) {
-                log("Changing quorum to %d on group %s", quorum, nodeGroup);
-            }
-            if (locationQuorum != null) {
-                log("Changing location quorum to %d on group %s", locationQuorum, nodeGroup);
-            }
             setNodeGroupQuorum(quorum, locationQuorum, nodeGroup);
             // nodes might not be joined, so we need to ask each node to set quorum
         }

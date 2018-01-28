@@ -680,7 +680,7 @@ public class MigrationTaskService extends StatefulService {
     private void waitFactoryIsAvailable(
             State currentState, URI hostUri, String nodeSelectorPath, String factoryLink, int maxRetry, DeferredResult<Object> deferredResult) {
         if (maxRetry <= 0) {
-            String msg = String.format("Failed to verify availability of factory service %s after %s retries",
+            String msg = String.format("Failed to verify availability of source factory service %s after %s retries",
                     factoryLink, currentState.maximumConvergenceChecks);
             logSevere(msg);
             deferredResult.fail(new Exception(msg));
@@ -690,15 +690,15 @@ public class MigrationTaskService extends StatefulService {
         URI service = UriUtils.buildUri(hostUri, factoryLink);
         NodeGroupUtils.checkServiceAvailability((o, e) -> {
             if (e != null) {
-                logInfo("Factory service not available yet, scheduling retry #%d. Error message: %s ",
-                        maxRetry, e.getMessage());
+                logInfo("Source factory service %s not available yet, scheduling retry #%d. Error message: %s ",
+                        factoryLink, maxRetry, e.getMessage());
                 getHost().schedule(() -> waitFactoryIsAvailable(
                         currentState, hostUri, nodeSelectorPath, factoryLink, maxRetry - 1, deferredResult),
                         currentState.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
                 return;
             }
 
-            logInfo("Factory service is available.");
+            logInfo("Source factory service %s is available.", factoryLink);
             deferredResult.complete(null);
         }, this.getHost(), service, nodeSelectorPath);
     }
@@ -714,7 +714,7 @@ public class MigrationTaskService extends StatefulService {
         OperationJoin.create(getOps)
                 .setCompletion((os, ts) -> {
                     if (ts != null && !ts.isEmpty()) {
-                        String msg = "Failed to get factory config from all source nodes";
+                        String msg = "Failed to get source factory config from all source nodes";
                         logSevere(msg);
                         deferredResult.fail(new Exception(msg));
                         return;
@@ -738,7 +738,7 @@ public class MigrationTaskService extends StatefulService {
 
     private void waitNodeSelectorAreStableRetry(State currentState, List<URI> sourceURIs, int maxRetry, String peerNodeSelectorPath, DeferredResult<Object> deferredResult) {
         if (maxRetry <= 0) {
-            String msg = String.format("Failed to verify availability of all node selector paths after %s retries",
+            String msg = String.format("Failed to verify availability of all source node selector paths after %s retries",
                     currentState.maximumConvergenceChecks);
             logSevere(msg);
             deferredResult.fail(new Exception(msg));
@@ -753,7 +753,7 @@ public class MigrationTaskService extends StatefulService {
         OperationJoin.create(getOps)
                 .setCompletion((os, ts) -> {
                     if (ts != null && !ts.isEmpty()) {
-                        logInfo("Failed (%s) to get reply from all (%s) Node Selectors, scheduling retry #%d.",
+                        logInfo("Failed (%s) to get reply from all (%s) source Node Selectors, scheduling retry #%d.",
                                 ts.size(), os.size(), maxRetry);
                         getHost().schedule(() -> waitNodeSelectorAreStableRetry(
                                 currentState, sourceURIs, maxRetry - 1, peerNodeSelectorPath, deferredResult),
@@ -767,13 +767,13 @@ public class MigrationTaskService extends StatefulService {
                             .collect(Collectors.toList());
 
                     if (availableNodeSelectors.size() != sourceURIs.size()) {
-                        logInfo("Not all (%d) Node Selectors are available (%d) , scheduling retry #%d.",
+                        logInfo("Not all (%d) source Node Selectors are available (%d) , scheduling retry #%d.",
                                 sourceURIs.size(), availableNodeSelectors.size(), maxRetry);
                         getHost().schedule(() -> waitNodeSelectorAreStableRetry(
                                 currentState, sourceURIs, maxRetry - 1, peerNodeSelectorPath, deferredResult),
                                 currentState.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
                     } else {
-                        logInfo("Node Selectors are available.");
+                        logInfo("Source Node Selectors are available.");
                         deferredResult.complete(peerNodeSelectorPath);
                     }
                 })

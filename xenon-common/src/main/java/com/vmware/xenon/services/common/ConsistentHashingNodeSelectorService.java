@@ -657,14 +657,18 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
         if (this.isSynchronizationRequired) {
             this.isSynchronizationRequired = false;
-            logInfo("Scheduling synchronization (%d nodes)", this.cachedGroupState.nodes.size());
+            if (isDefaultNodeSelector()) {
+                logInfo("Scheduling synchronization (%d nodes)", this.cachedGroupState.nodes.size());
+            }
             adjustStat(STAT_NAME_SYNCHRONIZATION_COUNT, 1);
             getHost().scheduleNodeGroupChangeMaintenance(getSelfLink());
         }
 
         if (this.isSetFactoriesAvailabilityRequired) {
             this.isSetFactoriesAvailabilityRequired = false;
-            logInfo("Setting factories availability on owner node");
+            if (isDefaultNodeSelector()) {
+                logInfo("Setting factories availability on owner node");
+            }
             getHost().setFactoriesAvailabilityIfOwner(true);
         }
 
@@ -684,7 +688,9 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
             final int quorumWarningsBeforeQuiet = 10;
             if (!o.hasBody()) {
-                logWarning("Missing node group state");
+                if (isDefaultNodeSelector()) {
+                    logWarning("Missing node group state");
+                }
                 maintOp.complete();
                 return;
             }
@@ -700,8 +706,10 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                             ngs,
                             op.setCompletion((o1, e1) -> {
                                 if (e1 != null) {
-                                    logWarning("Failed convergence check, will retry: %s",
-                                            e1.getMessage());
+                                    if (isDefaultNodeSelector()) {
+                                        logWarning("Failed convergence check, will retry: %s",
+                                                e1.getMessage());
+                                    }
                                     maintOp.complete();
                                     return;
                                 }
@@ -742,13 +750,17 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             boolean logMsg = isAvailable != isCurrentlyAvailable
                     || (currentState != null && currentState.nodes.size() != ngs.nodes.size());
             if (currentState != null && logMsg) {
-                logInfo("Node count: %d, available: %s, update time: %d (%d)",
-                        ngs.nodes.size(),
-                        isAvailable,
-                        ngs.membershipUpdateTimeMicros, ngs.localMembershipUpdateTimeMicros);
+                if (isDefaultNodeSelector()) {
+                    logInfo("Node count: %d, available: %s, update time: %d (%d)",
+                            ngs.nodes.size(),
+                            isAvailable,
+                            ngs.membershipUpdateTimeMicros, ngs.localMembershipUpdateTimeMicros);
+                }
             }
         } else if (quorumUpdate.membershipQuorum != null) {
-            logInfo("Quorum update: %d", quorumUpdate.membershipQuorum);
+            if (isDefaultNodeSelector()) {
+                logInfo("Quorum update: %d", quorumUpdate.membershipQuorum);
+            }
         }
 
         long now = Utils.getNowMicrosUtc();
@@ -820,6 +832,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         }
         // broadcast
         logInfo("replicationQuorum update from %d to %d", this.cachedState.replicationQuorum, replicationQuorum);
+
         this.cachedState.replicationQuorum = replicationQuorum;
         if (!r.isGroupUpdate) {
             op.complete();
@@ -864,5 +877,9 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         } else {
             return super.getUtilityService(uriPath);
         }
+    }
+
+    private boolean isDefaultNodeSelector() {
+        return this.getSelfLink().equals(ServiceUriPaths.DEFAULT_NODE_SELECTOR);
     }
 }

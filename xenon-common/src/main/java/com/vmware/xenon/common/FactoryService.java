@@ -1175,7 +1175,7 @@ public abstract class FactoryService extends StatelessService {
                         }
                     }
 
-                    logInfo("%s elected as owner for factory %s. Starting synch ...",
+                    logFine("%s elected as owner for factory %s. Starting synch ...",
                             getHost().getId(), this.getSelfLink());
                     synchronizeChildServicesAsOwner(maintOp, ownerResponse.membershipUpdateTimeMicros);
                 });
