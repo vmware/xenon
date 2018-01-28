@@ -19,6 +19,7 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.util.EnumSet;
+import java.util.Objects;
 
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceDocumentDescription.DocumentIndexingOption;
@@ -321,6 +322,15 @@ public class ServiceDocument {
                 // is newer.
                 if (!ServiceDocument.equals(desc, stateA, stateB)) {
                     results.add(DocumentRelationship.IN_CONFLICT);
+                } else {
+                    if (!Objects.equals(stateA.documentUpdateAction, stateB.documentUpdateAction) &&
+                            (Action.DELETE.name().equals(stateA.documentUpdateAction) ||
+                                    Action.DELETE.name().equals(stateB.documentUpdateAction))) {
+                        // documentUpdateAction is excluded from state signature, however in case
+                        // they differ and one of them is a DELETE we consider it a conflict.
+                        // see https://jira.eng.vmware.com/projects/VRXEN/issues/VRXEN-35
+                        results.add(DocumentRelationship.IN_CONFLICT);
+                    }
                 }
             } else if (results.contains(DocumentRelationship.NEWER_UPDATE_TIME)) {
                 preferred = true;
@@ -423,6 +433,7 @@ public class ServiceDocument {
         case ServiceDocument.FIELD_NAME_VERSION:
         case ServiceDocument.FIELD_NAME_EPOCH:
         case ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS:
+        case ServiceDocument.FIELD_NAME_UPDATE_ACTION:
         case ServiceDocument.FIELD_NAME_SELF_LINK:
         case ServiceDocument.FIELD_NAME_AUTH_PRINCIPAL_LINK:
         case ServiceDocument.FIELD_NAME_TRANSACTION_ID:
