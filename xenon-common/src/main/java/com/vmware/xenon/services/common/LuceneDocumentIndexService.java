@@ -148,7 +148,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     public static final int QUERY_QUEUE_DEPTH = XenonConfiguration.integer(
             LuceneDocumentIndexService.class,
             "queryQueueDepth",
-            Service.OPERATION_QUEUE_DEFAULT_LIMIT
+            10 * Service.OPERATION_QUEUE_DEFAULT_LIMIT
     );
 
     public static final int UPDATE_QUEUE_DEPTH = XenonConfiguration.integer(
@@ -174,18 +174,6 @@ public class LuceneDocumentIndexService extends StatelessService {
     public static final int DEFAULT_METADATA_UPDATE_MAX_QUEUE_DEPTH = 10000;
 
     public static final long DEFAULT_PAGINATED_SEARCHER_EXPIRATION_DELAY = TimeUnit.SECONDS.toMicros(1);
-
-    private static final int QUERY_EXECUTOR_WORK_QUEUE_CAPACITY = XenonConfiguration.integer(
-            LuceneDocumentIndexService.class,
-            "queryExecutorWorkQueueCapacity",
-            QUERY_QUEUE_DEPTH
-    );
-
-    private static final int UPDATE_EXECUTOR_WORK_QUEUE_CAPACITY = XenonConfiguration.integer(
-            LuceneDocumentIndexService.class,
-            "updateExecutorWorkQueueCapacity",
-            UPDATE_QUEUE_DEPTH
-    );
 
     private static final String DOCUMENTS_WITHOUT_RESULTS = "DocumentsWithoutResults";
 
@@ -725,13 +713,13 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         ExecutorService es = new ThreadPoolExecutor(QUERY_THREAD_COUNT, QUERY_THREAD_COUNT,
                 1, TimeUnit.MINUTES,
-                new ArrayBlockingQueue<>(QUERY_EXECUTOR_WORK_QUEUE_CAPACITY),
+                new ArrayBlockingQueue<>(QUERY_QUEUE_DEPTH),
                 new NamedThreadFactory(getUri() + "/queries"));
         this.privateQueryExecutor = TracingExecutor.create(es, this.getHost().getTracer());
 
-        es = new ThreadPoolExecutor(QUERY_THREAD_COUNT, QUERY_THREAD_COUNT,
+        es = new ThreadPoolExecutor(UPDATE_THREAD_COUNT, UPDATE_THREAD_COUNT,
                 1, TimeUnit.MINUTES,
-                new ArrayBlockingQueue<>(UPDATE_EXECUTOR_WORK_QUEUE_CAPACITY),
+                new ArrayBlockingQueue<>(UPDATE_QUEUE_DEPTH),
                 new NamedThreadFactory(getUri() + "/updates"));
         this.privateIndexingExecutor = TracingExecutor.create(es, this.getHost().getTracer());
 
@@ -1176,64 +1164,64 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void handleQueryRequest() {
-        OperationContext originalContext = OperationContext.getOperationContext();
         Operation op = pollQueryOperation();
+        if (op == null) {
+            return;
+        }
+
+        if (op.getExpirationMicrosUtc() > 0 && op.getExpirationMicrosUtc() < Utils.getSystemNowMicrosUtc()) {
+            op.fail(new RejectedExecutionException("Operation has expired"));
+            return;
+        }
+
+        OperationContext originalContext = OperationContext.getOperationContext();
         try {
             this.writerSync.acquire();
-            while (op != null) {
-                if (op.getExpirationMicrosUtc() > 0 && op.getExpirationMicrosUtc() < Utils.getSystemNowMicrosUtc()) {
-                    op.fail(new RejectedExecutionException("Operation has expired"));
-                    return;
-                }
+            OperationContext.setFrom(op);
 
-                OperationContext.setFrom(op);
-                switch (op.getAction()) {
-                case GET:
-                    // handle special GET request. Internal call only. Currently from backup/restore services.
-                    if (!op.isRemote() && op.hasBody() && op.getBodyRaw() instanceof InternalDocumentIndexInfo) {
-                        InternalDocumentIndexInfo response = new InternalDocumentIndexInfo();
-                        response.indexWriter = this.writer;
-                        response.indexDirectory = this.indexDirectory;
-                        response.luceneIndexService = this;
-                        response.writerSync = this.writerSync;
-                        op.setBodyNoCloning(response).complete();
-                    } else {
-                        handleGetImpl(op);
-                    }
-                    break;
-                case PATCH:
-                    ServiceDocument sd = (ServiceDocument) op.getBodyRaw();
-                    if (sd.documentKind != null) {
-                        if (sd.documentKind.equals(QueryTask.KIND)) {
-                            QueryTask task = (QueryTask) sd;
-                            handleQueryTaskPatch(op, task);
-                            break;
-                        }
-                        if (sd.documentKind.equals(DeleteQueryRuntimeContextRequest.KIND)) {
-                            handleDeleteRuntimeContext(op);
-                            break;
-                        }
-                        if (sd.documentKind.equals(BackupRequest.KIND)) {
-                            handleBackup(op);
-                            break;
-                        }
-                        if (sd.documentKind.equals(RestoreRequest.KIND)) {
-                            handleRestore(op);
-                            break;
-                        }
-                    }
-                    Operation.failActionNotSupported(op);
-                    break;
-                default:
-                    break;
+            switch (op.getAction()) {
+            case GET:
+                // handle special GET request. Internal call only. Currently from backup/restore services.
+                if (!op.isRemote() && op.hasBody() && op.getBodyRaw() instanceof InternalDocumentIndexInfo) {
+                    InternalDocumentIndexInfo response = new InternalDocumentIndexInfo();
+                    response.indexWriter = this.writer;
+                    response.indexDirectory = this.indexDirectory;
+                    response.luceneIndexService = this;
+                    response.writerSync = this.writerSync;
+                    op.setBodyNoCloning(response).complete();
+                } else {
+                    handleGetImpl(op);
                 }
-                op = pollQueryOperation();
+                break;
+            case PATCH:
+                ServiceDocument sd = (ServiceDocument) op.getBodyRaw();
+                if (sd.documentKind != null) {
+                    if (sd.documentKind.equals(QueryTask.KIND)) {
+                        QueryTask task = (QueryTask) sd;
+                        handleQueryTaskPatch(op, task);
+                        break;
+                    }
+                    if (sd.documentKind.equals(DeleteQueryRuntimeContextRequest.KIND)) {
+                        handleDeleteRuntimeContext(op);
+                        break;
+                    }
+                    if (sd.documentKind.equals(BackupRequest.KIND)) {
+                        handleBackup(op);
+                        break;
+                    }
+                    if (sd.documentKind.equals(RestoreRequest.KIND)) {
+                        handleRestore(op);
+                        break;
+                    }
+                }
+                Operation.failActionNotSupported(op);
+                break;
+            default:
+                break;
             }
         } catch (Exception e) {
             checkFailureAndRecover(e);
-            if (op != null) {
-                op.fail(e);
-            }
+            op.fail(e);
         } finally {
             OperationContext.setFrom(originalContext);
             this.writerSync.release();
@@ -1241,40 +1229,40 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void handleUpdateRequest() {
-        OperationContext originalContext = OperationContext.getOperationContext();
         Operation op = pollUpdateOperation();
+        if (op == null) {
+            return;
+        }
+
+        OperationContext originalContext = OperationContext.getOperationContext();
         try {
             this.writerSync.acquire();
-            while (op != null) {
-                OperationContext.setFrom(op);
-                switch (op.getAction()) {
-                case DELETE:
-                    handleDeleteImpl(op);
-                    break;
-                case POST:
-                    Object o = op.getBodyRaw();
-                    if (o != null) {
-                        if (o instanceof UpdateIndexRequest) {
-                            updateIndex(op);
-                            break;
-                        }
-                        if (o instanceof MaintenanceRequest) {
-                            handleMaintenanceImpl(op);
-                            break;
-                        }
+            OperationContext.setFrom(op);
+
+            switch (op.getAction()) {
+            case DELETE:
+                handleDeleteImpl(op);
+                break;
+            case POST:
+                Object o = op.getBodyRaw();
+                if (o != null) {
+                    if (o instanceof UpdateIndexRequest) {
+                        updateIndex(op);
+                        break;
                     }
-                    Operation.failActionNotSupported(op);
-                    break;
-                default:
-                    break;
+                    if (o instanceof MaintenanceRequest) {
+                        handleMaintenanceImpl(op);
+                        break;
+                    }
                 }
-                op = pollUpdateOperation();
+                Operation.failActionNotSupported(op);
+                break;
+            default:
+                break;
             }
         } catch (Exception e) {
             checkFailureAndRecover(e);
-            if (op != null) {
-                op.fail(e);
-            }
+            op.fail(e);
         } finally {
             OperationContext.setFrom(originalContext);
             this.writerSync.release();
