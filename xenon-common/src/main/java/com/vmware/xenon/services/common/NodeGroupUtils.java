@@ -220,16 +220,16 @@ public final class NodeGroupUtils {
                 return;
             }
 
-            Map<URI, Long> membershipUpdateTimes = new HashMap<>();
+            Map<String, Long> membershipUpdateTimes = new HashMap<>();
             Set<Long> uniqueTimes = new HashSet<>();
             for (Operation peerOp : ops.values()) {
                 if (!peerOp.hasBody()) {
-                    membershipUpdateTimes.put(peerOp.getUri(), -1L);
+                    membershipUpdateTimes.put(peerOp.getUri().getAuthority(), -1L);
                     uniqueTimes.add(-1L);
                     continue;
                 }
                 NodeGroupState rsp = peerOp.getBody(NodeGroupState.class);
-                membershipUpdateTimes.put(peerOp.getUri(), rsp.membershipUpdateTimeMicros);
+                membershipUpdateTimes.put(peerOp.getUri().getAuthority(), rsp.membershipUpdateTimeMicros);
                 uniqueTimes.add(rsp.membershipUpdateTimeMicros);
             }
 

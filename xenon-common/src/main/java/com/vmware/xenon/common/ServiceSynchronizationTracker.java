@@ -417,7 +417,7 @@ class ServiceSynchronizationTracker {
 
     public void scheduleNodeGroupChangeMaintenance(String nodeSelectorPath) {
         long now = Utils.getNowMicrosUtc();
-        this.host.log(Level.INFO, "%s %d", nodeSelectorPath, now);
+        this.host.log(Level.FINE, "%s %d", nodeSelectorPath, now);
         this.synchronizationTimes.put(nodeSelectorPath, now);
         scheduleNodeGroupChangeMaintenance(nodeSelectorPath, null);
     }

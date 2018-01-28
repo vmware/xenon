@@ -380,7 +380,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         // Verify that it failed because of factory service availability check
         assertTrue("Invalid message received: " + waitForServiceCompletion.taskInfo.failure.message,
                 waitForServiceCompletion.taskInfo.failure.message.contains(
-                "Failed to verify availability of factory service"));
+                "Failed to verify availability of source factory service"));
     }
 
     public void waitForReplicatedFactoryServiceNotAvailable(VerificationHost host, URI u, String nodeSelectorPath) {
@@ -429,7 +429,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
         // Verify that it failed because node selector availability check
         assertTrue(waitForServiceCompletion.taskInfo.failure.message.contains(
-                "Failed to verify availability of all node selector paths"));
+                "Failed to verify availability of all source node selector paths"));
     }
 
     @Test

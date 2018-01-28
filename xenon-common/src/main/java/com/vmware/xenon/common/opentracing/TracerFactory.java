@@ -50,7 +50,6 @@ public class TracerFactory {
         String impl = XenonConfiguration.string(TracerFactory.class, "provider", null);
 
         if (impl == null) {
-            logger.info("Opentracing not enabled.");
             return NoopTracerFactory.create();
         }
         impl = impl.toLowerCase();
