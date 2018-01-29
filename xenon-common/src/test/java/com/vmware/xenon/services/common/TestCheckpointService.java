@@ -37,7 +37,6 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.SynchronizationTaskService;
-import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.config.TestXenonConfiguration;
@@ -50,9 +49,7 @@ public class TestCheckpointService extends BasicTestCase {
             CheckpointService.FACTORY_LINK,
             TEST_FACTORY_LINK);
 
-    private static final long CHECKPOINT_PERIOD = TimeUnit.MILLISECONDS.toMicros(1000);
-    private static final long CHECKPOINT_COMPARISON_EPSILON = TimeUnit.MILLISECONDS.toMicros(1000);
-
+    private static final long SYNCH_SCHEDULE_PERIOD = TimeUnit.SECONDS.toMicros(3);
     private static final String CHECKPOINT_EXAMPLE_SELF_LINK = UriUtils.buildUriPath(
             ServiceUriPaths.CHECKPOINTS,
             UriUtils.convertPathCharsFromLink(ExampleService.FACTORY_LINK));
@@ -87,13 +84,8 @@ public class TestCheckpointService extends BasicTestCase {
         );
         TestXenonConfiguration.override(
                 SynchronizationTaskService.class,
-                "checkpointPeriod",
-                String.valueOf(CHECKPOINT_PERIOD)
-        );
-        TestXenonConfiguration.override(
-                SynchronizationTaskService.class,
-                "checkpointComparisonEpsilonMicros",
-                String.valueOf(CHECKPOINT_COMPARISON_EPSILON)
+                "schedulePeriodInMicros",
+                String.valueOf(SYNCH_SCHEDULE_PERIOD)
         );
     }
 
@@ -243,13 +235,6 @@ public class TestCheckpointService extends BasicTestCase {
         for (int i = 0; i < this.updateCount; i++) {
             // update
             updateExampleServices(exampleStates);
-            lastUpdateExampleState = getExampleServices(exampleStates).stream().max(this.documentComparator).get();
-            verifyCheckpointsConvergence(lastUpdateExampleState.documentUpdateTimeMicros);
-        }
-
-        for (int i = 0; i < this.updateCount; i++) {
-            // update
-            updateExampleServices(exampleStates);
         }
 
         lastUpdateExampleState = getExampleServices(exampleStates).stream().max(this.documentComparator).get();
@@ -261,9 +246,7 @@ public class TestCheckpointService extends BasicTestCase {
         setUp(this.nodeCount);
         this.host.setNodeGroupQuorum(this.nodeCount - 1);
         this.host.waitForNodeGroupConvergence();
-        long expectedCheckpoint;
-        long expectedMaxHitTime = 0;
-        long expectedMinMissTime = 0;
+
         // create example services
         List<ExampleService.ExampleServiceState> exampleStates =
                 this.host.createExampleServices(this.host.getPeerHost(), this.serviceCount, null, ExampleService.FACTORY_LINK);
@@ -276,9 +259,8 @@ public class TestCheckpointService extends BasicTestCase {
         }
 
         ExampleService.ExampleServiceState lastUpdateExampleState = getExampleServices(exampleStates).stream().max(this.documentComparator).get();
-        expectedMaxHitTime = expectedCheckpoint = lastUpdateExampleState.documentUpdateTimeMicros;
         // check point convergence
-        verifyCheckpointsConvergence(expectedCheckpoint);
+        verifyCheckpointsConvergence(lastUpdateExampleState.documentUpdateTimeMicros);
 
         // stop h0 with preserved index
         VerificationHost h0 = this.host.getPeerHost();
@@ -293,23 +275,18 @@ public class TestCheckpointService extends BasicTestCase {
             updateExampleServices(exampleStates);
         }
         exampleStates = getExampleServices(exampleStates);
-        expectedCheckpoint = exampleStates.stream().max(this.documentComparator).get().documentUpdateTimeMicros;
-        verifyCheckpointsConvergence(expectedCheckpoint);
-        // h0 missed all additional service update
-        expectedMinMissTime = exampleStates.stream().min(this.documentComparator).get().documentUpdateTimeMicros;
+        lastUpdateExampleState = exampleStates.stream().max(this.documentComparator).get();
+        verifyCheckpointsConvergence(lastUpdateExampleState.documentUpdateTimeMicros);
 
         // restart h0 with preserved index
         restartStatefulHost(h0);
-
-        // latest version should be synch since h0 is back, sync from preserved checkpoint
-        verifySynchTask(expectedMinMissTime, expectedMaxHitTime, this.serviceCount);
 
         this.host.waitForReplicatedFactoryChildServiceConvergence(
                 this.host.getNodeGroupToFactoryMap(ExampleService.FACTORY_LINK),
                 exampleStatesMap,
                 this.exampleStateConvergenceChecker,
                 exampleStatesMap.size(),
-                0, this.host.getPeerCount());
+                this.updateCount, this.host.getPeerCount());
 
         lastUpdateExampleState = getExampleServices(exampleStates).stream().max(this.documentComparator).get();
         // check point convergence
@@ -321,9 +298,7 @@ public class TestCheckpointService extends BasicTestCase {
         setUp(this.nodeCount);
         this.host.setNodeGroupQuorum(this.nodeCount - 1);
         this.host.waitForNodeGroupConvergence();
-        long expectedCheckpoint;
-        long expectedMaxHitTime = 0;
-        long expectedMinMissTime = 0;
+
         // create example services
         List<ExampleService.ExampleServiceState> exampleStates =
                 this.host.createExampleServices(this.host.getPeerHost(), this.serviceCount, null, ExampleService.FACTORY_LINK);
@@ -331,9 +306,8 @@ public class TestCheckpointService extends BasicTestCase {
                 exampleStates.stream().collect(Collectors.toMap(s -> s.documentSelfLink, s -> s));
 
         ExampleService.ExampleServiceState lastUpdateExampleState = getExampleServices(exampleStates).stream().max(this.documentComparator).get();
-        expectedMaxHitTime = expectedCheckpoint = lastUpdateExampleState.documentUpdateTimeMicros;
         // check point convergence
-        verifyCheckpointsConvergence(expectedCheckpoint);
+        verifyCheckpointsConvergence(lastUpdateExampleState.documentUpdateTimeMicros);
 
         // stop h0 with preserved index
         VerificationHost h0 = this.host.getPeerHost();
@@ -350,14 +324,10 @@ public class TestCheckpointService extends BasicTestCase {
 
         additionalExampleStates = getExampleServices(additionalExampleStates);
         // h0 missed all additional service
-        expectedMinMissTime = additionalExampleStates.stream().min(this.documentComparator).get().documentUpdateTimeMicros;
-        expectedCheckpoint = additionalExampleStates.stream().max(this.documentComparator).get().documentUpdateTimeMicros;
-        verifyCheckpointsConvergence(expectedCheckpoint);
+        lastUpdateExampleState = additionalExampleStates.stream().max(this.documentComparator).get();
+        verifyCheckpointsConvergence(lastUpdateExampleState.documentUpdateTimeMicros);
         // restart h0 with preserved index
         restartStatefulHost(h0);
-
-        // latest version should be synch since h0 is back, sync from preserved checkpoint
-        verifySynchTask(expectedMinMissTime, expectedMaxHitTime, this.serviceCount);
 
         this.host.waitForReplicatedFactoryChildServiceConvergence(
                 this.host.getNodeGroupToFactoryMap(ExampleService.FACTORY_LINK),
@@ -394,9 +364,8 @@ public class TestCheckpointService extends BasicTestCase {
                 0, this.host.getPeerCount());
 
         // checkpoints converge after synchronization
-        long expectedCheckpoint = getExampleServices(exampleStates).stream().max(this.documentComparator).get().documentUpdateTimeMicros;
-        // check point convergence
-        verifyCheckpointsConvergence(expectedCheckpoint);
+        ExampleService.ExampleServiceState lastUpdateExampleState = getExampleServices(exampleStates).stream().max(this.documentComparator).get();
+        verifyCheckpointsConvergence(lastUpdateExampleState.documentUpdateTimeMicros);
     }
 
     /**
@@ -404,41 +373,16 @@ public class TestCheckpointService extends BasicTestCase {
      * @param expectedCheckpoint
      * @throws Throwable
      */
-    private void verifyCheckpointsConvergence(Long expectedCheckpoint) throws Throwable {
+    private void verifyCheckpointsConvergence(Long expectedCheckpointLowerLimit) throws Throwable {
         this.host.waitFor("check point convergence timeout", () -> {
             Long actualCheckpoint = checkpointsConverged(CHECKPOINT_EXAMPLE_SELF_LINK);
             if (actualCheckpoint == null) {
                 // non unique check point
                 return false;
             }
-            if (!actualCheckpoint.equals(expectedCheckpoint)) {
-                this.host.log(Level.INFO,"Expected check point %d\nActual check point %d", expectedCheckpoint, actualCheckpoint);
-                return false;
-            }
-            return true;
-        });
-    }
-
-    private void verifySynchTask(long expectedMinMissTime, long expectedMaxHitTime, long expectedSynchCompletionCount) {
-        this.host.waitFor("synch task finish timeout", () -> {
-            VerificationHost factoryOwner = this.host.getOwnerPeer(ExampleService.FACTORY_LINK);
-            String synchTaskSelflink =
-                    UriUtils.buildUriPath(SynchronizationTaskService.FACTORY_LINK, UriUtils.convertPathCharsFromLink(ExampleService.FACTORY_LINK));
-            SynchronizationTaskService.State newState =
-                    this.host.getTestRequestSender().sendAndWait(Operation.createGet(factoryOwner, synchTaskSelflink), SynchronizationTaskService.State.class);
-            // expectedMinMiss - 1: a scan happen between new node join and synch task run
-            // expectedMaxHit: no scan between new node join and synch task run
-            boolean validCheckpoint = newState.checkpoint.equals(expectedMinMissTime - 1) || newState.checkpoint.equals(expectedMaxHitTime);
-            if (!validCheckpoint) {
-                this.host.log(Level.INFO, "actual checkpoint %d, expected checkpoint %d or %d",
-                        newState.checkpoint, expectedMinMissTime - 1, expectedMaxHitTime);
-                return false;
-            }
-            if (TaskState.isInProgress(newState.taskInfo)) {
-                return false;
-            }
-            if (newState.synchCompletionCount != expectedSynchCompletionCount) {
-                this.host.log(Level.INFO, "actual synchCount %d, expected synchCount %d", newState.synchCompletionCount, expectedSynchCompletionCount);
+            if (actualCheckpoint < expectedCheckpointLowerLimit) {
+                this.host.log(Level.INFO,"Expected checkpoint lower limit: %d\n. Actual checkpoint: %d",
+                        expectedCheckpointLowerLimit, actualCheckpoint);
                 return false;
             }
             return true;

@@ -1113,7 +1113,7 @@ public abstract class FactoryService extends StatelessService {
         return delay;
     }
 
-    private SynchronizationTaskService.State createSynchronizationTaskState(
+    SynchronizationTaskService.State createSynchronizationTaskState(
             Long membershipUpdateTimeMicros) {
         SynchronizationTaskService.State task = new SynchronizationTaskService.State();
         task.documentSelfLink = UriUtils.convertPathCharsFromLink(this.getSelfLink());
