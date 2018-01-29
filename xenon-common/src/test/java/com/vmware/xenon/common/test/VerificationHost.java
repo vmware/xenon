@@ -2304,7 +2304,7 @@ public class VerificationHost extends ExampleServiceHost {
             Map<URI, URI> factories,
             Map<String, T> serviceStates,
             BiPredicate<T, T> stateChecker,
-            int expectedChildCount, long expectedVersion, long replicationFactor)
+            int expectedChildCount, long expectedVersion, int replicationFactor)
             throws Throwable, TimeoutException {
         // now poll all hosts until they converge: They all have a child service
         // with the expected URI and it has the same state
@@ -2744,7 +2744,7 @@ public class VerificationHost extends ExampleServiceHost {
             for (ServiceHost host : this.getInProcessHostMap().values()) {
                 Operation get = Operation.createGet(UriUtils.buildUri(host, nodeSelectorPath));
                 NodeSelectorState nss = this.sender.sendAndWait(get, NodeSelectorState.class);
-                if (nss.replicationQuorum != quorum) {
+                if (nss.replicationQuorum.intValue() != quorum) {
                     return false;
                 }
             }
