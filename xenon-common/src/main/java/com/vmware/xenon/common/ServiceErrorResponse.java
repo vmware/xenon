@@ -31,7 +31,7 @@ public class ServiceErrorResponse {
     public static final boolean DISABLE_STACK_TRACE_COLLECTION = XenonConfiguration.bool(
             ServiceErrorResponse.class,
             "disableStackTraceCollection",
-            false
+            true
     );
 
     public static final int ERROR_CODE_INTERNAL_MASK = 0x80000000;

@@ -2,6 +2,12 @@
 
 ## 1.7.0-SNAPSHOT
 
+* Disable stack-trace from failed responses by default and making it opt-in option.
+  Users can now set 'xenon.ServiceErrorResponse.disableStackTraceCollection'
+  to 'false' to get stack traces in response to failed requests. This options
+  should only be 'false' for non-production environments. In production
+  we should not be returning stack-traces in the response.
+
 * Fixed an inconsistency around DELETE of a non-existing service: some code
   paths returned an error (404) in that case while other code paths returned
   success. Now all code paths return success for a DELETE of a non-existing
