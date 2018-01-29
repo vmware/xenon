@@ -530,6 +530,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             SelectOwnerResponse response) {
         if (this.cachedGroupState == null) {
             op.fail(null);
+            return;
         }
         this.replicationUtility.replicateUpdate(this.cachedGroupState, op, body, response, this.cachedState.replicationQuorum);
     }
@@ -819,7 +820,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return;
         }
         // broadcast
-        logInfo("replicationQuorum update from %d to %d", this.cachedState.replicationQuorum, replicationQuorum);
+        logInfo("replicationQuorum update from %s to %d", this.cachedState.replicationQuorum, replicationQuorum);
         this.cachedState.replicationQuorum = replicationQuorum;
         if (!r.isGroupUpdate) {
             op.complete();
