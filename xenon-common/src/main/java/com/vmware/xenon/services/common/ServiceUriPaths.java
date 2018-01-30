@@ -55,6 +55,12 @@ public final class ServiceUriPaths {
             + DEFAULT_NODE_SELECTOR_NAME + "-1x";
     public static final String DEFAULT_3X_NODE_SELECTOR = NODE_SELECTOR_PREFIX + "/"
             + DEFAULT_NODE_SELECTOR_NAME + "-3x";
+
+    public static final String SHARDS_MANAGEMENT_FACTORY = CORE + "/shards-management";
+    public static final String SHARDS_MANAGER_NAME = "manager";
+    public static final String SHARDS_MANAGER = SHARDS_MANAGEMENT_FACTORY + "/"
+            + SHARDS_MANAGER_NAME;
+
     public static final String SYNCHRONIZATION_TASKS = CORE + "/synch-tasks";
     public static final String CHECKPOINTS = CORE + "/checkpoints";
 
