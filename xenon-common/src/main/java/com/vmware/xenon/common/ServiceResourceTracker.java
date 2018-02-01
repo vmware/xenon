@@ -370,11 +370,12 @@ public class ServiceResourceTracker {
             return null;
         }
 
-        if (!ServiceHost.isServiceIndexed(s) &&
-                state.documentExpirationTimeMicros > 0 &&
+        if (state.documentExpirationTimeMicros > 0 &&
                 state.documentExpirationTimeMicros < Utils.getNowMicrosUtc()) {
-            // service is not persistent and expired - stop and clear it from cache
-            // (persistent services expiration is checked by the index service)
+            // Service has expired - stop it and clear from cache.
+            // An expired persistent service is also detected and deleted by the
+            // index service, but concurrent stop delete is safe and in any
+            // case expired documents cannot be returned from the cache.
             stopServiceAndClearFromCache(s, state);
             return null;
         }
