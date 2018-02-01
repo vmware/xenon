@@ -16,8 +16,6 @@ package com.vmware.xenon.common;
 import java.io.IOException;
 import java.net.URI;
 
-import io.netty.handler.codec.http.cors.CorsConfig;
-
 public interface ServiceRequestListener {
 
     public static final String PROPERTY_NAME_RESPONSE_PAYLOAD_SIZE =
@@ -55,5 +53,4 @@ public interface ServiceRequestListener {
 
     boolean getSecureAuthCookie();
 
-    void setCorsConfig(CorsConfig corsConfig);
 }

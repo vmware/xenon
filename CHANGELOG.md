@@ -3,9 +3,23 @@
 ## 1.6.2-SNAPSHOT
 
 * Add CORS support.
-  Using netty's `CorsHandler`, CORS support is added to `ServiceHost`.
-  To configure CORS, override newly added `ServiceHost#getCorsConfig()` method.
-  It is disabled by default.
+  CORS support is added to `NettyHttpListener` using netty's `CorsHandler`. It is disabled by default.
+  `ServiceHost#[configureHttpListener|configureHttpsListener]` are added for subclass to override
+  to configure httpListener.
+
+  Sample CORS configuration:
+  ```java
+    @Override
+    protected void configureHttpListener(ServiceRequestListener httpListener) {
+        CorsConfig corsConfig = CorsConfigBuilder.forOrigin("http://example.com")
+                .allowedRequestMethods(HttpMethod.PUT)
+                .allowedRequestHeaders("x-xenon")
+                .build();
+
+        // enable CORS
+        ((NettyHttpListener) httpListener).setCorsConfig(corsConfig);
+    }
+  ``` 
 
 
 ## 1.6.1

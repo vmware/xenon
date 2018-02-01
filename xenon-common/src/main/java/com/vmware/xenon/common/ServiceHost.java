@@ -65,8 +65,6 @@ import java.util.logging.Logger;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
-import io.netty.handler.codec.http.cors.CorsConfig;
-
 import com.vmware.xenon.common.FileUtils.ResourceEntry;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest.ForwardingOption;
@@ -1465,7 +1463,7 @@ public class ServiceHost implements ServiceRequestSender {
                 this.httpListener.setResponsePayloadSizeLimit(this.state.responsePayloadSizeLimit);
             }
 
-            this.httpListener.setCorsConfig(getCorsConfig());
+            configureHttpListener(this.httpListener);
             this.httpListener.start(getPort(), this.state.bindAddress);
         }
 
@@ -1489,7 +1487,7 @@ public class ServiceHost implements ServiceRequestSender {
                             .setResponsePayloadSizeLimit(this.state.responsePayloadSizeLimit);
                 }
 
-                this.httpsListener.setCorsConfig(getCorsConfig());
+                configureHttpsListener(this.httpsListener);
                 this.httpsListener.start(getSecurePort(), this.state.bindAddress);
             }
         }
@@ -5467,27 +5465,19 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     /**
-     * CORS configuration for netty pipeline.
+     * Callback method to configure httpListener.
      *
-     * By default, CORS is disabled.
-     * To enable CORS support, override this method in subclass and populate {@link CorsConfig}.
-     *
-     * Example:
-     * {@code
-     *   // allow PUT for any origin
-     *   CorsConfigBuilder.forAnyOrigin().allowedRequestMethods(HttpMethod.PUT).build();
-     * }
-     *
-     * When {@code null} is returned, CORS support from nettty(by {@link io.netty.handler.codec.http.cors.CorsHandler})
-     * will be disabled.
-     *
-     * @return CORS configuration
-     * @see io.netty.handler.codec.http.cors.CorsConfigBuilder
-     * @see io.netty.handler.codec.http.cors.CorsConfig
+     * Subclass can override this method to further configure httpListener.
      */
-    public CorsConfig getCorsConfig() {
-        // CORS is disabled by default
-        return null;
+    protected void configureHttpListener(ServiceRequestListener httpListener) {
+    }
+
+    /**
+     * Callback method to configure httpsListener.
+     *
+     * Subclass can override this method to further configure httpsListener.
+     */
+    protected void configureHttpsListener(ServiceRequestListener httpsListener) {
     }
 
 }

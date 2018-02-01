@@ -22,7 +22,6 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.io.File;
-import java.io.IOException;
 import java.lang.reflect.Field;
 import java.net.URI;
 import java.nio.file.Path;
@@ -66,6 +65,7 @@ import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
+import com.vmware.xenon.common.http.netty.NettyHttpListener;
 import com.vmware.xenon.common.jwt.Rfc7519Claims;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.common.jwt.Verifier;
@@ -2640,14 +2640,18 @@ public class TestServiceHost {
 
     @Test
     public void cors() throws Throwable {
+
+        // CORS config for http://example.com
+        CorsConfig corsConfig = CorsConfigBuilder.forOrigin("http://example.com")
+                .allowedRequestMethods(HttpMethod.PUT)
+                .allowedRequestHeaders("x-xenon")
+                .build();
+
         this.host = new VerificationHost() {
             @Override
-            public CorsConfig getCorsConfig() {
-                // enable CORS for "http://example.com"
-                return CorsConfigBuilder.forOrigin("http://example.com")
-                        .allowedRequestMethods(HttpMethod.PUT)
-                        .allowedRequestHeaders("x-xenon")
-                        .build();
+            protected void configureHttpListener(ServiceRequestListener httpListener) {
+                // enable CORS
+                ((NettyHttpListener) httpListener).setCorsConfig(corsConfig);
             }
         };
 
@@ -2703,7 +2707,7 @@ public class TestServiceHost {
     }
 
     @After
-    public void tearDown() throws IOException {
+    public void tearDown() {
         LuceneDocumentIndexService.setIndexFileCountThresholdForWriterRefresh(
                 LuceneDocumentIndexService
                         .DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH);
