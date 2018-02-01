@@ -276,8 +276,25 @@ public class NettyHttpListener implements ServiceRequestListener {
         this.secureAuthCookie = secureAuthCookie;
     }
 
-    @Override
+    /**
+     * CORS configuration for netty pipeline.
+     *
+     * By default, CORS support is disabled.
+     * To enable CORS, set {@link CorsConfig} to this method.
+     *
+     * Example of {@link CorsConfig}:
+     * {@code
+     *   // allow PUT for any origin
+     *   CorsConfigBuilder.forAnyOrigin().allowedRequestMethods(HttpMethod.PUT).build();
+     * }
+     *
+     * @see io.netty.handler.codec.http.cors.CorsConfigBuilder
+     * @see io.netty.handler.codec.http.cors.CorsConfig
+     */
     public void setCorsConfig(CorsConfig corsConfig) {
+        if (isListening()) {
+            throw new IllegalStateException("listener already started");
+        }
         this.corsConfig = corsConfig;
     }
 

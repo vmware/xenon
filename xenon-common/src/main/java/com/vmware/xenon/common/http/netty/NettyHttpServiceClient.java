@@ -511,7 +511,7 @@ public class NettyHttpServiceClient implements ServiceClient {
 
             hasRequestHeaders = op.hasRequestHeaders();
 
-            String connectionHeaderValue = op.getRequestHeader(Operation.CONNECTION_HEADER);
+            String connectionHeaderValue = op.getRequestHeaderAsIs(Operation.CONNECTION_HEADER);
 
             boolean isXenonToXenon = op.isFromReplication() || op.isForwarded();
             if (hasRequestHeaders) {
