@@ -7,7 +7,7 @@
   <parent>
     <groupId>com.vmware.xenon</groupId>
     <artifactId>xenon-workshop</artifactId>
-    <version>1.5.7_7</version>
+    <version>1.5.7_8</version>
   </parent>
 
   <artifactId>workshop-auth</artifactId>
