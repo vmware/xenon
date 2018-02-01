@@ -2220,6 +2220,40 @@ public class TestLuceneDocumentIndexService {
     }
 
     @Test
+    public void getExpiredDocs() throws Throwable {
+        LuceneDocumentIndexService indexService = new LuceneDocumentIndexService();
+        this.host = VerificationHost.create(0);
+        this.host.setDocumentIndexingService(indexService);
+        this.host.start();
+
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+        // create a set of expired service documents
+        List<Operation> posts = new ArrayList<>();
+        for (int i = 0; i < this.serviceCount; i++) {
+            ExampleServiceState state = new ExampleServiceState();
+            state.name = "foo-" + i;
+            state.documentSelfLink = state.name;
+            state.documentExpirationTimeMicros = Utils.getNowMicrosUtc();
+
+            posts.add(Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(state));
+        }
+        List<ExampleServiceState> exampleStates = sender.sendAndWait(posts, ExampleServiceState.class);
+
+        // wait 1 second, to make sure expiration time has passed
+        Thread.sleep(TimeUnit.SECONDS.toMillis(1));
+
+        // perform a GET on each service - we expect a failure because the document has expired
+        List<URI> exampleServiceUris = exampleStates.stream()
+                .map(state -> UriUtils.buildUri(this.host, state.documentSelfLink))
+                .collect(Collectors.toList());
+        for (URI uri : exampleServiceUris) {
+            Operation get = Operation.createGet(uri);
+            sender.sendAndWaitFailure(get);
+        }
+    }
+
+    @Test
     public void interleavedUpdatesWithQueries() throws Throwable {
         setUpHost(false);
         this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
