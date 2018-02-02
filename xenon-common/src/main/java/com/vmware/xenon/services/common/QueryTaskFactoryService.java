@@ -24,7 +24,6 @@ public class QueryTaskFactoryService extends FactoryService {
 
     public QueryTaskFactoryService() {
         super(QueryTask.class);
-        super.setPeerNodeSelectorPath(ServiceUriPaths.DEFAULT_1X_NODE_SELECTOR);
     }
 
     @Override

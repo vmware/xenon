@@ -3143,7 +3143,8 @@ public class ServiceHost implements ServiceRequestSender {
                 ProcessingStage nxt = isServiceCreate(post)
                         ? ProcessingStage.EXECUTING_CREATE_HANDLER
                         : ProcessingStage.EXECUTING_START_HANDLER;
-                if (s.hasOption(ServiceOption.FACTORY) || !s.hasOption(ServiceOption.REPLICATION)) {
+                if (s.hasOption(ServiceOption.FACTORY) || !(s.hasOption(ServiceOption.REPLICATION)
+                        || s.hasOption(ServiceOption.OWNER_SELECTION))) {
                     if (!ServiceHost.isServiceCreate(post) &&
                             post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK) &&
                             post.getLinkedState() == null) {

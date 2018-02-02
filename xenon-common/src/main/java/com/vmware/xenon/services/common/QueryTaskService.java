@@ -51,7 +51,6 @@ public class QueryTaskService extends StatefulService {
 
     public QueryTaskService() {
         super(QueryTask.class);
-        super.toggleOption(ServiceOption.REPLICATION, true);
         super.toggleOption(ServiceOption.OWNER_SELECTION, true);
     }
 

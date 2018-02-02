@@ -2378,12 +2378,6 @@ public class TestQueryTaskService {
             // results are placed in the queryTask.result from the createQueryTask method
             finishedTaskState = queryTask;
         } else {
-            URI configUri = UriUtils.buildConfigUri(u);
-            ServiceConfiguration queryTaskConfig = targetHost.getServiceState(
-                    null, ServiceConfiguration.class, configUri);
-            assertEquals(ServiceUriPaths.DEFAULT_1X_NODE_SELECTOR,
-                    queryTaskConfig.peerNodeSelectorPath);
-
             finishedTaskState = targetHost.waitForQueryTaskCompletion(queryTask.querySpec,
                     this.serviceCount, 1, u, false, false);
         }
