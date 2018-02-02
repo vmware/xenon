@@ -2381,7 +2381,7 @@ public class TestQueryTaskService {
             URI configUri = UriUtils.buildConfigUri(u);
             ServiceConfiguration queryTaskConfig = targetHost.getServiceState(
                     null, ServiceConfiguration.class, configUri);
-            assertEquals(ServiceUriPaths.DEFAULT_1X_NODE_SELECTOR,
+            assertEquals(ServiceUriPaths.DEFAULT_NODE_SELECTOR,
                     queryTaskConfig.peerNodeSelectorPath);
 
             finishedTaskState = targetHost.waitForQueryTaskCompletion(queryTask.querySpec,
