@@ -276,7 +276,9 @@ class ServiceSynchronizationTracker {
 
             // we are on owner node, proceed with synchronization logic that will discover
             // and push, latest, best state, to all peers
-            synchronizeWithPeers(s, op);
+            if (!s.hasOption(ServiceOption.FACTORY) && s.hasOption(ServiceOption.REPLICATION)) {
+                synchronizeWithPeers(s, op);
+            }
         };
 
         Operation selectOwnerOp = Operation.createPost(null)
