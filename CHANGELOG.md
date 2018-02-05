@@ -1,5 +1,7 @@
 # CHANGELOG
 
+## 1.6.3-SNAPSHOT
+
 ## 1.6.2
 
 * Add CORS support.
