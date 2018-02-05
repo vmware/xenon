@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## 1.6.2-SNAPSHOT
+## 1.6.2
 
 * Add CORS support.
   CORS support is added to `NettyHttpListener` using netty's `CorsHandler`. It is disabled by default.
