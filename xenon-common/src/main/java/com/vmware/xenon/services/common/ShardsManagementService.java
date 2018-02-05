@@ -462,14 +462,14 @@ public class ShardsManagementService extends StatefulService {
         sendRequest(selfPatch);
     }
 
-    private int getMaxShards() {
+    public static int getMaxShards() {
         return XenonConfiguration.integer(
                 ShardsManagementService.class,
                 "MAX_SHARDS",
                 DEFAULT_MAX_SHARDS);
     }
 
-    private boolean getAllowShardSharing() {
+    public static boolean getAllowShardSharing() {
         return XenonConfiguration.bool(
                 ShardsManagementService.class,
                 "ALLOW_SHARD_SHARING",

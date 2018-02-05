@@ -149,12 +149,6 @@ class ServiceSynchronizationTracker {
     }
 
     void failWithNotFoundOrSynchronize(Service parent, String path, Operation op) {
-        // Because the service uses 1X replication, we don't need to synchronize it on-demand.
-        if (parent.getPeerNodeSelectorPath().equals(ServiceUriPaths.DEFAULT_1X_NODE_SELECTOR)) {
-            Operation.failServiceNotFound(op);
-            return;
-        }
-
         this.host.log(Level.INFO,
                 "Service %s not found on owner. On-demand synchronizing.", op.getUri());
 

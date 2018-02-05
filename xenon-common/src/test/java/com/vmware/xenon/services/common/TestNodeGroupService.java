@@ -49,7 +49,6 @@ import java.util.stream.Collectors;
 
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -384,16 +383,6 @@ public class TestNodeGroupService {
 
         h1.waitForServiceAvailable(ExampleService.FACTORY_LINK);
 
-        Replication1xExampleFactoryService exampleFactory1x = new Replication1xExampleFactoryService();
-        h1.startServiceAndWait(exampleFactory1x,
-                Replication1xExampleFactoryService.SELF_LINK,
-                null);
-
-        Replication3xExampleFactoryService exampleFactory3x = new Replication3xExampleFactoryService();
-        h1.startServiceAndWait(exampleFactory3x,
-                Replication3xExampleFactoryService.SELF_LINK,
-                null);
-
         // start the replication test factory service with OWNER_SELECTION
         ReplicationFactoryTestService ownerSelRplFactory = new ReplicationFactoryTestService();
         h1.startServiceAndWait(ownerSelRplFactory,
@@ -514,71 +503,6 @@ public class TestNodeGroupService {
                 exampleServices.size(),
                 0,
                 1);
-    }
-
-    @Test
-    @Ignore("https://jira.eng.vmware.com/browse/VRXEN-45")
-    public void synch1XReplicationService() throws Throwable {
-        setUp(this.nodeCount);
-        this.replicationTargetFactoryLink = Replication1xExampleFactoryService.SELF_LINK;
-        this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount() - 1);
-        NodeGroupService.NodeGroupConfig cfg = new NodeGroupService.NodeGroupConfig();
-        cfg.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(1);
-        this.host.setNodeGroupConfig(cfg);
-
-        TestRequestSender sender = new TestRequestSender(this.host);
-        for (VerificationHost h1 : this.host.getInProcessHostMap().values()) {
-            h1.startService(new Replication1xExampleFactoryService());
-        }
-
-        Map<String, ExampleServiceState> exampleServices = createExampleServices(this.host.getPeerHostUri());
-        ExampleServiceState state = exampleServices.values().iterator().next();
-
-        // Verify that test service not replicated on other nodes.
-        int replicationCount = 0;
-        for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
-            URI indexUri = UriUtils.buildUri(peer, ServiceUriPaths.CORE_DOCUMENT_INDEX);
-            indexUri = UriUtils.extendUriWithQuery(indexUri,
-                    ServiceDocument.FIELD_NAME_SELF_LINK, state.documentSelfLink);
-            Operation op = sender.sendAndWait(Operation.createGet(indexUri));
-
-            if (op.getBodyRaw() != null) {
-                replicationCount++;
-            }
-        }
-        assertEquals(replicationCount, 1);
-
-        this.replicationFactor = 1;
-        this.host.waitForReplicatedFactoryChildServiceConvergence(
-                getFactoriesPerNodeGroup(Replication1xExampleFactoryService.SELF_LINK),
-                exampleServices,
-                this.exampleStateConvergenceChecker,
-                exampleServices.size(),
-                0,
-                this.replicationFactor);
-
-        // Create new nodes until we find a new owner for our test service.
-        VerificationHost owner = this.host.getOwnerPeer(state.documentSelfLink);
-        String newOwnerId = owner.getId();
-        while (owner.getId().equals(newOwnerId)) {
-            VerificationHost newHost = this.host.setUpLocalPeerHost(0, VerificationHost.FAST_MAINT_INTERVAL_MILLIS, null, null);
-            newHost.startServiceAndWait(Replication1xExampleFactoryService.class,
-                    Replication1xExampleFactoryService.SELF_LINK);
-            this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
-            newOwnerId = this.host.getOwnerPeer(state.documentSelfLink).getId();
-        }
-
-        this.replicationFactor = 1;
-        // TODO: Synchronization should only synchronize the state to new owner (Test's this.replicationFactor is 1).
-        // Due to bug (https://jira.eng.vmware.com/browse/VRXEN-45) in synchronization,
-        // the state is getting replicated to all the nodes.
-        this.host.waitForReplicatedFactoryChildServiceConvergence(
-                getFactoriesPerNodeGroup(Replication1xExampleFactoryService.SELF_LINK),
-                exampleServices,
-                this.exampleStateConvergenceChecker,
-                exampleServices.size(),
-                0,
-                this.replicationFactor);
     }
 
     @Test
@@ -2906,20 +2830,19 @@ public class TestNodeGroupService {
     }
 
     @Test
-    public void replication1x() throws Throwable {
-        this.replicationFactor = 1;
-        this.replicationNodeSelector = ServiceUriPaths.DEFAULT_1X_NODE_SELECTOR;
-        this.replicationTargetFactoryLink = Replication1xExampleFactoryService.SELF_LINK;
-        doReplication();
-    }
-
-    @Test
-    public void replication3x() throws Throwable {
+    public void replicationWithSharding() throws Throwable {
         this.replicationFactor = 3;
-        this.replicationNodeSelector = ServiceUriPaths.DEFAULT_3X_NODE_SELECTOR;
-        this.replicationTargetFactoryLink = Replication3xExampleFactoryService.SELF_LINK;
-        this.nodeCount = Math.max(5, this.nodeCount);
-        doReplication();
+        TestXenonConfiguration.override(
+                ServiceHost.class,
+                "REPLICATION_FACTOR",
+                String.valueOf(this.replicationFactor)
+        );
+
+        this.replicationNodeSelector = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
+        this.replicationTargetFactoryLink = ExampleService.FACTORY_LINK;
+        this.nodeCount = Math.max(3, this.nodeCount);
+
+        doReplicationWithSharding();
     }
 
     @Test
@@ -3101,6 +3024,118 @@ public class TestNodeGroupService {
         this.host.doNodeGroupStatsVerification(this.host.getNodeGroupMap());
     }
 
+    private void doReplicationWithSharding() throws Throwable {
+        this.isPeerSynchronizationEnabled = false;
+        CommandLineArgumentParser.parseFromProperties(this);
+        Date expiration = new Date();
+        if (this.testDurationSeconds > 0) {
+            expiration = new Date(expiration.getTime()
+                    + TimeUnit.SECONDS.toMillis(this.testDurationSeconds));
+        }
+
+        Map<Action, Long> elapsedTimePerAction = new HashMap<>();
+        Map<Action, Long> countPerAction = new HashMap<>();
+
+        long totalOperations = 0;
+        int ic = 0;
+        do {
+            if (this.host == null) {
+                setUp(this.nodeCount);
+                this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+
+                this.host.getPeerHost().createOrStartShardsManagerSynchronously(this.replicationFactor);
+
+                // since we have disabled peer synch, trigger it explicitly so factories become available
+                this.host.scheduleSynchronizationIfAutoSyncDisabled(this.replicationNodeSelector);
+
+                waitForReplicatedFactoryServiceAvailable(
+                        this.host.getPeerServiceUri(this.replicationTargetFactoryLink),
+                        this.replicationNodeSelector);
+
+                waitForReplicationFactoryConvergence();
+
+                prepareForReplicationWithShardingProfiling();
+            }
+
+            Map<String, ExampleServiceState> childStates = doExampleFactoryPostReplicationTest(
+                    this.serviceCount, countPerAction, elapsedTimePerAction);
+            totalOperations += this.serviceCount;
+
+            int expectedVersion = this.updateCount;
+
+            if (!this.host.isStressTest()
+                    && (this.host.getPeerCount() > 16
+                    || this.serviceCount * this.updateCount > 100)) {
+                this.host.setStressTest(true);
+            }
+
+            long opCount = this.serviceCount * this.updateCount;
+            childStates = doStateUpdateReplicationTest(Action.PATCH, this.serviceCount,
+                    this.updateCount,
+                    expectedVersion,
+                    this.exampleStateUpdateBodySetter,
+                    this.exampleStateConvergenceChecker,
+                    childStates,
+                    countPerAction,
+                    elapsedTimePerAction);
+            expectedVersion += this.updateCount;
+
+            totalOperations += opCount;
+
+            childStates = doStateUpdateReplicationTest(Action.PUT, this.serviceCount,
+                    this.updateCount,
+                    expectedVersion,
+                    this.exampleStateUpdateBodySetter,
+                    this.exampleStateConvergenceChecker,
+                    childStates,
+                    countPerAction,
+                    elapsedTimePerAction);
+
+            totalOperations += opCount;
+            expectedVersion += 1;
+
+            doStateUpdateReplicationTest(Action.DELETE, this.serviceCount, 1,
+                    expectedVersion,
+                    this.exampleStateUpdateBodySetter,
+                    this.exampleStateConvergenceChecker,
+                    childStates,
+                    countPerAction,
+                    elapsedTimePerAction);
+
+            totalOperations += this.serviceCount;
+
+            // compute the binary serialized payload, and the JSON payload size
+            ExampleServiceState st = childStates.values().iterator().next();
+            String json = Utils.toJson(st);
+            int byteCount = KryoSerializers.serializeDocument(st, 4096).position();
+            int jsonByteCount = json.getBytes(Utils.CHARSET).length;
+            // estimate total bytes transferred between nodes. The owner receives JSON from the client
+            // but then uses binary serialization to the N-1 replicas
+            long totalBytes = jsonByteCount * totalOperations
+                    + (this.nodeCount - 1) * byteCount * totalOperations;
+
+            this.host.log(
+                    "(%d)(%d)Bytes per json:%d, per binary: %d, Total operations: %d, Total bytes:%d",
+                    ic,
+                    this.iterationCount - ic,
+                    jsonByteCount,
+                    byteCount,
+                    totalOperations,
+                    totalBytes);
+
+            if (++ic <= this.warmUpIterationCount && this.testDurationSeconds > 0) {
+                // ignore data during JVM warm-up
+                countPerAction.clear();
+                elapsedTimePerAction.clear();
+                this.host.log("Warm-up iteration, results will be ignored");
+            }
+
+        } while (new Date().before(expiration) && ic < this.iterationCount);
+
+        logPerActionThroughput(elapsedTimePerAction, countPerAction);
+        this.host.doNodeGroupStatsVerification(this.host.getNodeGroupMap());
+    }
+
     private void prepareForReplicationProfiling() {
         if (this.waitDurationBeforeStartSeconds == 0 && this.testDurationSeconds == 0) {
             return;
@@ -3148,6 +3183,36 @@ public class TestNodeGroupService {
         testContext.await();
         testContext.logAfter();
         this.replicationTargetLinksOriginal = new HashMap<>(this.replicationTargetLinks);
+    }
+
+    private void prepareForReplicationWithShardingProfiling() {
+        prepareForReplicationProfiling();
+
+        if (this.waitDurationBeforeStartSeconds == 0 && this.testDurationSeconds == 0) {
+            return;
+        }
+
+        this.host.log("Sharding warm-up: populating each host local shard map through ownership calculation");
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            URI nodeSelectorURI = UriUtils.buildUri(h, this.replicationNodeSelector);
+            TestContext ctx = this.host.testCreate(this.replicationTargetLinks.size());
+            ctx.setTestName(String.format("Sharding warm-up: host %s %s", h.getId(), h.getUri())).logBefore();
+            for (String link : this.replicationTargetLinks.keySet()) {
+                SelectAndForwardRequest body = new SelectAndForwardRequest();
+                body.key = link;
+                Operation ownerSelectionOp = Operation
+                        .createPost(nodeSelectorURI)
+                        .setBody(body)
+                        .setCompletion(ctx.getCompletion());
+                // we're not interested in the result - the ownership calculation has the
+                // side effect of populating the host shard cache map, which is what we
+                // want
+                this.host.send(ownerSelectionOp);
+            }
+            ctx.await();
+            ctx.logAfter();
+        }
+        this.host.log("Sharding warm-up: done");
     }
 
     private void verifyReplicatedServiceCountWithBroadcastQuery(Date expiration)

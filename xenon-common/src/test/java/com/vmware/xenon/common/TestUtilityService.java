@@ -38,7 +38,6 @@ import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.MinimalTestService;
-import com.vmware.xenon.services.common.ServiceUriPaths;
 
 public class TestUtilityService extends BasicReusableHostTestCase {
 
@@ -91,7 +90,6 @@ public class TestUtilityService extends BasicReusableHostTestCase {
 
         updateBody = ServiceConfigUpdateRequest.create();
         updateBody.addOptions = EnumSet.of(ServiceOption.PERIODIC_MAINTENANCE);
-        updateBody.peerNodeSelectorPath = ServiceUriPaths.DEFAULT_1X_NODE_SELECTOR;
         ctx = this.testCreate(services.size());
         for (URI u : services) {
             configUri = UriUtils.buildConfigUri(u);
@@ -115,10 +113,6 @@ public class TestUtilityService extends BasicReusableHostTestCase {
                     return;
                 }
 
-                if (!ServiceUriPaths.DEFAULT_1X_NODE_SELECTOR.equals(cfg.peerNodeSelectorPath)) {
-                    ctx3.failIteration(new IllegalStateException(Utils.toJsonHtml(cfg)));
-                    return;
-                }
                 ctx3.completeIteration();
             }));
         }

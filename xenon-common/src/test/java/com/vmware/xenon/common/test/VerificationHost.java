@@ -2348,38 +2348,28 @@ public class VerificationHost extends ExampleServiceHost {
             TestContext testContext = this.testCreate(factories.size());
             Map<URI, ServiceDocumentQueryResult> childServicesPerNode = new HashMap<>();
             for (URI remoteFactory : factories.values()) {
-                URI factoryUriWithExpand = UriUtils.extendUriWithQuery(remoteFactory,
-                        UriUtils.URI_PARAM_ODATA_EXPAND,
-                        ServiceDocumentQueryResult.FIELD_NAME_DOCUMENT_LINKS);
-                if (this.isStressTest()) {
-                    // set an arbitrary, but very high result limit on GET, to avoid query failure
-                    // during long running replication tests
-                    final int resultLimit = 10000000;
-                    factoryUriWithExpand = UriUtils.extendUriWithQuery(remoteFactory,
-                            UriUtils.URI_PARAM_ODATA_EXPAND,
-                            ServiceDocumentQueryResult.FIELD_NAME_DOCUMENT_LINKS,
-                            UriUtils.URI_PARAM_ODATA_TOP,
-                            "" + resultLimit);
-                }
-
-                Operation get = Operation.createGet(factoryUriWithExpand)
-                        .setCompletion(
-                                (o, e) -> {
-                                    if (e != null) {
-                                        testContext.complete();
-                                        return;
-                                    }
-                                    if (!o.hasBody()) {
-                                        testContext.complete();
-                                        return;
-                                    }
-                                    ServiceDocumentQueryResult r = o
-                                            .getBody(ServiceDocumentQueryResult.class);
-                                    synchronized (childServicesPerNode) {
-                                        childServicesPerNode.put(o.getUri(), r);
-                                    }
-                                    testContext.complete();
-                                });
+                // query for factory children through the remote index
+                URI hostUri = UriUtils.buildUri(remoteFactory.getScheme(), remoteFactory.getHost(),
+                        remoteFactory.getPort(), null, null);
+                String childPath = UriUtils.buildUriPath(remoteFactory.getPath(), UriUtils.URI_WILDCARD_CHAR);
+                URI u = UriUtils.buildDefaultDocumentQueryUri(hostUri, childPath, true, false, ServiceOption.PERSISTENCE);
+                Operation get = Operation.createGet(u)
+                        .setCompletion((o, e) -> {
+                            if (e != null) {
+                                testContext.complete();
+                                return;
+                            }
+                            if (!o.hasBody()) {
+                                testContext.complete();
+                                return;
+                            }
+                            ServiceDocumentQueryResult r = o
+                                    .getBody(ServiceDocumentQueryResult.class);
+                            synchronized (childServicesPerNode) {
+                                childServicesPerNode.put(o.getUri(), r);
+                            }
+                            testContext.complete();
+                        });
                 this.send(get);
             }
             this.testWait(testContext);

@@ -415,7 +415,7 @@ public class ServiceHost implements ServiceRequestSender {
      * Determines how many nodes need to receive a copy of a change.
      * 0 means: all nodes are replication targets.
      */
-    private static final int DEFAULT_NODEGROUP_REPLICATION_FACTOR = XenonConfiguration.integer(
+    private final int defaultNodegroupReplicationFactor = XenonConfiguration.integer(
             ServiceHost.class,
             "REPLICATION_FACTOR",
             0
@@ -425,7 +425,7 @@ public class ServiceHost implements ServiceRequestSender {
      * Determines how many nodes need to accept a change for the change to succeed.
      * 0 means: use majority quorum (assuming sharding is enabled).
      */
-    private static final int DEFAULT_NODEGROUP_REPLICATION_QUORUM = XenonConfiguration.integer(
+    private final int defaultNodegroupReplicationQuorum = XenonConfiguration.integer(
             ServiceHost.class,
             "REPLICATION_QUORUM",
             0
@@ -1834,7 +1834,7 @@ public class ServiceHost implements ServiceRequestSender {
             // on the local host have been started and Ready.
             scheduleCore(() -> {
                 joinPeers(peers, ServiceUriPaths.DEFAULT_NODE_GROUP);
-                if (DEFAULT_NODEGROUP_REPLICATION_FACTOR > 0) {
+                if (this.defaultNodegroupReplicationFactor > 0) {
                     // sharding is enabled
                     createOrStartShardsManagerWhenDefaultNodeGroupIsAvailable();
                 }
@@ -1870,7 +1870,7 @@ public class ServiceHost implements ServiceRequestSender {
 
                     if (NodeGroupUtils.isNodeGroupAvailable(this, ngs)) {
                         try {
-                            createOrStartShardsManagerSynchronously(DEFAULT_NODEGROUP_REPLICATION_FACTOR);
+                            createOrStartShardsManagerSynchronously(this.defaultNodegroupReplicationFactor);
                         } catch (Throwable t) {
                             // already logged
                         }
@@ -1892,7 +1892,7 @@ public class ServiceHost implements ServiceRequestSender {
 
                     if (NodeGroupUtils.isNodeGroupAvailable(this, ngs)) {
                         try {
-                            createOrStartShardsManagerSynchronously(DEFAULT_NODEGROUP_REPLICATION_FACTOR);
+                            createOrStartShardsManagerSynchronously(this.defaultNodegroupReplicationFactor);
                         } catch (Throwable t) {
                          // already logged
                         }
@@ -2124,8 +2124,8 @@ public class ServiceHost implements ServiceRequestSender {
         // Start a default node selector. Some of its properties are controlled by configuration.
         // Currently, the default behavior is that all nodes in the node group are target
         // for replication; one should set the replicationFactor to enable sharding.
-        Integer defaultNodeSelectorReplicationFactor = DEFAULT_NODEGROUP_REPLICATION_FACTOR == 0 ? null :
-                Integer.valueOf(DEFAULT_NODEGROUP_REPLICATION_FACTOR);
+        Integer defaultNodeSelectorReplicationFactor = this.defaultNodegroupReplicationFactor == 0 ? null :
+                Integer.valueOf(this.defaultNodegroupReplicationFactor);
         // We set the replication quorum as follows:
         // (1) If sharding is not enabled, we set it to null, so that membershipQuorum is used
         // (2) If sharding is enabled and replication quorum is provided by the user, we use
@@ -2133,27 +2133,13 @@ public class ServiceHost implements ServiceRequestSender {
         // (3) If sharding is enabled and replication quorum is not explicitly provided by the
         // user, we use majority quorum
         Integer defaultNodeSelectorReplicationQuorum = defaultNodeSelectorReplicationFactor == null ? null
-                : DEFAULT_NODEGROUP_REPLICATION_QUORUM != 0 ? Integer.valueOf(DEFAULT_NODEGROUP_REPLICATION_QUORUM)
+                : this.defaultNodegroupReplicationQuorum != 0 ? Integer.valueOf(this.defaultNodegroupReplicationQuorum)
                         : defaultNodeSelectorReplicationFactor / 2 + 1;
         NodeSelectorService defaultNodeSelectorService = createNodeSelectorService(startNodeSelectorPosts,
                 nodeSelectorServices,
                 ServiceUriPaths.DEFAULT_NODE_SELECTOR,
                 defaultNodeSelectorReplicationFactor,
                 defaultNodeSelectorReplicationQuorum);
-
-        // we start second node selector that does 1X replication (owner only)
-        createNodeSelectorService(startNodeSelectorPosts,
-                nodeSelectorServices,
-                ServiceUriPaths.DEFAULT_1X_NODE_SELECTOR,
-                1,
-                null);
-
-        // we start a third node selector that does 3X replication (owner plus 2 peers)
-        createNodeSelectorService(startNodeSelectorPosts,
-                nodeSelectorServices,
-                ServiceUriPaths.DEFAULT_3X_NODE_SELECTOR,
-                3,
-                null);
 
         // start node selectors before any other core service since the host APIs of forward
         // and broadcast must be ready before any I/O
