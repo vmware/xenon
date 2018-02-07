@@ -230,30 +230,12 @@ public abstract class FactoryService extends StatelessService {
                         return;
                     }
 
-                    if (!ServiceHost.isServiceIndexed(this)) {
+                    if (!ServiceHost.isServiceReplicated(this)) {
                         setAvailable(true);
                         startPost.complete();
                         return;
                     }
 
-                    // complete factory start POST immediately. Asynchronously
-                    // kick-off the synchronization-task to load all child
-                    // services. Requests to a child not yet loaded will be
-                    // queued by the framework.
-                    Operation clonedOp = startPost.clone();
-                    startPost.complete();
-
-                    if (!this.childOptions.contains(ServiceOption.REPLICATION)) {
-                        clonedOp.setCompletion((op, t) -> {
-                            if (t != null && !getHost().isStopping()) {
-                                logWarning("Failure in kicking-off synchronization-task: %s", t.getMessage());
-                                return;
-                            }
-                        });
-
-                        startFactorySynchronizationTask(clonedOp, null);
-                        return;
-                    }
                     // when the node group becomes available, the maintenance handler will initiate
                     // service start and synchronization
                 });
@@ -969,9 +951,11 @@ public abstract class FactoryService extends StatelessService {
 
     @Override
     public void handleNodeGroupMaintenance(Operation maintOp) {
-        // Reset query result limit for new synchronization cycle.
-        this.selfQueryResultLimit = SELF_QUERY_RESULT_LIMIT;
-        synchronizeChildServicesIfOwner(maintOp);
+        if (ServiceHost.isServiceReplicated(this)) {
+            // Reset query result limit for new synchronization cycle.
+            this.selfQueryResultLimit = SELF_QUERY_RESULT_LIMIT;
+            synchronizeChildServicesIfOwner(maintOp);
+        }
     }
 
     void synchronizeChildServicesIfOwner(Operation maintOp) {
