@@ -743,6 +743,13 @@ public class StatefulService implements Service {
             }
 
             if (this.context.version > 0) {
+                if (!hasOption(ServiceOption.PERSISTENCE)) {
+                    // A non-persistent service whose expiration time has just passed
+                    // but has not yet been stopped might actually get to this point.
+                    getHost().retryOnDemandLoadConflict(get, this);
+                    return;
+                }
+
                 throw new IllegalStateException("Version is non zero but no state was found");
             }
             d = new ServiceDocument();

@@ -108,6 +108,7 @@ import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleImmutableService;
+import com.vmware.xenon.services.common.ExampleService.ExampleNonPersistedService;
 import com.vmware.xenon.services.common.ExampleService.ExampleODLService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService.BackupResponse;
@@ -2251,6 +2252,51 @@ public class TestLuceneDocumentIndexService {
             Operation get = Operation.createGet(uri);
             sender.sendAndWaitFailure(get);
         }
+    }
+
+    @Test
+    public void getExpiredNonPersistentServices() throws Throwable {
+        // this test verifies bug fix https://jira.eng.vmware.com/browse/VRXEN-58
+        // (IllegalStateException: Version is non zero but no state was found)
+
+        this.host = VerificationHost.create(0);
+        // set high maintenance interval to prevent cache eviction
+        this.host.setMaintenanceIntervalMicros(TimeUnit.MINUTES.toMicros(5));
+        this.host.start();
+
+        this.host.startFactory(new ExampleNonPersistedService());
+        this.host.waitForServiceAvailable(ExampleNonPersistedService.FACTORY_LINK);
+
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+        // create a set of non-persistent services
+        List<Operation> posts = new ArrayList<>();
+        for (int i = 0; i < this.serviceCount; i++) {
+            ExampleServiceState state = new ExampleServiceState();
+            state.name = "foo-" + i;
+            state.documentSelfLink = state.name;
+
+            posts.add(Operation.createPost(this.host, ExampleNonPersistedService.FACTORY_LINK).setBody(state));
+        }
+        List<ExampleServiceState> exampleStates = sender.sendAndWait(posts, ExampleServiceState.class);
+
+        // patch the services with expiration time = now
+        long now = Utils.getNowMicrosUtc();
+        exampleStates.stream().forEach(state -> {
+            state.documentExpirationTimeMicros = now;
+        });
+        List<Operation> patches = new ArrayList<>();
+        exampleStates.stream().forEachOrdered(state -> patches.add(Operation.createPatch(
+                UriUtils.buildUri(this.host, state.documentSelfLink))
+                .setBody(state)));
+        exampleStates = sender.sendAndWait(patches, ExampleServiceState.class);
+
+        // Perform a GET on each of the services.
+        // We expect either a failure or success, but no unhandled exception.
+        List<Operation> gets = new ArrayList<>();
+        exampleStates.stream().forEachOrdered(state -> gets.add(Operation.createGet(
+                UriUtils.buildUri(this.host, state.documentSelfLink))));
+        sender.sendAndWait(gets, false);
     }
 
     @Test
