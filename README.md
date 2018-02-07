@@ -1,3 +1,5 @@
+# VMware's Xenon project is not related to any crypto currencies - please note that any crypto currencies claiming to be related to this project or to VMware in general are likely fradulent
+
 # 1.0 Brief Introduction to Xenon [![Build Status](https://travis-ci.org/vmware/xenon.svg?branch=master)](https://travis-ci.org/vmware/xenon)
 
 ## 1.1 Xenon Highlights
