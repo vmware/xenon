@@ -14,6 +14,7 @@
 package com.vmware.xenon.services.common;
 
 import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Collectors.toSet;
 
 import java.net.URI;
@@ -1292,13 +1293,28 @@ public class MigrationTaskService extends StatefulService {
         OperationJoin.create(posts.keySet())
                 .setCompletion((os, ts) -> {
                     if (ts != null && !ts.isEmpty()) {
-                        if (performRetry) {
-                            logWarning("Migrating entities failed with exception: %s; Retrying operation.", ts.values().iterator().next());
-                            useFallBack(state, posts, ts, nextPageLink, destinationURIs, lastUpdateTime);
+
+                        // If failure was due to trying to POST already DELETED document, check whether they are targets
+                        // for deleted document migration(migration that contains INCLUDE_DELETED query option).
+                        // If the document is part of deleted document migration, then DO NOT perform retry logic on it
+                        // since they are already in deleted status.
+                        Set<Long> opIdsToRetry = new HashSet<>(ts.keySet());
+                        opIdsToRetry.removeAll(opIdsToDelete);
+
+                        if (opIdsToRetry.isEmpty()) {
+                            migrate(state, nextPageLink, destinationURIs, lastUpdateTime);
+                        } else if (performRetry) {
+
+                            Map<Long, Throwable> failedOps = ts.entrySet().stream()
+                                    .filter(entry -> opIdsToRetry.contains(entry.getKey()))
+                                    .collect(toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+                            logWarning("Migrating entities failed with exception: %s; Retrying operation.", Utils.toString(failedOps));
+                            useFallBack(state, posts, failedOps, nextPageLink, destinationURIs, lastUpdateTime);
                         } else {
                             failTask(ts.values());
-                            return;
                         }
+                        return;
                     } else {
 
                         logInfo("[source=%s][dest=%s] MigrationTask created %,d entries in destination.",

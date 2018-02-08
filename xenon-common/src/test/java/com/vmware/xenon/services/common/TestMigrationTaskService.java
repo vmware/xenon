@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.services.common;
 
+import static java.lang.String.format;
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
@@ -577,20 +578,20 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         // verify deleted ones exist
         for (String deletedSelfLink : deletedSelfLinks) {
             Object docObj = queryResult.results.documents.get(deletedSelfLink);
-            String message = String.format("deleted document=%s should be migrated.", deletedSelfLink);
+            String message = format("deleted document=%s should be migrated.", deletedSelfLink);
             assertNotNull(message, docObj);
             ExampleServiceState doc = Utils.fromJson(docObj, ExampleServiceState.class);
-            message = String.format("deleted document=%s should be migrated and marked as DELETE.", deletedSelfLink);
+            message = format("deleted document=%s should be migrated and marked as DELETE.", deletedSelfLink);
             assertEquals(message, Action.DELETE.toString(), doc.documentUpdateAction);
         }
 
         // verify created one exist
         for (String createdSelfLink : createdSelfLinks) {
             Object docObj = queryResult.results.documents.get(createdSelfLink);
-            String message = String.format("document=%s should be migrated.", createdSelfLink);
+            String message = format("document=%s should be migrated.", createdSelfLink);
             assertNotNull(message, docObj);
             ExampleServiceState doc = Utils.fromJson(docObj, ExampleServiceState.class);
-            message = String.format("document=%s should be migrated marked as POST.", createdSelfLink);
+            message = format("document=%s should be migrated marked as POST.", createdSelfLink);
             assertEquals(message, Action.POST.toString(), doc.documentUpdateAction);
         }
 
@@ -1076,7 +1077,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
             List<ExampleServiceState> createdDocs = this.sender.sendAndWait(ops, ExampleServiceState.class);
 
             for (ExampleServiceState createdDoc : createdDocs) {
-                String message = String.format("expected doc name %s to be ended with %s", createdDoc.name, expectedTransformedSuffix);
+                String message = format("expected doc name %s to be ended with %s", createdDoc.name, expectedTransformedSuffix);
                 assertTrue(message, createdDoc.name.endsWith(expectedTransformedSuffix));
             }
         }
@@ -1156,7 +1157,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         for (Operation get : nonExpectedDocGets) {
             FailureResponse failureResponse = this.sender.sendAndWaitFailure(get);
             int statusCode = failureResponse.op.getStatusCode();
-            String message = String.format("Expected %s not migrated on destination.", get.getUri());
+            String message = format("Expected %s not migrated on destination.", get.getUri());
             assertEquals(message, Operation.STATUS_CODE_NOT_FOUND, statusCode);
         }
     }
@@ -1189,7 +1190,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         long processedDocuments = (long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue;
 
         boolean processed = this.serviceCount <= processedDocuments;
-        assertTrue(String.format("%d <= %d", this.serviceCount, processedDocuments), processed);
+        assertTrue(format("%d <= %d", this.serviceCount, processedDocuments), processed);
         assertEquals(Long.valueOf(expectedUpdateTime), finalServiceState.latestSourceUpdateTimeMicros);
 
         // check if object is in new host
@@ -1550,7 +1551,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
             String actual = actualActions.get(i);
             String selfLink = selfLinks.get(i);
 
-            String msg = String.format("selfLink=%s, actual actions=%s", selfLink, actualActions);
+            String msg = format("selfLink=%s, actual actions=%s", selfLink, actualActions);
             assertEquals(msg, expected, actual);
         }
     }
@@ -1776,4 +1777,74 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         this.sender.sendAndWait(uris.stream().map(Operation::createGet).collect(toList()));
     }
 
+    @Test
+    public void retryWithDeletedDocuments() throws Throwable {
+        // this test covers https://jira.eng.vmware.com/browse/VRXEN-55
+
+        VerificationHost sourcePeer = getSourceHost();
+
+        // create docs and deletes them
+        List<ExampleServiceState> states = createExampleDocuments(this.exampleSourceFactory, sourcePeer, this.serviceCount);
+        List<String> docLinks = states.stream().map(doc -> doc.documentSelfLink).collect(toList());
+        List<Operation> deleteOps = docLinks.stream()
+                .map(link -> Operation.createDelete(sourcePeer, link))
+                .collect(toList());
+        this.sender.sendAndWait(deleteOps);
+
+        // migration task with INCLUDE_DELETED query option
+        MigrationTaskService.State migrationState = validMigrationState(ExampleService.FACTORY_LINK);
+        migrationState.migrationOptions = EnumSet.of(MigrationOption.DELETE_AFTER);
+        migrationState.querySpec = new QuerySpecification();
+        migrationState.querySpec.options.add(QueryOption.INCLUDE_DELETED);
+
+        // trigger first migration
+        Operation migrationOp = Operation.createPost(this.destinationFactoryUri).setBody(migrationState);
+        State state = this.sender.sendAndWait(migrationOp, State.class);
+        State finalServiceState = waitForServiceCompletion(state.documentSelfLink, getDestinationHost());
+        assertEquals(TaskStage.FINISHED, finalServiceState.taskInfo.stage);
+
+        // query destination node to see they are migrated
+        QueryTask query = QueryTask.Builder.createDirectTask()
+                .addOption(QueryOption.INCLUDE_DELETED)
+                .addOption(QueryOption.EXPAND_CONTENT)
+                .setQuery(Builder.create()
+                        .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, ExampleService.FACTORY_LINK, MatchType.PREFIX)
+                        .build())
+                .build();
+
+        URI queryUri = UriUtils.buildUri(getDestinationHost(), ServiceUriPaths.CORE_QUERY_TASKS);
+        Operation queryOp = Operation.createPost(queryUri).setBody(query);
+
+        QueryTask queryResult = this.sender.sendAndWait(queryOp, QueryTask.class);
+
+        // verify docs are migrated and in delete state
+        for (String deletedSelfLink : docLinks) {
+            Object docObj = queryResult.results.documents.get(deletedSelfLink);
+            assertNotNull(format("deleted document=%s should be migrated.", deletedSelfLink), docObj);
+            ExampleServiceState doc = Utils.fromJson(docObj, ExampleServiceState.class);
+            String message = format("deleted document=%s should be migrated and marked as DELETE.", deletedSelfLink);
+            assertEquals(message, Action.DELETE.toString(), doc.documentUpdateAction);
+        }
+
+
+        // perform another migration
+        Operation anotherMigrationOP = Operation.createPost(this.destinationFactoryUri).setBody(migrationState);
+        state = this.sender.sendAndWait(anotherMigrationOP, State.class);
+        finalServiceState = waitForServiceCompletion(state.documentSelfLink, getDestinationHost());
+        assertEquals(TaskStage.FINISHED, finalServiceState.taskInfo.stage);
+
+
+        // another query to verify
+        queryOp = Operation.createPost(queryUri).setBody(query);
+        queryResult = this.sender.sendAndWait(queryOp, QueryTask.class);
+
+        // verify docs should be in deleted state
+        for (String deletedSelfLink : docLinks) {
+            Object docObj = queryResult.results.documents.get(deletedSelfLink);
+            assertNotNull(format("deleted document=%s should be migrated.", deletedSelfLink), docObj);
+            ExampleServiceState doc = Utils.fromJson(docObj, ExampleServiceState.class);
+            String message = format("deleted document=%s should be migrated and marked as DELETE.", deletedSelfLink);
+            assertEquals(message, Action.DELETE.toString(), doc.documentUpdateAction);
+        }
+    }
 }
