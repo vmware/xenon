@@ -22,14 +22,12 @@ import java.time.format.DateTimeFormatter;
 import java.util.logging.Formatter;
 import java.util.logging.LogRecord;
 
+import com.vmware.xenon.common.config.XenonConfiguration;
+
 public class LogFormatter extends Formatter {
 
-    private static final String LOG_DATE_FIRST_PROPERTY = Utils.PROPERTY_NAME_PREFIX +
-            "LogFormatter.LOG_DATE_FIRST";
-    private static final String LOG_DATE_FIRST_DEFAULT = Boolean.FALSE.toString();
-
-    private static boolean LOG_DATE_FIRST = Boolean.valueOf(
-            System.getProperty(LOG_DATE_FIRST_PROPERTY, LOG_DATE_FIRST_DEFAULT));
+    private static final boolean LOG_DATE_FIRST = XenonConfiguration
+            .bool(LogFormatter.class, "LOG_DATE_FIRST", false);
 
     private static final DateTimeFormatter DEFAULT_FORMAT = DateTimeFormatter
             .ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
