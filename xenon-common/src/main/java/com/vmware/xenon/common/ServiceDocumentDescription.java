@@ -115,11 +115,6 @@ public class ServiceDocumentDescription {
 
     public enum PropertyUsageOption {
         /**
-         * Property is set once and then becomes immutable
-         */
-        SINGLE_ASSIGNMENT,
-
-        /**
          * Property is not required
          */
         OPTIONAL,

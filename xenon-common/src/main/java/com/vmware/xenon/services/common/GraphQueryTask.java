@@ -71,9 +71,7 @@ public class GraphQueryTask extends TaskService.TaskServiceState {
     @PropertyOptions(usage = { PropertyUsageOption.SERVICE_USE })
     public List<String> resultLinks = new ArrayList<>();
 
-    @PropertyOptions(usage = {
-            PropertyUsageOption.SINGLE_ASSIGNMENT,
-            PropertyUsageOption.SERVICE_USE })
+    @PropertyOptions(usage = {PropertyUsageOption.SERVICE_USE })
     public int depthLimit;
 
     @PropertyOptions(usage = {

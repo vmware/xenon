@@ -2,6 +2,9 @@
 
 ## 1.7.0-SNAPSHOT
 
+* Removed PropertyUsageOption SINGLE_ASSIGNMENT which is not implemented and
+  does not have any effect of the field.
+
 * Disable stack-trace from failed responses by default and making it opt-in option.
   Users can now set 'xenon.ServiceErrorResponse.disableStackTraceCollection'
   to 'false' to get stack traces in response to failed requests. This options
