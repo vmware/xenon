@@ -163,7 +163,7 @@ public class AuthorizationFilter implements Filter {
         context.getHost().queueOrScheduleRequest(authzService, op);
     }
 
-    private void populateAuthorizationContext(Operation op, OperationProcessingContext context,
+    public void populateAuthorizationContext(Operation op, OperationProcessingContext context,
             Consumer<AuthorizationContext> authorizationContextHandler) {
         ServiceHost host = context.getHost();
 
