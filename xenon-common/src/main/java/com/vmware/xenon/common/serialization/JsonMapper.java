@@ -53,6 +53,12 @@ public class JsonMapper {
             false
     );
 
+    private static final boolean DISABLE_OBJECT_COLLECTION_AND_MAP_JSON_ADAPTERS = XenonConfiguration.bool(
+            "json",
+            "disableObjectCollectionAndMapJsonAdapters",
+            false
+    );
+
 
     private static final int MAX_SERIALIZATION_ATTEMPTS = 100;
     private static final String JSON_INDENT = "  ";
@@ -309,9 +315,11 @@ public class JsonMapper {
     }
 
     private static void registerCommonGsonTypeAdapters(GsonBuilder bldr) {
-        bldr.registerTypeAdapter(ObjectCollectionTypeConverter.TYPE_LIST, ObjectCollectionTypeConverter.INSTANCE);
-        bldr.registerTypeAdapter(ObjectCollectionTypeConverter.TYPE_SET, ObjectCollectionTypeConverter.INSTANCE);
-        bldr.registerTypeAdapter(ObjectCollectionTypeConverter.TYPE_COLLECTION, ObjectCollectionTypeConverter.INSTANCE);
+        if (!DISABLE_OBJECT_COLLECTION_AND_MAP_JSON_ADAPTERS) {
+            bldr.registerTypeAdapter(ObjectCollectionTypeConverter.TYPE_LIST, ObjectCollectionTypeConverter.INSTANCE);
+            bldr.registerTypeAdapter(ObjectCollectionTypeConverter.TYPE_SET, ObjectCollectionTypeConverter.INSTANCE);
+            bldr.registerTypeAdapter(ObjectCollectionTypeConverter.TYPE_COLLECTION, ObjectCollectionTypeConverter.INSTANCE);
+        }
         bldr.registerTypeAdapter(ObjectMapTypeConverter.TYPE, ObjectMapTypeConverter.INSTANCE);
         bldr.registerTypeAdapter(InstantConverter.TYPE, InstantConverter.INSTANCE);
         bldr.registerTypeAdapter(ZonedDateTimeConverter.TYPE, ZonedDateTimeConverter.INSTANCE);

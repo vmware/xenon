@@ -41,6 +41,9 @@
   The temporary fix made is now removed from FieldInfoCache.
   Also we benefit from LUCENE-7868 when using INDEXED_METADATA.
 
+* Add XenonConfiguration option 'json.disableObjectCollectionAndMapJsonAdapters'
+  to JsonMapper which disables adapters for types map, list, set.
+  This is to ensure backward compatibility.
 
 ## 1.6.2-SNAPSHOT  (In 1.6.x branch)
 
