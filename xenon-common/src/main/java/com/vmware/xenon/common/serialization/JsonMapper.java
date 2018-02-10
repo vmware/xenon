@@ -48,13 +48,23 @@ public class JsonMapper {
     public static final String PROPERTY_JSON_SUPPRESS_GSON_SERIALIZATION_ERRORS
             = Utils.PROPERTY_NAME_PREFIX + "json.suppressGsonSerializationErrors";
 
+    public static final String PROPERTY_DISABLE_OBJECT_COLLECTION_AND_MAP_JSON_ADAPTERS
+            = Utils.PROPERTY_NAME_PREFIX + "JsonMapper.disableObjectCollectionAndMapJsonAdapters";
+
     private static boolean JSON_SUPPRESS_GSON_SERIALIZATION_ERRORS = false;
+    private static boolean DISABLE_OBJECT_COLLECTION_AND_MAP_JSON_ADAPTERS = false;
 
     static {
         String v = System.getProperty(PROPERTY_JSON_SUPPRESS_GSON_SERIALIZATION_ERRORS);
         if (v != null) {
             JSON_SUPPRESS_GSON_SERIALIZATION_ERRORS = Boolean.valueOf(v);
         }
+
+        v = System.getProperty(PROPERTY_DISABLE_OBJECT_COLLECTION_AND_MAP_JSON_ADAPTERS);
+        if (v != null) {
+            DISABLE_OBJECT_COLLECTION_AND_MAP_JSON_ADAPTERS = Boolean.valueOf(v);
+        }
+
     }
 
     private static final int MAX_SERIALIZATION_ATTEMPTS = 100;
@@ -312,9 +322,11 @@ public class JsonMapper {
     }
 
     private static void registerCommonGsonTypeAdapters(GsonBuilder bldr) {
-        bldr.registerTypeAdapter(ObjectCollectionTypeConverter.TYPE_LIST, ObjectCollectionTypeConverter.INSTANCE);
-        bldr.registerTypeAdapter(ObjectCollectionTypeConverter.TYPE_SET, ObjectCollectionTypeConverter.INSTANCE);
-        bldr.registerTypeAdapter(ObjectCollectionTypeConverter.TYPE_COLLECTION, ObjectCollectionTypeConverter.INSTANCE);
+        if (!DISABLE_OBJECT_COLLECTION_AND_MAP_JSON_ADAPTERS) {
+            bldr.registerTypeAdapter(ObjectCollectionTypeConverter.TYPE_LIST, ObjectCollectionTypeConverter.INSTANCE);
+            bldr.registerTypeAdapter(ObjectCollectionTypeConverter.TYPE_SET, ObjectCollectionTypeConverter.INSTANCE);
+            bldr.registerTypeAdapter(ObjectCollectionTypeConverter.TYPE_COLLECTION, ObjectCollectionTypeConverter.INSTANCE);
+        }
         bldr.registerTypeAdapter(ObjectMapTypeConverter.TYPE, ObjectMapTypeConverter.INSTANCE);
         bldr.registerTypeAdapter(InstantConverter.TYPE, InstantConverter.INSTANCE);
         bldr.registerTypeAdapter(ZonedDateTimeConverter.TYPE, ZonedDateTimeConverter.INSTANCE);

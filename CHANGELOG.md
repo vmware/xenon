@@ -15,6 +15,8 @@
     - `migrateMismatchedOwnerDocuments` option in migration request
     - `ownerMismatchDocumentCount` migration stat entry
 
+* Add system property `JsonMapper.disableObjectCollectionAndMapJsonAdapters`
+  which disables adapters for types map, list, set. This is to ensure backward compatibility.
 
 ## 1.6.2
 
