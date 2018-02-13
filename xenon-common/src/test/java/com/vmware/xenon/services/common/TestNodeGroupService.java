@@ -4646,14 +4646,15 @@ public class TestNodeGroupService {
                     }
                 }
 
-                this.host.log("Node group change maintenance observed: %d", nodeGroupMaintCount);
                 if (nodeGroupMaintCount < expectedOwnerChanges) {
+                    this.host.log("Node group change maintenance observed: %d (expected: %d)",
+                            nodeGroupMaintCount, expectedOwnerChanges);
                     isConverged = false;
                 }
 
-                this.host.log("Toggled off doc owner count: %d, toggle on count: %d",
-                        docOwnerToggleOffCount, docOwnerToggleCount);
                 if (docOwnerToggleCount < childStates.size()) {
+                    this.host.log("Toggled off on doc owner count: %d, Toggled on doc owner count: %d (expected: %d)",
+                            docOwnerToggleOffCount, docOwnerToggleCount, childStates.size());
                     isConverged = false;
                 }
 

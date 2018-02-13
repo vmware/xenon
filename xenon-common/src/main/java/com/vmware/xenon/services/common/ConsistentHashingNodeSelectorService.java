@@ -473,6 +473,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             // add failure or success response to the appropriate, concurrent map
             if (e != null) {
                 ServiceErrorResponse errorRsp = Utils.toServiceErrorResponse(e);
+                errorRsp.statusCode = o.getStatusCode();
                 rsp.failures.put(o.getUri(), errorRsp);
             } else if (o != null && o.hasBody()) {
                 rsp.jsonResponses.put(o.getUri(), Utils.toJson(o.getBodyRaw()));

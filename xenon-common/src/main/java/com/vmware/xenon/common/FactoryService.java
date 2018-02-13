@@ -182,7 +182,7 @@ public abstract class FactoryService extends StatelessService {
     }
 
     @Override
-    public final void handleStart(Operation startPost) {
+    public void handleStart(Operation startPost) {
         try {
             setAvailable(false);
             // Eagerly create a child service class instance to ensure it is possible
@@ -256,6 +256,7 @@ public abstract class FactoryService extends StatelessService {
 
         SynchronizationTaskService service = SynchronizationTaskService
                 .create(() -> createChildServiceSafe());
+        service.setParentService(this);
         this.getHost().startService(post, service);
     }
 
@@ -1111,7 +1112,7 @@ public abstract class FactoryService extends StatelessService {
         return delay;
     }
 
-    private SynchronizationTaskService.State createSynchronizationTaskState(
+    SynchronizationTaskService.State createSynchronizationTaskState(
             Long membershipUpdateTimeMicros) {
         SynchronizationTaskService.State task = new SynchronizationTaskService.State();
         task.documentSelfLink = UriUtils.convertPathCharsFromLink(this.getSelfLink());

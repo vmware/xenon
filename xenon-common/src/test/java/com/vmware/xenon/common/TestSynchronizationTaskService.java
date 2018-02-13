@@ -322,21 +322,6 @@ public class TestSynchronizationTaskService extends BasicTestCase {
                 .createGet(UriUtils.buildUri(this.host, result.documentSelfLink));
         result = sender.sendAndWait(op, SynchronizationTaskService.State.class);
         assertTrue(result.synchCompletionCount == this.serviceCount);
-
-        // Restart the task to verify counter was reset.
-        task = createSynchronizationTaskState(Long.MAX_VALUE, factoryLink);
-        task.queryResultLimit = this.serviceCount / 2;
-
-        op = Operation
-                .createPost(UriUtils.buildUri(this.host, SynchronizationTaskService.FACTORY_LINK))
-                .setBody(task);
-        result = sender.sendAndWait(op, SynchronizationTaskService.State.class);
-
-        this.host.waitForTask(SynchronizationTaskService.State.class, result.documentSelfLink, TaskState.TaskStage.FINISHED);
-        op = Operation
-                .createGet(UriUtils.buildUri(this.host, result.documentSelfLink));
-        result = sender.sendAndWait(op, SynchronizationTaskService.State.class);
-        assertTrue(result.synchCompletionCount == this.serviceCount);
     }
 
     @Test

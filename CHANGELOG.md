@@ -2,6 +2,15 @@
 
 ## 1.6.3-SNAPSHOT
 
+* Checkpoint-based synchronization: an optimization introduced into synchronization
+  which creates checkpoints at the end of a successful synchronization cycle
+  and uses those checkpoints as a time-range clause in the next synch cycle's
+  child query. Checkpoints are enabled by default; the user can disable them
+  by setting xenon.SynchronizationTaskService.isCheckpointEnabled to false.
+  If checkpoints are enabled, synchronization runs periodically - the default
+  interval is 30 minutes, but the user can override it using
+  xenon.SynchronizationTaskService.schedulePeriodSeconds.
+
 * Removal of custom document owner check in migration.
   Previously, migration had own document owner check logic based on the stored
   documentOwner information.
