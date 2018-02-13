@@ -969,6 +969,13 @@ public abstract class FactoryService extends StatelessService {
 
     @Override
     public void handleNodeGroupMaintenance(Operation maintOp) {
+        ServiceMaintenanceRequest request = maintOp.getBody(ServiceMaintenanceRequest.class);
+        if (request.nodeGroupState.nodes.size() == 1) {
+            setAvailable(true);
+            maintOp.complete();
+            return;
+        }
+
         if (this.childOptions.contains(ServiceOption.REPLICATION)) {
             // Reset query result limit for new synchronization cycle.
             this.selfQueryResultLimit = SELF_QUERY_RESULT_LIMIT;
