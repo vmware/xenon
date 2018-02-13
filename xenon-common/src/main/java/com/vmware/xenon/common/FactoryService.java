@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.CompletionHandler;
@@ -969,6 +970,13 @@ public abstract class FactoryService extends StatelessService {
 
     @Override
     public void handleNodeGroupMaintenance(Operation maintOp) {
+        ServiceMaintenanceRequest request = maintOp.getBody(ServiceMaintenanceRequest.class);
+        if (request.nodeGroupState.nodes.size() == 1) {
+            setAvailable(true);
+            maintOp.complete();
+            return;
+        }
+
         // Reset query result limit for new synchronization cycle.
         this.selfQueryResultLimit = SELF_QUERY_RESULT_LIMIT;
         synchronizeChildServicesIfOwner(maintOp);
