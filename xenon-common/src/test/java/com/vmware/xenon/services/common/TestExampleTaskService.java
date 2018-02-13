@@ -89,7 +89,12 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
             this.host.log("Failed restart of host, aborting");
             return;
         }
-        this.host.waitForServiceAvailable(taskLink);
+
+        Operation op = Operation.createGet(this.host, taskLink)
+                .setReferer(this.host.getUri())
+                .setCompletion(this.host.getCompletion());
+        this.host.sendAndWait(op);
+
         // verify service is re-started, and in FINISHED state
         ExampleTaskServiceState state = waitForTask(
                 initialState.getClass(), taskLink, TaskState.TaskStage.FINISHED, true);

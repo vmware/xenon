@@ -527,99 +527,6 @@ public class TestSynchronizationTaskService extends BasicTestCase {
     }
 
     @Test
-    public void taskRestartability() throws Throwable {
-        // This test verifies that If the synchronization task
-        // is already running and another request arrives, the
-        // task will restart itself if the request had a higher
-        // membershipUpdateTime.
-        URI taskFactoryUri = UriUtils.buildUri(
-                this.host.getUri(), SynchronizationTaskService.FACTORY_LINK);
-        URI taskUri = UriUtils.extendUri(
-                taskFactoryUri, UriUtils.convertPathCharsFromLink(ExampleService.FACTORY_LINK));
-
-        SynchronizationTaskService.State task = this.host.getServiceState(
-                null, SynchronizationTaskService.State.class, taskUri);
-        assertTrue(task.taskInfo.stage == TaskState.TaskStage.FINISHED);
-
-        long membershipUpdateTimeMicros = task.membershipUpdateTimeMicros;
-
-        List<Operation> ops = new ArrayList<>();
-        for (int i = 0; i < this.updateCount; i++) {
-            membershipUpdateTimeMicros += 1;
-            SynchronizationTaskService.State state =
-                    createSynchronizationTaskState(membershipUpdateTimeMicros);
-            Operation op = Operation
-                    .createPost(taskFactoryUri)
-                    .setBody(state)
-                    .setReferer(this.host.getUri());
-            ops.add(op);
-        }
-
-        TestRequestSender sender = new TestRequestSender(this.host);
-        List<Operation> responses = sender.sendAndWait(ops, false);
-
-        for (Operation o : responses) {
-            if (o.getStatusCode() == Operation.STATUS_CODE_OK) {
-                SynchronizationTaskService.State r = o.getBody(
-                        SynchronizationTaskService.State.class);
-                assertTrue(r.taskInfo.stage == TaskState.TaskStage.FINISHED);
-            } else if (o.getStatusCode() == Operation.STATUS_CODE_BAD_REQUEST) {
-                ServiceErrorResponse r = o.getBody(ServiceErrorResponse.class);
-                assertTrue(r.getErrorCode() == ServiceErrorResponse.ERROR_CODE_OUTDATED_SYNCH_REQUEST);
-            } else {
-                throw new IllegalStateException("Unexpected operation response: "
-                        + o.getStatusCode());
-            }
-        }
-
-        final long updateTime = membershipUpdateTimeMicros;
-        this.host.waitFor("membershipUpdateTimeMicros was not set correctly", () -> {
-            SynchronizationTaskService.State t = this.host.getServiceState(
-                    null, SynchronizationTaskService.State.class, taskUri);
-            return t.membershipUpdateTimeMicros == updateTime;
-        });
-    }
-
-    @Test
-    public void outdatedSynchronizationRequests() throws Throwable {
-        // This test verifies that the synch task will only get
-        // restarted if the synch time is new. For requests with
-        // older time-stamps, the synch task ignores the request.
-
-        URI taskFactoryUri = UriUtils.buildUri(
-                this.host.getUri(), SynchronizationTaskService.FACTORY_LINK);
-        URI taskUri = UriUtils.extendUri(
-                taskFactoryUri, UriUtils.convertPathCharsFromLink(ExampleService.FACTORY_LINK));
-
-        SynchronizationTaskService.State task = this.host.getServiceState(
-                null, SynchronizationTaskService.State.class, taskUri);
-        assertTrue(task.taskInfo.stage == TaskState.TaskStage.FINISHED);
-
-        List<Operation> ops = new ArrayList<>();
-        long membershipUpdateTimeMicros = task.membershipUpdateTimeMicros;
-
-        for (int i = 0; i < 10; i++) {
-            membershipUpdateTimeMicros -= 1;
-            SynchronizationTaskService.State state =
-                    createSynchronizationTaskState(membershipUpdateTimeMicros);
-            Operation op = Operation
-                    .createPost(taskFactoryUri)
-                    .setBody(state)
-                    .setReferer(this.host.getUri());
-            ops.add(op);
-        }
-
-        TestRequestSender sender = new TestRequestSender(this.host);
-        List<Operation> results = sender.sendAndWait(ops, false);
-
-        for (Operation op : results) {
-            assertTrue(op.getStatusCode() == Operation.STATUS_CODE_BAD_REQUEST);
-            ServiceErrorResponse body = op.getBody(ServiceErrorResponse.class);
-            assertTrue(body.getErrorCode() == ServiceErrorResponse.ERROR_CODE_OUTDATED_SYNCH_REQUEST);
-        }
-    }
-
-    @Test
     public void stateValidation() throws Throwable {
         // This test verifies state validation when
         // a synchronization task is created.
@@ -647,7 +554,6 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         // handlePut validation
         validateInvalidPutRequest(taskFactoryUri, true, s -> s.queryResultLimit = -1);
         validateInvalidPutRequest(taskFactoryUri, true, s -> s.membershipUpdateTimeMicros = null);
-        validateInvalidPutRequest(taskFactoryUri, true, s -> s.membershipUpdateTimeMicros = 0L);
 
         // Let's also test successful requests, to make sure our
         // test methods are doing the right thing.
