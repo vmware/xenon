@@ -29,6 +29,7 @@ import java.nio.file.StandardOpenOption;
 import java.security.KeyStore;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Enumeration;
@@ -4844,6 +4845,11 @@ public class ServiceHost implements ServiceRequestSender {
 
     public void broadcastRequest(String selectorPath, String key, boolean excludeThisHost,
             Operation request) {
+        broadcastRequest(selectorPath, key, excludeThisHost, request, null);
+    }
+
+    public void broadcastRequest(String selectorPath, String key, boolean excludeThisHost,
+            Operation request, Collection<String> candidateNodes) {
         if (isStopping()) {
             request.fail(new CancellationException("Host is stopping"));
             return;
@@ -4873,6 +4879,7 @@ public class ServiceHost implements ServiceRequestSender {
         req.key = key;
         req.targetPath = request.getUri().getPath();
         req.targetQuery = request.getUri().getQuery();
+        req.candidateNodes = candidateNodes;
         nss.selectAndForward(request, req);
     }
 
