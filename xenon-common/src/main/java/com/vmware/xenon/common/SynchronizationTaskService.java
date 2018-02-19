@@ -15,7 +15,9 @@ package com.vmware.xenon.common;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -124,6 +126,15 @@ public class SynchronizationTaskService
          */
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public Long checkpoint;
+
+        /**
+         * The nodes that have responded to a checkpoint GET request.
+         * The next checkpoint is going to be broadcasted only to those
+         * nodes, as only those nodes are guaranteed to have the documents
+         * prior to the existing checkpoint.
+         */
+        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
+        public Collection<String> checkpointNodes;
 
         /**
          * The current SubStage of the synchronization task.
@@ -319,7 +330,8 @@ public class SynchronizationTaskService
         task.queryResultLimit = body.queryResultLimit;
         if (startStateMachine) {
             task.taskInfo.stage = TaskState.TaskStage.STARTED;
-            if (this.parent != null && this.parent.hasChildOption(ServiceOption.PERSISTENCE) && this.isCheckpointEnabled) {
+            if (this.parent != null && this.parent.hasChildOption(ServiceOption.PERSISTENCE) &&
+                    checkpointEnabled(task)) {
                 task.subStage = SubStage.GET_CHECKPOINTS;
             } else {
                 task.subStage = SubStage.QUERY;
@@ -437,7 +449,8 @@ public class SynchronizationTaskService
             // the task's stage to RESTART. In this case, we reset the task
             // back to QUERY stage.
             task.taskInfo.stage = TaskState.TaskStage.STARTED;
-            if (this.parent != null && this.parent.hasChildOption(ServiceOption.PERSISTENCE) && this.isCheckpointEnabled) {
+            if (this.parent != null && this.parent.hasChildOption(ServiceOption.PERSISTENCE) &&
+                    checkpointEnabled(task)) {
                 task.subStage = SubStage.GET_CHECKPOINTS;
             } else {
                 task.subStage = SubStage.QUERY;
@@ -536,6 +549,7 @@ public class SynchronizationTaskService
                                 return checkpointState.timestamp;
                             }).collect(Collectors.toList());
                     task.checkpoint = findMinimumCheckpoint(checkPoints);
+                    task.checkpointNodes = new HashSet<>(rsp.selectedNodes.keySet());
                     if (task.checkpoint > 0) {
                         logInfo("synch %s from check point %d",
                                 task.factorySelfLink, task.checkpoint);
@@ -616,7 +630,8 @@ public class SynchronizationTaskService
                 .setTermMatchValue(task.factoryStateKind);
         queryTask.querySpec.query.addBooleanClause(kindClause);
 
-        if (this.parent != null && this.parent.hasChildOption(ServiceOption.PERSISTENCE) && this.isCheckpointEnabled) {
+        if (this.parent != null && this.parent.hasChildOption(ServiceOption.PERSISTENCE) &&
+                checkpointEnabled(task)) {
             if (this.isDetailedLoggingEnabled) {
                 logInfo("query %s from checkpoint %d", task.factorySelfLink, task.checkpoint);
             }
@@ -943,7 +958,7 @@ public class SynchronizationTaskService
                     }
 
                     if (this.parent != null && this.parent.hasChildOption(ServiceOption.PERSISTENCE)
-                            && this.isCheckpointEnabled) {
+                            && checkpointEnabled(task)) {
                         Consumer<SelectOwnerResponse> ownerHandler = (selectOwnerResponse) -> {
                             if (selectOwnerResponse.availableNodeCount > 1) {
                                 createCheckpointsAndReschedule(task);
@@ -986,7 +1001,8 @@ public class SynchronizationTaskService
 
                     sendSelfFinishedPatch(task);
                 });
-        this.getHost().broadcastRequest(this.parent.getPeerNodeSelectorPath(), CheckpointService.FACTORY_LINK, false, post);
+        this.getHost().broadcastRequest(this.parent.getPeerNodeSelectorPath(), CheckpointService.FACTORY_LINK,
+                false, post, task.checkpointNodes);
     }
 
     private void setFactoryAvailability(
@@ -1028,5 +1044,10 @@ public class SynchronizationTaskService
 
     private Consumer<State> subStageSetter(SubStage subStage) {
         return taskState -> taskState.subStage = subStage;
+    }
+
+    private boolean checkpointEnabled(State task) {
+        return this.isCheckpointEnabled &&
+                !ServiceUriPaths.CORE_IN_MEMORY_DOCUMENT_INDEX.equals(task.childDocumentIndexLink);
     }
 }

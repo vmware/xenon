@@ -112,6 +112,13 @@ public interface NodeSelectorService extends Service {
         public EnumSet<ForwardingOption> options;
 
         public EnumSet<ServiceOption> serviceOptions;
+
+        /**
+         * If not null, node selection is scoped to the specified node ids.
+         * Currently applicable only to BROADCAST with full replication
+         * (replicationFactor == null).
+         */
+        public Collection<String> candidateNodes;
     }
 
     /**

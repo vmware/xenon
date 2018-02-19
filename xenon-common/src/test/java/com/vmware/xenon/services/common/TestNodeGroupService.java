@@ -13,8 +13,10 @@
 
 package com.vmware.xenon.services.common;
 
+import static org.hamcrest.CoreMatchers.containsString;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 
 import java.lang.reflect.Field;
@@ -2795,7 +2797,8 @@ public class TestNodeGroupService {
         state.name = state.documentSelfLink = UUID.randomUUID().toString();
         Operation post = Operation.createPost(UriUtils.buildUri(this.host.getPeerHost(), this.replicationTargetFactoryLink)).setBody(state);
         TestRequestSender.FailureResponse rsp = this.host.getTestRequestSender().sendAndWaitFailure(post);
-        assertTrue(rsp.failure.getMessage().contains(String.format("Fail: 2, quorum: %d, failure threshold: %d",
+        assertThat(rsp.failure.getMessage(), containsString(
+                String.format("Fail: 2, quorum: %d, failure threshold: %d",
                 this.replicationQuorum, this.nodeCount - this.replicationQuorum + 1)));
         this.nodeCount = originalNodeCount;
         this.replicationQuorum = originalReplicationQuorum;

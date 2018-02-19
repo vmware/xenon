@@ -21,6 +21,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import com.vmware.xenon.common.FNVHash;
 import com.vmware.xenon.common.NodeSelectorService;
@@ -345,7 +346,10 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 && forwardRequest.options.contains(ForwardingOption.BROADCAST)) {
             SelectOwnerResponse response = new SelectOwnerResponse();
             response.key = keyValue;
-            response.selectedNodes = localState.nodes.values();
+            response.selectedNodes = forwardRequest.candidateNodes == null ? localState.nodes.values()
+                    : localState.nodes.values().stream().filter(
+                            ns -> forwardRequest.candidateNodes.contains(ns.id))
+                    .collect(Collectors.toList());
             if (forwardRequest.options.contains(ForwardingOption.REPLICATE)) {
                 replicateRequest(op, forwardRequest, response);
                 return;
@@ -403,12 +407,16 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
     }
 
     private SelectOwnerResponse selectNodes(String key, NodeGroupState localState) {
+        return selectNodes(key, localState, null);
+    }
+
+    private SelectOwnerResponse selectNodes(String key, NodeGroupState localState,
+            Collection<String> candidateNodes) {
         NodeState self = localState.nodes.get(getHost().getId());
-        int availableNodes = localState.nodes.size();
         SelectOwnerResponse response = new SelectOwnerResponse();
         response.key = key;
 
-        if (availableNodes == 1) {
+        if (localState.nodes.size() == 1) {
             response.ownerNodeId = self.id;
             response.isLocalHostOwner = true;
             response.ownerNodeGroupReference = self.groupReference;
@@ -426,9 +434,10 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         ClosestNNeighbours closestNodes = new ClosestNNeighbours(neighbourCount);
 
         long keyHash = FNVHash.compute(response.key);
-        for (NodeState m : localState.nodes.values()) {
+        Collection<String> nodeIds = candidateNodes != null ? candidateNodes : localState.nodes.keySet();
+        for (String nodeId : nodeIds) {
+            NodeState m = localState.nodes.get(nodeId);
             if (NodeState.isUnAvailable(m)) {
-                availableNodes--;
                 continue;
             }
 
