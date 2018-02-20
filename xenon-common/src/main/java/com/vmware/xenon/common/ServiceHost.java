@@ -3759,10 +3759,18 @@ public class ServiceHost implements ServiceRequestSender {
                     stateFromStore.documentVersion,
                     initState.documentVersion);
             failRequestServiceAlreadyStarted(s.getSelfLink(), s, serviceStartPost);
-            return false;
+        } else {
+            // service exists, on IDEMPOTENT factory or sync request. Convert to a PUT
+            String convertReason = serviceStartPost.isSynchronize() ? "synchronizing" : "idempotent";
+            log(Level.FINE, "Converting (%d) POST to PUT for %s %s in stage %s",
+                    serviceStartPost.getId(), convertReason,
+                    s.getSelfLink(), s.getProcessingStage());
+            serviceStartPost.setAction(Action.PUT);
+            serviceStartPost.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_POST_TO_PUT);
+            handleRequest(serviceStartPost);
         }
 
-        return true;
+        return false;
     }
 
     void markAsPendingDelete(Service service) {
