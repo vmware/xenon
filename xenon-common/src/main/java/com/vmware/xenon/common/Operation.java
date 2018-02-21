@@ -1477,6 +1477,33 @@ public class Operation implements Cloneable {
         return this;
     }
 
+    /**
+     * Add CompletionHandler in LIFO style, with support for cloned operations.
+     *
+     * This is a workaround for https://www.pivotaltracker.com/story/show/151798288
+     * which has some complications for a root cause fix.
+     *
+     * This is symmetric to {@link #appendCompletion(CompletionHandler)}.
+     * <pre>
+     * {@code
+     *   op.setCompletion(ORG);
+     *   op.nestCompletion(A);
+     *   op.nestCompletion(B);
+     *   // complete() will trigger: B -> A -> ORG
+     * }
+     * </pre>
+     */
+    public Operation nestCompletionCloneSafe(CompletionHandler h) {
+        final CompletionHandler existing = this.completion;
+        this.completion = (o, e) -> {
+            this.statusCode = o.statusCode;
+            o.completion = existing;
+            h.handle(o, e);
+        };
+        return this;
+
+    }
+
     public void nestCompletion(Consumer<Operation> successHandler) {
         CompletionHandler existing = this.completion;
         this.completion = (o, e) -> {

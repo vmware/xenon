@@ -2,6 +2,10 @@
 
 ## 1.6.4-SNAPSHOT
 
+* Time spent in an executor queue is now reported in OpenTracing traces.
+
+* Integrated OpenTracing with ServiceHost to provide holistic end to end tracing through Xenon
+  built services.
 
 ## 1.6.3
 
@@ -50,7 +54,6 @@
         ((NettyHttpListener) httpListener).setCorsConfig(corsConfig);
     }
   ``` 
-
 
 ## 1.6.1
 
