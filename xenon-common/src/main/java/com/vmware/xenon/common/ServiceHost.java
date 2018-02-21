@@ -54,6 +54,7 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinWorkerThread;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
@@ -66,6 +67,15 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
+
+import io.opentracing.ActiveSpan;
+import io.opentracing.ActiveSpan.Continuation;
+import io.opentracing.SpanContext;
+import io.opentracing.Tracer;
+import io.opentracing.propagation.Format;
+import io.opentracing.propagation.TextMapExtractAdapter;
+import io.opentracing.propagation.TextMapInjectAdapter;
+import io.opentracing.tag.Tags;
 
 import com.vmware.xenon.common.FileUtils.ResourceEntry;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
@@ -92,6 +102,10 @@ import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
 import com.vmware.xenon.common.jwt.JWTUtils;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.common.jwt.Verifier;
+import com.vmware.xenon.common.opentracing.TracerFactory;
+import com.vmware.xenon.common.opentracing.TracingExecutor;
+import com.vmware.xenon.common.opentracing.TracingScheduledExecutor;
+import com.vmware.xenon.common.opentracing.TracingUtils;
 import com.vmware.xenon.services.common.AuthCredentialsService;
 import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.AuthorizationTokenCacheService;
@@ -140,6 +154,7 @@ import com.vmware.xenon.services.common.authn.BasicAuthenticationService;
  * protocols
  */
 public class ServiceHost implements ServiceRequestSender {
+
 
     public static class ServiceAlreadyStartedException extends IllegalStateException {
         private static final long serialVersionUID = -1444810129515584386L;
@@ -474,6 +489,7 @@ public class ServiceHost implements ServiceRequestSender {
         public boolean isAuthorizationEnabled;
         public transient boolean isStarted;
         public transient boolean isStopping;
+        public transient boolean isTracingEnabled;
         public SystemHostInfo systemInfo;
         public long lastMaintenanceTimeUtcMicros;
         public boolean isProcessOwner;
@@ -578,7 +594,9 @@ public class ServiceHost implements ServiceRequestSender {
     private final ServiceDocumentDescription.Builder descriptionBuilder = Builder.create();
 
     private ExecutorService executor;
+    private ForkJoinPool executorPool; // For service resource tracking
     private ScheduledExecutorService scheduledExecutor;
+    private ScheduledThreadPoolExecutor scheduledExecutorPool; // For service resource tracking
 
     private final ConcurrentHashMap<String, Service> attachedServices = new ConcurrentHashMap<>();
     private final ConcurrentSkipListMap<String, Service> attachedNamespaceServices = new ConcurrentSkipListMap<>();
@@ -588,6 +606,12 @@ public class ServiceHost implements ServiceRequestSender {
 
     private final Set<String> pendingServiceDeletions = Collections
             .synchronizedSet(new HashSet<String>());
+
+    /**
+     * OpenTracing tracer. Currently spans have recount semantics, unlike OperationContext, so rather than
+     * being more restrictive than OperationContext, we just track such spans independently.
+     */
+    private final Tracer otTracer;
 
     private OperationProcessingChain opProcessingChain;
     private AuthorizationFilter authorizationFilter;
@@ -639,6 +663,8 @@ public class ServiceHost implements ServiceRequestSender {
     protected ServiceHost() {
         this.state = new ServiceHostState();
         this.state.id = UUID.randomUUID().toString();
+        this.state.isTracingEnabled = TracerFactory.factory.enabled();
+        this.otTracer = TracerFactory.factory.create(this);
     }
 
     public ServiceHost initialize(String[] args) throws Throwable {
@@ -772,14 +798,17 @@ public class ServiceHost implements ServiceRequestSender {
             this.serviceScheduledExecutor.shutdownNow();
         }
 
-        this.executor = new ForkJoinPool(Utils.DEFAULT_THREAD_COUNT, (pool) -> {
+        this.executorPool = new ForkJoinPool(Utils.DEFAULT_THREAD_COUNT, (pool) -> {
             ForkJoinWorkerThread res = ForkJoinPool.defaultForkJoinWorkerThreadFactory.newThread(pool);
             res.setName(getUri() + "/" + res.getName());
             return res;
         }, null, false);
+        this.executor = TracingExecutor.create(this.executorPool, this.otTracer);
 
-        this.scheduledExecutor = Executors.newScheduledThreadPool(Utils.DEFAULT_THREAD_COUNT,
+        this.scheduledExecutorPool = (ScheduledThreadPoolExecutor) Executors.newScheduledThreadPool(
+                Utils.DEFAULT_THREAD_COUNT,
                 new NamedThreadFactory(getUri() + "/scheduled"));
+        this.scheduledExecutor = TracingScheduledExecutor.create(this.scheduledExecutorPool, this.otTracer);
 
         this.serviceScheduledExecutor = Executors.newScheduledThreadPool(
                 Utils.DEFAULT_THREAD_COUNT / 2,
@@ -869,6 +898,25 @@ public class ServiceHost implements ServiceRequestSender {
         this.state.location = location;
     }
 
+    /**
+     * Exposes the underlying executor pool for resource tracking: deliberately package-local.
+     *
+     * @return
+     */
+    ScheduledThreadPoolExecutor getScheduledExecutorPool() {
+        return this.scheduledExecutorPool;
+    }
+
+    /**
+     * Exposes the underlying executor pool for resource tracking: deliberately package-local.
+     *
+     * @return
+     */
+    ForkJoinPool getExecutorPool() {
+        return this.executorPool;
+    }
+
+
     protected void configureLogging(File storageSandboxDir) throws IOException {
         String logConfigFile = System.getProperty("java.util.logging.config.file");
         String logConfigClass = System.getProperty("java.util.logging.config.class");
@@ -934,6 +982,7 @@ public class ServiceHost implements ServiceRequestSender {
                                 }
                                 fileState.isStarted = this.state.isStarted;
                                 fileState.isStopping = this.state.isStopping;
+                                fileState.isTracingEnabled = this.state.isTracingEnabled;
                                 if (fileState.maintenanceIntervalMicros < Service.MIN_MAINTENANCE_INTERVAL_MICROS) {
                                     fileState.maintenanceIntervalMicros = Service.MIN_MAINTENANCE_INTERVAL_MICROS;
                                 }
@@ -988,6 +1037,10 @@ public class ServiceHost implements ServiceRequestSender {
 
     public boolean isServiceStateCaching() {
         return this.state.isServiceStateCaching;
+    }
+
+    public boolean isTracingEnabled() {
+        return this.state.isTracingEnabled;
     }
 
     public ServiceHost setServiceStateCaching(boolean enable) {
@@ -1403,11 +1456,19 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     public ExecutorService allocateExecutor(Service s, int threadCount) {
-        return Executors.newFixedThreadPool(threadCount, new NamedThreadFactory(s.getUri().toString()));
+        ExecutorService result = Executors.newFixedThreadPool(threadCount, new NamedThreadFactory(s.getUri().toString()));
+        return TracingExecutor.create(result, this.otTracer);
     }
 
+    @SuppressWarnings("try")
     public ServiceHost start() throws Throwable {
-        return startImpl();
+        if (!isTracingEnabled()) {
+            return startImpl();
+        } else {
+            try (ActiveSpan span = this.otTracer.buildSpan("ServiceHost.start").startActive()) {
+                return startImpl();
+            }
+        }
     }
 
     private void setSystemProperties() {
@@ -3537,6 +3598,7 @@ public class ServiceHost implements ServiceRequestSender {
     /**
      * Infrastructure use only
      */
+    @SuppressWarnings("try")
     public boolean handleRequest(Service service, Operation inboundOp) {
         if (inboundOp == null && service != null) {
             inboundOp = service.dequeueRequest();
@@ -3562,13 +3624,41 @@ public class ServiceHost implements ServiceRequestSender {
             return true;
         }
 
+        if (isTracingEnabled()) {
+            // Create a tracing span for this new request we're handling
+            SpanContext extractedContext = this.otTracer.extract(
+                    Format.Builtin.HTTP_HEADERS,
+                    new TextMapExtractAdapter(inboundOp.getRequestHeaders()));
+
+            try (ActiveSpan span = this.otTracer.buildSpan(inboundOp.getUri().getPath())
+                    // By definition this is a new request, so we don't want to use any active span (e.g. due to
+                    // fastpathing or a bug or some such) as a parent.
+                    .ignoreActiveSpan()
+                    .asChildOf(extractedContext)
+                    .withTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_SERVER)
+                    .startActive()) {
+                // Populate common operation tags for the span.
+                TracingUtils.setSpanTags(inboundOp, span);
+
+                // capture the response code of the operation
+                final ActiveSpan.Continuation completion_cont = span.capture();
+                nestContinuationActivation(inboundOp, completion_cont);
+                passThroughProcessingChain(inboundOp);
+                return true;
+            }
+        } else {
+            passThroughProcessingChain(inboundOp);
+            return true;
+        }
+    }
+
+    private void passThroughProcessingChain(Operation inboundOp) {
+        // Pass the operation through the processing chain.
         OperationProcessingContext context = this.opProcessingChain.createContext(this);
         final Operation finalInboundOp = inboundOp;
         this.opProcessingChain.processRequest(inboundOp, context, o -> {
             handleRequestAfterOpProcessingChain(context.getService(), finalInboundOp);
         });
-
-        return true;
     }
 
     private void handleRequestAfterOpProcessingChain(Service service, Operation inboundOp) {
@@ -3636,19 +3726,20 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private void queueOrScheduleRequestInternal(Service s, Operation op) {
-        if (!s.queueRequest(op)) {
-            Runnable r = () -> {
-                OperationContext opCtx = extractAndApplyContext(op);
-                try {
-                    s.handleRequest(op);
-                } catch (Exception e) {
-                    handleUncaughtException(s, op, e);
-                } finally {
-                    OperationContext.setFrom(opCtx);
-                }
-            };
-            this.executor.execute(r);
+        if (s.queueRequest(op)) {
+            return;
         }
+        Runnable r = () -> {
+            OperationContext opCtx = extractAndApplyContext(op);
+            try {
+                s.handleRequest(op);
+            } catch (Exception e) {
+                handleUncaughtException(s, op, e);
+            } finally {
+                OperationContext.setFrom(opCtx);
+            }
+        };
+        this.executor.execute(r);
     }
 
     private void handleUncaughtException(Service s, Operation op, Throwable e) {
@@ -3677,7 +3768,38 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
-        c.send(op);
+        if (!isTracingEnabled()) {
+            c.send(op);
+        } else {
+            // Trace the request we're about to send.
+            // We don't have enough information here to set a great operationName; in future we'll want to provide a way
+            // to customise it e.g. via properties on the operation.
+            try (ActiveSpan span = this.otTracer.buildSpan(op.getUri().getPath())
+                    .withTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_CLIENT)
+                    .startActive()) {
+                TracingUtils.setSpanTags(op, span);
+                // Pass the span into the network request, propagating it across hosts.
+                this.otTracer.inject(span.context(), Format.Builtin.HTTP_HEADERS,
+                        new TextMapInjectAdapter(op.getRequestHeaders()));
+                final ActiveSpan.Continuation cont = span.capture();
+                // Capture the HTTP status code into the span.
+                nestContinuationActivation(op, cont);
+                c.send(op);
+            }
+        }
+    }
+
+    private void nestContinuationActivation(Operation op, Continuation cont) {
+        op.nestCompletionCloneSafe((o, e) -> {
+            try (ActiveSpan contspan = cont.activate()) {
+                contspan.setTag(Tags.HTTP_STATUS.getKey(), Integer.toString(o.getStatusCode()));
+                if (e == null) {
+                    o.complete();
+                } else {
+                    o.fail(e);
+                }
+            }
+        });
     }
 
     private void traceOperation(Operation op) {
@@ -4536,6 +4658,7 @@ public class ServiceHost implements ServiceRequestSender {
         if (executor.isShutdown()) {
             throw new IllegalStateException("Stopped");
         }
+
         OperationContext origContext = OperationContext.getOperationContext();
         executor.execute(() -> {
             OperationContext.setFrom(origContext);
@@ -5552,4 +5675,17 @@ public class ServiceHost implements ServiceRequestSender {
     protected void configureHttpsListener(ServiceRequestListener httpsListener) {
     }
 
+    /**
+     * Get the {@link io.opentracing.Tracer} tracer this host is using.
+     * <p>
+     *     This can be used to get the active span source via getTracer.activeSpan(), which
+     *     allows service developers to create spans around any thing that they want to instrument - whether
+     *     thats aggregations of regular Operations, or other tasks like custom IO handling, library callouts, or
+     *     for use with their own executor hand-offs.
+     * </p>
+     * @return
+     */
+    public Tracer getTracer() {
+        return this.otTracer;
+    }
 }
