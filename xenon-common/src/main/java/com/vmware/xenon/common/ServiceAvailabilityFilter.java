@@ -94,6 +94,7 @@ public class ServiceAvailabilityFilter implements Filter {
                     // we will retry, which will most likely trigger an on-demand start
                     // (unless the client has explicitly requested to wait for service availability,
                     // in that case we wait until the service becomes available or the operation expires)
+                    context.setService(null);
                     context.resumeProcessingRequest(op, FilterReturnCode.RESUME_PROCESSING, null);
                     return;
                 }
@@ -113,8 +114,8 @@ public class ServiceAvailabilityFilter implements Filter {
             return FilterReturnCode.SUSPEND_PROCESSING;
         }
 
-        // service is not attached. maybe we should start it on demand.
-
+        // service is not attached or has recently stopped. maybe we should start it on demand.
+        context.setService(null);
         if (op.getAction() == Action.DELETE &&
                 op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)) {
             // local stop - do not start on demand - complete and return
