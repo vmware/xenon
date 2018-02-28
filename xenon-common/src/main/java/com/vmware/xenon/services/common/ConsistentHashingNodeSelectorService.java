@@ -436,7 +436,17 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
             response.availableNodeCount++;
 
-            long distance = m.getNodeIdHash() - keyHash;
+            // Using XOR distance in lieu of Euclidean distance. This is because there can be two nodes which
+            // have same Euclidean distance with the key, and with it, both of our nodes will be of same distance
+            // and would override each other's value in map in different nodes, causing inconsistent closest nodes.
+            // XOR distance is unique for all unique hashes of the nodes and solves that problem.
+            // Example of Euclidean distance that produces collision:
+            // Node1 Hash: 18
+            // Key hash:   20
+            // Node2 Hash: 22
+            // Difference between Node1 Hash and Key hash is 2, and it same between Node2 hash and key hash.
+            // Because we are using XOR distance, we will not run into this problem.
+            long distance = m.getNodeIdHash() ^ keyHash;
             distance *= distance;
             // We assume first key (smallest) will be one with closest distance. The hashing
             // function can return negative numbers however, so a distance of zero (closest) will
