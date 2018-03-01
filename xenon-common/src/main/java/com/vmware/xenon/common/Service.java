@@ -64,6 +64,7 @@ public interface Service extends ServiceRequestSender {
         REPLICATION,
 
         /**
+         * Stateful Services:
          * Service runtime performs a node selection process, per service, and forwards all updates
          * to the service instance on the selected node.
          *
@@ -86,6 +87,12 @@ public interface Service extends ServiceRequestSender {
          * if quorum number of peers accept the updated state. If the node group has been partitioned
          * or multiple peers have failed, this option makes the service unavailable, since no updates
          * will be accepted.
+         *
+         * Stateless Services:
+         * Service runtime performs a node selection process, per service, and forwards all requests
+         * to the service instance on the selected node. Implementors are responsible for making
+         * sure that their owner-selected statless service is running on all nodes in the node-group
+         * with same self-link.
          *
          * Not compatible with: CONCURRENT_UPDATE_HANDLING
          */
