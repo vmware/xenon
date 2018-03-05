@@ -3759,10 +3759,14 @@ public class ServiceHost implements ServiceRequestSender {
                     stateFromStore.documentVersion,
                     initState.documentVersion);
             failRequestServiceAlreadyStarted(s.getSelfLink(), s, serviceStartPost);
-            return false;
+        } else {
+            serviceStartPost.setAction(Action.PUT);
+            serviceStartPost.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_POST_TO_PUT);
+            s.setProcessingStage(ProcessingStage.STOPPED);
+            handleRequest(s, serviceStartPost);
         }
 
-        return true;
+        return false;
     }
 
     void markAsPendingDelete(Service service) {

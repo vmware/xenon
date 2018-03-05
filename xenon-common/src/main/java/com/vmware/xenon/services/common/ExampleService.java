@@ -159,12 +159,13 @@ public class ExampleService extends StatefulService {
         super(ExampleServiceState.class);
         toggleOption(ServiceOption.PERSISTENCE, true);
         toggleOption(ServiceOption.REPLICATION, true);
-        toggleOption(ServiceOption.INSTRUMENTATION, true);
+        toggleOption(ServiceOption.INSTRUMENTATION, false);
         toggleOption(ServiceOption.OWNER_SELECTION, true);
+        toggleOption(ServiceOption.IDEMPOTENT_POST, true);
     }
 
     @Override
-    public void handleStart(Operation startPost) {
+    public void handleCreate(Operation startPost) {
         // Example of state validation on start:
         // 1) Require that an initial state is provided
         // 2) Require that the name field is not null
@@ -182,7 +183,7 @@ public class ExampleService extends StatefulService {
         }
 
         s.isFromMigration = startPost.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK);
-
+        s.counter = 1L;
         startPost.complete();
     }
 
@@ -199,6 +200,8 @@ public class ExampleService extends StatefulService {
         }
 
         updateCounter(newState, currentState, false);
+
+        newState.counter = currentState.counter + 1;
 
         // replace current state, with the body of the request, in one step
         setState(put, newState);
