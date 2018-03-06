@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 1.6.3.2
+
+* In migration task, usage of `FORWARD_ONLY` query option is configurable by
+  setting `xenon.MigrationTaskService.useForwardOnlyQuery` system property, and it
+  is `false`(disabled) by default.
+
+
 ## 1.6.3.1
 
 * Fix auth related errors observed on 1.6.3.
