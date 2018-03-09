@@ -1328,7 +1328,10 @@ public class MigrationTaskService extends StatefulService {
                                     .filter(entry -> opIdsToRetry.contains(entry.getKey()))
                                     .collect(toMap(Map.Entry::getKey, Map.Entry::getValue));
 
-                            logWarning("Migrating entities failed with exception: %s; Retrying operation.", Utils.toString(failedOps));
+                            failedOps.values().forEach(e -> {
+                                logInfo("[dest=%s] Migration first POST failed. Performing DELETE_AFTER. Failure: %s",
+                                        state.destinationFactoryLink, e.getMessage());
+                            });
                             useFallBack(state, posts, failedOps, nextPageLink, destinationURIs, lastUpdateTime);
                         } else {
                             failTask(ts.values());
