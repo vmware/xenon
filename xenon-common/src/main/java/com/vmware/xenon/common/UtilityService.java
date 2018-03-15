@@ -39,6 +39,7 @@ import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
 import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.NumericRange;
 import com.vmware.xenon.services.common.QueryTask.Query;
@@ -131,6 +132,12 @@ public class UtilityService implements Service {
 
     private static final StatsKeyDeduper STATS_KEY_DICT = new StatsKeyDeduper();
 
+    private static final boolean DISABLE_UTILITY_AUTH = XenonConfiguration.bool(
+            UtilityService.class,
+            "disableUtilityAuth",
+            false
+    );
+
     public UtilityService() {
     }
 
@@ -141,6 +148,11 @@ public class UtilityService implements Service {
 
     @Override
     public void authorizeRequest(Operation op) {
+
+        if (DISABLE_UTILITY_AUTH) {
+            op.complete();
+            return;
+        }
 
         String suffix = UriUtils.buildUriPath(UriUtils.URI_PATH_CHAR, UriUtils.getLastPathSegment(op.getUri()));
 
