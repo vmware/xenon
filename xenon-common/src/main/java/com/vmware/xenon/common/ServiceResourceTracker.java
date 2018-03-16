@@ -25,11 +25,13 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
+import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceClient.ConnectionPoolMetrics;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
@@ -84,6 +86,12 @@ public class ServiceResourceTracker {
                     this.servicePath, this.transactionId);
         }
     }
+
+    private static final boolean STOP_PERIODIC_SERVICE = XenonConfiguration.bool(
+            ServiceResourceTracker.class,
+            "stopPeriodicService",
+            false
+    );
 
     /**
      * For performance reasons, this map is owned and directly operated by the host
@@ -522,9 +530,18 @@ public class ServiceResourceTracker {
         }
 
         if (service.hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
-            // Services with periodic maintenance stay resident, for now. We might stop them in the future
-            // if they have long periods
-            return true;
+
+            if (STOP_PERIODIC_SERVICE) {
+                // if currently the service is not document owner, proceed to stop it.
+                SelectOwnerResponse ownerResponse = this.host.findOwnerNode(service.getPeerNodeSelectorPath(), service.getSelfLink());
+                if (ownerResponse.isLocalHostOwner) {
+                    return true;
+                }
+            } else {
+                // Services with periodic maintenance stay resident, for now. We might stop them in the future
+                // if they have long periods
+                return true;
+            }
         }
 
         if (this.host.isServiceStarting(service, service.getSelfLink())) {

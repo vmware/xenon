@@ -4953,8 +4953,16 @@ public class ServiceHost implements ServiceRequestSender {
      * Infrastructure use only
      * @see ServiceSynchronizationTracker#selectServiceOwnerAndSynchState(Service, Operation)
      */
-    void selectServiceOwnerAndSynchState(Service s, Operation op) {
+    protected void selectServiceOwnerAndSynchState(Service s, Operation op) {
         this.serviceSynchTracker.selectServiceOwnerAndSynchState(s, op);
+    }
+
+    /**
+     * Infrastructure use only
+     * Allow subclass to extend behavior on node group change on factory.
+     */
+    protected void handleNodeGroupChangeFromFactory(Operation maintOp, String nodeSelectorPath, Consumer<Operation> consumer) {
+        consumer.accept(maintOp);
     }
 
     /**

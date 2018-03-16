@@ -35,6 +35,7 @@ import com.vmware.xenon.common.RequestRouter.Route.SupportLevel;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
@@ -73,6 +74,12 @@ public class StatefulService implements Service {
 
         public AdditionalContext extras;
     }
+
+    private static final boolean SEQUENCE_INDEXING = XenonConfiguration.bool(
+            StatefulService.class,
+            "sequenceIndexing",
+            false
+    );
 
     private final RuntimeContext context = new RuntimeContext();
 
@@ -1058,14 +1065,29 @@ public class StatefulService implements Service {
                     failRequest(op, failure);
                     return;
                 }
+
+                if (SEQUENCE_INDEXING) {
+                    // make "processPending" sequential instead of asynchronous.
+                    // proceeds only after state is saved
+                    if (!op.isWithinTransaction()) {
+                        processPending(op);
+                    }
+                }
+
                 checkAndNestAuthupdateCompletionStage(op);
             });
+
+
+
 
             ServiceDocument mergedState = op.getLinkedState();
             this.context.host.saveServiceState(this, op, mergedState);
         } finally {
-            if (!op.isWithinTransaction()) {
-                processPending(op);
+
+            if (!SEQUENCE_INDEXING) {
+                if (!op.isWithinTransaction()) {
+                    processPending(op);
+                }
             }
         }
     }
