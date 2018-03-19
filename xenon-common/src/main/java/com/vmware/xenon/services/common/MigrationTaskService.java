@@ -1299,6 +1299,7 @@ public class MigrationTaskService extends StatefulService {
 
                     Operation op = createPost(uri, state).setBodyNoCloning(docJson);
                     op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FROM_MIGRATION_TASK);
+                    op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE);
 
                     if (toDelete) {
                         opIdsToDelete.add(op.getId());
