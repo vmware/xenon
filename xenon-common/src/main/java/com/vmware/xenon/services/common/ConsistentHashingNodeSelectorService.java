@@ -661,6 +661,11 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         }
 
         if (!getHost().isPeerSynchronizationEnabled()) {
+            // when synchronization is disabled, just schedule nodeGroupChangeMaintenance.
+            logInfo("Scheduling nodeGroupChangeMaintenance");
+            this.isSynchronizationRequired = false;
+//            adjustStat(STAT_NAME_SYNCHRONIZATION_COUNT, 1);
+            getHost().scheduleNodeGroupChangeMaintenance(getSelfLink());
             return false;
         }
 
@@ -796,7 +801,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 // We skip synchronization in case of PEER_UNAVAILABLE because we will triggered synchronization
                 // when that node will get EXPIRED. PEER_UNAVAILABLE indicates that the node just become unavailable
                 // and will be expired after 5 minutes if it does not come back online within that time period.
-                if (ngs.lastChanges != null &&
+                if (getHost().isPeerSynchronizationEnabled() &&
+                        ngs.lastChanges != null &&
                         ngs.lastChanges.size() == 1 &&
                         (ngs.lastChanges.contains(NodeGroupChange.PEER_UNAVAILABLE) ||
                                 ngs.lastChanges.contains(NodeGroupChange.PEER_EXPIRED))) {
