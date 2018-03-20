@@ -91,7 +91,11 @@ public class TracingTest extends BasicReusableHostTestCase {
             this.host.log(Level.INFO, "span %s", span.toString());
             String op = span.operationName();
             // Filter out spans that are not part of the test - e.g. gossip maintenance
-            if (!op.equals("/stateless") && !op.equals("/stateful/foo") && !op.equals("Queue")) {
+            if (!op.equals("/stateless") && !op.equals("/stateful/{ID}") && !op.equals("Queue") && !op.equals("sendRequest")) {
+                continue;
+            }
+            if (op.equals("sendRequest") && !span.tags().get(Tags.HTTP_URL.getKey()).toString().contains("/state")) {
+                /* sendRequest shows up for background activity - for those, skip based on url */
                 continue;
             }
             assertEquals(String.format("broken trace span %s", span.toString()), traceId, span.context().traceId());

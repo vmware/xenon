@@ -51,6 +51,7 @@ public class StatefulService implements Service {
         public String nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
         public String documentIndexLink = ServiceUriPaths.CORE_DOCUMENT_INDEX;
         public Set<String> txCoordinatorLinks;
+        private transient String cachedOperationName;
     }
 
     private static class RuntimeContext {
@@ -1590,6 +1591,25 @@ public class StatefulService implements Service {
     @Override
     public ServiceHost getHost() {
         return this.context.host;
+    }
+
+    @Override
+    public String getOperationName(Operation op) {
+        allocateExtraContext();
+        if (null == this.context.extras.cachedOperationName) {
+            String parentPath = UriUtils.getParentPath(this.getSelfLink());
+            assert parentPath != null;
+            Service parentService = this.context.host.findService(parentPath, true);
+            assert parentService != null;
+            this.context.extras.cachedOperationName = parentService.getOperationNameForChild(op);
+        }
+        return this.context.extras.cachedOperationName;
+    }
+
+    @Override
+    public String getOperationNameForChild(Operation operation) {
+        /* This doesn't really make sense, but since services can be mounted at arbitrary paths we have to support it */
+        return this.getOperationName(operation);
     }
 
     @Override

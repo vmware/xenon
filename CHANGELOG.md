@@ -2,9 +2,15 @@
 
 ## 1.6.5-SNAPSHOT
 
+* Cardinality of operationName in OpenTracing spans is now approximately
+  constant for a given build of a Xenon service. Outbound spans log a constant,
+  and inbound spans replace document ids with {ID} for StatefulService instances
+  hosted under a FactoryService (the common case).
+
 * Jaeger will now log and ignore bad hostnames for the UDP span transport.
   This permits detection of invalid configurations without breaking deployment
   pipelines or developer test scenarios.
+
 
 ## 1.6.4
 
