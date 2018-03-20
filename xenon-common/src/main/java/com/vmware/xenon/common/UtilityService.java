@@ -168,6 +168,7 @@ public class UtilityService implements Service {
 
     @Override
     public void handleRequest(Operation op) {
+        // Keep in sync with operationName
         String uriPrefix = this.parent.getSelfLink() + ServiceHost.SERVICE_URI_SUFFIX_UI;
 
         if (op.getUri().getPath().startsWith(uriPrefix)) {
@@ -254,6 +255,40 @@ public class UtilityService implements Service {
 
         // Synchronize the single child service.
         synchronizeChildService(this.parent.getSelfLink(), op);
+    }
+
+    @Override
+    public String getOperationName(Operation op) {
+        // keep in sync with handleRequest
+        String path = op.getUri().getPath();
+        String root = "{SERVICE}";
+
+        String uriPrefix = this.parent.getSelfLink() + ServiceHost.SERVICE_URI_SUFFIX_UI;
+
+        if (path.startsWith(uriPrefix)) {
+            // startsWith catches all /factory/instance/ui/some-script.js
+            return root + ServiceHost.SERVICE_URI_SUFFIX_UI;
+        } else if (path.endsWith(ServiceHost.SERVICE_URI_SUFFIX_STATS)) {
+            return root + ServiceHost.SERVICE_URI_SUFFIX_STATS;
+        } else if (path.endsWith(ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS)) {
+            return root + ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS;
+        } else if (op.getUri().getPath().endsWith(ServiceHost.SERVICE_URI_SUFFIX_TEMPLATE)) {
+            return root + ServiceHost.SERVICE_URI_SUFFIX_TEMPLATE;
+        } else if (op.getUri().getPath().endsWith(ServiceHost.SERVICE_URI_SUFFIX_CONFIG)) {
+            return root + ServiceHost.SERVICE_URI_SUFFIX_CONFIG;
+        } else if (op.getUri().getPath().endsWith(ServiceHost.SERVICE_URI_SUFFIX_SYNCHRONIZATION)) {
+            return root + ServiceHost.SERVICE_URI_SUFFIX_SYNCHRONIZATION;
+        } else if (op.getUri().getPath().endsWith(ServiceHost.SERVICE_URI_SUFFIX_AVAILABLE)) {
+            return root + ServiceHost.SERVICE_URI_SUFFIX_AVAILABLE;
+        } else {
+            return "unknown utility";
+        }
+    }
+
+    @Override
+    public String getOperationNameForChild(Operation operation) {
+        /* This doesn't really make sense, but since services can be mounted at arbitrary paths we have to support it */
+        return this.getOperationName(operation);
     }
 
     private void synchronizeChildService(String link, Operation op) {

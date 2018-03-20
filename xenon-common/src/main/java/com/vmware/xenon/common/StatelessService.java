@@ -338,6 +338,17 @@ public class StatelessService implements Service {
     }
 
     @Override
+    public String getOperationName(Operation operation) {
+        return this.getSelfLink();
+    }
+
+    @Override
+    public String getOperationNameForChild(Operation operation) {
+        /* This doesn't really make sense, but since services can be mounted at arbitrary paths we have to support it */
+        return this.getOperationName(operation);
+    }
+
+    @Override
     public OperationProcessingChain getOperationProcessingChain() {
         return this.opProcessingChain;
     }

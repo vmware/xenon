@@ -477,6 +477,19 @@ public interface Service extends ServiceRequestSender {
 
     URI getUri();
 
+    /**
+     * Gets a low-cardinality string to describe operation.
+     * <P>
+     * e.g. /path/to/service/{ID} rather than /path/to/service/1234
+     */
+    String getOperationName(Operation operation);
+
+    /**
+     * Gets the operation name for a child service. This permits amortising the storage and calculation over all
+     * child services which have the same operation name.
+     */
+    String getOperationNameForChild(Operation operation);
+
     OperationProcessingChain getOperationProcessingChain();
 
     ProcessingStage getProcessingStage();

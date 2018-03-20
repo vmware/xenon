@@ -346,6 +346,8 @@ public class ServiceHost implements ServiceRequestSender {
 
     public static final String SERVICE_URI_SUFFIX_REPLICATION = "/replication";
 
+    private static final String CORE_CALLBACKS_OPNAME = ServiceUriPaths.CORE_CALLBACKS + "/{ID}";
+
     public static final String DCP_ENVIRONMENT_VAR_PREFIX = "XENON_";
     public static final String GIT_COMMIT_PROPERTIES_RESOURCE_NAME = "xenon.git.properties";
     public static final String GIT_COMMIT_SOURCE_PROPERTY_PREFIX = "git.commit";
@@ -2303,6 +2305,11 @@ public class ServiceHost implements ServiceRequestSender {
                 }
                 notificationConsumer.accept(op);
             }
+
+            @Override public String getOperationName(Operation op) {
+                // Only called if tracing is enabled.
+                return CORE_CALLBACKS_OPNAME;
+            }
         };
 
         return startSubscriptionService(subscribe, notificationTarget, request);
@@ -3694,6 +3701,10 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
+        {
+            String opName = service.getOperationName(inboundOp);
+            this.otTracer.activeSpan().setOperationName(opName);
+        }
         traceOperation(inboundOp);
 
         if (isAuthorizationEnabled()) {
@@ -3790,7 +3801,7 @@ public class ServiceHost implements ServiceRequestSender {
             // Trace the request we're about to send.
             // We don't have enough information here to set a great operationName; in future we'll want to provide a way
             // to customise it e.g. via properties on the operation.
-            try (ActiveSpan span = this.otTracer.buildSpan(op.getUri().getPath())
+            try (ActiveSpan span = this.otTracer.buildSpan("sendRequest")
                     .withTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_CLIENT)
                     .startActive()) {
                 TracingUtils.setSpanTags(op, span);

@@ -63,6 +63,11 @@ public abstract class FactoryService extends StatelessService {
     private static final int MIN_SYNCH_QUERY_RESULT_LIMIT = 200;
 
     /**
+     * Cached operationName for child services.
+     */
+    private String childOperationName;
+
+    /**
      * Creates a factory service instance that starts the specified child service
      * on POST
      */
@@ -882,6 +887,14 @@ public abstract class FactoryService extends StatelessService {
             logSevere(e);
             return null;
         }
+    }
+
+    @Override
+    public String getOperationNameForChild(Operation operation) {
+        if (this.childOperationName == null) {
+            this.childOperationName = this.getOperationName(operation) + "/{ID}";
+        }
+        return this.childOperationName;
     }
 
     @Override
