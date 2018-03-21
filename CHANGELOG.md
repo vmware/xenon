@@ -2,6 +2,12 @@
 
 ## 1.6.5-SNAPSHOT
 
+* Added a ServiceHost configuration property to control whether replication
+  is enabled. This is similar to the isPeerSynchronizationEnabled flag,
+  but the implementation is based on XenonConfiguration. Replication is
+  enabled by default; to disable it set xenon.ServiceHost.isPeerReplicationEnabled
+  to false.
+
 * Jaeger will now log and ignore bad hostnames for the UDP span transport.
   This permits detection of invalid configurations without breaking deployment
   pipelines or developer test scenarios.
