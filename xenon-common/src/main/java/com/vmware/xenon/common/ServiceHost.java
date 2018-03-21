@@ -96,6 +96,7 @@ import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.common.http.netty.NettyHttpListener;
 import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
 import com.vmware.xenon.common.jwt.JWTUtils;
@@ -484,6 +485,7 @@ public class ServiceHost implements ServiceRequestSender {
         public URI transactionServiceReference;
         public String id;
         public boolean isPeerSynchronizationEnabled;
+        public boolean isPeerReplicationEnabled;
         public int peerSynchronizationTimeLimitSeconds;
         public boolean isAuthorizationEnabled;
         public transient boolean isStarted;
@@ -741,6 +743,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         // apply command line arguments, potentially overriding file configuration
         initializeStateFromArguments(s, args);
+        initializeStateFromConfiguration();
 
         Service documentIndexService = createDefaultDocumentIndexService();
         setDocumentIndexingService(documentIndexService);
@@ -884,6 +887,14 @@ public class ServiceHost implements ServiceRequestSender {
             this.state.autoBackupDirectoryReference = s.toPath().resolve(DEFAULT_AUTO_BACKUP_DIR).toUri();
         }
         this.state.isAutoBackupEnabled = args.isAutoBackupEnabled;
+    }
+
+    private void initializeStateFromConfiguration() {
+        this.state.isPeerReplicationEnabled = XenonConfiguration.bool(
+                ServiceHost.class,
+                "isPeerReplicationEnabled",
+                true
+        );
     }
 
     public String getLocation() {
@@ -1084,6 +1095,14 @@ public class ServiceHost implements ServiceRequestSender {
 
     public void setPeerSynchronizationEnabled(boolean enabled) {
         this.state.isPeerSynchronizationEnabled = enabled;
+    }
+
+    public boolean isPeerReplicationEnabled() {
+        return this.state.isPeerReplicationEnabled;
+    }
+
+    public void setPeerReplicationEnabled(boolean enabled) {
+        this.state.isPeerReplicationEnabled = enabled;
     }
 
     public boolean isRequestLoggingEnabled() {
