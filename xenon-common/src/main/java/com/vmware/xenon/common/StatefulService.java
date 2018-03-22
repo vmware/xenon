@@ -32,10 +32,10 @@ import com.vmware.xenon.common.Operation.InstrumentationContext;
 import com.vmware.xenon.common.OperationProcessingChain.OperationProcessingContext;
 import com.vmware.xenon.common.RequestRouter.Route.RouteDocumentation;
 import com.vmware.xenon.common.RequestRouter.Route.SupportLevel;
-import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
@@ -74,6 +74,12 @@ public class StatefulService implements Service {
 
         public AdditionalContext extras;
     }
+
+    private static boolean SEQUENTIAL_INDEXING = XenonConfiguration.bool(
+            StatefulService.class,
+            "sequentialIndexing",
+            false
+    );
 
     private final RuntimeContext context = new RuntimeContext();
 
@@ -1079,19 +1085,29 @@ public class StatefulService implements Service {
         try {
             op.nestCompletion((o, failure) -> {
                 if (failure != null) {
-                    if (op.isWithinTransaction()) {
+                    // perform pending ops for failure since it was not performed in finally block
+                    if (SEQUENTIAL_INDEXING || op.isWithinTransaction()) {
                         processPending(op);
                     }
                     failRequest(op, failure);
                     return;
                 }
+
+                // perform pending ops when sequential-indexing is on AND not in transaction because it was
+                // NOT performed in finally block
+                if (SEQUENTIAL_INDEXING && !op.isWithinTransaction()) {
+                    processPending(op);
+                }
                 checkAndNestAuthupdateCompletionStage(op);
             });
 
+            // based on index service implementation, actual indexing may happen asynchronously
             ServiceDocument mergedState = op.getLinkedState();
             this.context.host.saveServiceState(this, op, mergedState);
         } finally {
-            if (!op.isWithinTransaction()) {
+
+            // process pending ops when sequential indexing is NOT forced AND not in transaction.
+            if (!SEQUENTIAL_INDEXING && !op.isWithinTransaction()) {
                 processPending(op);
             }
         }

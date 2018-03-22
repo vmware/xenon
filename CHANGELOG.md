@@ -22,6 +22,11 @@
   - Disable synchronization at service start
   - Trigger nodegroup change maintenance regardless of synchronization on/off
 
+* Add flag to perform sequential indexing
+  Added `xenon.StatefulService.forceSequentialIndexing` system property.
+  When this flag is enabled, document indexing and rest of operations will be
+  performed sequentially. (default is asynchronous)
+
 
 ## 1.6.4
 
