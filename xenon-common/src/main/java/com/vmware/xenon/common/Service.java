@@ -115,6 +115,18 @@ public interface Service extends ServiceRequestSender {
         STRICT_UPDATE_CHECKING,
 
         /**
+         * Sequentially perform indexing and returning response.
+         *
+         * By default, document indexing and processing the rest of stages are performed asynchronously.
+         * Adding this option makes sure that the rest of operation processing will happen only when
+         * indexing has finished.
+         *
+         * Requires: PERSISTENCE
+         *
+         */
+        SEQUENTIAL_INDEXING,
+
+        /**
          * Service runtime provides a HTML interactive UI through custom resource files associated
          * with the service class. The runtime serves the resource files from disk in response to
          * request to the /ui URI suffix
