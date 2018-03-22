@@ -615,7 +615,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
             if (!avoidLogging) {
                 double totalTimeMillis = (System.nanoTime() - startTime) / 1000000;
-                this.host.log(Level.INFO, "%s %s %s %s %d %d %.2fms",
+                this.host.log(Level.FINE, "%s %s %s %s %d %d %.2fms",
                         ctx.channel().remoteAddress(), request.getAction(), originalPath,
                         streamId != null ? "HTTP/2" : "HTTP/1.1", request.getStatusCode(),
                         request.getContentLength(), totalTimeMillis);
