@@ -164,6 +164,11 @@ public class ServiceAvailabilityFilter implements Filter {
             doProbe = true;
         }
 
+        if (!host.isPeerSynchronizationEnabled()) {
+            // when synchronization is disabled, use probe to check existence of the service
+            doProbe = true;
+        }
+
         if (!doProbe) {
             host.log(Level.FINE, "Skipping probe - starting service %s on-demand due to %s %d (isFromReplication: %b, isSynchronizeOwner: %b, isSynchronizePeer: %b)",
                     servicePath, op.getAction(), op.getId(),

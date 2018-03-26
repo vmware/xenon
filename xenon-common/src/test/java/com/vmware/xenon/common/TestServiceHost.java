@@ -2764,4 +2764,32 @@ public class TestServiceHost {
         this.host = null;
     }
 
+
+    @Test
+    public void getAndPostWithSynchronizationDisabled() throws Throwable {
+        setUp(true);
+
+        // disable synchronization
+        this.host.setPeerSynchronizationEnabled(false);
+
+        this.host.start();
+
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+        String servicePath = UriUtils.buildUriPath(ExampleService.FACTORY_LINK, "foo");
+
+        // GET before creating service
+        Operation op = Operation.createGet(UriUtils.buildUri(this.host, servicePath));
+        TestRequestSender.FailureResponse response = sender.sendAndWaitFailure(op);
+        assertEquals(Operation.STATUS_CODE_NOT_FOUND, response.op.getStatusCode());
+
+        ExampleServiceState initialState = new ExampleServiceState();
+        initialState.name = "foo";
+        initialState.documentSelfLink = servicePath;
+        Operation post = Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(initialState);
+
+        // POST should succeed
+        ExampleServiceState returnedState = sender.sendAndWait(post, ExampleServiceState.class);
+        assertEquals("foo", returnedState.name);
+    }
 }
