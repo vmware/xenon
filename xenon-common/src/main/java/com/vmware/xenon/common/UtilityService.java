@@ -154,13 +154,61 @@ public class UtilityService implements Service {
             return;
         }
 
-        String suffix = UriUtils.buildUriPath(UriUtils.URI_PATH_CHAR, UriUtils.getLastPathSegment(op.getUri()));
-
         // allow access to ui endpoint
+        String suffix = UriUtils.buildUriPath(UriUtils.URI_PATH_CHAR, UriUtils.getLastPathSegment(op.getUri()));
         if (ServiceHost.SERVICE_URI_SUFFIX_UI.equals(suffix)) {
             op.complete();
             return;
         }
+
+        // perform parent based auth for stateless and factory services
+        if (this.parent.hasOption(ServiceOption.STATELESS) || this.parent.hasOption(ServiceOption.FACTORY)) {
+
+            // use parent link and kind  e.g: /core/examples/stats => /core/examples
+            ServiceDocument doc = new ServiceDocument();
+            doc.documentSelfLink = this.parent.getSelfLink();
+            doc.documentKind = Utils.buildKind(this.parent.getStateType());
+            if (getHost().isAuthorized(this.parent, doc, op)) {
+                op.complete();
+                return;
+            }
+
+            // fallback to auth with selflink and doc kind
+            authorizeWithSelfLinkAndDocumentKind(op);
+            return;
+        }
+
+        // retrieve parent document and perform auth check against it
+        CompletionHandler c = (o, x) -> {
+            if (x != null) {
+                // fallback to auth with selflink and doc kind
+                authorizeWithSelfLinkAndDocumentKind(op);
+                return;
+            }
+
+            ServiceDocument doc = o.getBody(this.parent.getStateType());
+            if (getHost().isAuthorized(this.parent, doc, op)) {
+                op.complete();
+                return;
+            }
+
+            // fallback to auth with selflink and doc kind
+            authorizeWithSelfLinkAndDocumentKind(op);
+        };
+
+
+        Operation get = Operation.createGet(this, this.parent.getSelfLink())
+                .setReferer(op.getUri())
+                .setAuthorizationContext(getHost().getSystemAuthorizationContext())
+                .setCompletion(c);
+        // since sendRequest on utility service is not supported, use the one from host
+        getHost().sendRequest(get);
+    }
+
+
+    private void authorizeWithSelfLinkAndDocumentKind(Operation op) {
+
+        String suffix = UriUtils.buildUriPath(UriUtils.URI_PATH_CHAR, UriUtils.getLastPathSegment(op.getUri()));
 
         ServiceDocument doc = new ServiceDocument();
         if (this.parent.getOptions().contains(ServiceOption.FACTORY_ITEM)) {

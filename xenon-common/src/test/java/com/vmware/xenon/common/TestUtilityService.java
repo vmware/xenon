@@ -49,6 +49,7 @@ import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.QueryTask.Query;
+import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 public class TestUtilityService extends BasicReusableHostTestCase {
@@ -988,6 +989,119 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         response = sender.sendAndWait(Operation.createGet(serviceUiUri));
         assertNotEquals(Operation.STATUS_CODE_FORBIDDEN, response.getStatusCode());
 
+    }
+
+    @Test
+    public void endpointAuthorizationWithParentDocument() throws Throwable {
+        VerificationHost host = VerificationHost.create(0);
+        host.setAuthorizationService(new AuthorizationContextService());
+        host.setAuthorizationEnabled(true);
+        host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
+        host.start();
+
+        host.setSystemAuthorizationContext();
+
+        String statelessPath = "/stateless";
+        String statefulFooPath = UriUtils.buildUriPath(ExampleService.FACTORY_LINK, "foo");
+        String statefulBarPath = UriUtils.buildUriPath(ExampleService.FACTORY_LINK, "bar");
+
+        // start a stateless service
+        host.startServiceAndWait(new StatelessService(), statelessPath, new ServiceDocument());
+        host.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(host, ExampleService.FACTORY_LINK));
+
+        // create a user foo who has access to "/core/examples/foo", "/core/examples", and "/stateless" endpoints
+        String userFoo = "foo@vmware.com";
+        String passFoo = "password";
+        TestContext authForFooCtx = host.testCreate(1);
+        AuthorizationSetupHelper.create()
+                .setHost(host)
+                .setUserEmail(userFoo)
+                .setUserPassword(passFoo)
+                .setResourceQuery(Query.Builder.create()
+                        .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, statefulFooPath, Occurance.SHOULD_OCCUR)
+                        .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, statelessPath, Occurance.SHOULD_OCCUR)
+                        .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, ExampleService.FACTORY_LINK, Occurance.SHOULD_OCCUR)
+                        .build())
+                .setCompletion(authForFooCtx.getCompletion())
+                .start();
+        authForFooCtx.await();
+
+        // create a user bar who has no access
+        String userBar = "bar@vmware.com";
+        String passBar = "password";
+        TestContext authForBarCtx = host.testCreate(1);
+        AuthorizationSetupHelper.create()
+                .setHost(host)
+                .setUserEmail(userBar)
+                .setUserPassword(passBar)
+                .setResourceQuery(Query.Builder.create()
+                        .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, "/")
+                        .build())
+                .setCompletion(authForBarCtx.getCompletion())
+                .start();
+        authForBarCtx.await();
+
+
+        TestRequestSender sender = host.getTestRequestSender();
+
+        // create a service foo("/core/examples/foo")
+        ExampleServiceState fooBody = new ExampleServiceState();
+        fooBody.name = "foo";
+        fooBody.documentSelfLink = statefulFooPath;
+
+        Operation postFoo = Operation.createPost(host, ExampleService.FACTORY_LINK).setBody(fooBody);
+        sender.sendAndWait(postFoo, ExampleServiceState.class);
+
+        // create a service bar("/core/examples/bar")
+        ExampleServiceState barBody = new ExampleServiceState();
+        barBody.name = "bar";
+        barBody.documentSelfLink = statefulBarPath;
+
+        Operation postBar = Operation.createPost(host, ExampleService.FACTORY_LINK).setBody(barBody);
+        sender.sendAndWait(postBar, ExampleServiceState.class);
+
+        host.resetAuthorizationContext();
+
+        // login as foo
+        AuthTestUtils.login(host, userFoo, passFoo);
+
+        Operation response;
+        FailureResponse failureResponse;
+        URI availableFooUri = UriUtils.buildAvailableUri(host, statefulFooPath);
+        URI availableBarUri = UriUtils.buildAvailableUri(host, statefulBarPath);
+        URI factoryAvailableUri = UriUtils.buildAvailableUri(host, ExampleService.FACTORY_LINK);
+        URI statelessAvailableUri = UriUtils.buildAvailableUri(host, statelessPath);
+
+        // check success to "/core/examples/foo/available"
+        response = sender.sendAndWait(Operation.createGet(availableFooUri));
+        assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
+
+        // check failure to "/core/examples/bar/available"
+        failureResponse = sender.sendAndWaitFailure(Operation.createGet(availableBarUri));
+        assertEquals(Operation.STATUS_CODE_FORBIDDEN, failureResponse.op.getStatusCode());
+
+        // check success to "/core/examples/available"
+        response = sender.sendAndWait(Operation.createGet(factoryAvailableUri));
+        assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
+
+        // check success to "/stateless/available"
+        response = sender.sendAndWait(Operation.createGet(statelessAvailableUri));
+        assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
+
+
+        AuthTestUtils.logout(host);
+
+        // login as bar
+        AuthTestUtils.login(host, userBar, passBar);
+
+        failureResponse = sender.sendAndWaitFailure(Operation.createGet(availableFooUri));
+        assertEquals(Operation.STATUS_CODE_FORBIDDEN, failureResponse.op.getStatusCode());
+
+        failureResponse = sender.sendAndWaitFailure(Operation.createGet(statelessAvailableUri));
+        assertEquals(Operation.STATUS_CODE_FORBIDDEN, failureResponse.op.getStatusCode());
+
+        failureResponse = sender.sendAndWaitFailure(Operation.createGet(factoryAvailableUri));
+        assertEquals(Operation.STATUS_CODE_FORBIDDEN, failureResponse.op.getStatusCode());
     }
 
 }

@@ -12,6 +12,18 @@
   Added a system property `xenon.UtilityService.disableUtilityAuth` to control
   auth on utility services.
 
+* Update auth logic for utility endpoints
+  For stateful services, utility endpoint first checks the auth against its
+  parent service with parent document. For example, if you are accessing
+  `/core/examples/foo/stats`, it will first check the auth against
+  `/core/examples/foo`. When this parent check fails, it falls back to
+  original uri and document kind based auth check(`/core/examples/foo/stats`).
+  For stateless and factory services, utility endpoint checks its parent url.
+  For example, a factory service stats endpoint `/core/examples/stats` runs
+  auth check against `/core/examples`. For a stateless service stats endpoint
+  `/core/stateless/foo/stats` uses `/core/estateless/foo` for its auth check.
+  Failure of such parent check falls back to original authentication logic.
+
 * Jaeger will now log and ignore bad hostnames for the UDP span transport.
   This permits detection of invalid configurations without breaking deployment
   pipelines or developer test scenarios.
