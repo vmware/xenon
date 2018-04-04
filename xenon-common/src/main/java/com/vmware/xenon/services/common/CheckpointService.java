@@ -24,10 +24,10 @@ public class CheckpointService extends StatefulService {
 
     public static final String FACTORY_LINK = ServiceUriPaths.CHECKPOINTS;
 
-    public static class CheckpointState extends ServiceDocument {
+    public static final long VERSION_RETENTION_LIMIT = 5;
+    public static final long VERSION_RETENTION_FLOOR = 3;
 
-        public static final long VERSION_RETENTION_LIMIT = 10;
-        public static final long VERSION_RETENTION_FLOOR = 3;
+    public static class CheckpointState extends ServiceDocument {
         /**
          * checkpoint timestamp
          */
@@ -93,5 +93,13 @@ public class CheckpointService extends StatefulService {
         }
         currentState.timestamp = newState.timestamp;
         return true;
+    }
+
+    @Override
+    public ServiceDocument getDocumentTemplate() {
+        ServiceDocument td = super.getDocumentTemplate();
+        td.documentDescription.versionRetentionFloor = VERSION_RETENTION_FLOOR;
+        td.documentDescription.versionRetentionLimit = VERSION_RETENTION_LIMIT;
+        return td;
     }
 }
