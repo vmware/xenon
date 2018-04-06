@@ -594,10 +594,10 @@ public class ServiceHost implements ServiceRequestSender {
     private final Map<String, ServiceDocumentDescription> descriptionCachePerFactoryLink = new HashMap<>();
     private final ServiceDocumentDescription.Builder descriptionBuilder = Builder.create();
 
-    private ExecutorService executor;
-    private ForkJoinPool executorPool; // For service resource tracking
-    private ScheduledExecutorService scheduledExecutor;
-    private ScheduledThreadPoolExecutor scheduledExecutorPool; // For service resource tracking
+    private ExecutorService executor;  // used by "ServiceHost#run(Runnable)" or "queueOrScheduleRequestInternal()"
+    private ForkJoinPool executorPool; // For service resource tracking(stats)
+    private ScheduledExecutorService scheduledExecutor;  // used by "ServiceHost#scheduleCore()"
+    private ScheduledThreadPoolExecutor scheduledExecutorPool; // For service resource tracking(stats)
 
     private final ConcurrentHashMap<String, Service> attachedServices = new ConcurrentHashMap<>();
     private final ConcurrentSkipListMap<String, Service> attachedNamespaceServices = new ConcurrentSkipListMap<>();
@@ -800,22 +800,59 @@ public class ServiceHost implements ServiceRequestSender {
             this.serviceScheduledExecutor.shutdownNow();
         }
 
-        this.executorPool = new ForkJoinPool(Utils.DEFAULT_THREAD_COUNT, (pool) -> {
+        this.executorPool = constructExecutorPool();
+        this.executor = TracingExecutor.create(this.executorPool, this.otTracer);
+
+        this.scheduledExecutorPool = constructScheduledExecutor();
+        this.scheduledExecutor = TracingScheduledExecutor.create(this.scheduledExecutorPool, this.otTracer);
+
+        this.serviceScheduledExecutor = constructServiceScheduledExecutor();
+    }
+
+    /**
+     * Create a {@link ForkJoinPool} that is used by "ServiceHost#run(Runnable)" or "queueOrScheduleRequestInternal()"
+     *
+     * Subclass can override this method to configure the executor
+     * e.g.: set cancellation policy, tracking info, etc
+     *
+     * @return an executor
+     */
+    protected ForkJoinPool constructExecutorPool() {
+        return new ForkJoinPool(Utils.DEFAULT_THREAD_COUNT, (pool) -> {
             ForkJoinWorkerThread res = ForkJoinPool.defaultForkJoinWorkerThreadFactory.newThread(pool);
             res.setName(getUri() + "/" + res.getName());
             return res;
         }, null, false);
-        this.executor = TracingExecutor.create(this.executorPool, this.otTracer);
+    }
 
-        this.scheduledExecutorPool = (ScheduledThreadPoolExecutor) Executors.newScheduledThreadPool(
+    /**
+     * Create a {@link ScheduledExecutorService} that is used for performing service maintenance, user scheduled task, etc.
+     *
+     * Subclass can override this method to configure the executor
+     * e.g.: set cancellation policy, tracking info, etc
+     *
+     * @return a scheduled thread executor
+     */
+    protected ScheduledThreadPoolExecutor constructScheduledExecutor() {
+        return  (ScheduledThreadPoolExecutor) Executors.newScheduledThreadPool(
                 Utils.DEFAULT_THREAD_COUNT,
                 new NamedThreadFactory(getUri() + "/scheduled"));
-        this.scheduledExecutor = TracingScheduledExecutor.create(this.scheduledExecutorPool, this.otTracer);
+    }
 
-        this.serviceScheduledExecutor = Executors.newScheduledThreadPool(
+    /**
+     * Create a {@link ScheduledExecutorService} that is used for performing user scheduled task via "ServiceHost#schedule()".
+     *
+     * Subclass can override this method to configure the executor
+     * e.g.: set cancellation policy, tracking info, etc
+     *
+     * @return a scheduled executor
+     */
+    protected ScheduledExecutorService constructServiceScheduledExecutor() {
+        return Executors.newScheduledThreadPool(
                 Utils.DEFAULT_THREAD_COUNT / 2,
                 new NamedThreadFactory(getUri() + "/service-scheduled"));
     }
+
 
     /**
      * Retrieve secret for sign/verify JSON(JWT)

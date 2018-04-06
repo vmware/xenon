@@ -36,6 +36,6 @@
      <Match>
        <Bug pattern="NP_NONNULL_PARAM_VIOLATION"/>
        <Class name="com.vmware.xenon.common.ServiceHost"/>
-       <Method name="allocateExecutors"/>
+       <Method name="constructExecutorPool"/>
      </Match>
 </FindBugsFilter>

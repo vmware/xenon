@@ -7,6 +7,10 @@
   it had caused unexpected early closure of lucene index searcher.
   Now, it is fixed and setting `Long.MAX_VALUE` in query task expiration works as expected.
 
+* Make creation of thread executors in `ServiceHost` customizable.
+  This allows applications to modify the thread executors such as changing cancellation
+  policy, adding tracking info, etc.
+
 
 ## 1.6.5
 
