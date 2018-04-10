@@ -387,7 +387,7 @@ public class QueryFilter {
                 break;
             case SHOULD_OCCUR:
                 if (negate) {
-                    createDisjunctiveNormalForm(clause, prefixes, false);
+                    createDisjunctiveNormalForm(clause, prefixes, negate);
                 }
                 shouldClauses++;
                 break;
