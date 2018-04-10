@@ -76,7 +76,8 @@ public class TestQueryFilter {
 
     public enum Color {
         RED,
-        BLUE
+        BLUE,
+        WHITE
     }
 
     final ServiceDocumentDescription description =
@@ -533,6 +534,33 @@ public class TestQueryFilter {
     }
 
     @Test
+    public void evaluateWithEnum2() throws QueryFilterException {
+
+        Query q = Query.Builder.create()
+                .addFieldClause("e1",
+                        QueryTask.QuerySpecification.toMatchValue(Color.RED),
+                        MatchType.TERM,
+                        Occurance.SHOULD_OCCUR)
+                .addFieldClause("e1",
+                        QueryTask.QuerySpecification.toMatchValue(Color.BLUE),
+                        MatchType.TERM,
+                        Occurance.SHOULD_OCCUR)
+                .build();
+        q.setOccurance(Occurance.MUST_NOT_OCCUR);
+        QueryFilter filter = QueryFilter.create(q);
+
+        QueryFilterDocument document = new QueryFilterDocument();
+        document.e1 = Color.RED;
+        assertFalse(filter.evaluate(document, this.description));
+
+        document.e1 = Color.BLUE;
+        assertFalse(filter.evaluate(document, this.description));
+
+        document.e1 = Color.WHITE;
+        assertTrue(filter.evaluate(document, this.description));
+    }
+
+    @Test
     public void evaluateWithURI() throws QueryFilterException {
         QueryFilter filter = QueryFilter.create(Query.Builder.create()
                 .addFieldClause("u1", URI.create("http://www.net.com"))
@@ -820,6 +848,25 @@ public class TestQueryFilter {
         q.addBooleanClause(createTerm("c1", "match", Occurance.MUST_OCCUR));
         q.addBooleanClause(inner);
         return q;
+    }
+
+    private Query createComposedNegationQuery2() {
+        Query inner = new Query();
+        inner.addBooleanClause(createTerm("c2", "match", Occurance.SHOULD_OCCUR));
+        inner.addBooleanClause(createTerm("c3", "match", Occurance.SHOULD_OCCUR));
+        inner.occurance = Occurance.MUST_NOT_OCCUR;
+
+        Query q = new Query();
+        q.addBooleanClause(createTerm("c1", "match", Occurance.MUST_OCCUR));
+        q.addBooleanClause(inner);
+        return q;
+    }
+
+    @Test
+    public void simpleComposedNegation2() {
+        Set<String> dnf = createDisjunctiveNormalForm(createComposedNegationQuery2());
+        assertEquals(1, dnf.size());
+        assertTrue(dnf.contains("c1=match AND NOT(c2=match) AND NOT(c3=match)"));
     }
 
     @Test

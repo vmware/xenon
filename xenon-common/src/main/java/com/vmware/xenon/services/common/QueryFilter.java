@@ -343,7 +343,11 @@ public class QueryFilter {
 
     static List<Conjunction> createDisjunctiveNormalForm(Query q) {
         ArrayList<Conjunction> prefixes = new ArrayList<>();
-        createDisjunctiveNormalForm(q, prefixes, false);
+        boolean negate = false;
+        if (q.occurance != null && Occurance.MUST_NOT_OCCUR.equals(q.occurance)) {
+            negate = true;
+        }
+        createDisjunctiveNormalForm(q, prefixes, negate);
         return prefixes;
     }
 
@@ -387,7 +391,7 @@ public class QueryFilter {
                 break;
             case SHOULD_OCCUR:
                 if (negate) {
-                    createDisjunctiveNormalForm(clause, prefixes, false);
+                    createDisjunctiveNormalForm(clause, prefixes, negate);
                 }
                 shouldClauses++;
                 break;
@@ -599,6 +603,21 @@ public class QueryFilter {
 
                 Object value = ReflectionUtils.getPropertyValue(fd, o);
                 return evaluateTerm(term, value, fd, depth + 1);
+            } else if (pd.typeName == TypeName.ENUM) {
+                if (o == null || !(o instanceof Enum)) {
+                    return term.negate;
+                }
+
+                // ENUM can be used only with TERM (equals check)
+                if (term.negate) {
+                    if (Objects.equals(o.toString(), term.term.matchValue)) {
+                        return false;
+                    }
+                } else {
+                    if (!Objects.equals(o.toString(), term.term.matchValue)) {
+                        return false;
+                    }
+                }
             } else {
                 // Not supported yet...
                 return false;
