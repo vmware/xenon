@@ -822,6 +822,25 @@ public class TestQueryFilter {
         return q;
     }
 
+    private Query createComposedNegationQuery2() {
+        Query inner = new Query();
+        inner.addBooleanClause(createTerm("c2", "match", Occurance.SHOULD_OCCUR));
+        inner.addBooleanClause(createTerm("c3", "match", Occurance.SHOULD_OCCUR));
+        inner.occurance = Occurance.MUST_NOT_OCCUR;
+
+        Query q = new Query();
+        q.addBooleanClause(createTerm("c1", "match", Occurance.MUST_OCCUR));
+        q.addBooleanClause(inner);
+        return q;
+    }
+
+    @Test
+    public void simpleComposedNegation2() {
+        Set<String> dnf = createDisjunctiveNormalForm(createComposedNegationQuery2());
+        assertEquals(1, dnf.size());
+        assertTrue(dnf.contains("c1=match AND NOT(c2=match) AND NOT(c3=match)"));
+    }
+
     @Test
     public void simpleComposedNegation() {
         Set<String> dnf = createDisjunctiveNormalForm(createComposedNegationQuery());
