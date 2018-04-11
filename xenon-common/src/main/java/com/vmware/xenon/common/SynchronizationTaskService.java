@@ -331,7 +331,9 @@ public class SynchronizationTaskService
         task.queryResultLimit = body.queryResultLimit;
         if (startStateMachine) {
             task.taskInfo.stage = TaskState.TaskStage.STARTED;
-            if (this.parent != null && this.parent.hasChildOption(ServiceOption.PERSISTENCE) && this.isCheckpointEnabled) {
+            // Periodically maintained services are expected to be in memory regardless of checkpoint
+            if (this.parent != null && this.parent.hasChildOption(ServiceOption.PERSISTENCE) &&
+                    !this.parent.hasChildOption(ServiceOption.PERIODIC_MAINTENANCE) && this.isCheckpointEnabled) {
                 task.subStage = SubStage.GET_CHECKPOINTS;
             } else {
                 task.subStage = SubStage.QUERY;
@@ -954,7 +956,7 @@ public class SynchronizationTaskService
                     }
 
                     if (this.parent != null && this.parent.hasChildOption(ServiceOption.PERSISTENCE)
-                            && this.isCheckpointEnabled) {
+                            && !this.parent.hasChildOption(ServiceOption.PERIODIC_MAINTENANCE) && this.isCheckpointEnabled) {
                         CheckpointService.CheckpointState s = new CheckpointService.CheckpointState();
                         s.timestamp = task.startTimeMicros;
                         s.factoryLink = this.parent.getSelfLink();
