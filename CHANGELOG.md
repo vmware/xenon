@@ -2,6 +2,12 @@
 
 ## 1.7.0-SNAPSHOT
 
+* Disable checkpoint based synchronization for periodically
+maintained service
+  Periodically maintained services are expected to be populated
+  into memory so that it could be maintained in period.
+  Thus, Synchronization is a must regardless of checkpoint
+
 * Disable stack-trace from failed responses by default and making it opt-in option.
   Users can now set 'xenon.ServiceErrorResponse.disableStackTraceCollection'
   to 'false' to get stack traces in response to failed requests. This options
