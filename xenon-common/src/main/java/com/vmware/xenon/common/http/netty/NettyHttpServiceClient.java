@@ -25,6 +25,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.BiConsumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.net.ssl.SSLContext;
@@ -32,6 +33,7 @@ import javax.net.ssl.SSLException;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import io.netty.channel.Channel;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpHeaders;
@@ -73,6 +75,11 @@ public class NettyHttpServiceClient implements ServiceClient {
      * the process file descriptor limit
      */
     public static final int DEFAULT_CONNECTIONS_PER_HOST = ServiceClient.DEFAULT_CONNECTION_LIMIT_PER_HOST;
+
+    public static final String CHANNELPOOL_NAME_DEFAULT = "channelpool-default";
+    public static final String CHANNELPOOL_NAME_HTTP2 = "channelpool-http2";
+    public static final String CHANNELPOOL_NAME_SSL_DEFAULT = "channelpool-ssl-default";
+    public static final String CHANNELPOOL_NAME_SSL_HTTP2 = "channelpool-ssl-http2";
 
     public static final Logger LOGGER = Logger.getLogger(ServiceClient.class
             .getName());
@@ -125,6 +132,8 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     private boolean warnHttp2DisablingConnectionSharing = false;
 
+    private BiConsumer<NettyChannelPool, Channel> onChannelInitialization;
+
     private final Object startSync = new Object();
 
     public static ServiceClient create(String userAgent,
@@ -142,10 +151,10 @@ public class NettyHttpServiceClient implements ServiceClient {
         sc.scheduledExecutor = scheduledExecutor;
         sc.executor = executor;
         sc.host = host;
-        sc.channelPool = new NettyChannelPool();
-        sc.http2ChannelPool = new NettyChannelPool();
-        sc.sslChannelPool = new NettyChannelPool();
-        sc.http2SslChannelPool = new NettyChannelPool();
+        sc.channelPool = new NettyChannelPool(CHANNELPOOL_NAME_DEFAULT);
+        sc.http2ChannelPool = new NettyChannelPool(CHANNELPOOL_NAME_HTTP2);
+        sc.sslChannelPool = new NettyChannelPool(CHANNELPOOL_NAME_SSL_DEFAULT);
+        sc.http2SslChannelPool = new NettyChannelPool(CHANNELPOOL_NAME_SSL_HTTP2);
         String proxy = System.getenv(ENV_VAR_NAME_HTTP_PROXY);
         if (proxy != null) {
             sc.setHttpProxy(new URI(proxy));
@@ -195,6 +204,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         this.channelPool.setThreadTag(buildThreadTag());
         this.channelPool.setThreadCount(Utils.DEFAULT_IO_THREAD_COUNT);
         this.channelPool.setExecutor(this.executor);
+        this.channelPool.setOnChannelInitialization(this.onChannelInitialization);
         this.channelPool.start();
 
         // We make a separate pool for HTTP/2. We want to have only one connection per host
@@ -203,6 +213,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         this.http2ChannelPool.setThreadCount(Utils.DEFAULT_IO_THREAD_COUNT);
         this.http2ChannelPool.setExecutor(this.executor);
         this.http2ChannelPool.setHttp2Only();
+        this.http2ChannelPool.setOnChannelInitialization(this.onChannelInitialization);
         this.http2ChannelPool.start();
 
         if (this.sslContext != null) {
@@ -210,6 +221,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             this.sslChannelPool.setThreadCount(Utils.DEFAULT_IO_THREAD_COUNT);
             this.sslChannelPool.setExecutor(this.executor);
             this.sslChannelPool.setSSLContext(this.sslContext);
+            this.sslChannelPool.setOnChannelInitialization(this.onChannelInitialization);
             this.sslChannelPool.start();
         }
 
@@ -219,6 +231,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             this.http2SslChannelPool.setExecutor(this.executor);
             this.http2SslChannelPool.setHttp2Only();
             this.http2SslChannelPool.setHttp2SslContext(this.http2SslContext);
+            this.http2SslChannelPool.setOnChannelInitialization(this.onChannelInitialization);
             this.http2SslChannelPool.start();
         }
 
@@ -1081,5 +1094,13 @@ public class NettyHttpServiceClient implements ServiceClient {
         }
 
         return this;
+    }
+
+    /**
+     * Set callback that can configure netty channel/pipeline at channel initialization
+     * @param onChannelInitialization callback
+     */
+    public void setOnChannelInitialization(BiConsumer<NettyChannelPool, Channel> onChannelInitialization) {
+        this.onChannelInitialization = onChannelInitialization;
     }
 }

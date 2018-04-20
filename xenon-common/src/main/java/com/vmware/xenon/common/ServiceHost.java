@@ -1676,6 +1676,9 @@ public class ServiceHost implements ServiceRequestSender {
             this.client.setRequestPayloadSizeLimit(this.state.requestPayloadSizeLimit);
         }
 
+        // allow subclass to configure/replace service client
+        this.client = configureServiceClient(this.client);
+
         this.client.start();
 
         // restore authorization context
@@ -1687,6 +1690,13 @@ public class ServiceHost implements ServiceRequestSender {
         log(Level.INFO, "%s listening on %s", userAgent, getUri());
 
         return this;
+    }
+
+    /**
+     * Subclass can override this method to configure/replace the service client.
+     */
+    protected ServiceClient configureServiceClient(ServiceClient serviceClient) {
+        return serviceClient;
     }
 
     /**

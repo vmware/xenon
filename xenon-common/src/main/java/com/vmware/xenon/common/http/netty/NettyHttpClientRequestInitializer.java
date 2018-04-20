@@ -13,9 +13,11 @@
 
 package com.vmware.xenon.common.http.netty;
 
+import java.util.function.BiConsumer;
 import java.util.logging.Level;
 import javax.net.ssl.SSLEngine;
 
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelInitializer;
@@ -116,14 +118,17 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
     private boolean isHttp2Only = false;
     private boolean debugLogging = false;
     private int requestPayloadSizeLimit;
+    private BiConsumer<NettyChannelPool, Channel> onInitChannelConsumer;
 
     public NettyHttpClientRequestInitializer(
             NettyChannelPool nettyChannelPool,
             boolean isHttp2Only,
-            int requestPayloadSizeLimit) {
+            int requestPayloadSizeLimit,
+            BiConsumer<NettyChannelPool, Channel> onInitChannelConsumer) {
         this.pool = nettyChannelPool;
         this.isHttp2Only = isHttp2Only;
         this.requestPayloadSizeLimit = requestPayloadSizeLimit;
+        this.onInitChannelConsumer = onInitChannelConsumer;
         NettyLoggingUtil.setupNettyLogging();
     }
 
@@ -194,6 +199,11 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
                     new HttpObjectAggregator(this.requestPayloadSizeLimit));
         }
         p.addLast(XENON_HANDLER, new NettyHttpServerResponseHandler(this.pool));
+
+        // allow user callback to modify the channel/pipeline
+        if (this.onInitChannelConsumer != null) {
+            this.onInitChannelConsumer.accept(this.pool, ch);
+        }
     }
 
     public void initializeHttp2Pipeline(ChannelPipeline p, ChannelPromise settingsPromise) {

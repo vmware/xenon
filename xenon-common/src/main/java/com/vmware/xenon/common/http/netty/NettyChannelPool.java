@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
+import java.util.function.BiConsumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.net.ssl.SSLContext;
@@ -177,7 +178,13 @@ public class NettyChannelPool {
 
     private int pendingRequestQueueLimit;
 
-    public NettyChannelPool() {
+    // callback at netty channel initialization
+    private BiConsumer<NettyChannelPool, Channel> onChannelInitialization;
+
+    private String name;
+
+    public NettyChannelPool(String name) {
+        this.name = name;
     }
 
     public NettyChannelPool setThreadTag(String tag) {
@@ -226,7 +233,7 @@ public class NettyChannelPool {
         this.bootStrap.group(this.eventGroup)
                 .channel(NioSocketChannel.class)
                 .handler(new NettyHttpClientRequestInitializer(this, this.isHttp2Only,
-                        this.requestPayloadSizeLimit));
+                        this.requestPayloadSizeLimit, this.onChannelInitialization));
     }
 
     public boolean isStarted() {
@@ -852,5 +859,13 @@ public class NettyChannelPool {
 
     public SSLContext getSSLContext() {
         return this.sslContext;
+    }
+
+    public void setOnChannelInitialization(BiConsumer<NettyChannelPool, Channel> onChannelInitialization) {
+        this.onChannelInitialization = onChannelInitialization;
+    }
+
+    public String getName() {
+        return this.name;
     }
 }
