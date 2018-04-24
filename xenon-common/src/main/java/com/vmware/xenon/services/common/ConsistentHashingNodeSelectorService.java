@@ -637,10 +637,6 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return false;
         }
 
-        if (!this.isSynchronizationRequired && !this.isSetFactoriesAvailabilityRequired) {
-            return false;
-        }
-
         if (!NodeGroupUtils.isMembershipSettled(getHost(), getHost().getMaintenanceIntervalMicros(),
                 this.cachedGroupState)) {
             checkConvergence(membershipUpdateMicros, maintOp);
