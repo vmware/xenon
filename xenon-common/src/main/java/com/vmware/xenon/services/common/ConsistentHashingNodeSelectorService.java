@@ -645,10 +645,6 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return false;
         }
 
-        if (!this.isSynchronizationRequired && !this.isSetFactoriesAvailabilityRequired) {
-            return false;
-        }
-
         if (!NodeGroupUtils.isMembershipSettled(getHost(), getHost().getMaintenanceIntervalMicros(),
                 this.cachedGroupState)) {
             checkConvergence(membershipUpdateMicros, maintOp);
@@ -660,15 +656,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return true;
         }
 
-        if (!getHost().isPeerSynchronizationEnabled()) {
-            // when synchronization is disabled, just schedule nodeGroupChangeMaintenance.
-            logInfo("Scheduling nodeGroupChangeMaintenance");
-            this.isSynchronizationRequired = false;
-            getHost().scheduleNodeGroupChangeMaintenance(getSelfLink());
-            return false;
-        }
-
-        if (this.isSynchronizationRequired) {
+        if (this.isSynchronizationRequired && getHost().isPeerSynchronizationEnabled()) {
             this.isSynchronizationRequired = false;
             logInfo("Scheduling synchronization (%d nodes)", this.cachedGroupState.nodes.size());
             adjustStat(STAT_NAME_SYNCHRONIZATION_COUNT, 1);
