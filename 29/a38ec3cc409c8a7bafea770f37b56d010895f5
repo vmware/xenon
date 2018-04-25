@@ -1,0 +1,8 @@
+Verified+1: Gerrit-Jenkins
+Code-Review+2: Li Yu US1079729 <lyu1@vmware.com>
+Code-Review+2: Tadaya Tsuyukubo <ttsuyukubo@vmware.com>
+Submitted-by: Tadaya Tsuyukubo <ttsuyukubo@vmware.com>
+Submitted-at: Wed, 25 Apr 2018 13:12:20 -0700
+Reviewed-on: https://review.ec.eng.vmware.com/23690
+Project: xenon
+Branch: refs/heads/v1.6.x
