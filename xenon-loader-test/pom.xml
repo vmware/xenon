@@ -5,7 +5,7 @@
   <parent>
     <groupId>com.vmware.xenon</groupId>
     <artifactId>xenon-parent</artifactId>
-    <version>1.6.8</version>
+    <version>1.6.9-SNAPSHOT</version>
   </parent>
 
   <artifactId>xenon-loader-test</artifactId>
