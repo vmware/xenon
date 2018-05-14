@@ -79,6 +79,8 @@ public class ExampleServiceHost extends ServiceHost {
 
         setAuthorizationContext(this.getSystemAuthorizationContext());
 
+        this.setPeerSynchronizationEnabled(false);
+
         // Start the example service factory
         super.startFactory(ExampleService.class, ExampleService::createFactory);
 

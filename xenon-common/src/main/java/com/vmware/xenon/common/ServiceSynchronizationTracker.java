@@ -292,9 +292,9 @@ class ServiceSynchronizationTracker {
                                 return;
                             }
 
+                            op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE);
                             if (!oo.hasBody()) {
                                 // the index will return success, but no body if service is not found
-                                op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE);
                                 Operation.failServiceNotFound(op);
                                 return;
                             }

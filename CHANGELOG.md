@@ -4,6 +4,10 @@
 
 * Update `NettyHttpServiceClient` for more callback
 
+* When synchronization is disabled, fix service-existence-check logic in `ServiceSynchronizationTracker` not to
+  store service state in `INDEXING_INITIAL_STATE` of `ServiceHost` by always adding `NO_INDEX_UPDATE` pragma
+  in case target service is not in memory but exists in persistence.
+
 
 ## 1.6.8
 
