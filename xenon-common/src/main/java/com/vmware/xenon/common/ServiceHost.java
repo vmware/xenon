@@ -5121,11 +5121,18 @@ public class ServiceHost implements ServiceRequestSender {
                         unmarkAsPendingDelete(s);
                     }
                     if (e != null) {
-                        if (previousState != null) {
-                            this.serviceResourceTracker.resetCachedServiceState(s, previousState, op);
-                        } else {
+
+                        if (isRemotePersistence()) {
+                            // always clear cache for remote document-index-service
                             this.serviceResourceTracker.clearCachedServiceState(s, op);
+                        } else {
+                            if (previousState != null) {
+                                this.serviceResourceTracker.resetCachedServiceState(s, previousState, op);
+                            } else {
+                                this.serviceResourceTracker.clearCachedServiceState(s, op);
+                            }
                         }
+
                         op.fail(e);
                         return;
                     }
@@ -5906,4 +5913,12 @@ public class ServiceHost implements ServiceRequestSender {
     protected void setAuthorizationFilter(AuthorizationFilter authorizationFilter) {
         this.authorizationFilter = authorizationFilter;
     }
+
+    /**
+     * Returns true when Non {@link LuceneDocumentIndexService} is specified as the documentIndexService.
+     */
+    public boolean isRemotePersistence() {
+        return this.documentIndexService != null && !(this.documentIndexService instanceof LuceneDocumentIndexService);
+    }
+
 }

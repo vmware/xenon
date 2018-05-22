@@ -1307,6 +1307,11 @@ public class StatefulService implements Service {
                 if (hasOption(ServiceOption.OWNER_SELECTION)) {
                     linkedState.documentEpoch = this.context.epoch;
                 }
+
+                if (getHost().isRemotePersistence()) {
+                    this.context.version = linkedState.documentVersion;
+                }
+
             }
 
             // state has already been linked with the operation

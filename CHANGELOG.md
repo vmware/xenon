@@ -2,6 +2,9 @@
 
 ## 1.6.10-SNAPSHOT
 
+* Add `ServiceHost#isRemotePersistence()` method.
+  This method returns `true` when document-index-service is other than `LuceneDocumentIndexService`.
+  This is mainly for xenon-rdbms work to differentiate behavior when non lucene based document store is used.
 
 
 ## 1.6.9
