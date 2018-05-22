@@ -81,6 +81,15 @@ public class StatefulService implements Service {
             false
     );
 
+    /**
+     * When enabled, always override this.context.version from linked document version
+     */
+    public static boolean ALWAYS_USE_LINKED_DOCUMENT_VERSION = XenonConfiguration.bool(
+            StatefulService.class,
+            "alwaysUseLinkedDocumentVersion",
+            false
+    );
+
     private final RuntimeContext context = new RuntimeContext();
 
     public StatefulService(Class<? extends ServiceDocument> stateType) {
@@ -1307,6 +1316,11 @@ public class StatefulService implements Service {
                 if (hasOption(ServiceOption.OWNER_SELECTION)) {
                     linkedState.documentEpoch = this.context.epoch;
                 }
+
+                if (ALWAYS_USE_LINKED_DOCUMENT_VERSION) {
+                    this.context.version = linkedState.documentVersion;
+                }
+
             }
 
             // state has already been linked with the operation

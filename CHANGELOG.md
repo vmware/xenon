@@ -2,6 +2,8 @@
 
 ## 1.6.10-SNAPSHOT
 
+* Add `xenon.StatefulService.alwaysUseLinkedDocumentVersion` boolean parameter.
+  When this flag is enabled, override `this.context.version` from linked state document version.
 
 
 ## 1.6.9
