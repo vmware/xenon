@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## 1.6.10-SNAPSHOT
+## 1.6.10
 
 * Add `ServiceHost#isRemotePersistence()` method.
   This option differentiate behavior for
