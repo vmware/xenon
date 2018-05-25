@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.logging.Level;
+
 import javax.net.ssl.SSLSession;
 
 import io.netty.buffer.ByteBuf;
@@ -615,10 +616,13 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
             if (!avoidLogging) {
                 double totalTimeMillis = (System.nanoTime() - startTime) / 1000000;
-                this.host.log(Level.INFO, "%s %s %s %s %d %d %.2fms",
+                this.host.log(Level.INFO, "%s %s %s %s %d %d %.2fms %s",
                         ctx.channel().remoteAddress(), request.getAction(), originalPath,
                         streamId != null ? "HTTP/2" : "HTTP/1.1", request.getStatusCode(),
-                        request.getContentLength(), totalTimeMillis);
+                        request.getContentLength(), totalTimeMillis,
+                        request.getRequestHeader(Operation.REQUEST_ID_HEADER) != null
+                                ? request.getRequestHeader(Operation.REQUEST_ID_HEADER)
+                                : "");
             }
         }
 
