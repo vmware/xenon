@@ -29,6 +29,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.function.Consumer;
+
 import javax.security.cert.X509Certificate;
 
 import com.vmware.xenon.common.Service.Action;
@@ -498,6 +499,9 @@ public class Operation implements Cloneable {
             + "tx-phase";
     public static final String TRANSACTION_ID_HEADER = HEADER_NAME_PREFIX + "tx-id";
     public static final String TRANSACTION_REFLINK_HEADER = HEADER_NAME_PREFIX + "tx-reflink";
+
+    // currently, only for logging purpose
+    public static final String REQUEST_ACCESS_INFO_HEADER = HEADER_NAME_PREFIX + "access-info";
 
     /**
      * Infrastructure use only. Set when a service is first created due to a client request. Since

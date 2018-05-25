@@ -11,6 +11,9 @@
   When this flag is set `true` (default is `false`), it will use the same size in synchronization query result limit
   for retry. (default behavior reduces the size by half at every retry attempt)
 
+* Add `xenon.NettyHttpClientRequestHandler.includeAccessInfoInRequestLog` flag.
+  When this parameter is set to true, the request log entry will contain `x-xenon-access-info` header value.
+
 
 ## 1.6.9
 
