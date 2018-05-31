@@ -2355,12 +2355,24 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     /**
-     * Subscribe to the service specified in the subscribe operation URI
+     * For backward compatibility.
+     * Register a scheduled task to delete the subscription.
      */
     public URI startSubscriptionService(
             Operation subscribe,
             Consumer<Operation> notificationConsumer,
             ServiceSubscriber request) {
+        return startSubscriptionService(subscribe, notificationConsumer, request, true);
+    }
+
+    /**
+     * Subscribe to the service specified in the subscribe operation URI
+     */
+    public URI startSubscriptionService(
+            Operation subscribe,
+            Consumer<Operation> notificationConsumer,
+            ServiceSubscriber request,
+            boolean scheduleDelete) {
         if (subscribe == null) {
             throw new IllegalArgumentException("subscribe operation is required");
         }
@@ -2396,7 +2408,18 @@ public class ServiceHost implements ServiceRequestSender {
             }
         };
 
-        return startSubscriptionService(subscribe, notificationTarget, request);
+        return startSubscriptionService(subscribe, notificationTarget, request, scheduleDelete);
+    }
+
+    /**
+     * For backward compatibility.
+     * Register a scheduled task to delete the subscription.
+     */
+    public URI startSubscriptionService(
+            Operation subscribe,
+            Service notificationTarget,
+            ServiceSubscriber request) {
+        return startSubscriptionService(subscribe, notificationTarget, request, true);
     }
 
     /**
@@ -2406,7 +2429,8 @@ public class ServiceHost implements ServiceRequestSender {
     public URI startSubscriptionService(
             Operation subscribe,
             Service notificationTarget,
-            ServiceSubscriber request) {
+            ServiceSubscriber request,
+            boolean scheduleDelete) {
 
         if (subscribe == null) {
             throw new IllegalArgumentException("subscribe operation is required");
@@ -2462,11 +2486,13 @@ public class ServiceHost implements ServiceRequestSender {
                 return null;
             }
 
-            scheduleCore(() -> {
-                sendRequest(Operation.createDelete(
-                        UriUtils.buildUri(this, notificationTarget.getSelfLink()))
-                        .transferRefererFrom(subscribe));
-            }, delta, TimeUnit.MICROSECONDS);
+            if (scheduleDelete) {
+                scheduleCore(() -> {
+                    sendRequest(Operation.createDelete(
+                            UriUtils.buildUri(this, notificationTarget.getSelfLink()))
+                            .transferRefererFrom(subscribe));
+                }, delta, TimeUnit.MICROSECONDS);
+            }
         }
 
         if (request.reference == null) {

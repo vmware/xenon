@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 1.6.11-SNAPSHOT
+
+* Fix ever growing scheduled executor queue size
+  When checkpoint is enabled or `TaskFactoryService` is used, the queue size of `scheduledExecutor`
+  has kept growing. This was due to the creation of subscription in `TaskFactoryService`.
+  It is now fixed not to accumulate the `scheduledExecutor` queue.
+
+
 ## 1.6.10
 
 * Add `ServiceHost#isRemotePersistence()` method.

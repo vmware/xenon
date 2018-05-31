@@ -187,12 +187,14 @@ public class TaskFactoryService extends FactoryService {
 
         // Only if this is an owner-selected service, we create a reliable subscription.
         // Otherwise for non-replicated services, we just create a normal subscription.
+        // Since subscription logic explicitly stop/delete the subscription, do not register
+        // a scheduled task to delete the subscription("scheduleDelete"==false).
         if (this.hasChildOption(ServiceOption.OWNER_SELECTION)) {
             ReliableSubscriptionService notificationTarget = ReliableSubscriptionService.create(
                     subscribe, sr, notifyC);
-            getHost().startSubscriptionService(subscribe, notificationTarget, sr);
+            getHost().startSubscriptionService(subscribe, notificationTarget, sr, false);
         } else {
-            getHost().startSubscriptionService(subscribe, notifyC, sr);
+            getHost().startSubscriptionService(subscribe, notifyC, sr, false);
         }
     }
 
