@@ -7,6 +7,9 @@
   has kept growing. This was due to the creation of subscription in `TaskFactoryService`.
   It is now fixed not to accumulate the `scheduledExecutor` queue.
 
+* For broadcast query with `OWNER_SELECTION` option, when one or more node reply with failure, fail
+  the broadcast query request.
+
 
 ## 1.6.10
 
