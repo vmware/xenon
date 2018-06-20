@@ -532,7 +532,7 @@ public class NettyChannelPool {
         if (badContext == null) {
             return;
         }
-        Logger.getAnonymousLogger().info(
+        Logger.getAnonymousLogger().fine(
                 "replacing channel in bad state: " + badContext.toString());
         returnOrClose(badContext, true);
     }
