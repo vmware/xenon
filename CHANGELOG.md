@@ -10,6 +10,8 @@
   This feature is enabled when authorization is enabled and cleanup task interval is set (default=30min).
   `--expiredTokenCleanupIntervalSeconds` program argument is added to control the cleanup interval. 
   When 0 is set, this feature is disabled. 
+  
+* Change netty bad context clean up log level to 'fine' from 'info'
 
 
 ## 1.6.11
