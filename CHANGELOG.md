@@ -58,6 +58,8 @@ maintained service
   This permits detection of invalid configurations without breaking deployment
   pipelines or developer test scenarios.
 
+* Change netty bad context clean up log level to 'fine' from 'info'
+
 
 ## 1.6.3.3
 
