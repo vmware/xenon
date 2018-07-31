@@ -712,6 +712,7 @@ public abstract class FactoryService extends StatelessService {
             countTask.querySpec = new QueryTask.QuerySpecification();
             countTask.querySpec.options.add(QueryOption.COUNT);
             countTask.querySpec.query = task.querySpec.query;
+            countTask.tenantLinks = task.tenantLinks;
             if (hasOption(ServiceOption.IMMUTABLE)) {
                 countTask.querySpec.options.add(QueryOption.INCLUDE_ALL_VERSIONS);
             }
