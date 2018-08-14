@@ -2119,4 +2119,5 @@ public class Operation implements Cloneable {
     void linkSerializedState(byte[] data) {
         this.linkedSerializedState = data;
     }
+
 }

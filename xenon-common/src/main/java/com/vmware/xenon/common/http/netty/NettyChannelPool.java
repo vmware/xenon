@@ -184,6 +184,10 @@ public class NettyChannelPool {
     // callback at netty bootstrap initialization
     private BiConsumer<NettyChannelPool, Bootstrap> onBootstrapInitialization;
 
+    // callback at netty channel close
+    private BiConsumer<NettyChannelContext, Throwable> onChannelClosed = (context, cause) -> {
+    };
+
     private String name;
 
     public NettyChannelPool(String name) {
@@ -352,6 +356,7 @@ public class NettyChannelPool {
             connectFuture.addListener((ChannelFutureListener) future -> {
                 if (future.isSuccess()) {
                     Channel channel = future.channel();
+
                     if (this.isHttp2Only) {
                         // We tell the channel what its channel context is, so we can use it
                         // later to manage the mapping between streams and operations
@@ -359,6 +364,26 @@ public class NettyChannelPool {
 
                         // We also note that this is an HTTP2 channel--it simplifies some other code
                         channel.attr(NettyChannelContext.HTTP2_KEY).set(true);
+
+                        // set socket context to this request before the close listener since
+                        // the netty service client callback checks the socket context to search
+                        // ops to fail.
+                        request.setSocketContext(context);
+
+                        // Add callback when channel gets closed
+                        channel.closeFuture().addListener(closeFuture -> {
+
+                            returnOrClose(context, true);
+
+                            // Netty client uses this consumer to fail the operations that have been
+                            // actively using the closed channel
+                            Throwable cause = closeFuture.cause();
+                            if (cause == null) {
+                                cause = new IllegalStateException("Channel closed. " + channel);
+                            }
+                            this.onChannelClosed.accept(context, cause);
+                        });
+
                         waitForSettings(channel, context, request, group);
                     } else {
                         context.setOpenInProgress(false);
@@ -880,4 +905,9 @@ public class NettyChannelPool {
     public String getName() {
         return this.name;
     }
+
+    public void setOnChannelClosed(BiConsumer<NettyChannelContext, Throwable> onChannelClosed) {
+        this.onChannelClosed = onChannelClosed;
+    }
+
 }

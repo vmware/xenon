@@ -3,9 +3,18 @@
 ## 1.6.14-SNAPSHOT
 
 * When node is NOT started, return 503 instead of 404.
+
 * Propagates tenantLinks field in QueryTask for total count for OData calls.
   The QueryTask that counts the total count of results for OData queries has it tenantLinks field set
   to the tenant links passed in the original OData request.
+
+* Cleanup netty resources when channel is closed
+  We observed an issue that node becomes unavailable(not making requests to external hosts).
+  For http2, when network is flaky, netty related resources were not properly cleaned up and made subsequent
+  requests queued up and eventually timed out.
+  It is now fixed to properly clean up netty resources when it detects connection close.
+  The operations using the closed channel will fail for http2 after default 2 second.
+  The delay can be configured by `xenon.NettyHttpServiceClient.waitSecondsToFailOpsOnClosedConnection".
 
 
 ## 1.6.13
