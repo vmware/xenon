@@ -65,6 +65,7 @@ import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.common.http.netty.NettyChannelPool.NettyChannelGroupKey;
 
 /**
@@ -109,6 +110,12 @@ public class NettyHttpServiceClient implements ServiceClient {
             Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM);
 
     private static final int MEDIA_TYPE_APPLICATION_PREFIX_LENGTH = 12;
+
+    private static final long waitSecondsToFailOpsOnClosedConnection = XenonConfiguration.number(
+            NettyHttpServiceClient.class,
+            "waitSecondsToFailOpsOnClosedConnection",
+            2
+    );
 
     private URI httpProxy;
     private AsciiString userAgentAscii;
@@ -209,6 +216,34 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
         }
 
+        // callback for netty channel close on http2.
+        BiConsumer<NettyChannelContext, Throwable> onNettyChannelCloseForHttp2 = (context, cause) -> {
+            // Inspect pending operations(including the one running) and fail the ones that have
+            // actively used the channel.
+            // This logic fails the operation that was actively using the channel at the time of
+            // channel close.
+            // Since this may cause timing issue for performing operation completion vs failing via
+            // connection close, delay the logic here a bit to minimize the race condition.
+            Runnable onChannelClose = () -> {
+                this.pendingRequests
+                        .values()
+                        .stream()
+                        .filter(op -> context.equals(op.getSocketContext()))
+                        .forEach(op -> {
+                            op.setSocketContext(null);
+                            op.fail(cause, Operation.STATUS_CODE_BAD_REQUEST);
+                        });
+            };
+
+            if (waitSecondsToFailOpsOnClosedConnection < 0) {
+                // do not schedule, immediately execute on this thread
+                onChannelClose.run();
+            } else {
+                this.host.scheduleCore(onChannelClose, waitSecondsToFailOpsOnClosedConnection, TimeUnit.SECONDS);
+            }
+
+        };
+
         this.channelPool.setThreadTag(buildThreadTag());
         this.channelPool.setThreadCount(Utils.DEFAULT_IO_THREAD_COUNT);
         this.channelPool.setExecutor(this.executor);
@@ -224,6 +259,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         this.http2ChannelPool.setHttp2Only();
         this.http2ChannelPool.setOnChannelInitialization(this.onChannelInitialization);
         this.http2ChannelPool.setOnBootstrapInitialization(this.onBootstrapInitialization);
+        this.http2ChannelPool.setOnChannelClosed(onNettyChannelCloseForHttp2);
         this.http2ChannelPool.start();
 
         if (this.sslContext != null) {
@@ -244,6 +280,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             this.http2SslChannelPool.setHttp2SslContext(this.http2SslContext);
             this.http2SslChannelPool.setOnChannelInitialization(this.onChannelInitialization);
             this.http2SslChannelPool.setOnBootstrapInitialization(this.onBootstrapInitialization);
+            this.http2SslChannelPool.setOnChannelClosed(onNettyChannelCloseForHttp2);
             this.http2SslChannelPool.start();
         }
 
