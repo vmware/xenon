@@ -728,6 +728,7 @@ public class Operation implements Cloneable {
     private InstrumentationContext instrumentationCtx;
     private short retryCount;
     private short retriesRemaining;
+    private boolean isCompleting;
 
     private EnumSet<OperationOption> options = EnumSet.of(OperationOption.KEEP_ALIVE);
 
@@ -1326,6 +1327,7 @@ public class Operation implements Cloneable {
     }
 
     public void complete() {
+        this.isCompleting = true;
         completeOrFail(null);
     }
 
@@ -2118,5 +2120,9 @@ public class Operation implements Cloneable {
      */
     void linkSerializedState(byte[] data) {
         this.linkedSerializedState = data;
+    }
+
+    public boolean isCompleting() {
+        return this.isCompleting;
     }
 }
