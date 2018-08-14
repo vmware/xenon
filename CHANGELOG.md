@@ -3,9 +3,12 @@
 ## 1.6.14-SNAPSHOT
 
 * When node is NOT started, return 503 instead of 404.
+
 * Propagates tenantLinks field in QueryTask for total count for OData calls.
   The QueryTask that counts the total count of results for OData queries has it tenantLinks field set
   to the tenant links passed in the original OData request.
+
+* TODO: documentation
 
 
 ## 1.6.13

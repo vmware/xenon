@@ -359,6 +359,20 @@ public class NettyChannelPool {
 
                         // We also note that this is an HTTP2 channel--it simplifies some other code
                         channel.attr(NettyChannelContext.HTTP2_KEY).set(true);
+
+                        // Associate the request to the channel
+                        context.setChannel(channel).setOperation(request);
+
+                        // Add callback when channel gets closed
+                        channel.closeFuture().addListener(closeFuture -> {
+                            returnOrClose(context, true);
+                            Operation op = context.getOperation();
+                            if (op != null) {
+                                op.setSocketContext(null);
+                                fail(op, closeFuture.cause());
+                            }
+                        });
+
                         waitForSettings(channel, context, request, group);
                     } else {
                         context.setOpenInProgress(false);
