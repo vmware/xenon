@@ -86,6 +86,7 @@ public class TestServiceHostManagementService extends BasicTestCase {
     }
 
     @Test
+
     public void getStateAndDelete() throws Throwable {
         URI u = UriUtils
                 .buildUri(this.host, ServiceHostManagementService.class);
@@ -720,7 +721,7 @@ public class TestServiceHostManagementService extends BasicTestCase {
         assertEquals(Operation.STATUS_CODE_NOT_FOUND, response.op.getStatusCode());
 
         // Query the Log Service to see if the request shows up in the set of logs.
-        assertEquals(0, findLogLine(newHost, "unknown-self-link"));
+        assertEquals(1, findLogLine(newHost, "unknown-self-link"));
 
         // Enable request logging
         setRequestLogging(newHost, true);
@@ -733,8 +734,10 @@ public class TestServiceHostManagementService extends BasicTestCase {
         }
 
         // Verify that the log service shows requests logged for the self-link
+        // checkResponseForError will also log it for each failure plus the previous failure
+        final int expectedLogCount = (requestCount * 2) + 1;
         this.host.waitFor("Log messages failed to be printed",
-                () -> requestCount == findLogLine(newHost, "unknown-self-link"));
+                () -> expectedLogCount == findLogLine(newHost, "unknown-self-link"));
 
         // Disable request logging
         setRequestLogging(newHost, false);
@@ -744,7 +747,9 @@ public class TestServiceHostManagementService extends BasicTestCase {
         assertEquals(Operation.STATUS_CODE_NOT_FOUND, response.op.getStatusCode());
 
         // assert that the log-line count stays the same
-        assertEquals(requestCount, findLogLine(newHost, "unknown-self-link"));
+        // checkResponseForError will also log it one more time
+        int finalLogCount = expectedLogCount + 1;
+        assertEquals(finalLogCount, findLogLine(newHost, "unknown-self-link"));
     }
 
     private void setRequestLogging(VerificationHost newHost, boolean enabled) {
