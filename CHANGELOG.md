@@ -58,6 +58,9 @@ maintained service
   This permits detection of invalid configurations without breaking deployment
   pipelines or developer test scenarios.
 
+* Netty response handler will not prefix generic error message when operation
+  has error response body.
+
 
 ## 1.6.3.3
 

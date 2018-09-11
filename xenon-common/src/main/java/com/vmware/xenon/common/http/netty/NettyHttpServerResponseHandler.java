@@ -29,6 +29,7 @@ import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http2.HttpConversionUtil;
+import io.netty.util.internal.StringUtil;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServerSentEvent;
@@ -270,8 +271,9 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
             try {
                 Object originalBody = op.getBodyRaw();
                 ServiceErrorResponse rsp = op.getErrorResponseBody();
-                if (rsp != null) {
-                    errorMsg += " message " + rsp.message;
+                if (rsp != null && !StringUtil.isNullOrEmpty(rsp.message)) {
+                    this.logger.severe(errorMsg + " message " + rsp.message);
+                    errorMsg = rsp.message;
                 }
                 op.setBodyNoCloning(originalBody);
             } catch (Exception e) {
