@@ -20,6 +20,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import static com.vmware.xenon.common.Operation.PRAGMA_DIRECTIVE_NO_FORWARDING;
+import static com.vmware.xenon.common.Operation.STATUS_CODE_NOT_FOUND;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -31,12 +32,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Level;
 
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
 
@@ -310,6 +314,7 @@ public class TestStatefulService extends BasicReusableHostTestCase {
 
     @After
     public void tearDown() {
+        System.err.println("@@@ tearDown\n");
         this.host.tearDownInProcessPeers();
     }
 
@@ -868,6 +873,71 @@ public class TestStatefulService extends BasicReusableHostTestCase {
         IdempotentPostService.State result = sender.sendAndWait(post, IdempotentPostService.State.class);
         assertNotNull(result);
         assertEquals("testDocument", result.name);
+    }
+
+    @Test
+    public void testXXX() throws Throwable {
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+        for (int i = 0; i < 10000; i++) {
+            ExampleServiceState doc = new ExampleServiceState();
+            doc.name = "testDocument";
+
+            Operation post = Operation.createPost(host, ExampleService.FACTORY_LINK).setBody(doc);
+            ExampleServiceState result = sender.sendAndWait(post, ExampleServiceState.class);
+            assertNotNull(result);
+
+            System.err.printf("@@@ document %d created, start with parallel get&delete\n", i);
+
+            TestContext ctx = host.testCreate(1);
+            sender.sendRequest(Operation
+                    .createDelete(host, result.documentSelfLink)
+                    .setCompletion((completedOp, failure) -> {
+                        if (failure != null) {
+                            Assert.fail("DELETE failed : " + failure.getMessage());
+                        }
+                        ctx.completeIteration();
+                    }));
+
+            sender.sendRequest(Operation
+                    .createGet(host, result.documentSelfLink)
+                    .setCompletion((completedOp, failure) -> {
+                        if (failure != null) {
+                            if (completedOp.getStatusCode() == STATUS_CODE_NOT_FOUND) {
+                                host.log(Level.INFO, "@@@ get 1: document was already deleted");
+                                return;
+                            } else if (failure instanceof CancellationException) {
+                                host.log(Level.INFO, "@@@ get 1: cancellation exception");
+                                return;
+                            }
+                            host.log(Level.INFO, "@@@ get 1: %s", failure.getMessage());
+                        }
+                    }));
+
+            ctx.await();
+
+            TestContext ctx2 = host.testCreate(1);
+            sender.sendRequest(Operation
+                    .createGet(host, result.documentSelfLink)
+                    .setCompletion((completedOp, failure) -> {
+                        if (failure != null) {
+                            if (completedOp.getStatusCode() == STATUS_CODE_NOT_FOUND) {
+                                host.log(Level.INFO, "@@@ get 2: document not found");
+                                ctx2.completeIteration();
+                                return;
+                            }
+                            host.log(Level.INFO, "@@@ get 2: failure : %s", failure.getMessage());
+                            ctx2.failIteration(failure);
+                            return;
+                        }
+
+                        host.log(Level.INFO, "@@@ get 2: %s", Utils.toJson(completedOp.getBodyRaw()));
+                        ctx2.failIteration(new Exception("DELETE is completed, but GET still returns document!!!"));
+                    }));
+            ctx2.await();
+
+        }
+        Thread.sleep(50);
     }
 
     /**
