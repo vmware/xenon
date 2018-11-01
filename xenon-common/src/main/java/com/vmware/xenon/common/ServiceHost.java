@@ -5004,7 +5004,7 @@ public class ServiceHost implements ServiceRequestSender {
      * Initiates periodic maintenance for a service. Called on service start or when maintenance is
      * dynamically toggled on
      */
-    void scheduleServiceMaintenance(Service s) {
+    protected void scheduleServiceMaintenance(Service s) {
         if (!s.hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
             return;
         }
@@ -5016,7 +5016,7 @@ public class ServiceHost implements ServiceRequestSender {
      * state machine must be active per host, at any time. Maintenance is re-scheduled
      * when the final stage is complete.
      */
-    void performMaintenanceStage(Operation post, MaintenanceStage stage, long deadline) {
+    protected void performMaintenanceStage(Operation post, MaintenanceStage stage, long deadline) {
         try {
             long now = Utils.getSystemNowMicrosUtc();
 
