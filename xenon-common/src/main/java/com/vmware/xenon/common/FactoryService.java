@@ -222,6 +222,12 @@ public abstract class FactoryService extends StatelessService {
             return;
         }
 
+        if (!ServiceHost.isServiceIndexed(this)) {
+            setAvailable(true);
+            startPost.complete();
+            return;
+        }
+
         String path = UriUtils.buildUriPath(
                 SynchronizationTaskService.FACTORY_LINK,
                 UriUtils.convertPathCharsFromLink(this.getSelfLink()));

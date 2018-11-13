@@ -181,7 +181,7 @@ public class TestNodeGroupService {
 
         public ExampleSelfPatchService() {
             super();
-            toggleOption(ServiceOption.PERSISTENCE, false);
+            toggleOption(ServiceOption.PERSISTENCE, true);
         }
 
         @Override

@@ -58,6 +58,7 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Operation.OperationOption;
+import com.vmware.xenon.common.OperationContext;
 import com.vmware.xenon.common.ServerSentEvent;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceErrorResponse;
@@ -168,7 +169,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         Operation request = null;
         Integer streamId = null;
         try {
-
+            OperationContext.reset();
             // Start of request processing, initialize in-bound operation
             FullHttpRequest nettyRequest = (FullHttpRequest) msg;
             long expMicros = Utils.fromNowMicrosUtc(this.host.getOperationTimeoutMicros());
@@ -214,6 +215,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             request.setKeepAlive(false).setStatusCode(sc)
                     .setBodyNoCloning(ServiceErrorResponse.create(e, sc));
             sendResponse(ctx, request, streamId, requestedPath, startTime);
+            OperationContext.reset();
         }
     }
 
@@ -612,6 +614,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                     cause.getMessage());
         }
         ctx.close();
+        OperationContext.reset();
     }
 
     private void setRefererFromSocketContext(ChannelHandlerContext ctx, Operation request) {
