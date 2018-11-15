@@ -44,6 +44,7 @@ import com.vmware.xenon.common.Operation.SocketContext;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceRequestListener;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.config.XenonConfiguration;
 
 /**
  * Asynchronous HTTP request listener using the Netty I/O framework. Interacts with a parent service
@@ -69,6 +70,11 @@ public class NettyHttpListener implements ServiceRequestListener {
 
     public static final String UNKNOWN_CLIENT_REFERER_PATH = "unknown-client";
     public static final int EVENT_LOOP_THREAD_COUNT = 2;
+    public static final int CONNECTION_BACKLOG_MAX_COUNT = XenonConfiguration.integer(
+            NettyHttpListener.class,
+            "connectionBacklogMaxCount",
+            128
+    );
     private AtomicInteger activeChannelCount = new AtomicInteger();
     private int port;
     private ServiceHost host;
@@ -127,6 +133,8 @@ public class NettyHttpListener implements ServiceRequestListener {
         }
         this.serverChannel = b.bind(addr).sync().channel();
         this.serverChannel.config().setOption(ChannelOption.SO_LINGER, 0);
+        this.serverChannel.config().setOption(ChannelOption.SO_BACKLOG,
+                CONNECTION_BACKLOG_MAX_COUNT);
         this.port = ((InetSocketAddress) this.serverChannel.localAddress()).getPort();
         this.isListening = true;
 
