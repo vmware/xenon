@@ -1,6 +1,12 @@
 # CHANGELOG
 
-## 1.6.15-SNAPSHOT
+## 1.6.16-SNAPSHOT
+
+## 1.6.15
+
+* Made TCP Backlog (SO_BACKLOG) parameterized. Defaults to 128.
+
+* Access for some `ServiceHost` methods changed to protected.
 
 
 ## 1.6.14
