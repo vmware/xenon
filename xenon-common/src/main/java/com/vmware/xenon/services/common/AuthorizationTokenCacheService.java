@@ -15,7 +15,7 @@ package com.vmware.xenon.services.common;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
-import com.vmware.xenon.common.StatefulService;
+import com.vmware.xenon.common.StatelessService;
 
 /**
  * This is a local, non-persistent service to manage the authorization token cache
@@ -23,20 +23,17 @@ import com.vmware.xenon.common.StatefulService;
  * A PATCH to this service calls out to the {@link AuthorizationContextService} with the
  * right pragma set to clear the authorization token cache on the local service host.
  */
-public class AuthorizationTokenCacheService extends StatefulService {
+public class AuthorizationTokenCacheService extends StatelessService {
     public static final String SELF_LINK = ServiceUriPaths.CORE_AUTHZ_TOKEN_CACHE;
 
     public static class AuthorizationTokenCacheServiceState extends ServiceDocument {
         public String serviceLink;
     }
 
-    public AuthorizationTokenCacheService() {
-        super(AuthorizationTokenCacheServiceState.class);
-    }
-
     @Override
     public void handlePatch(Operation patch) {
-        AuthorizationTokenCacheServiceState state = getBody(patch);
+        AuthorizationTokenCacheServiceState state = patch.getBody
+                (AuthorizationTokenCacheServiceState.class);
         Operation postClearCacheRequest = Operation.createPost(getHost().getAuthorizationServiceUri())
                 .setBody(AuthorizationCacheClearRequest.create(state.serviceLink))
                 .setCompletion((clearOp, clearEx) -> {
