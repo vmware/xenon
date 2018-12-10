@@ -13,21 +13,33 @@
 
 package com.vmware.xenon.common;
 
+import java.io.ByteArrayOutputStream;
+import java.lang.reflect.Field;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
+import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
+import java.util.logging.StreamHandler;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import org.junit.After;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
 
 import com.vmware.xenon.common.test.TestContext;
 
 public class TestDeferredResult {
+    private ByteArrayOutputStream loggerOutputStream;
+    private java.util.logging.Handler logHandler;
+    private boolean isExceptionLoggingEnabledInitial;
+
     private <T> Supplier<T> exceptionSupplier() {
         return exceptionSupplier("Not ready!");
     }
@@ -102,6 +114,22 @@ public class TestDeferredResult {
         });
         t.setDaemon(true);
         t.start();
+    }
+
+    @Before
+    public void setUp() throws Throwable {
+        Logger logger = Logger.getLogger(DeferredResult.class.getName());
+        this.loggerOutputStream = new ByteArrayOutputStream();
+        this.logHandler = new StreamHandler(this.loggerOutputStream, new SimpleFormatter());
+        logger.addHandler(this.logHandler);
+        this.isExceptionLoggingEnabledInitial = isExceptionLoggingEnabled();
+    }
+
+    @After
+    public void tearDown() throws Throwable {
+        Logger logger = Logger.getLogger(DeferredResult.class.getName());
+        logger.removeHandler(this.logHandler);
+        setExceptionLoggingEnabled(this.isExceptionLoggingEnabledInitial);
     }
 
     @Test
@@ -608,6 +636,103 @@ public class TestDeferredResult {
     }
 
     @Test
+    public void testUnhandledExceptionLogged() throws Throwable {
+        setExceptionLoggingEnabled(true);
+        String exceptionError = UUID.randomUUID().toString();
+        String stackTraceString = getStackTrace();
+
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
+        DeferredResult<Void> dr = new DeferredResult<>();
+        dr
+                .thenAccept(c -> {
+                    // 1
+                })
+                .thenAccept(c -> {
+                    // 2
+                    throw new IllegalArgumentException(exceptionError);
+                })
+                .thenAccept(c -> {
+                    ctx.complete();
+                });
+        runAfter(10, () -> dr.complete(null));
+        ctx.await(() -> {
+            if (getLogContents().contains("Exception in DeferredResult chain was not handled")) {
+                ctx.complete();
+            }
+        });
+
+        String output = getLogContents();
+        Assert.assertTrue(output.contains(stackTraceString));
+        Assert.assertTrue(output.contains(exceptionError));
+    }
+
+    @Test
+    public void testUnhandledExceptionInCompositeLogged() throws Throwable {
+        setExceptionLoggingEnabled(true);
+        String exceptionError = UUID.randomUUID().toString();
+        String stackTraceString = getStackTrace();
+
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
+        DeferredResult<Void> dr = new DeferredResult<>();
+        dr
+                .thenAccept(c -> {
+                    // 1
+                })
+                .thenCompose(c -> {
+                    return DeferredResult.completed(null).thenAccept(c1 -> {
+                        // 2
+                    }).thenAccept(c1 -> {
+                        throw new IllegalArgumentException(exceptionError);
+                    });
+                })
+                .thenAccept(c -> {
+                    ctx.complete();
+                });
+        runAfter(10, () -> dr.complete(null));
+        ctx.await(() -> {
+            if (getLogContents().contains("Exception in DeferredResult chain was not handled")) {
+                ctx.complete();
+            }
+        });
+
+        String output = getLogContents();
+        Assert.assertTrue(output.contains(stackTraceString));
+        Assert.assertTrue(output.contains(exceptionError));
+    }
+
+    @Test
+    public void testHandledExceptionNotLogged() throws Throwable {
+        setExceptionLoggingEnabled(true);
+        String exceptionError = UUID.randomUUID().toString();
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
+        DeferredResult<Void> dr = new DeferredResult<>();
+        dr
+                .thenAccept(c -> {
+                    // 1
+                }).thenAccept(c -> {
+                    // 2
+                    throw new IllegalArgumentException(exceptionError);
+                }).exceptionally(e -> {
+                    // handles exception
+                    return null;
+                }).thenAccept(c -> {
+                    ctx.complete();
+                });
+
+        runAfter(10, () -> dr.complete(null));
+        ctx.await(() -> {
+            this.logHandler.flush();
+            if (getLogContents().contains("Exception in DeferredResult chain was not handled")) {
+                ctx.complete();
+            }
+        });
+
+        String output = getLogContents();
+        Assert.assertFalse(output.contains("Exception in DeferredResult chain was not handled"));
+        Assert.assertFalse(output.contains(exceptionError));
+    }
+
+    @Test
     public void testAllOf() throws Throwable {
         TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         int count = 10;
@@ -699,5 +824,37 @@ public class TestDeferredResult {
         runAfter(1, () -> original.complete("foo"));
         ctx.await();
         Assert.assertEquals("bar", result.getNow("bar"));
+    }
+
+    private void setExceptionLoggingEnabled(boolean value) throws Throwable {
+        Field field = DeferredResult.class
+                .getDeclaredField("IS_UNCAUGHT_EXCEPTION_LOGGING_ENABLED");
+        field.setAccessible(true);
+        field.set(null, value);
+    }
+
+    private boolean isExceptionLoggingEnabled() throws Throwable {
+        Field field = DeferredResult.class
+                .getDeclaredField("IS_UNCAUGHT_EXCEPTION_LOGGING_ENABLED");
+        field.setAccessible(true);
+        return (boolean) field.get(null);
+    }
+
+    private String getLogContents() {
+        this.logHandler.flush();
+        return this.loggerOutputStream.toString();
+    }
+
+    private static String getStackTrace() {
+        StackTraceElement[] stackTrace = new Exception().getStackTrace();
+        StringBuilder sb = new StringBuilder();
+        // skipping first 2 lines as the one points to the current method, and the other is the calling one
+        // but will differ on the line number anyway
+        for (int i = 2; i < stackTrace.length; i++) {
+            // Need to skip the first element as it will have a different line number anyway
+            sb.append("\tat " + stackTrace[i].toString() + "\n");
+        }
+        return sb.toString();
+
     }
 }

@@ -24,7 +24,11 @@ import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
+
+import com.vmware.xenon.common.config.XenonConfiguration;
 
 /**
  * This is an implementation of a condensed version of {@link CompletionStage},
@@ -33,8 +37,13 @@ import java.util.stream.Collectors;
  * @param <T>
  */
 public final class DeferredResult<T> {
+    private static final Logger LOG = Logger.getLogger(DeferredResult.class.getName());
+    private static boolean IS_UNCAUGHT_EXCEPTION_LOGGING_ENABLED = XenonConfiguration.bool(
+            DeferredResult.class,
+            "isUncaughtExceptionLoggingEnabled", false);
 
     private final CompletableFuture<T> completableFuture;
+    private boolean isLastInChain;
 
     /**
      * Constructs an already realized {@link DeferredResult} with the provided
@@ -146,6 +155,7 @@ public final class DeferredResult<T> {
      */
     public DeferredResult(CompletableFuture<T> completableFuture) {
         this.completableFuture = completableFuture;
+        this.isLastInChain = true;
     }
 
     /**
@@ -154,7 +164,37 @@ public final class DeferredResult<T> {
      * @return
      */
     protected <U> DeferredResult<U> wrap(CompletableFuture<U> completableFuture) {
-        return new DeferredResult<>(completableFuture);
+        this.isLastInChain = false;
+        return handleExceptionLogging(new DeferredResult<>(completableFuture));
+    }
+
+    /**
+     * Adds additional exception handler to the completable future, if
+     * {@link DeferredResult#IS_LOGGING_UNCAUGHT_EXCEPTIONS_ENABLED} is true and in case the handled exception is
+     * the last invocation in the chain, logs the exception and the initiator of the deferred result so that it
+     * can be properly handled..
+     * @param dr
+     * @return
+     */
+    private <U> DeferredResult<U> handleExceptionLogging(DeferredResult<U> dr) {
+        if (!IS_UNCAUGHT_EXCEPTION_LOGGING_ENABLED) {
+            return dr;
+        }
+
+        String stackTrace = Utils.toString(new Exception());
+
+        dr.completableFuture.exceptionally(e -> {
+            CompletionException ex = e instanceof CompletionException ? (CompletionException) e
+                    : new CompletionException(e);
+            if (dr.isLastInChain) {
+                Utils.log(LOG, null, getClass().getSimpleName(), Level.WARNING, () -> String
+                        .format("Exception in DeferredResult chain was not handled. Initiator: %s\nException: %s",
+                                stackTrace, Utils.toString(ex.getCause())));
+            }
+            throw ex;
+        });
+
+        return dr;
     }
 
     /**
