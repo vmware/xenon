@@ -29,6 +29,8 @@ public class TestLocalizationUtil {
 
     private static final String ERROR_MESSAGE_BR = "Random test error message in Brazil!: argValue";
 
+    private static final String ERROR_MESSAGE_JA = "日本語のランダムテストエラーメッセージ: argValue";
+
     private static final String ERROR_MESSAGE_EN = "Random test error message: argValue";
 
     private static final String ERROR_MESSAGE_CODE = "random.message.code";
@@ -43,7 +45,7 @@ public class TestLocalizationUtil {
     }
 
     @Test
-    public void testLocalizatioMessageResolution() {
+    public void testLocalizatioMessageResolution_DE() {
         Operation op = Operation.createGet(URI.create("127.0.0.1"))
                 .addRequestHeader(Operation.ACCEPT_LANGUAGE_HEADER, "de,en-US;q=0.8,en;q=0.6");
 
@@ -52,6 +54,18 @@ public class TestLocalizationUtil {
 
         String message = LocalizationUtil.resolveMessage(this.ex, op);
         assertEquals(ERROR_MESSAGE_DE, message);
+    }
+
+    @Test
+    public void testLocalizatioMessageResolution_JA() {
+        Operation op = Operation.createGet(URI.create("127.0.0.1"))
+                .addRequestHeader(Operation.ACCEPT_LANGUAGE_HEADER, "ja,en-US;q=0.8,en;q=0.6");
+
+        Locale locale = LocalizationUtil.resolveLocale(op);
+        assertEquals(Locale.JAPANESE, locale);
+
+        String message = LocalizationUtil.resolveMessage(this.ex, op);
+        assertEquals(ERROR_MESSAGE_JA, message);
     }
 
     @Test

@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.common;
 
+import java.io.UnsupportedEncodingException;
 import java.text.MessageFormat;
 import java.util.List;
 import java.util.Locale;
@@ -20,6 +21,8 @@ import java.util.MissingResourceException;
 import java.util.ResourceBundle;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+
+import org.apache.commons.codec.CharEncoding;
 
 /**
  * Localization utility for the purpose of translating localization error codes to localized messages.
@@ -62,8 +65,9 @@ public class LocalizationUtil {
 
         String message;
         try {
-            message = messages.getString(e.getErrorMessageCode());
-        } catch (MissingResourceException ex) {
+            String messageFromFile = messages.getString(e.getErrorMessageCode());
+            message = new String(messageFromFile.getBytes(CharEncoding.ISO_8859_1), CharEncoding.UTF_8);
+        } catch (MissingResourceException | UnsupportedEncodingException ex) {
             message = e.getMessage();
         }
 
