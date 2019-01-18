@@ -1330,7 +1330,12 @@ public class Operation implements Cloneable {
     }
 
     public void fail(Throwable e) {
-        fail(e, null);
+        if (e instanceof WrappedDeferredResultException) {
+            this.statusCode = ((WrappedDeferredResultException) e).statusCode;
+            fail(e, ((WrappedDeferredResultException) e).failureBody);
+        } else {
+            fail(e, null);
+        }
     }
 
     /**

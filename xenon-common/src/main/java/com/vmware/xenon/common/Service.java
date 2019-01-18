@@ -179,6 +179,14 @@ public interface Service extends ServiceRequestSender {
         IMMUTABLE,
 
         /**
+         * Service will wrap the error response body and status code in case of failure. The wrapper is
+         * of type {@link WrappedDeferredResultException}. This will allow clients that are using
+         * {@link Service#sendWithDeferredResult(Operation)} for service-to-service communication
+         * to obtain original response body and status code and use them as required.
+         */
+        WRAP_ERROR_RESPONSE,
+
+        /**
          * Service will queue operation in last in first out order. If limit on operation queue is
          * exceeded, oldest operation in the queue will be cancelled to make room for the most
          * recent one
@@ -486,6 +494,37 @@ public interface Service extends ServiceRequestSender {
     boolean hasOption(ServiceOption option);
 
     void toggleOption(ServiceOption option, boolean enable);
+
+    /**
+     * Sends an asynchronous request and returns the eventual response as deferred result.
+     * @param op The request to send.
+     * @return
+     */
+    default DeferredResult<Operation> sendWithDeferredResult(Operation op) {
+        if (!hasOption(ServiceOption.WRAP_ERROR_RESPONSE)) {
+            return ServiceRequestSender.super.sendWithDeferredResult(op);
+        }
+
+        DeferredResult<Operation> deferred = new DeferredResult<Operation>();
+        op.nestCompletion((response, e) -> {
+            if (e != null) {
+                ServiceErrorResponse error = response.getErrorResponseBody();
+                if (error == null) {
+                    error = new ServiceErrorResponse();
+                    if (Operation.MEDIA_TYPE_APPLICATION_JSON.equals(response.getContentType())) {
+                        error.message = Utils.toJson(response.getBodyRaw());
+                    }
+                }
+                error.statusCode = response.getStatusCode();
+                deferred.fail(new WrappedDeferredResultException(
+                        e, error, error.statusCode));
+            } else {
+                deferred.complete(response);
+            }
+        });
+        sendRequest(op);
+        return deferred;
+    }
 
     /**
      * Sets the URI path to a node selector instance. A node selector service is associated with a node
