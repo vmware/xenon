@@ -38,6 +38,7 @@ import com.vmware.xenon.common.Operation.SerializedOperation;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
+import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -46,7 +47,8 @@ public class TestOperation extends BasicReusableHostTestCase {
 
     public static class NotModifiedOwnerSelectedService extends StatefulService {
 
-        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/tests/304-stateful-ownerselected";
+        public static final String FACTORY_LINK = ServiceUriPaths.CORE
+                + "/tests/304-stateful-ownerselected";
 
         public static class State extends ServiceDocument {
             public String name;
@@ -87,7 +89,8 @@ public class TestOperation extends BasicReusableHostTestCase {
 
     public static class NotModifiedNonOwnerSelectedService extends NotModifiedOwnerSelectedService {
 
-        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/tests/304-stateful-non-owner";
+        public static final String FACTORY_LINK = ServiceUriPaths.CORE
+                + "/tests/304-stateful-non-owner";
 
         public NotModifiedNonOwnerSelectedService() {
             super();
@@ -120,6 +123,16 @@ public class TestOperation extends BasicReusableHostTestCase {
             op.setBody("should not be a body");
             op.setStatusCode(STATUS_CODE_NOT_MODIFIED);
             op.complete();
+        }
+    }
+
+    public static class ConflictStatelessService extends StatelessService {
+
+        public static final String SELF_LINK = ServiceUriPaths.CORE + "/tests/409-stateless";
+
+        @Override
+        public void handleGet(Operation get) {
+            get.fail(409, new RuntimeException("test exception"), "{\"message\":\"failure-body\"}");
         }
     }
 
@@ -305,7 +318,8 @@ public class TestOperation extends BasicReusableHostTestCase {
         });
         op.complete();
 
-        assertArrayEquals(new Integer[]{2, 1, 0, 10, 20}, list.toArray(new Integer[list.size()]));
+        assertArrayEquals(new Integer[] { 2, 1, 0, 10, 20 },
+                list.toArray(new Integer[list.size()]));
     }
 
     @Test
@@ -325,7 +339,7 @@ public class TestOperation extends BasicReusableHostTestCase {
         });
         op.complete();
 
-        assertArrayEquals(new Integer[]{2, 1, 10, 20}, list.toArray(new Integer[list.size()]));
+        assertArrayEquals(new Integer[] { 2, 1, 10, 20 }, list.toArray(new Integer[list.size()]));
     }
 
     @Test
@@ -352,7 +366,8 @@ public class TestOperation extends BasicReusableHostTestCase {
         });
         op.complete();
 
-        assertArrayEquals(new Integer[]{1, 2, 3, 30, 20, 10}, list.toArray(new Integer[list.size()]));
+        assertArrayEquals(new Integer[] { 1, 2, 3, 30, 20, 10 },
+                list.toArray(new Integer[list.size()]));
     }
 
     @Test
@@ -385,7 +400,8 @@ public class TestOperation extends BasicReusableHostTestCase {
 
         op.fail(ex1);
 
-        assertArrayEquals(new Integer[]{1, 2, 3, 20, 10}, list.toArray(new Integer[list.size()]));
+        assertArrayEquals(new Integer[] { 1, 2, 3, 20, 10 },
+                list.toArray(new Integer[list.size()]));
     }
 
     @Test
@@ -407,7 +423,7 @@ public class TestOperation extends BasicReusableHostTestCase {
         });
         op.complete();
 
-        assertArrayEquals(new Integer[]{1, 2, 10}, list.toArray(new Integer[list.size()]));
+        assertArrayEquals(new Integer[] { 1, 2, 10 }, list.toArray(new Integer[list.size()]));
     }
 
     @Test
@@ -427,9 +443,8 @@ public class TestOperation extends BasicReusableHostTestCase {
         });
         op.complete();
 
-        assertArrayEquals(new Integer[]{1, 2, 20, 10}, list.toArray(new Integer[list.size()]));
+        assertArrayEquals(new Integer[] { 1, 2, 20, 10 }, list.toArray(new Integer[list.size()]));
     }
-
 
     @Test
     public void completion() throws Throwable {
@@ -838,15 +853,60 @@ public class TestOperation extends BasicReusableHostTestCase {
     }
 
     @Test
+    public void conflictResponsePropagated() throws Throwable {
+
+        this.host.startService(new ConflictStatelessService());
+        this.host.waitForServiceAvailable(ConflictStatelessService.SELF_LINK);
+
+        /**
+         * Simulates the use case where a service needs to call a remote endpoint.
+         * Normally, by using the sendWithDeferredResult() the caller loses the original
+         * response body and status code in case of failure because the DeferredResult
+         * does not propagate it back. By overriding the sendWithDeferredResult() however,
+         * we are able to propagate the original failure body back to the caller.
+         */
+        class PropagatingErrorContextService extends StatelessService {
+
+            public static final String SELF_LINK = ServiceUriPaths.CORE
+                    + "/tests/propagating-error-context";
+
+            public PropagatingErrorContextService() {
+                toggleOption(ServiceOption.WRAP_ERROR_RESPONSE, true);
+            }
+
+            @Override
+            public void handleGet(Operation get) {
+                Operation xenonToRemote = Operation.createGet(this, ConflictStatelessService.SELF_LINK);
+                xenonToRemote.forceRemote();
+
+                sendWithDeferredResult(xenonToRemote)
+                        .whenCompleteNotify(get);
+            }
+        }
+
+        PropagatingErrorContextService service = new PropagatingErrorContextService();
+        this.host.startService(service);
+        this.host.waitForServiceAvailable(PropagatingErrorContextService.SELF_LINK);
+
+        FailureResponse response = this.sender.sendAndWaitFailure(
+                Operation.createGet(this.host, PropagatingErrorContextService.SELF_LINK));
+        assertEquals(409, response.op.getStatusCode());
+        assertEquals("failure-body", response.op.getErrorResponseBody().message);
+    }
+
+    @Test
     public void notModifiedResponse() throws Throwable {
         this.host.startFactory(new NotModifiedOwnerSelectedService());
         this.host.startFactory(new NotModifiedNonOwnerSelectedService());
         this.host.startService(new NotModifiedStatelessService());
         this.host.waitForServiceAvailable(NotModifiedOwnerSelectedService.FACTORY_LINK,
-                NotModifiedNonOwnerSelectedService.FACTORY_LINK, NotModifiedStatelessService.SELF_LINK);
+                NotModifiedNonOwnerSelectedService.FACTORY_LINK,
+                NotModifiedStatelessService.SELF_LINK);
 
-        String ownerServicePath = UriUtils.buildUriPath(NotModifiedOwnerSelectedService.FACTORY_LINK, "/foo");
-        String nonOwnerServicePath = UriUtils.buildUriPath(NotModifiedNonOwnerSelectedService.FACTORY_LINK, "/foo");
+        String ownerServicePath = UriUtils
+                .buildUriPath(NotModifiedOwnerSelectedService.FACTORY_LINK, "/foo");
+        String nonOwnerServicePath = UriUtils
+                .buildUriPath(NotModifiedNonOwnerSelectedService.FACTORY_LINK, "/foo");
 
         NotModifiedOwnerSelectedService.State ownerServiceState = new NotModifiedOwnerSelectedService.State();
         ownerServiceState.name = "initial-owner-name";
@@ -856,10 +916,14 @@ public class TestOperation extends BasicReusableHostTestCase {
         nonOwnerServiceState.name = "initial-non-owner-name";
         nonOwnerServiceState.documentSelfLink = nonOwnerServicePath;
 
-        Operation ownerPost = Operation.createPost(this.host, NotModifiedOwnerSelectedService.FACTORY_LINK).setBody(ownerServiceState);
+        Operation ownerPost = Operation
+                .createPost(this.host, NotModifiedOwnerSelectedService.FACTORY_LINK)
+                .setBody(ownerServiceState);
         this.sender.sendAndWait(ownerPost);
 
-        Operation nonOwnerPost = Operation.createPost(this.host, NotModifiedNonOwnerSelectedService.FACTORY_LINK).setBody(nonOwnerServiceState);
+        Operation nonOwnerPost = Operation
+                .createPost(this.host, NotModifiedNonOwnerSelectedService.FACTORY_LINK)
+                .setBody(nonOwnerServiceState);
         this.sender.sendAndWait(nonOwnerPost);
 
         // check for GET
@@ -869,7 +933,6 @@ public class TestOperation extends BasicReusableHostTestCase {
         performAndVerify304Response(nonOwnerServicePath, Action.GET, true);
         performAndVerify304Response(NotModifiedStatelessService.SELF_LINK, Action.GET, false);
         performAndVerify304Response(NotModifiedStatelessService.SELF_LINK, Action.GET, true);
-
 
         // check for PUT and PATCH
         // (HTTP 304 behavior for PUT and PATCH are not specified. Currently, xenon applies same behavior for PUT/PATCH)
