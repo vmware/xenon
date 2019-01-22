@@ -15,6 +15,7 @@ package com.vmware.xenon.common.http.netty;
 
 import java.util.function.BiConsumer;
 import java.util.logging.Level;
+
 import javax.net.ssl.SSLEngine;
 
 import io.netty.channel.Channel;
@@ -54,6 +55,11 @@ import com.vmware.xenon.common.Utils;
  *
  */
 public class NettyHttpClientRequestInitializer extends ChannelInitializer<SocketChannel> {
+
+    public static final String ENABLE_SNI_PROPERTY_NAME =
+            Utils.PROPERTY_NAME_PREFIX + "NettyHttpClientRequestInitializer.sni.enable";
+    private static final boolean ENABLE_SNI = Boolean.parseBoolean(
+            System.getProperty(ENABLE_SNI_PROPERTY_NAME, "true"));
 
     private static class Http2NegotiationHandler extends ApplicationProtocolNegotiationHandler {
 
@@ -115,6 +121,8 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
     public static final String EVENT_STREAM_HANDLER = "event-stream-handler";
 
     private final NettyChannelPool pool;
+    private final String host;
+    private final int port;
     private boolean isHttp2Only = false;
     private boolean debugLogging = false;
     private int requestPayloadSizeLimit;
@@ -122,13 +130,20 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
 
     public NettyHttpClientRequestInitializer(
             NettyChannelPool nettyChannelPool,
-            boolean isHttp2Only,
+            String host, int port, boolean isHttp2Only,
             int requestPayloadSizeLimit,
             BiConsumer<NettyChannelPool, Channel> onInitChannelConsumer) {
         this.pool = nettyChannelPool;
         this.isHttp2Only = isHttp2Only;
         this.requestPayloadSizeLimit = requestPayloadSizeLimit;
         this.onInitChannelConsumer = onInitChannelConsumer;
+        if (ENABLE_SNI) {
+            this.host = host;
+            this.port = port;
+        } else {
+            this.host = null;
+            this.port = -1;
+        }
         NettyLoggingUtil.setupNettyLogging();
     }
 
@@ -148,7 +163,7 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
             if (!this.isHttp2Only) {
                 throw new IllegalStateException("HTTP/2 must be enabled to set an SSL context");
             }
-            p.addLast(SSL_HANDLER, this.pool.getHttp2SslContext().newHandler(ch.alloc()));
+            p.addLast(SSL_HANDLER, this.pool.getHttp2SslContext().newHandler(ch.alloc(), this.host, this.port));
             p.addLast(ALPN_HANDLER, new Http2NegotiationHandler(this, settingsPromise));
             return;
         }
@@ -157,7 +172,7 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
             if (this.isHttp2Only) {
                 throw new IllegalArgumentException("HTTP/2 with SSL is not supported");
             }
-            SSLEngine engine = this.pool.getSSLContext().createSSLEngine();
+            SSLEngine engine = this.pool.getSSLContext().createSSLEngine(this.host, this.port);
             engine.setUseClientMode(true);
             p.addLast(SSL_HANDLER, new SslHandler(engine));
         }

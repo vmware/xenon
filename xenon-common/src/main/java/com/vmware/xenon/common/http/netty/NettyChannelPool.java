@@ -136,10 +136,22 @@ public class NettyChannelPool {
 
     public static class NettyChannelGroup {
         private NettyChannelGroupKey key;
+        private Bootstrap bootStrap;
 
-        public NettyChannelGroup(NettyChannelGroupKey key, int queueLimit) {
+        public NettyChannelGroup(NettyChannelPool pool, NettyChannelGroupKey key, int queueLimit) {
             this.key = key;
             this.pendingRequests = OperationQueue.createFifo(queueLimit);
+
+            this.bootStrap = new Bootstrap();
+            this.bootStrap.group(pool.eventGroup)
+                    .channel(NioSocketChannel.class)
+                    .handler(new NettyHttpClientRequestInitializer(pool, key.host, key.port, pool.isHttp2Only,
+                            pool.requestPayloadSizeLimit, pool.onChannelInitialization));
+
+            // allow user callback to modify netty bootstrap
+            if (pool.onBootstrapInitialization != null) {
+                pool.onBootstrapInitialization.accept(pool, this.bootStrap);
+            }
         }
 
         public NettyChannelGroupKey getKey() {
@@ -166,7 +178,6 @@ public class NettyChannelPool {
     private String threadTag = NettyChannelPool.class.getSimpleName();
     private int threadCount;
     private boolean isHttp2Only = false;
-    private Bootstrap bootStrap;
 
     private final Map<NettyChannelGroupKey, NettyChannelGroup> channelGroups = new ConcurrentSkipListMap<>();
     private Map<String, Integer> connectionLimitsPerTag = new ConcurrentSkipListMap<>();
@@ -225,7 +236,7 @@ public class NettyChannelPool {
     }
 
     public void start() {
-        if (this.bootStrap != null) {
+        if (this.eventGroup != null) {
             return;
         }
 
@@ -236,20 +247,10 @@ public class NettyChannelPool {
         }
         this.eventGroup = new NioEventLoopGroup(this.threadCount, this.executor);
 
-        this.bootStrap = new Bootstrap();
-        this.bootStrap.group(this.eventGroup)
-                .channel(NioSocketChannel.class)
-                .handler(new NettyHttpClientRequestInitializer(this, this.isHttp2Only,
-                        this.requestPayloadSizeLimit, this.onChannelInitialization));
-
-        // allow user callback to modify netty bootstrap
-        if (this.onBootstrapInitialization != null) {
-            this.onBootstrapInitialization.accept(this, this.bootStrap);
-        }
     }
 
     public boolean isStarted() {
-        return this.bootStrap != null;
+        return this.eventGroup != null;
     }
 
     public NettyChannelPool setConnectionLimitPerTag(String tag, int limit) {
@@ -300,7 +301,7 @@ public class NettyChannelPool {
             group = this.channelGroups.get(threadLocalKey);
             if (group == null) {
                 NettyChannelGroupKey clonedKey = new NettyChannelGroupKey(threadLocalKey);
-                group = new NettyChannelGroup(clonedKey, this.pendingRequestQueueLimit);
+                group = new NettyChannelGroup(this, clonedKey, this.pendingRequestQueueLimit);
                 this.channelGroups.put(clonedKey, group);
             }
         }
@@ -352,7 +353,7 @@ public class NettyChannelPool {
 
             // Connect, then wait for the connection to complete before either
             // sending data (HTTP/1.1) or negotiating settings (HTTP/2)
-            ChannelFuture connectFuture = this.bootStrap.connect(key.host, key.port);
+            ChannelFuture connectFuture = group.bootStrap.connect(key.host, key.port);
             connectFuture.addListener((ChannelFutureListener) future -> {
                 if (future.isSuccess()) {
                     Channel channel = future.channel();
@@ -716,6 +717,7 @@ public class NettyChannelPool {
                     }
                     g.availableChannels.clear();
                     g.inUseChannels.clear();
+                    g.bootStrap = null;
                 }
             }
             this.eventGroup.shutdownGracefully();
@@ -725,7 +727,7 @@ public class NettyChannelPool {
         } catch (Exception e) {
             // ignore exception
         }
-        this.bootStrap = null;
+        this.eventGroup = null;
     }
 
     public void handleMaintenance(Operation op) {
@@ -798,6 +800,7 @@ public class NettyChannelPool {
     /**
      * Close the HTTP/2 context if it's been idle too long or if we've exhausted
      * the maximum number of streams that can be sent on the connection.
+     *
      * @param group
      */
     private void closeInvalidHttp2ChannelContexts(NettyChannelGroup group, long now) {
