@@ -43,11 +43,12 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-archetype-plugin</artifactId>
-                        <version>2.4</version>
+                        <version>3.0.1</version>
                     </plugin>
                     <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-clean-plugin</artifactId>
-                        <version>2.5</version>
+                        <version>3.1.0</version>
                         <configuration>
                             <filesets>
                                 <fileset>
@@ -60,9 +61,9 @@
                         </configuration>
                     </plugin>
                     <plugin>
-                        <artifactId>exec-maven-plugin</artifactId>
                         <groupId>org.codehaus.mojo</groupId>
-                        <version>1.5.0</version>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>1.6.0</version>
                         <executions>
                             <execution>
                                 <id>Convert files to archetype resources</id>
@@ -126,7 +127,7 @@
             <extension>
                 <groupId>org.apache.maven.archetype</groupId>
                 <artifactId>archetype-packaging</artifactId>
-                <version>2.4</version>
+                <version>3.0.1</version>
             </extension>
         </extensions>
     </build>

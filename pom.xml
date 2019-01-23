@@ -95,6 +95,11 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <maven.compiler.source>1.8</maven.compiler.source>
+    <maven.compiler.target>1.8</maven.compiler.target>
+
+    <trimStackTrace>false</trimStackTrace>
+
     <testHeapSizeMb>256</testHeapSizeMb>
     <testThreadStackSizeKb>256</testThreadStackSizeKb>
     <testJvmOpts></testJvmOpts>
@@ -233,7 +238,7 @@
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-javadoc-plugin</artifactId>
-            <version>2.9.1</version>
+            <version>3.0.1</version>
             <executions>
               <execution>
                 <id>attach-javadocs</id>
@@ -260,7 +265,7 @@
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-resources-plugin</artifactId>
-            <version>2.7</version>
+            <version>3.1.0</version>
             <executions>
               <execution>
                 <id>copy-license</id>
@@ -305,12 +310,12 @@
     <plugins>
       <plugin>
         <artifactId>maven-jar-plugin</artifactId>
-        <version>2.2</version>
+        <version>3.1.1</version>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-release-plugin</artifactId>
-        <version>2.5.2</version>
+        <version>2.5.3</version>
         <configuration>
           <pushChanges>false</pushChanges>
           <localCheckout>true</localCheckout>
@@ -319,22 +324,19 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
-        <version>2.20</version>
+        <version>2.22.1</version>
         <configuration>
           <argLine>-Xss${testThreadStackSizeKb}k -Xmx${testHeapSizeMb}m ${testJvmOpts}</argLine>
           <systemPropertyVariables>
             <java.io.tmpdir>${project.basedir}/target</java.io.tmpdir>
           </systemPropertyVariables>
-          <trimStackTrace>false</trimStackTrace>
         </configuration>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.1</version>
+        <version>3.8.0</version>
         <configuration>
-          <target>1.8</target>
-          <source>1.8</source>
           <compilerId>javac</compilerId>
           <compilerArgs>
             <arg>-Werror</arg>
@@ -346,7 +348,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-source-plugin</artifactId>
-        <version>2.4</version>
+        <version>3.0.1</version>
         <configuration>
           <skip>${skipAnalysis}</skip>
         </configuration>
@@ -363,7 +365,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-checkstyle-plugin</artifactId>
-        <version>2.13</version>
+        <version>2.17</version>
         <dependencies>
           <dependency>
             <groupId>com.puppycrawl.tools</groupId>
@@ -400,7 +402,7 @@
           <failOnViolation>true</failOnViolation>
           <includeTests>true</includeTests>
           <verbose>true</verbose>
-          <targetJdk>1.8</targetJdk>
+          <targetJdk>${maven.compiler.target}</targetJdk>
           <rulesets>
             <ruleset>${project.parent.basedir}/contrib/pmd.xml</ruleset>
           </rulesets>
@@ -422,7 +424,7 @@
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>findbugs-maven-plugin</artifactId>
-        <version>3.0.4</version>
+        <version>3.0.5</version>
         <configuration>
           <skip>${skipAnalysis}</skip>
           <effort>Max</effort>
@@ -459,12 +461,12 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-project-info-reports-plugin</artifactId>
-        <version>2.8</version>
+        <version>3.0.0</version>
         <dependencies>
           <dependency>
             <groupId>org.apache.maven.shared</groupId>
             <artifactId>maven-shared-jar</artifactId>
-            <version>1.1</version>
+            <version>1.2</version>
             <exclusions>
               <exclusion>
                 <groupId>org.apache.bcel</groupId>
@@ -551,7 +553,7 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-assembly-plugin</artifactId>
-          <version>3.0.0</version>
+          <version>3.1.1</version>
           <configuration>
             <descriptorRefs>
               <descriptorRef>jar-with-dependencies</descriptorRef>

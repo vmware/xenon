@@ -14,7 +14,6 @@
 package com.vmware.xenon.services.common;
 
 import static java.util.stream.Collectors.toList;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -73,6 +72,8 @@ import com.vmware.xenon.services.common.TestLuceneDocumentIndexService.IndexedMe
 
 public class TestServiceHostManagementService extends BasicTestCase {
 
+    public static final  String GIT_TOTAL_COMMIT_PROPERTY_PREFIX = "git.total.commit";
+
     public int serviceCount = 100;
 
     @Rule
@@ -120,7 +121,12 @@ public class TestServiceHostManagementService extends BasicTestCase {
         for (Entry<Object, Object> p : rsp.codeProperties.entrySet()) {
             String propKey = (String) p.getKey();
             String propValue = (String) p.getValue();
-            assertTrue(propKey.startsWith(ServiceHost.GIT_COMMIT_SOURCE_PROPERTY_PREFIX));
+            assertTrue("Expected '" + propKey + "' to start with '"
+                            + ServiceHost.GIT_COMMIT_SOURCE_PROPERTY_PREFIX + "' or '"
+                            + GIT_TOTAL_COMMIT_PROPERTY_PREFIX + "'",
+                    propKey.startsWith(ServiceHost.GIT_COMMIT_SOURCE_PROPERTY_PREFIX) ||
+                            propKey.startsWith(GIT_TOTAL_COMMIT_PROPERTY_PREFIX));
+
             assertTrue(!propValue.isEmpty());
             if (propKey.equals(ServiceHost.GIT_COMMIT_SOURCE_PROPERTY_COMMIT_ID)) {
                 gitCommitId = propValue;
