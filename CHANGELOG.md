@@ -2,6 +2,12 @@
 
 ## 1.6.17-SNAPSHOT
 
+* Introduced context attributes map in the OperationContext.
+  The attributes map can be used for storing arbitrary data.
+  Xenon would take care to propagate the data through callback
+  chains, managing the TL lifecycle from one async operation to
+  another.
+
 * Introduced ServiceOption.WRAP_ERROR_RESPONSE. 
   Xenon services that are using sendWithDeferredResult() to communicate
   with one another or the outside world do not typically receive in the
