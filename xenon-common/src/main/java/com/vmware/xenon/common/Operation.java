@@ -19,7 +19,9 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.security.Principal;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.EnumSet;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -725,6 +727,7 @@ public class Operation implements Cloneable {
     private long contentLength;
     private RemoteContext remoteCtx;
     private AuthorizationContext authorizationCtx;
+    private Map<String, Object> contextAttributes = new HashMap<>();
     private InstrumentationContext instrumentationCtx;
     private short retryCount;
     private short retriesRemaining;
@@ -757,6 +760,7 @@ public class Operation implements Cloneable {
         this.authorizationCtx = opCtx.authContext;
         this.transactionId = opCtx.transactionId;
         this.contextId = opCtx.contextId;
+        this.contextAttributes.putAll(opCtx.contextAttributes);
     }
 
     static Operation createOperation(Action action, URI uri) {
@@ -906,6 +910,8 @@ public class Operation implements Cloneable {
             clone.remoteCtx.connectionTag = this.remoteCtx.connectionTag;
         }
 
+        clone.contextAttributes.putAll(this.contextAttributes);
+
         return clone;
     }
 
@@ -970,6 +976,26 @@ public class Operation implements Cloneable {
     public Operation setContextId(String id) {
         this.contextId = id;
         return this;
+    }
+
+    public Object getAttribute(String name) {
+        return this.contextAttributes.get(name);
+    }
+
+    public Enumeration<String> getAttributeNames() {
+        return Collections.enumeration(this.contextAttributes.keySet());
+    }
+
+    public void removeAttribute(String name) {
+        this.contextAttributes.remove(name);
+    }
+
+    public void setAttribute(String name, Object object) {
+        this.contextAttributes.put(name, object);
+    }
+
+    Map<String, Object> getContextAttributes() {
+        return Collections.unmodifiableMap(this.contextAttributes);
     }
 
     public Operation setBody(Object body) {

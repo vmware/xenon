@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -892,6 +893,67 @@ public class TestOperation extends BasicReusableHostTestCase {
                 Operation.createGet(this.host, PropagatingErrorContextService.SELF_LINK));
         assertEquals(409, response.op.getStatusCode());
         assertEquals("failure-body", response.op.getErrorResponseBody().message);
+    }
+
+    @Test
+    public void contextAttributesPropagated() throws Throwable {
+
+        this.host.startService(new ConflictStatelessService());
+        this.host.waitForServiceAvailable(ConflictStatelessService.SELF_LINK);
+
+        /**
+         * Simulates the use case where the user passes arbitrary context attributes through the
+         * OperationContext TL and they get properly propagated through the asynchronous callbacks.
+         */
+        class PropagatingContextAttributesService extends StatelessService {
+
+            public static final String SELF_LINK = ServiceUriPaths.CORE
+                    + "/tests/propagating-context-attributes";
+
+            @Override
+            public void handleGet(Operation get) {
+                OperationContext.setAttribute("test-key", "test-value");
+                Operation xenonToRemote = Operation.createGet(this, ConflictStatelessService.SELF_LINK);
+                xenonToRemote.forceRemote();
+
+                // Use mutex to guarantee that the OperationContext is properly cleaned up
+                // before the whenComplete callback is executed. Even in this case, the TL
+                // attribute should be propagated to the callback.
+                Semaphore mutex = new Semaphore(1);
+                try {
+                    mutex.acquire();
+
+                    OperationContext.setAttribute("test-key", "test-value");
+                    sendWithDeferredResult(xenonToRemote)
+                            .whenComplete((__, e) -> {
+                                try {
+                                    mutex.acquire();
+                                    assertNotNull(OperationContext.getAttribute("test-key"));
+                                    assertEquals("test-value",
+                                            OperationContext.getAttribute("test-key"));
+                                } catch (InterruptedException ee) {
+                                    fail("Failed while waiting for mutex: " + ee.getMessage());
+                                } finally {
+                                    mutex.release();
+                                    get.complete();
+                                }
+                            });
+                } catch (InterruptedException e) {
+                    fail("Failed while waiting for mutex: " + e.getMessage());
+                } finally {
+                    OperationContext.removeAttribute("test-key");
+                    assertNull(OperationContext.getAttribute("test-key"));
+                    mutex.release();
+                }
+            }
+        }
+
+        PropagatingContextAttributesService service = new PropagatingContextAttributesService();
+        this.host.startService(service);
+        this.host.waitForServiceAvailable(PropagatingContextAttributesService.SELF_LINK);
+
+        this.sender.sendAndWait(
+                Operation.createGet(this.host, PropagatingContextAttributesService.SELF_LINK));
     }
 
     @Test
