@@ -13,13 +13,17 @@
 
 package com.vmware.xenon.common;
 
+import java.util.Collections;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.Map;
+
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 
 /**
  * OperationContext encapsulates the runtime context of an Operation
  * The context is maintained as a thread local variable that is set
  * by the service host or the Operation object
- * OperationContext instances are immutable.
  */
 public final class OperationContext implements Cloneable {
 
@@ -32,13 +36,16 @@ public final class OperationContext implements Cloneable {
     AuthorizationContext authContext;
     String contextId;
     String transactionId;
+    Map<String, Object> contextAttributes = new HashMap<>();
 
     private OperationContext() {
     }
 
     public OperationContext clone() {
         try {
-            return (OperationContext) super.clone();
+            OperationContext context = (OperationContext) super.clone();
+            context.contextAttributes.putAll(this.contextAttributes);
+            return context;
         } catch (CloneNotSupportedException e) {
             throw new AssertionError(e);
         }
@@ -75,6 +82,22 @@ public final class OperationContext implements Cloneable {
         return threadOperationContext.get().authContext;
     }
 
+    public static Object getAttribute(String name) {
+        return threadOperationContext.get().contextAttributes.get(name);
+    }
+
+    public static Enumeration<String> getAttributeNames() {
+        return Collections.enumeration(threadOperationContext.get().contextAttributes.keySet());
+    }
+
+    public static void removeAttribute(String name) {
+        threadOperationContext.get().contextAttributes.remove(name);
+    }
+
+    public static void setAttribute(String name, Object object) {
+        threadOperationContext.get().contextAttributes.put(name, object);
+    }
+
     /**
      * Get the OperationContext associated with the thread
      * @return OperationContext instance
@@ -92,6 +115,8 @@ public final class OperationContext implements Cloneable {
         currentOpCtx.authContext = opCtx.authContext;
         currentOpCtx.transactionId = opCtx.transactionId;
         currentOpCtx.contextId = opCtx.contextId;
+        currentOpCtx.contextAttributes.clear();
+        currentOpCtx.contextAttributes.putAll(opCtx.contextAttributes);
     }
 
     /**
@@ -103,6 +128,8 @@ public final class OperationContext implements Cloneable {
         currentOpCtx.authContext = op.getAuthorizationContext();
         currentOpCtx.transactionId = op.getTransactionId();
         currentOpCtx.contextId = op.getContextId();
+        currentOpCtx.contextAttributes.clear();
+        currentOpCtx.contextAttributes.putAll(op.getContextAttributes());
     }
 
     /**
@@ -113,6 +140,7 @@ public final class OperationContext implements Cloneable {
         opCtx.authContext = null;
         opCtx.transactionId = null;
         opCtx.contextId = null;
+        opCtx.contextAttributes.clear();
     }
 
     /**
@@ -124,5 +152,7 @@ public final class OperationContext implements Cloneable {
         currentOpCtx.authContext = opCtx.authContext;
         currentOpCtx.transactionId = opCtx.transactionId;
         currentOpCtx.contextId = opCtx.contextId;
+        currentOpCtx.contextAttributes.clear();
+        currentOpCtx.contextAttributes.putAll(opCtx.contextAttributes);
     }
 }
