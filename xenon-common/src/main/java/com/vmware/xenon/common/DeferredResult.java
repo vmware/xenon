@@ -96,6 +96,12 @@ public final class DeferredResult<T> {
                 .collect(Collectors.toList());
         CompletableFuture<List<U>> cf = CompletableFuture
                 .allOf(futures.toArray(new CompletableFuture<?>[deferredResults.size()]))
+                .exceptionally(th -> {
+                    Utils.log(LOG, null, DeferredResult.class.getSimpleName(), Level.WARNING, () -> String
+                            .format("Exception in DeferredResult allOf chain was not handled. Initiator: %s\nException: %s",
+                                    th, Utils.toString(th.getCause())));
+                    throw (RuntimeException) th;
+                })
                 .thenApply(ignore -> {
                     // Here all the futures are completed *successfully* which
                     // means that based on the CompletableFuture contract:
