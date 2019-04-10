@@ -66,6 +66,7 @@ import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.SystemHostInfo.OsFamily;
+import com.vmware.xenon.common.config.XenonConfiguration;
 import com.vmware.xenon.common.logging.StackAwareLogRecord;
 import com.vmware.xenon.common.serialization.GsonSerializers;
 import com.vmware.xenon.common.serialization.JsonMapper;
@@ -104,6 +105,20 @@ public final class Utils {
      * See {@link #setTimeDriftThreshold(long)}
      */
     public static final long DEFAULT_TIME_DRIFT_THRESHOLD_MICROS = TimeUnit.SECONDS.toMicros(1);
+
+    /**
+     * By default Xenon replaces the {@code sourceClassName} in the {@code LogRecord} with the
+     * service link, if available. This does not work if java.util.logging is not used for
+     * logging (when redirected to SLF4J this information is lost) so this is an option to add
+     * the link into the message itself.
+     *
+     * If this flag is {@code true}, no {@link StackAwareLogRecord} is created because it is
+     * assumed the logging system will not make use of it.
+     */
+    private static boolean ADD_URI_TO_LOG_MESSAGES = XenonConfiguration.bool(
+            "logging",
+            "addUriToLogMessages",
+            false);
 
     /**
      * {@link #isReachableByPing} launches a separate ping process to ascertain whether a given IP
@@ -410,17 +425,50 @@ public final class Utils {
         }
 
         String message = messageSupplier.get();
-        StackAwareLogRecord lr = new StackAwareLogRecord(level, message);
-        Exception e = new Exception();
-        StackTraceElement[] stacks = e.getStackTrace();
-        if (stacks.length > nestingLevel) {
-            StackTraceElement stack = stacks[nestingLevel];
-            lr.setStackElement(stack);
-            lr.setSourceMethodName(stack.getMethodName());
+
+        if (ADD_URI_TO_LOG_MESSAGES) {
+            // format the URI - copied from LogFormatter
+            if (classOrUri == null) {
+                classOrUri = "";
+            } else if (classOrUri.startsWith("http")) {
+                // Remove leading URI schema & host. Support for ipv6 and path containing
+                // colon (ex, http://[::FFFF:129.144.52.38]:9000/group:department).
+                //
+                // Finding first slash at index 8, calculated based on minimum path starting
+                // location in http/https URIs.
+                // 0123456789
+                // http://a/
+                // https://a/
+                final int findPathFromIndex = 8;
+                int pathIndex = classOrUri.indexOf('/', findPathFromIndex);
+                int portIndex = classOrUri
+                        .lastIndexOf(':', pathIndex == -1 ? Integer.MAX_VALUE : pathIndex);
+                classOrUri = classOrUri.substring(portIndex + 1);
+            } else {
+                int simpleNameIndex = classOrUri.lastIndexOf('.');
+                if (simpleNameIndex != -1) {
+                    classOrUri = classOrUri.substring(simpleNameIndex + 1);
+                }
+            }
+
+            if (!lg.getName().endsWith(classOrUri)) {
+                message = String.format("[%s] %s", classOrUri, message);
+            }
+
+            lg.log(level, message);
+        } else {
+            StackAwareLogRecord lr = new StackAwareLogRecord(level, message);
+            Exception e = new Exception();
+            StackTraceElement[] stacks = e.getStackTrace();
+            if (stacks.length > nestingLevel) {
+                StackTraceElement stack = stacks[nestingLevel];
+                lr.setStackElement(stack);
+                lr.setSourceMethodName(stack.getMethodName());
+            }
+            lr.setSourceClassName(classOrUri);
+            lr.setLoggerName(lg.getName());
+            lg.log(lr);
         }
-        lr.setSourceClassName(classOrUri);
-        lr.setLoggerName(lg.getName());
-        lg.log(lr);
     }
 
     public static void logWarning(String fmt, Object... args) {

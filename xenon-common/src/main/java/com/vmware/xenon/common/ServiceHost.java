@@ -860,7 +860,7 @@ public class ServiceHost implements ServiceRequestSender {
     protected ScheduledThreadPoolExecutor constructScheduledExecutorPool() {
         return  (ScheduledThreadPoolExecutor) Executors.newScheduledThreadPool(
                 Utils.DEFAULT_THREAD_COUNT,
-                new NamedThreadFactory(getUri() + "/scheduled"));
+                new NamedThreadFactory("xn-scheduled"));
     }
 
     /**
@@ -874,7 +874,7 @@ public class ServiceHost implements ServiceRequestSender {
     protected ScheduledExecutorService constructServiceScheduledExecutor() {
         return Executors.newScheduledThreadPool(
                 Utils.DEFAULT_THREAD_COUNT / 2,
-                new NamedThreadFactory(getUri() + "/service-scheduled"));
+                new NamedThreadFactory("xn-service-scheduled"));
     }
 
 
