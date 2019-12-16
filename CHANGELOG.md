@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 1.6.14.1
+
+* Close file handlers opened during creating backup to the local file system.
+
 ## 1.6.14
 
 * When node is NOT started, return 503 instead of 404.
