@@ -38,6 +38,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
+import java.util.stream.Stream;
 
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.index.DirectoryReader;
@@ -345,8 +346,10 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                     if (isInMemoryIndex) {
                         tempDir = Files.createTempDirectory("lucene-in-memory-backup");
                         copyInMemoryLuceneIndexToDirectory(commit, tempDir);
-                        List<URI> files = Files.list(tempDir).map(Path::toUri).collect(toList());
-                        fileList.addAll(files);
+                        try (Stream<Path> listStream = Files.list(tempDir)) {
+                            List<URI> files = listStream.map(Path::toUri).collect(toList());
+                            fileList.addAll(files);
+                        }
                     } else {
 
                         Path indexDirectoryPath = Paths.get(storageSandbox).resolve(indexInfo.indexDirectory);
@@ -374,10 +377,6 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
 
                 Set<String> sourceFileNames = new HashSet<>(commit.getFileNames());
 
-                Set<String> destFileNames = Files.list(destinationPath)
-                        .filter(Files::isRegularFile)
-                        .map(path -> path.getFileName().toString())
-                        .collect(toSet());
 
                 Path tempDir = null;
                 try {
@@ -391,6 +390,8 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                         indexDirectoryPath = Paths.get(storageSandbox).resolve(indexInfo.indexDirectory);
                     }
 
+                    // list files in destination path
+                    Set<String> destFileNames = listFilesInPath(destinationPath);
                     // add files exist in source but not in dest
                     Set<String> toAdd = new HashSet<>(sourceFileNames);
                     toAdd.removeAll(destFileNames);
@@ -422,6 +423,18 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                 snapshotter.release(commit);
             }
             writer.deleteUnusedFiles();
+        }
+    }
+
+    /**
+     * Files.list opens an IO stream that must be closed or else an open file descriptors will
+     */
+    private static Set<String> listFilesInPath(Path destinationPath) throws IOException {
+        try (Stream<Path> pathStream = Files.list(destinationPath)) {
+            return pathStream
+                    .filter(Files::isRegularFile)
+                    .map(path -> path.getFileName().toString())
+                    .collect(toSet());
         }
     }
 
@@ -586,10 +599,12 @@ public class LuceneDocumentIndexBackupService extends StatelessService {
                 } else {
                     logInfo("restoring index %s from directory %s", restoreTo, restoreFrom);
 
-                    // Copy whatever was there out just in case.
-                    if (Files.list(restoreTo).count() > 0) {
-                        logInfo("archiving existing index %s", restoreTo);
-                        luceneIndexService.archiveCorruptIndexFiles(restoreTo.toFile());
+                    try (Stream<Path> listStream = Files.list(restoreTo)) {
+                        // Copy whatever was there out just in case.
+                        if (listStream.count() > 0) {
+                            logInfo("archiving existing index %s", restoreTo);
+                            luceneIndexService.archiveCorruptIndexFiles(restoreTo.toFile());
+                        }
                     }
 
                     FileUtils.copyFiles(restoreFrom.toFile(), restoreTo.toFile());

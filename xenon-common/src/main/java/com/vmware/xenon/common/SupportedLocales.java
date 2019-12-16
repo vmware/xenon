@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.logging.Logger;
+import java.util.stream.Stream;
 
 public class SupportedLocales {
 
@@ -78,10 +79,12 @@ public class SupportedLocales {
             try (FileSystem fileSystem = FileSystems.newFileSystem(url.toURI(),
                     Collections.emptyMap())) {
                 Path myPath = fileSystem.getPath(MESSAGES_FOLDER);
-                messageFiles = Files.walk(myPath, 1)
-                        .filter(path -> path.toString().contains(MESSAGES_BASE_FILENAME))
-                        .map(path -> path.getFileName().toString())
-                        .toArray(String[]::new);
+                try (Stream<Path> walkStream = Files.walk(myPath, 1)) {
+                    messageFiles = walkStream
+                            .filter(path -> path.toString().contains(MESSAGES_BASE_FILENAME))
+                            .map(path -> path.getFileName().toString())
+                            .toArray(String[]::new);
+                }
             } catch (IOException | URISyntaxException e) {
                 Logger.getAnonymousLogger().warning(
                         String.format("Unable to load message files from %s: %s ", url, e));
