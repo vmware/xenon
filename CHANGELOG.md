@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## 1.6.20-SNAPSHOT
+* Close file handlers opened during creating backup to the local file system.
 
 
 ## 1.6.19
